@@ -3,11 +3,38 @@ import numpy as np
 
 from .base_strategy import BaseStrategy
 
-class MomentumStrategy(BaseStrategy):
-    """Momentum strategy implementation."""
+class CalmarMomentumStrategy(BaseStrategy):
+    """Momentum strategy implementation using Calmar ratio for ranking."""
+
+    def _calculate_rolling_calmar(self, rets: pd.DataFrame, window: int) -> pd.DataFrame:
+        """Calculates rolling Calmar ratio for each asset."""
+        # Annualization factor for monthly data
+        CAL_FACTOR = 12
+
+        # Calculate rolling mean (annualized)
+        rolling_mean = rets.rolling(window).mean() * CAL_FACTOR
+
+        # Calculate rolling maximum drawdown
+        def max_drawdown(series):
+            """Calculate maximum drawdown for a series."""
+            if len(series) == 0:
+                return np.nan
+            cumulative_returns = (1 + series).cumprod()
+            peak = cumulative_returns.expanding(min_periods=1).max()
+            drawdown = (cumulative_returns / peak) - 1
+            return abs(drawdown.min())  # Return positive value
+
+        # Calculate rolling maximum drawdown
+        rolling_max_dd = rets.rolling(window).apply(max_drawdown, raw=False)
+
+        # Calculate Calmar ratio
+        # Calmar = Annualized Return / Maximum Drawdown
+        calmar_ratio = rolling_mean / rolling_max_dd.replace(0, np.nan)
+        
+        return calmar_ratio.fillna(0)  # Fill NaN (from division by zero) with 0
 
     def _calculate_candidate_weights(self, look: pd.Series) -> pd.Series:
-        """Calculates initial candidate weights based on momentum."""
+        """Calculates initial candidate weights based on Calmar ratio ranking."""
         if self.strategy_config.get('num_holdings'):
             num_holdings = self.strategy_config['num_holdings']
         else:
@@ -45,22 +72,24 @@ class MomentumStrategy(BaseStrategy):
         return w_new
 
     def generate_signals(self, data: pd.DataFrame, benchmark_data: pd.Series) -> pd.DataFrame:
-        """Generates trading signals based on the momentum strategy."""
+        """Generates trading signals based on the Calmar momentum strategy."""
         rets = data.pct_change(fill_method=None)
-        # Calculate momentum based on past returns only.
-        momentum = (1 + rets).shift(1).rolling(self.strategy_config.get('lookback_months', 6)).apply(np.prod, raw=True) - 1
         
+        # Calculate rolling Calmar ratio
+        rolling_calmar = self._calculate_rolling_calmar(
+            rets, 
+            self.strategy_config.get('rolling_window', 6)
+        )
+
         weights = pd.DataFrame(index=rets.index, columns=rets.columns, dtype=float)
         w_prev = pd.Series(index=rets.columns, dtype=float).fillna(0.0)
 
         for date in rets.index:
-            look = momentum.loc[date]
+            look = rolling_calmar.loc[date]
 
             if look.count() == 0:
                 weights.loc[date] = w_prev
                 continue
-            
-            look = look.dropna() # Drop NaNs to avoid issues
 
             cand = self._calculate_candidate_weights(look)
             w_new = self._apply_leverage_and_smoothing(cand, w_prev)

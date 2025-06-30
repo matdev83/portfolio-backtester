@@ -43,20 +43,9 @@ BACKTEST_SCENARIOS = [
         "rebalance_frequency": "ME",
         "position_sizer": "equal_weight",
         "transaction_costs_bps": 10,
-        "train_window_months": 24,
-        "test_window_months": 12,
-        "optimize": [
-            {
-                "parameter": "num_holdings",
-                "metric": "Sortino",
-                "min_value": 10,
-                "max_value": 30,
-                "step": 5
-            }
-        ],
         "strategy_params": {
             "lookback_months": 11,
-            # "top_decile_fraction" is replaced by the optimization
+            "top_decile_fraction": 0.10,
             "smoothing_lambda": 0.5,
             "leverage": 0.50,
             "long_only": True,
@@ -138,6 +127,102 @@ BACKTEST_SCENARIOS = [
                 "step": 0.1,
             }
         ]
+    },
+    {
+        "name": "VAMS_No_Downside",
+        "strategy": "vams_no_downside",
+        "rebalance_frequency": "ME",
+        "position_sizer": "equal_weight",
+        "transaction_costs_bps": 10,
+        "train_window_months": 24, # Use a 24-month training window
+        "test_window_months": 12, # Test on the next 12 months
+        "strategy_params": {
+            "long_only": True,
+            "sma_filter_window": None,
+        },
+        "optimize": [
+            {
+                "parameter": "lookback_months",
+                "metric": "Sortino",
+                "min_value": 6,
+                "max_value": 24,
+                "step": 1,
+            },
+            {
+                "parameter": "top_decile_fraction",
+                "metric": "Sortino",
+                "min_value": 0.05,
+                "max_value": 0.20,
+                "step": 0.05,
+            },
+            {
+                "parameter": "smoothing_lambda",
+                "metric": "Sortino",
+                "min_value": 0.1,
+                "max_value": 0.9,
+                "step": 0.1,
+            },
+            {
+                "parameter": "leverage",
+                "metric": "Sortino",
+                "min_value": 0.1,
+                "max_value": 1.0,
+                "step": 0.1,
+            }
+        ]
+    },
+    {
+        "name": "Sortino_Momentum",
+        "strategy": "sortino_momentum",
+        "rebalance_frequency": "ME",
+        "position_sizer": "equal_weight",
+        "transaction_costs_bps": 10,
+        "train_window_months": 24,
+        "test_window_months": 12,
+        "optimize": [
+            {
+                "parameter": "rolling_window",
+                "metric": "Sortino",
+                "min_value": 1,
+                "max_value": 6,
+                "step": 1
+            }
+        ],
+        "strategy_params": {
+            "lookback_months": 11, # This will be used for mom_look/pred, but based on Sortino
+            "top_decile_fraction": 0.10,
+            "smoothing_lambda": 0.5,
+            "leverage": 0.50,
+            "long_only": True,
+            "sma_filter_window": None,
+            "target_return": 0.0,  # Target return for Sortino calculation
+        }
+    },
+    {
+        "name": "Calmar_Momentum",
+        "strategy": "calmar_momentum",
+        "rebalance_frequency": "ME",
+        "position_sizer": "equal_weight",
+        "transaction_costs_bps": 10,
+        "train_window_months": 24,
+        "test_window_months": 12,
+        "optimize": [
+            {
+                "parameter": "rolling_window",
+                "metric": "Calmar",
+                "min_value": 1,
+                "max_value": 6,
+                "step": 1
+            }
+        ],
+        "strategy_params": {
+            "lookback_months": 11, # This will be used for mom_look/pred, but based on Calmar
+            "top_decile_fraction": 0.10,
+            "smoothing_lambda": 0.5,
+            "leverage": 0.50,
+            "long_only": True,
+            "sma_filter_window": None,
+        }
     }
 ]
 

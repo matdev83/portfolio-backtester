@@ -49,7 +49,10 @@ class TestBacktester(unittest.TestCase):
 
     def test_walk_forward_optimization_runs(self):
         """Test that walk-forward optimization completes and produces results."""
-        self.backtester.run_optimization(self.scenarios[0], self.mock_data)
+        # Pre-calculate returns for the mock data
+        rets_full = self.mock_data.pct_change().fillna(0)
+        
+        self.backtester.run_optimization(self.scenarios[0], self.mock_data, rets_full)
         
         # Check that results are generated
         self.assertIn("Test_Momentum_WFO (Walk-Forward Optimized)", self.backtester.results)

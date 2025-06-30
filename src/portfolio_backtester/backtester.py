@@ -10,9 +10,7 @@ import argparse
 
 from .config import GLOBAL_CONFIG, BACKTEST_SCENARIOS
 from .data_sources.yfinance_data_source import YFinanceDataSource
-from .strategies.momentum_strategy import MomentumStrategy
-from .strategies.sharpe_momentum_strategy import SharpeMomentumStrategy
-from .strategies.vams_momentum_strategy import VAMSMomentumStrategy # Import new strategy
+from . import strategies
 from .portfolio.position_sizer import equal_weight_sizer
 from .portfolio.rebalancing import rebalance
 from .reporting.performance_metrics import calculate_metrics
@@ -22,11 +20,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class Backtester:
-    def __init__(self, global_config, scenarios):
+    def __init__(self, global_config, scenarios, random_state=None):
         self.global_config = global_config
         self.scenarios = scenarios
         self.data_source = self._get_data_source()
         self.results = {}
+        self.random_state = random_state
+        if self.random_state is not None:
+            np.random.seed(self.random_state)
+            logger.info(f"Numpy random seed set to {self.random_state}.")
         logger.info("Backtester initialized.")
 
     def _get_data_source(self):
@@ -38,37 +40,42 @@ class Backtester:
             raise ValueError(f"Unsupported data source: {self.global_config['data_source']}")
 
     def _get_strategy(self, strategy_name, params):
-        if strategy_name == "momentum":
-            logger.debug(f"Using MomentumStrategy with params: {params}")
-            return MomentumStrategy(params)
-        elif strategy_name == "sharpe_momentum":
-            logger.debug(f"Using SharpeMomentumStrategy with params: {params}")
-            return SharpeMomentumStrategy(params)
-        elif strategy_name == "vams_momentum":
-            logger.debug(f"Using VAMSMomentumStrategy with params: {params}")
-            return VAMSMomentumStrategy(params)
+        # Convert strategy_name (e.g., "vams_momentum") to class name (e.g., "VamsMomentumStrategy")
+        class_name = "".join(word.capitalize() for word in strategy_name.split('_')) + "Strategy"
+        # Special handling for VAMS strategies due to inconsistent naming convention
+        if strategy_name == "vams_momentum":
+            class_name = "VAMSMomentumStrategy"
+        elif strategy_name == "vams_no_downside":
+            class_name = "VAMSNoDownsideStrategy"
+        
+        strategy_class = getattr(strategies, class_name, None)
+        
+        if strategy_class:
+            logger.debug(f"Using {class_name} with params: {params}")
+            return strategy_class(params)
         else:
             logger.error(f"Unsupported strategy: {strategy_name}")
             raise ValueError(f"Unsupported strategy: {strategy_name}")
 
-    def run_scenario(self, scenario_config, data, verbose=True):
+    def run_scenario(self, scenario_config, data, rets=None, verbose=True):
         if verbose:
             logger.info(f"Running scenario: {scenario_config['name']}")
+
+        if rets is None:
+            rets = data.pct_change().fillna(0)
         
         strategy = self._get_strategy(scenario_config["strategy"], scenario_config["strategy_params"])
-        benchmark_data = data[self.global_config["benchmark"]]
-        signals = strategy.generate_signals(data.drop(columns=[self.global_config["benchmark"]]), benchmark_data)
+        
+        # Pass only the relevant portion of data to generate_signals
+        strategy_data = data.loc[rets.index]
+        benchmark_data = strategy_data[self.global_config["benchmark"]]
+        
+        signals = strategy.generate_signals(
+            strategy_data.drop(columns=[self.global_config["benchmark"]]),
+            benchmark_data
+        )
         if verbose:
             logger.debug("Signals generated.")
-            if logger.isEnabledFor(logging.DEBUG):
-                if signals.empty:
-                    logger.debug("DEBUG: Signals DataFrame is empty.")
-                else:
-                    logger.debug(f"DEBUG: Signals shape: {signals.shape}, Non-NaN count: {signals.count().sum()}")
-                    if signals.isnull().all().all():
-                        logger.debug("DEBUG: All signals are NaN.")
-            logger.debug(f"DEBUG: Signals head:\n{signals.head()}")
-            logger.debug(f"DEBUG: Signals shape: {signals.shape}, NaNs: {signals.isnull().sum().sum()}")
 
         if scenario_config["position_sizer"] == "equal_weight":
             sized_signals = equal_weight_sizer(signals)
@@ -82,13 +89,15 @@ class Backtester:
         if verbose:
             logger.debug("Portfolio rebalanced.")
 
-        rets = data.pct_change(fill_method=None)
-        portfolio_rets_gross = (weights.shift(1) * rets).sum(axis=1).dropna()
+        # Align rets with weights index
+        aligned_rets = rets.loc[weights.index]
+        
+        portfolio_rets_gross = (weights.shift(1) * aligned_rets).sum(axis=1).dropna()
         turnover = (weights - weights.shift(1)).abs().sum(axis=1)
         transaction_costs = turnover * (scenario_config["transaction_costs_bps"] / 10000)
         portfolio_rets_net = (portfolio_rets_gross - transaction_costs).reindex(portfolio_rets_gross.index).fillna(0)
         if verbose:
-            logger.info("Portfolio returns calculated.")
+            logger.info(f"Portfolio returns calculated for {scenario_config['name']}. First few returns: {portfolio_rets_net.head().to_dict()}")
 
         return portfolio_rets_net
 
@@ -101,17 +110,21 @@ class Backtester:
         ).resample("ME").last()
         logger.info("Backtest data retrieved and resampled.")
 
+        # Pre-calculate returns for the entire dataset
+        rets_full = data.pct_change().fillna(0)
+
         for scenario in self.scenarios:
             if "optimize" in scenario:
-                self.run_optimization(scenario, data)
+                self.run_optimization(scenario, data, rets_full)
             else:
-                rets = self.run_scenario(scenario, data)
+                # Pass the full returns dataframe to run_scenario
+                rets = self.run_scenario(scenario, data, rets_full)
                 self.results[scenario["name"]] = {"returns": rets, "display_name": scenario["name"]}
 
         logger.info("All scenarios completed. Displaying results.")
         self.display_results(data)
 
-    def run_optimization(self, scenario_config, data):
+    def run_optimization(self, scenario_config, data, rets_full):
         logger.info(f"Running walk-forward optimization for scenario: {scenario_config['name']}")
 
         optimization_specs = scenario_config["optimize"]
@@ -145,6 +158,10 @@ class Backtester:
                 train_data = data.iloc[train_start_idx:train_end_idx]
                 test_data = data.iloc[test_start_idx:test_end_idx]
                 
+                # Use slices of the pre-calculated returns
+                train_rets_sliced = rets_full.iloc[train_start_idx:train_end_idx]
+                test_rets_sliced = rets_full.iloc[test_start_idx:test_end_idx]
+
                 progress.update(wfa_task, description=f"[green]Optimizing period {i+1}/{num_steps}...")
 
                 optimal_params = scenario_config["strategy_params"].copy()
@@ -168,8 +185,9 @@ class Backtester:
                         temp_scenario = scenario_config.copy()
                         temp_scenario["strategy_params"] = temp_params
                         
-                        train_rets = self.run_scenario(temp_scenario, train_data, verbose=False)
-                        train_bench_rets = train_data[self.global_config["benchmark"]].pct_change().fillna(0)
+                        # Pass the sliced returns to run_scenario
+                        train_rets = self.run_scenario(temp_scenario, train_data, train_rets_sliced, verbose=False)
+                        train_bench_rets = train_rets_sliced[self.global_config["benchmark"]]
                         train_metrics = calculate_metrics(train_rets, train_bench_rets, self.global_config["benchmark"])
                         current_metric = train_metrics.get(metric_to_optimize, -np.inf)
 
@@ -187,7 +205,9 @@ class Backtester:
 
                 test_scenario = scenario_config.copy()
                 test_scenario["strategy_params"] = optimal_params
-                test_rets = self.run_scenario(test_scenario, test_data, verbose=False)
+                
+                # Pass the sliced returns to run_scenario for the test period
+                test_rets = self.run_scenario(test_scenario, test_data, test_rets_sliced, verbose=False)
                 all_test_rets.append(test_rets)
                 
                 progress.advance(wfa_task)
@@ -279,6 +299,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run portfolio backtester.")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Set the logging level.")
     parser.add_argument("--portfolios", type=str, help="Comma-separated list of portfolio scenario names to run. 'Unfiltered' and benchmark are always included.")
+    parser.add_argument("--random-seed", type=int, default=None, help="Set a random seed for reproducibility.")
     args = parser.parse_args()
 
     logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
@@ -297,5 +318,5 @@ if __name__ == "__main__":
     if unfiltered_scenario and unfiltered_scenario not in selected_scenarios:
         selected_scenarios.insert(0, unfiltered_scenario) # Add to the beginning
 
-    backtester = Backtester(GLOBAL_CONFIG, selected_scenarios)
+    backtester = Backtester(GLOBAL_CONFIG, selected_scenarios, random_state=args.random_seed)
     backtester.run()

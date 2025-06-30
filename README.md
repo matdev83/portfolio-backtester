@@ -32,11 +32,19 @@ The main backtesting script can be run directly:
 python src/portfolio_backtester/backtester.py
 ```
 
-You can also specify which portfolios to backtest using the `--portfolios` argument. This allows you to select specific strategies to compare. The 'Unfiltered' portfolio and the benchmark (SPX) will always be included in the results, with the benchmark appearing as the rightmost column in the statistics table.
+### CLI Parameters for `backtester.py`
+
+*   `--log-level`: Set the logging level.
+    *   **Choices:** `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+    *   **Default:** `INFO`
+    *   **Description:** Controls the verbosity of the backtester's output.
+*   `--portfolios`: Comma-separated list of portfolio scenario names to run.
+    *   **Example:** `--portfolios "Momentum,Sharpe Momentum,VAMS Momentum"`
+    *   **Description:** Allows you to select specific strategies to compare. The 'Unfiltered' portfolio and the benchmark (SPX) will always be included in the results, with the benchmark appearing as the rightmost column in the statistics table.
 
 Example:
 ```bash
-python src/portfolio_backtester/backtester.py --portfolios "Momentum,Sharpe Momentum"
+python src/portfolio_backtester/backtester.py --portfolios "Momentum,Sharpe Momentum" --log-level DEBUG
 ```
 
 The tool for downloading SPY holdings can be run with:
@@ -45,7 +53,112 @@ The tool for downloading SPY holdings can be run with:
 python src/portfolio_backtester/spy_holdings.py --out spy_holdings.csv
 ```
 
-## Development Practices and Standards
+### CLI Parameters for `spy_holdings.py`
+
+*   `--start`: Start date for data download.
+    *   **Format:** `YYYY-MM-DD`
+    *   **Default:** `2004-01-01` (earliest SEC N-Q filing)
+    *   **Description:** Specifies the beginning of the date range for which to download holdings data.
+*   `--end`: End date for data download.
+    *   **Format:** `YYYY-MM-DD`
+    *   **Default:** Today's date
+    *   **Description:** Specifies the end of the date range for which to download holdings data.
+*   `--out`: Output filename for the downloaded data.
+    *   **Format:** `.parquet` or `.csv` extension
+    *   **Required:** Yes
+    *   **Description:** The name and format of the file where the downloaded SPY holdings will be saved.
+*   `--log-level`: Set the logging level.
+    *   **Choices:** `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+    *   **Default:** `INFO`
+    *   **Description:** Controls the verbosity of the data downloader's output.
+
+Example:
+```bash
+python src/portfolio_backtester/spy_holdings.py --start 2020-01-01 --end 2023-12-31 --out spy_holdings_2020_2023.parquet --log-level INFO
+```
+
+```bash
+# First full build (creates data/spy_holdings_full.parquet)
+python -m portfolio_backtester.spy_holdings \
+       --start 2004-01-01 --end 2025-06-30 \
+       --out spy_holdings_full.parquet
+
+# Nightly / incremental refresh (only fetches new dates)
+python -m portfolio_backtester.spy_holdings \
+       --start 2004-01-01 --end 2025-06-30 \
+       --out spy_holdings_full.parquet --update
+```
+
+The script saves the file inside the top-level `data/` directory (never in `src/data`).  Internally it automatically forward-fills missing business days so every ticker has a continuous daily weight series.
+
+## Development
+
+### Directory Structure Map
+
+```
+.
+├───.gitignore: Specifies intentionally untracked files to ignore.
+├───pyproject.toml: Project configuration, dependencies, and build system settings.
+├───README.md: Project overview, setup, usage, and development guidelines.
+├───.git/: Git version control system directory.
+├───.pytest_cache/: Cache directory for pytest.
+├───.venv/: Python virtual environment.
+├───config/: Configuration files for the backtester (e.g., GLOBAL_CONFIG, BACKTEST_SCENARIOS).
+├───data/: Stores downloaded historical data (e.g., stock prices, SPY holdings).
+│   ├───^GSPC.csv: S&P 500 index data.
+│   ├───^VIX.csv: VIX index data.
+│   └───... (various stock/ETF CSVs)
+├───docs/: Documentation files and examples.
+│   ├───dp_vams_example.md: Documentation for VAMS strategy example.
+│   └───dp_vams_example.py: Example code for VAMS strategy.
+├───logs/: Directory for application logs.
+├───src/: Source code for the portfolio backtester.
+│   ├───data/: Contains CSV files for various assets, likely used for testing or specific data loading.
+│   │   ├───^GSPC.csv: S&P 500 index data.
+│   │   └───... (various stock/ETF CSVs)
+│   ├───portfolio_backtester/: Main Python package for the backtester.
+│   │   ├───__init__.py: Initializes the Python package.
+│   │   ├───backtester.py: Core backtesting logic, runs scenarios, calculates and displays results.
+│   │   ├───config.py: Defines global configurations and backtest scenarios.
+│   │   ├───spy_holdings.py: Script to download historical SPY holdings data.
+│   │   ├───__pycache__/: Python bytecode cache.
+│   │   ├───data_sources/: Handles data retrieval from various sources.
+│   │   │   ├───__init__.py: Initializes the data_sources package.
+│   │   │   ├───base_data_source.py: Abstract base class for data sources.
+│   │   │   └───yfinance_data_source.py: Implements data retrieval using yfinance.
+│   │   ├───portfolio/: Contains modules related to portfolio management.
+│   │   │   ├───__init__.py: Initializes the portfolio package.
+│   │   │   ├───position_sizer.py: Logic for determining position sizes.
+│   │   │   └───rebalancing.py: Logic for rebalancing portfolio weights.
+│   │   ├───reporting/: Modules for generating performance reports and metrics.
+│   │   │   ├───__init__.py: Initializes the reporting package.
+│   │   │   └───performance_metrics.py: Functions to calculate various performance metrics.
+│   │   └───strategies/: Implements different backtesting strategies.
+│   │       ├───__init__.py: Initializes the strategies package.
+│   │       ├───base_strategy.py: Abstract base class for trading strategies.
+│   │       ├───momentum_strategy.py: Implements a basic momentum strategy.
+│   │       ├───sharpe_momentum_strategy.py: Implements a Sharpe ratio-based momentum strategy.
+│   │       └───vams_momentum_strategy.py: Implements a VAMS (Volatility-Adjusted Momentum Strategy).
+│   └───portfolio_backtester.egg-info/: Metadata for the Python package.
+└───tests/: Unit and integration tests for the project.
+    ├───__init__.py: Initializes the tests package.
+    ├───test_backtester.py: Tests for the core backtester logic.
+    ├───__pycache__/: Python bytecode cache.
+    ├───data_sources/: Tests for data source modules.
+    │   ├───__init__.py: Initializes the data_sources tests package.
+    │   └───test_yfinance_data_source.py: Tests for the yfinance data source.
+    ├───portfolio/: Tests for portfolio management modules.
+    │   ├───__init__.py: Initializes the portfolio tests package.
+    │   └───test_position_sizer.py: Tests for position sizing logic.
+    ├───reporting/: Tests for reporting modules.
+    │   ├───__init__.py: Initializes the reporting tests package.
+    │   └───test_performance_metrics.py: Tests for performance metrics calculation.
+    └───strategies/: Tests for trading strategies.
+        ├───__init__.py: Initializes the strategies tests package.
+        └───test_momentum_strategy.py: Tests for the momentum strategy.
+```
+
+### Development Practices and Standards
 
 To ensure the long-term quality, maintainability, and scalability of this project, all contributors are expected to adhere to the following development practices and principles:
 

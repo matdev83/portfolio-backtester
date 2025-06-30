@@ -15,13 +15,13 @@ logger = logging.getLogger(__name__)
 class YFinanceDataSource(BaseDataSource):
     """Data source for fetching data from Yahoo Finance."""
 
-    def __init__(self, cache_expiry_hours=6):
+    def __init__(self, cache_expiry_hours=24):
         self.cache_expiry_hours = cache_expiry_hours
         try:
             SCRIPT_DIR = Path(__file__).parent.resolve()
         except NameError:
             SCRIPT_DIR = Path.cwd()
-        self.data_dir = SCRIPT_DIR.parent.parent / 'data'
+        self.data_dir = SCRIPT_DIR.parent.parent.parent / 'data'
         logger.debug(f"YFinanceDataSource initialized. Data directory: {self.data_dir}")
 
     def _load_from_cache(self, file_path: Path, ticker: str) -> pd.DataFrame | None:
@@ -32,7 +32,11 @@ class YFinanceDataSource(BaseDataSource):
                 df.index = pd.to_datetime(df.index, format='%Y-%m-%d', errors='coerce')
                 df = df[~df.index.isnull()]
                 if not isinstance(df.index, pd.DatetimeIndex) or df.empty:
-                    raise ValueError("Failed to parse dates from cached file.")
+                    logger.debug(f"Cached file for {ticker} is empty or dates are invalid. Forcing re-download.")
+                    return None
+                if df.empty:
+                    logger.debug(f"Cached file for {ticker} is empty. Forcing re-download.")
+                    return None
                 df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
                 logger.debug(f"Loaded {ticker} from cache.")
                 return df

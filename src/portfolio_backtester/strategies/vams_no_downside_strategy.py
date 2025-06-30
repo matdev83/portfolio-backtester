@@ -3,18 +3,47 @@ import numpy as np
 
 from .base_strategy import BaseStrategy
 
-class MomentumStrategy(BaseStrategy):
-    """Momentum strategy implementation."""
+class VAMSNoDownsideStrategy(BaseStrategy):
+    """Momentum strategy implementation using Volatility Adjusted Momentum Scores (VAMS), without downside volatility penalization."""
+
+    def _calculate_downside_deviation(self, rets: pd.DataFrame, window: int) -> pd.DataFrame:
+        """Calculates rolling downside deviation for each asset."""
+        negative_rets = rets[rets < 0].fillna(0)
+        downside_deviation = negative_rets.rolling(window).std()
+        return downside_deviation.fillna(0)
+
+    def _calculate_total_volatility(self, rets: pd.DataFrame, window: int) -> pd.DataFrame:
+        """Calculates rolling total volatility (standard deviation) for each asset."""
+        return rets.rolling(window).std().fillna(0)
+
+    def _calculate_vams(self, rets: pd.DataFrame, lookback_months: int) -> pd.DataFrame:
+        """Calculates Volatility Adjusted Momentum Scores (VAMS) without downside penalization."""
+        # Calculate rolling momentum (R_N)
+        momentum = (1 + rets).rolling(lookback_months).apply(np.prod, raw=True) - 1
+
+        # Calculate total volatility (sigma_N)
+        total_vol = self._calculate_total_volatility(rets, lookback_months)
+        
+        # Avoid division by zero
+        denominator = total_vol.replace(0, np.nan)
+
+        vams = momentum / denominator
+        return vams.fillna(0) # Fill NaN (from division by zero) with 0
 
     def _calculate_candidate_weights(self, look: pd.Series) -> pd.Series:
-        """Calculates initial candidate weights based on momentum."""
+        """Calculates initial candidate weights based on VAMS."""
         if self.strategy_config.get('num_holdings'):
             num_holdings = self.strategy_config['num_holdings']
         else:
             num_holdings = max(int(np.ceil(self.strategy_config.get('top_decile_fraction', 0.1) * look.count())), 1)
 
-        winners = look.nlargest(num_holdings).index
-        losers = look.nsmallest(num_holdings).index
+        # Only consider positive scores for winners
+        positive_scores = look[look > 0]
+        winners = positive_scores.nlargest(num_holdings).index
+
+        # Only consider negative scores for losers
+        negative_scores = look[look < 0]
+        losers = negative_scores.nsmallest(num_holdings).index
 
         cand = pd.Series(index=look.index, dtype=float).fillna(0.0)
         if len(winners) > 0:
@@ -45,22 +74,24 @@ class MomentumStrategy(BaseStrategy):
         return w_new
 
     def generate_signals(self, data: pd.DataFrame, benchmark_data: pd.Series) -> pd.DataFrame:
-        """Generates trading signals based on the momentum strategy."""
+        """Generates trading signals based on the VAMS momentum strategy."""
         rets = data.pct_change(fill_method=None)
-        # Calculate momentum based on past returns only.
-        momentum = (1 + rets).shift(1).rolling(self.strategy_config.get('lookback_months', 6)).apply(np.prod, raw=True) - 1
         
+        # Calculate VAMS scores
+        vams_scores = self._calculate_vams(
+            rets,
+            self.strategy_config.get('lookback_months', 6)
+        )
+
         weights = pd.DataFrame(index=rets.index, columns=rets.columns, dtype=float)
         w_prev = pd.Series(index=rets.columns, dtype=float).fillna(0.0)
 
         for date in rets.index:
-            look = momentum.loc[date]
+            look = vams_scores.loc[date]
 
             if look.count() == 0:
                 weights.loc[date] = w_prev
                 continue
-            
-            look = look.dropna() # Drop NaNs to avoid issues
 
             cand = self._calculate_candidate_weights(look)
             w_new = self._apply_leverage_and_smoothing(cand, w_prev)

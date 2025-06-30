@@ -29,6 +29,7 @@ dependencies = [
     "tqdm",
     "python-edgar",
     "openpyxl",
+    "xlrd==2.0.1",
     "pyarrow",
     "radon",
     "xenon"

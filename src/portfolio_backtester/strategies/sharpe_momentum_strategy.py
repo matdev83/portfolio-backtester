@@ -25,7 +25,7 @@ class SharpeMomentumStrategy(BaseStrategy):
         if self.strategy_config.get('num_holdings'):
             num_holdings = self.strategy_config['num_holdings']
         else:
-            num_holdings = max(int(np.ceil(self.strategy_config['top_decile_fraction'] * look.count())), 1)
+            num_holdings = max(int(np.ceil(self.strategy_config.get('top_decile_fraction', 0.1) * look.count())), 1)
 
         winners = look.nlargest(num_holdings).index
         losers = look.nsmallest(num_holdings).index
@@ -39,20 +39,23 @@ class SharpeMomentumStrategy(BaseStrategy):
 
     def _apply_leverage_and_smoothing(self, cand: pd.Series, w_prev: pd.Series) -> pd.Series:
         """Applies leverage scaling and path-dependent smoothing to weights."""
-        # Scale candidate weights to target leverage
-        if cand[cand > 0].sum():
-            cand[cand > 0] /= cand[cand > 0].sum() / self.strategy_config['leverage']
-        if cand[cand < 0].sum():
-            cand[cand < 0] /= -cand[cand < 0].sum() / self.strategy_config['leverage']
+        leverage = self.strategy_config.get('leverage', 1.0)
+        smoothing_lambda = self.strategy_config.get('smoothing_lambda', 0.5)
 
         # Apply smoothing
-        w_new = self.strategy_config['smoothing_lambda'] * w_prev + (1 - self.strategy_config['smoothing_lambda']) * cand
+        w_new = smoothing_lambda * w_prev + (1 - smoothing_lambda) * cand
 
-        # Re-scale smoothed weights to target leverage
-        if w_new[w_new > 0].sum():
-            w_new[w_new > 0] /= w_new[w_new > 0].sum() / self.strategy_config['leverage']
-        if w_new[w_new < 0].sum():
-            w_new[w_new < 0] /= -w_new[w_new < 0].sum() / self.strategy_config['leverage']
+        # Normalize weights to maintain leverage if there are active signals
+        if cand.abs().sum() > 1e-9:
+            long_leverage = w_new[w_new > 0].sum()
+            short_leverage = -w_new[w_new < 0].sum()
+
+            if long_leverage > leverage:
+                w_new[w_new > 0] *= leverage / long_leverage
+            
+            if short_leverage > leverage:
+                 w_new[w_new < 0] *= leverage / short_leverage
+
         return w_new
 
     def generate_signals(self, data: pd.DataFrame, benchmark_data: pd.Series) -> pd.DataFrame:
@@ -60,7 +63,7 @@ class SharpeMomentumStrategy(BaseStrategy):
         rets = data.pct_change(fill_method=None)
         
         # Calculate rolling Sharpe ratio
-        rolling_sharpe = self._calculate_rolling_sharpe(rets, self.strategy_config['rolling_window'])
+        rolling_sharpe = self._calculate_rolling_sharpe(rets, self.strategy_config.get('rolling_window', 6))
 
         weights = pd.DataFrame(index=rets.index, columns=rets.columns, dtype=float)
         w_prev = pd.Series(index=rets.columns, dtype=float).fillna(0.0)
