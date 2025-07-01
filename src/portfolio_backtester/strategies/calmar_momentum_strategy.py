@@ -1,60 +1,47 @@
+from typing import Set
 import pandas as pd
 import numpy as np
 
 from .base_strategy import BaseStrategy
+from ..feature import CalmarRatio, BenchmarkSMA, Feature
+
 
 class CalmarMomentumStrategy(BaseStrategy):
     """Momentum strategy implementation using Calmar ratio for ranking."""
 
     @classmethod
-    def tunable_parameters(cls):
-        return {"num_holdings", "rolling_window"}
+    def tunable_parameters(cls) -> set[str]:
+        return {"num_holdings", "rolling_window", "sma_filter_window"}
 
-    CAL_FACTOR = 12 # Annualization factor for monthly data
-
-    def _calculate_rolling_calmar(self, rets: pd.DataFrame, window: int) -> pd.DataFrame:
-        """Calculates the rolling Calmar ratio for a DataFrame of returns."""
-
-        # Calculate rolling mean (annualized)
-        rolling_mean = rets.rolling(window).mean() * self.CAL_FACTOR
-
-        def max_drawdown(series):
-            """Calculates maximum drawdown for a series."""
-            series = series.dropna()
-            if series.empty:
-                return 0.0
-            
-            cumulative_returns = (1 + series).cumprod()
-            peak = cumulative_returns.expanding(min_periods=1).max()
-            
-            # Avoid division by zero if the portfolio value drops to zero.
-            peak = peak.replace(0, 1e-9)
-            drawdown = (cumulative_returns / peak) - 1
-            
-            # Ensure drawdown is finite before taking min
-            drawdown = drawdown.replace([np.inf, -np.inf], [0, 0]).fillna(0)
-            
-            min_drawdown = abs(drawdown.min())
-            return min_drawdown
-
-        # Calculate rolling maximum drawdown
-        rolling_max_dd = rets.rolling(window).apply(max_drawdown, raw=False)
-
-        # --- Calmar Ratio Calculation and Cleanup ---
-        # Calculate ratio, suppressing expected division by zero warnings.
-        with np.errstate(divide='ignore', invalid='ignore'):
-            calmar_ratio = rolling_mean / rolling_max_dd
-
-        # Replace inf/-inf with capped values.
-        calmar_ratio.replace([np.inf, -np.inf], [10.0, -10.0], inplace=True)
+    @classmethod
+    def get_required_features(cls, strategy_config: dict) -> Set[Feature]:
+        """Specifies the features required by the Calmar momentum strategy."""
+        features = set()
+        params = strategy_config.get("strategy_params", {})
         
-        # Fill all NaNs with 0
-        calmar_ratio = calmar_ratio.fillna(0)
+        # Add CalmarRatio feature based on rolling_window
+        if "rolling_window" in params:
+            features.add(CalmarRatio(rolling_window=params["rolling_window"]))
         
-        # Final clip to ensure everything is within bounds.
-        calmar_ratio = calmar_ratio.clip(-10.0, 10.0)
+        # Add BenchmarkSMA feature if sma_filter_window is specified
+        if "sma_filter_window" in params and params["sma_filter_window"] is not None:
+            features.add(BenchmarkSMA(sma_filter_window=params["sma_filter_window"]))
+            
+        # For walk-forward optimization, add features for all possible parameter values
+        if "optimize" in strategy_config:
+            for opt_spec in strategy_config["optimize"]:
+                param_name = opt_spec["parameter"]
+                min_val, max_val, step = opt_spec["min_value"], opt_spec["max_value"], opt_spec.get("step", 1)
+                
+                if param_name == "rolling_window":
+                    for val in np.arange(min_val, max_val + step, step):
+                        features.add(CalmarRatio(rolling_window=int(val)))
+                elif param_name == "sma_filter_window":
+                    for val in np.arange(min_val, max_val + step, step):
+                        features.add(BenchmarkSMA(sma_filter_window=int(val)))
 
-        return calmar_ratio
+        return features
+    
 
     def _calculate_candidate_weights(self, look: pd.Series) -> pd.Series:
         """Calculates initial candidate weights based on Calmar ratio ranking."""
@@ -94,25 +81,25 @@ class CalmarMomentumStrategy(BaseStrategy):
 
         return w_new
 
-    def generate_signals(self, data: pd.DataFrame, benchmark_data: pd.Series) -> pd.DataFrame:
+    def generate_signals(self, prices: pd.DataFrame, features: dict, benchmark_data: pd.Series) -> pd.DataFrame:
         """Generates trading signals based on the Calmar momentum strategy."""
-        rets = data.pct_change(fill_method=None)
-        
-        # Calculate rolling Calmar ratio
-        rolling_calmar = self._calculate_rolling_calmar(
-            rets, 
-            self.strategy_config.get('rolling_window', 6)
-        )
+        rolling_window = self.strategy_config.get('rolling_window', 6)
+        calmar_feature_name = f"calmar_{rolling_window}m"
+        rolling_calmar = features[calmar_feature_name][prices.columns]
 
-        weights = pd.DataFrame(index=rets.index, columns=rets.columns, dtype=float)
-        w_prev = pd.Series(index=rets.columns, dtype=float).fillna(0.0)
+        weights = pd.DataFrame(index=prices.index, columns=prices.columns, dtype=float)
+        w_prev = pd.Series(index=prices.columns, dtype=float).fillna(0.0)
 
-        for date in rets.index:
+        for date in prices.index:
             look = rolling_calmar.loc[date]
 
-            if look.count() == 0:
-                weights.loc[date] = w_prev
+            # If there are any NaNs in the lookback period, set weights to zero
+            if look.isna().any():
+                weights.loc[date] = 0.0
+                w_prev = weights.loc[date]
                 continue
+
+            
 
             cand = self._calculate_candidate_weights(look)
             w_new = self._apply_leverage_and_smoothing(cand, w_prev)
@@ -122,10 +109,9 @@ class CalmarMomentumStrategy(BaseStrategy):
 
         # Apply SMA filter if configured
         if self.strategy_config.get('sma_filter_window'):
-            sma = benchmark_data.rolling(self.strategy_config['sma_filter_window']).mean()
-            risk_on = benchmark_data > sma
-            # Assume risk-on if SMA is not available (at the beginning of the series)
-            risk_on[sma.isna()] = True
-            weights[~risk_on] = 0.0
+            sma_window = self.strategy_config['sma_filter_window']
+            sma_feature_name = f"benchmark_sma_{sma_window}m"
+            risk_on = features[sma_feature_name].reindex(weights.index, fill_value=True)
+            weights.loc[risk_on.index[~risk_on]] = 0.0
 
         return weights

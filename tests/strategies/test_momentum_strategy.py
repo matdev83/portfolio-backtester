@@ -2,6 +2,7 @@ import unittest
 import pandas as pd
 import numpy as np
 from src.portfolio_backtester.strategies.momentum_strategy import MomentumStrategy
+from src.portfolio_backtester.feature_engineering import precompute_features
 
 class TestMomentumStrategy(unittest.TestCase):
 
@@ -14,7 +15,7 @@ class TestMomentumStrategy(unittest.TestCase):
             'StockC': [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111],
             'StockD': [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
         }, index=dates)
-        self.benchmark_data = pd.Series([100] * 12, index=dates)
+        self.benchmark_data = pd.Series([100] * 12, index=dates, name='SPY')
 
     def test_generate_signals_smoke(self):
         # Smoke test to ensure the function runs without errors
@@ -27,7 +28,9 @@ class TestMomentumStrategy(unittest.TestCase):
         }
         strategy = MomentumStrategy(strategy_config)
         try:
-            strategy.generate_signals(self.data, self.benchmark_data)
+            required_features = strategy.get_required_features({'strategy_params': strategy_config})
+            features = precompute_features(self.data, required_features, self.benchmark_data)
+            strategy.generate_signals(self.data, features, self.benchmark_data)
         except Exception as e:
             self.fail(f"generate_signals raised an exception: {e}")
 
@@ -40,7 +43,9 @@ class TestMomentumStrategy(unittest.TestCase):
             'long_only': True
         }
         strategy = MomentumStrategy(strategy_config)
-        weights = strategy.generate_signals(self.data, self.benchmark_data)
+        required_features = strategy.get_required_features({'strategy_params': strategy_config})
+        features = precompute_features(self.data, required_features, self.benchmark_data)
+        weights = strategy.generate_signals(self.data, features, self.benchmark_data)
 
         # At the end of the period, StockA should be the top performer
         final_weights = weights.iloc[-1]
@@ -66,7 +71,9 @@ class TestMomentumStrategy(unittest.TestCase):
             'long_only': True
         }
         strategy = MomentumStrategy(strategy_config)
-        weights = strategy.generate_signals(data_with_nans, benchmark_data)
+        required_features = strategy.get_required_features({'strategy_params': strategy_config})
+        features = precompute_features(data_with_nans, required_features, benchmark_data)
+        weights = strategy.generate_signals(data_with_nans, features, benchmark_data)
 
         # Assert that some trades are generated (weights are not all zero)
         self.assertFalse(weights.sum().sum() == 0.0, "No trades generated with NaN data")

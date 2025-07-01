@@ -3,6 +3,9 @@ import pandas as pd
 import numpy as np
 from src.portfolio_backtester.strategies.sortino_momentum_strategy import SortinoMomentumStrategy
 
+from src.portfolio_backtester.feature import SortinoRatio
+from src.portfolio_backtester.feature_engineering import precompute_features
+
 class TestSortinoMomentumStrategy(unittest.TestCase):
 
     def setUp(self):
@@ -46,7 +49,9 @@ class TestSortinoMomentumStrategy(unittest.TestCase):
         }
         strategy = SortinoMomentumStrategy(strategy_config)
         try:
-            weights = strategy.generate_signals(self.data, self.benchmark_data)
+            required_features = strategy.get_required_features({'strategy_params': strategy_config})
+            features = precompute_features(self.data, required_features, self.benchmark_data)
+            weights = strategy.generate_signals(self.data, features, self.benchmark_data)
             self.assertIsInstance(weights, pd.DataFrame)
             self.assertEqual(weights.shape[1], len(self.data.columns))
         except Exception as e:
@@ -58,13 +63,13 @@ class TestSortinoMomentumStrategy(unittest.TestCase):
             'rolling_window': 3,
             'target_return': 0.0
         }
-        strategy = SortinoMomentumStrategy(strategy_config)
         
         # Calculate returns
         rets = self.data.pct_change(fill_method=None)
         
         # Calculate rolling Sortino
-        rolling_sortino = strategy._calculate_rolling_sortino(rets, 3, 0.0)
+        sortino_feature = SortinoRatio(rolling_window=3, target_return=0.0)
+        rolling_sortino = sortino_feature.compute(self.data)
         
         # Check that the result has the right shape
         self.assertEqual(rolling_sortino.shape, rets.shape)
@@ -156,7 +161,9 @@ class TestSortinoMomentumStrategy(unittest.TestCase):
         benchmark_declining = pd.Series([100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50, 45], 
                                       index=self.data.index)
         
-        weights = strategy.generate_signals(self.data, benchmark_declining)
+        required_features = strategy.get_required_features({'strategy_params': strategy_config})
+        features = precompute_features(self.data, required_features, benchmark_declining)
+        weights = strategy.generate_signals(self.data, features, benchmark_declining)
         
         # In periods where benchmark is below SMA, weights should be zero
         # Check the last few periods where this condition should be true
@@ -174,13 +181,11 @@ class TestSortinoMomentumStrategy(unittest.TestCase):
             'target_return': 0.02  # 2% monthly target
         }
         
-        strategy_zero = SortinoMomentumStrategy(strategy_config_zero)
-        strategy_positive = SortinoMomentumStrategy(strategy_config_positive)
+        sortino_feature_zero = SortinoRatio(rolling_window=6, target_return=0.0)
+        sortino_feature_positive = SortinoRatio(rolling_window=6, target_return=0.02)
         
-        rets = self.data.pct_change(fill_method=None)
-        
-        sortino_zero = strategy_zero._calculate_rolling_sortino(rets, 6, 0.0)
-        sortino_positive = strategy_positive._calculate_rolling_sortino(rets, 6, 0.02)
+        sortino_zero = sortino_feature_zero.compute(self.data)
+        sortino_positive = sortino_feature_positive.compute(self.data)
         
         # With higher target return, Sortino ratios should generally be lower
         # (since excess return decreases and downside deviation may increase)

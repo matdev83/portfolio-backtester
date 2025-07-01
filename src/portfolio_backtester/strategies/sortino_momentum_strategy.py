@@ -1,46 +1,43 @@
+from typing import Set
 import pandas as pd
 import numpy as np
 
 from .base_strategy import BaseStrategy
+from ..feature import SortinoRatio, BenchmarkSMA, Feature
+
 
 class SortinoMomentumStrategy(BaseStrategy):
     """Momentum strategy implementation using Sortino ratio for ranking."""
 
-    def _calculate_rolling_sortino(self, rets: pd.DataFrame, window: int, target_return: float = 0.0) -> pd.DataFrame:
-        """Calculates rolling Sortino ratio for each asset."""
-        # Annualization factor for monthly data
-        CAL_FACTOR = np.sqrt(12)
+    @classmethod
+    def tunable_parameters(cls) -> set[str]:
+        return {"num_holdings", "rolling_window", "sma_filter_window", "target_return"}
 
-        # Calculate rolling mean
-        rolling_mean = rets.rolling(window).mean()
-
-        # Calculate downside deviation (semi-deviation)
-        def downside_deviation(series):
-            """Calculate downside deviation for a series."""
-            downside_returns = series[series < target_return]
-            if len(downside_returns) == 0:
-                return 1e-9  # Return a small positive number to avoid infinite Sortino ratios
-            return np.sqrt(np.mean((downside_returns - target_return) ** 2))
-
-        # Calculate rolling downside deviation
-        rolling_downside_dev = rets.rolling(window).apply(downside_deviation, raw=False)
-
-        # Calculate Sortino ratio
-        # Sortino = (Mean Return - Target Return) / Downside Deviation
-        excess_return = rolling_mean - target_return
+    @classmethod
+    def get_required_features(cls, strategy_config: dict) -> Set[Feature]:
+        """Specifies the features required by the Sortino momentum strategy."""
+        features = set()
+        params = strategy_config.get("strategy_params", {})
         
-        # Ensure downside deviation is never too small to cause extreme ratios
-        # Add a small epsilon to the denominator to prevent division by near-zero
-        # This is a common technique to stabilize ratio calculations.
-        stable_downside_dev = np.maximum(rolling_downside_dev, 1e-6) # Ensure minimum downside deviation
+        if "rolling_window" in params:
+            features.add(SortinoRatio(rolling_window=params["rolling_window"], target_return=params.get("target_return", 0.0)))
+        
+        if "sma_filter_window" in params and params["sma_filter_window"] is not None:
+            features.add(BenchmarkSMA(sma_filter_window=params["sma_filter_window"]))
+            
+        if "optimize" in strategy_config:
+            for opt_spec in strategy_config["optimize"]:
+                param_name = opt_spec["parameter"]
+                min_val, max_val, step = opt_spec["min_value"], opt_spec["max_value"], opt_spec.get("step", 1)
+                
+                if param_name == "rolling_window":
+                    for val in np.arange(min_val, max_val + step, step):
+                        features.add(SortinoRatio(rolling_window=int(val), target_return=params.get("target_return", 0.0)))
+                elif param_name == "sma_filter_window":
+                    for val in np.arange(min_val, max_val + step, step):
+                        features.add(BenchmarkSMA(sma_filter_window=int(val)))
 
-        sortino_ratio = (excess_return * CAL_FACTOR) / (stable_downside_dev * CAL_FACTOR)
-        
-        # Cap the Sortino ratio to prevent extreme values from dominating
-        sortino_ratio = sortino_ratio.clip(-10.0, 10.0)
-        
-        sortino_ratio = pd.DataFrame(sortino_ratio, index=rets.index, columns=rets.columns)
-        return sortino_ratio.fillna(0)
+        return features
 
     def _calculate_candidate_weights(self, look: pd.Series) -> pd.Series:
         """Calculates initial candidate weights based on Sortino ratio ranking."""
@@ -80,22 +77,16 @@ class SortinoMomentumStrategy(BaseStrategy):
 
         return w_new
 
-    def generate_signals(self, data: pd.DataFrame, benchmark_data: pd.Series) -> pd.DataFrame:
+    def generate_signals(self, prices: pd.DataFrame, features: dict, benchmark_data: pd.Series) -> pd.DataFrame:
         """Generates trading signals based on the Sortino momentum strategy."""
-        rets = data.pct_change(fill_method=None)
-        
-        # Calculate rolling Sortino ratio
-        target_return = self.strategy_config.get('target_return', 0.0)
-        rolling_sortino = self._calculate_rolling_sortino(
-            rets, 
-            self.strategy_config.get('rolling_window', 6),
-            target_return
-        )
+        rolling_window = self.strategy_config.get('rolling_window', 6)
+        sortino_feature_name = f"sortino_{rolling_window}m"
+        rolling_sortino = features[sortino_feature_name]
 
-        weights = pd.DataFrame(index=rets.index, columns=rets.columns, dtype=float)
-        w_prev = pd.Series(index=rets.columns, dtype=float).fillna(0.0)
+        weights = pd.DataFrame(index=prices.index, columns=prices.columns, dtype=float)
+        w_prev = pd.Series(index=prices.columns, dtype=float).fillna(0.0)
 
-        for date in rets.index:
+        for date in prices.index:
             look = rolling_sortino.loc[date]
 
             if look.count() == 0:
@@ -110,8 +101,9 @@ class SortinoMomentumStrategy(BaseStrategy):
 
         # Apply SMA filter if configured
         if self.strategy_config.get('sma_filter_window'):
-            sma = benchmark_data.rolling(self.strategy_config['sma_filter_window']).mean()
-            risk_on = benchmark_data.shift(1) > sma.shift(1)
-            weights[~risk_on] = 0.0
+            sma_window = self.strategy_config['sma_filter_window']
+            sma_feature_name = f"benchmark_sma_{sma_window}m"
+            risk_on = features[sma_feature_name].reindex(weights.index, fill_value=True)
+            weights.loc[risk_on.index[~risk_on]] = 0.0
 
         return weights

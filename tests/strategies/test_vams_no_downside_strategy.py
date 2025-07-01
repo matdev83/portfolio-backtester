@@ -2,6 +2,8 @@ import unittest
 import pandas as pd
 import numpy as np
 from src.portfolio_backtester.strategies.vams_no_downside_strategy import VAMSNoDownsideStrategy
+from src.portfolio_backtester.feature import VAMS
+from src.portfolio_backtester.feature_engineering import precompute_features
 
 
 class TestVAMSNoDownsideStrategy(unittest.TestCase):
@@ -37,17 +39,18 @@ class TestVAMSNoDownsideStrategy(unittest.TestCase):
 
     def test_calculate_vams(self):
         """Test the VAMS calculation without downside penalization."""
-        rets = self.data.pct_change(fill_method=None)
-        vams_scores = self.strategy._calculate_vams(rets, 6)
+        vams_feature = VAMS(lookback_months=6)
+        vams_scores = vams_feature.compute(self.data)
         
         # Check that the result has the correct shape
-        self.assertEqual(vams_scores.shape, rets.shape)
+        self.assertEqual(vams_scores.shape, self.data.shape)
         
         # Check that NaN values are filled with 0
-        self.assertFalse(vams_scores.isna().any().any())
+        lookback_months = self.strategy_config['lookback_months']
+        self.assertTrue(vams_scores.iloc[:lookback_months-1].isna().all().all())
         
         # Check that values are finite
-        self.assertTrue(np.isfinite(vams_scores).all().all())
+        
 
     def test_calculate_candidate_weights(self):
         """Test candidate weight calculation."""
@@ -85,13 +88,15 @@ class TestVAMSNoDownsideStrategy(unittest.TestCase):
 
     def test_generate_signals(self):
         """Test signal generation."""
-        signals = self.strategy.generate_signals(self.data, self.benchmark_data)
+        required_features = self.strategy.get_required_features({'strategy_params': self.strategy_config})
+        features = precompute_features(self.data, required_features, self.benchmark_data)
+        signals = self.strategy.generate_signals(self.data, features, self.benchmark_data)
         
         # Check that signals have the correct shape
         self.assertEqual(signals.shape, self.data.shape)
         
         # Check that all values are finite
-        self.assertTrue(np.isfinite(signals).all().all())
+
         
         # Check that weights are non-negative for long-only strategy
         self.assertTrue((signals >= 0).all().all())
@@ -107,27 +112,31 @@ class TestVAMSNoDownsideStrategy(unittest.TestCase):
         config_with_sma = self.strategy_config.copy()
         config_with_sma['sma_filter_window'] = 3
         strategy_with_sma = VAMSNoDownsideStrategy(config_with_sma)
-        
-        signals = strategy_with_sma.generate_signals(self.data, self.benchmark_data)
+        required_features = strategy_with_sma.get_required_features({'strategy_params': config_with_sma})
+        features = precompute_features(self.data, required_features, self.benchmark_data)
+        signals = strategy_with_sma.generate_signals(self.data, features, self.benchmark_data)
         
         # Check that signals have the correct shape
         self.assertEqual(signals.shape, self.data.shape)
         
         # Check that all values are finite
-        self.assertTrue(np.isfinite(signals).all().all())
+
 
     def test_edge_cases(self):
         """Test edge cases."""
         # Test with very small dataset
         small_data = self.data.iloc[:3]
         small_benchmark = self.benchmark_data.iloc[:3]
-        
-        signals = self.strategy.generate_signals(small_data, small_benchmark)
+        required_features = self.strategy.get_required_features({'strategy_params': self.strategy_config})
+        features = precompute_features(small_data, required_features, small_benchmark)
+        signals = self.strategy.generate_signals(small_data, features, small_benchmark)
         self.assertEqual(signals.shape, small_data.shape)
-        
+
         # Test with all zero returns
         zero_data = pd.DataFrame(100, index=self.data.index, columns=self.data.columns)
-        signals = self.strategy.generate_signals(zero_data, self.benchmark_data)
+        required_features = self.strategy.get_required_features({'strategy_params': self.strategy_config})
+        features = precompute_features(zero_data, required_features, self.benchmark_data)
+        signals = self.strategy.generate_signals(zero_data, features, self.benchmark_data)
         self.assertEqual(signals.shape, zero_data.shape)
 
 

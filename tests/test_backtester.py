@@ -2,8 +2,10 @@ import unittest
 import pandas as pd
 import numpy as np
 
-from src.portfolio_backtester.backtester import Backtester
+from src.portfolio_backtester.backtester import Backtester, _resolve_strategy
 from src.portfolio_backtester.config import GLOBAL_CONFIG, BACKTEST_SCENARIOS
+from src.portfolio_backtester.feature import get_required_features_from_scenarios
+from src.portfolio_backtester.feature_engineering import precompute_features
 
 class TestBacktester(unittest.TestCase):
     def setUp(self):
@@ -28,7 +30,7 @@ class TestBacktester(unittest.TestCase):
                 "optimize": [
                     {
                         "parameter": "lookback_months",
-                        "metric": "Sharpe Ratio",
+                        "metric": "Sharpe",
                         "min_value": 3,
                         "max_value": 9,
                         "step": 3
@@ -41,6 +43,9 @@ class TestBacktester(unittest.TestCase):
                 self.optimize_min_positions = 10
                 self.optimize_max_positions = 30
                 self.top_n_params = 3
+                self.n_jobs = 1
+                self.optuna_trials = 10  # Add a small number for testing
+                self.optuna_timeout_sec = 60
         self.mock_args = MockArgs()
         self.backtester = Backtester(self.global_config, self.scenarios, self.mock_args)
         
@@ -52,6 +57,10 @@ class TestBacktester(unittest.TestCase):
             index=dates,
             columns=tickers
         )
+        # Pre-compute features for the mock data
+        strategy_registry = {"momentum": _resolve_strategy("momentum")}
+        required_features = get_required_features_from_scenarios(self.scenarios, strategy_registry)
+        self.backtester.features = precompute_features(self.mock_data, required_features, self.mock_data[self.global_config["benchmark"]])
 
     def test_walk_forward_optimization_runs(self):
         """Test that walk-forward optimization completes and produces results."""

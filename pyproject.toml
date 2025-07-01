@@ -32,7 +32,8 @@ dependencies = [
     "xlrd==2.0.1",
     "pyarrow",
     "radon",
-    "xenon"
+    "xenon",
+    "optuna>=4.4"
 ]
 
 [project.urls]

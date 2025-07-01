@@ -48,6 +48,13 @@ BACKTEST_SCENARIOS = [
                 "min_value": 10,
                 "max_value": 30,
                 "step": 1
+            },
+            {
+                "parameter": "derisk_days_under_sma",
+                "metric": "Total Return",
+                "min_value": 1,
+                "max_value": 30,
+                "step": 1
             }
         ],
         "strategy_params": {
@@ -57,6 +64,7 @@ BACKTEST_SCENARIOS = [
             "leverage": 0.50,
             "long_only": True,
             "sma_filter_window": 10, # 10-month SMA filter
+            "derisk_days_under_sma": 10,
         }
     },
     {
@@ -70,14 +78,14 @@ BACKTEST_SCENARIOS = [
         "optimize": [
             {
                 "parameter": "num_holdings",
-                "metric": "Sortino",
+                "metric": "Sharpe",
                 "min_value": 10,
                 "max_value": 30,
                 "step": 1
             },
             {
                 "parameter": "rolling_window",
-                "metric": "Sortino",
+                "metric": "Sharpe",
                 "min_value": 1,
                 "max_value": 6,
                 "step": 1

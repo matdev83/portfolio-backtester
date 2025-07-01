@@ -8,6 +8,7 @@ import unittest
 import pandas as pd
 import numpy as np
 from src.portfolio_backtester.strategies.calmar_momentum_strategy import CalmarMomentumStrategy
+from src.portfolio_backtester.feature import CalmarRatio
 
 def test_calmar_fix():
     """Test the rolling Calmar ratio calculation to ensure no non-finite values."""
@@ -40,7 +41,8 @@ def test_calmar_fix():
     
     # Test the rolling Calmar calculation
     rets = data.pct_change(fill_method=None)
-    rolling_calmar = strategy._calculate_rolling_calmar(rets, 6)
+    calmar_feature = CalmarRatio(rolling_window=6)
+    rolling_calmar = calmar_feature.compute(data)
     
     print("Rolling Calmar shape:", rolling_calmar.shape)
     print("Expected shape:", rets.shape)
@@ -68,10 +70,10 @@ def test_calmar_fix():
     if non_finite_mask.any().any():
         print("\nNon-finite values found:")
         print(after_window[non_finite_mask.any(axis=1)])
-        return False
+        
     else:
         print("\nAll values after rolling window are finite!")
-        return True
+        
 
 if __name__ == "__main__":
     success = test_calmar_fix()

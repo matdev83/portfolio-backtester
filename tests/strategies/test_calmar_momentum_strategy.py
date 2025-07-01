@@ -2,6 +2,8 @@ import unittest
 import pandas as pd
 import numpy as np
 from src.portfolio_backtester.strategies.calmar_momentum_strategy import CalmarMomentumStrategy
+from src.portfolio_backtester.feature import CalmarRatio
+from src.portfolio_backtester.feature_engineering import precompute_features
 
 
 class TestCalmarMomentumStrategy(unittest.TestCase):
@@ -37,15 +39,15 @@ class TestCalmarMomentumStrategy(unittest.TestCase):
 
     def test_calculate_rolling_calmar(self):
         """Test the rolling Calmar ratio calculation."""
-        rets = self.data.pct_change(fill_method=None)
-        rolling_calmar = self.strategy._calculate_rolling_calmar(rets, 6)
+        calmar_feature = CalmarRatio(rolling_window=6)
+        rolling_calmar = calmar_feature.compute(self.data)
         
         # Check that the result has the correct shape
-        self.assertEqual(rolling_calmar.shape, rets.shape)
+        self.assertEqual(rolling_calmar.shape, self.data.shape)
         
         # Check that initial periods have NaN values (due to rolling window and pct_change)
         rolling_window = self.strategy_config['rolling_window']
-        self.assertTrue(rolling_calmar.iloc[:rolling_window].isna().all().all())
+        self.assertTrue(rolling_calmar.iloc[:rolling_window-1].isna().all().all())
 
         # Check that values after the rolling window are finite
         self.assertTrue(np.isfinite(rolling_calmar.iloc[rolling_window:]).all().all())
@@ -86,7 +88,9 @@ class TestCalmarMomentumStrategy(unittest.TestCase):
 
     def test_generate_signals(self):
         """Test signal generation."""
-        signals = self.strategy.generate_signals(self.data, self.benchmark_data)
+        required_features = self.strategy.get_required_features({'strategy_params': self.strategy_config})
+        features = precompute_features(self.data, required_features, self.benchmark_data)
+        signals = self.strategy.generate_signals(self.data, features, self.benchmark_data)
         
         # Check that signals have the correct shape
         self.assertEqual(signals.shape, self.data.shape)
@@ -108,8 +112,10 @@ class TestCalmarMomentumStrategy(unittest.TestCase):
         config_with_sma = self.strategy_config.copy()
         config_with_sma['sma_filter_window'] = 3
         strategy_with_sma = CalmarMomentumStrategy(config_with_sma)
-        
-        signals = strategy_with_sma.generate_signals(self.data, self.benchmark_data)
+        required_features = strategy_with_sma.get_required_features({'strategy_params': config_with_sma})
+        features = precompute_features(self.data, required_features, self.benchmark_data)
+
+        signals = strategy_with_sma.generate_signals(self.data, features, self.benchmark_data)
         
         # Check that signals have the correct shape
         self.assertEqual(signals.shape, self.data.shape)
@@ -122,13 +128,16 @@ class TestCalmarMomentumStrategy(unittest.TestCase):
         # Test with very small dataset
         small_data = self.data.iloc[:3]
         small_benchmark = self.benchmark_data.iloc[:3]
-        
-        signals = self.strategy.generate_signals(small_data, small_benchmark)
+        required_features = self.strategy.get_required_features({'strategy_params': self.strategy_config})
+        features = precompute_features(small_data, required_features, small_benchmark)
+        signals = self.strategy.generate_signals(small_data, features, small_benchmark)
         self.assertEqual(signals.shape, small_data.shape)
-        
+
         # Test with all zero returns
         zero_data = pd.DataFrame(100, index=self.data.index, columns=self.data.columns)
-        signals = self.strategy.generate_signals(zero_data, self.benchmark_data)
+        required_features = self.strategy.get_required_features({'strategy_params': self.strategy_config})
+        features = precompute_features(zero_data, required_features, self.benchmark_data)
+        signals = self.strategy.generate_signals(zero_data, features, self.benchmark_data)
         self.assertEqual(signals.shape, zero_data.shape)
 
 

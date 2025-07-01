@@ -227,7 +227,7 @@ def quarter_ends(start, end):
 # Cached files are considered fresh for this many hours. If a cache file is newer
 # than the threshold it will be reused instead of triggering a potentially very
 # long redownload.
-_CACHE_EXPIRY_HOURS = 6
+_CACHE_EXPIRY_HOURS = 24 * 365  # retained for backwards compatibility, no longer used in logic
 
 # In-memory cache for the full history so that repeat calls during the same
 # interpreter session are instant.
@@ -310,7 +310,9 @@ def _fetch_from_wayback(orig_url: str, date: pd.Timestamp) -> bytes | None:
         logger.debug(f"Wayback fetch failed for {orig_url}: {exc}")
     return None
 
-def ssga_daily(date: pd.Timestamp):
+def ssga_daily(date: Union[dt.date, pd.Timestamp]):
+    if isinstance(date, dt.date):
+        date = pd.Timestamp(date)
     """
     Return DataFrame for one date or None if 404.
     Uses a 6-hour cache in ../cache/ssga_daily/
@@ -326,9 +328,16 @@ def ssga_daily(date: pd.Timestamp):
         if (dt.datetime.now() - mod_time) < dt.timedelta(hours=6):
             return pd.read_parquet(cache_file)
 
-    # SSGA only publishes the latest file; historical daily baskets are not accessible anymore.
-    if (pd.Timestamp.today() - pd.Timestamp(date)).days > 30:
-        # older than one month – skip attempting SSGA altogether to save time
+    # Live site hosts *only* the latest file, but historical copies are archived
+    # on the Internet Archive. We therefore:
+    #   • use direct HTTP fetch only for "recent" dates (within ~30 days)
+    #   • fall back to Wayback Snapshots for anything from
+    #     EARLIEST_SSGA_DATE onward.
+
+    recent_cutoff = pd.Timestamp.today() - pd.Timedelta(days=30)
+
+    if date < EARLIEST_SSGA_DATE:
+        # No SSGA basket exists before that point – bail early
         return None
 
     # Download if not in cache or cache is stale
@@ -531,11 +540,21 @@ def sec_holdings(start, end):
 # --------------------------------------------------------------------------- #
 # Pull everything and merge
 # --------------------------------------------------------------------------- #
-def build_history(start: pd.Timestamp, end: pd.Timestamp):
-    # Try loading an aggregated cache first
-    cached = _load_history_from_cache(start, end)
-    if cached is not None:
-        return cached
+def build_history(start: pd.Timestamp, end: pd.Timestamp, *, ignore_cache: bool = False):
+    """Download & assemble SPY holdings between *start* and *end*.
+
+    Parameters
+    ----------
+    ignore_cache : bool, default ``False``
+        If ``True`` the function bypasses any aggregated parquet in
+        ``cache/spy_history`` and rebuilds the DataFrame from scratch.
+    """
+
+    # Try loading an aggregated cache first – unless explicitly disabled
+    if not ignore_cache:
+        cached = _load_history_from_cache(start, end)
+        if cached is not None:
+            return cached
 
     init_edgar()
     frames: list[pd.DataFrame] = []
@@ -568,7 +587,8 @@ def build_history(start: pd.Timestamp, end: pd.Timestamp):
     hist = _forward_fill_history(hist, start, end)
     logger.info(f"Successfully built history with {len(hist)} rows.")
 
-    _save_history_to_cache(hist, start, end)
+    if not ignore_cache:
+        _save_history_to_cache(hist, start, end)
 
     return hist
 
@@ -585,6 +605,7 @@ def main():
                         help="Output filename (.parquet or .csv)")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Set the logging level.")
     parser.add_argument("--update", action="store_true", help="Update the full history.")
+    parser.add_argument("--rebuild", action="store_true", help="Rebuild the full history from scratch (ignores existing parquet).")
     args = parser.parse_args()
 
     logging.basicConfig(level=getattr(logging, args.log_level.upper()), format='%(asctime)s - %(levelname)s - %(message)s')
@@ -597,7 +618,12 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / args.out
 
-    if args.update:
+    if args.rebuild:
+        # Remove aggregated spy_history cache file as well
+        agg_cache = _history_cache_file(start, end)
+        agg_cache.unlink(missing_ok=True)
+        update_full_history(out_path, start, end, rebuild=True)
+    elif args.update:
         update_full_history(out_path, start, end)
     else:
         hist = build_history(start, end)
@@ -616,13 +642,24 @@ def _history_cache_file(start: dt.date, end: dt.date) -> Path:
 
 
 def _load_history_from_cache(start: pd.Timestamp, end: pd.Timestamp) -> Optional[pd.DataFrame]:
-    """Load aggregate history DataFrame from cache or return None if not present / stale."""
+    """Load aggregate history DataFrame from cache if present.
+
+    The original implementation treated local parquet files older than
+    ``_CACHE_EXPIRY_HOURS`` as stale and triggered a full redownload that can
+    take several minutes (or hang on a machine without network access).
+
+    For typical back-tests the *historical* holdings do **not** change once
+    downloaded, so we treat the cache as immutable and load it regardless of
+    modification time. If users really need to refresh the data they can
+    delete the parquet manually or call the CLI with ``--update``.
+    """
     cache_file = _history_cache_file(start, end)
     if cache_file.exists():
-        mod_time = dt.datetime.fromtimestamp(cache_file.stat().st_mtime)
-        if (dt.datetime.now() - mod_time) < dt.timedelta(hours=_CACHE_EXPIRY_HOURS):
-            logger.info(f"Loading aggregated holdings history from cache: {cache_file}")
+        logger.info(f"Loading aggregated holdings history from cache: {cache_file}")
+        try:
             return pd.read_parquet(cache_file)
+        except Exception as exc:
+            logger.warning(f"Failed to read cached parquet {cache_file}: {exc} – ignoring cache.")
     return None
 
 
@@ -666,20 +703,48 @@ def get_spy_holdings(date: Union[str, dt.date, pd.Timestamp], *, exact: bool = F
     elif not isinstance(date, pd.Timestamp):
         raise TypeError("date must be a str, datetime.date or pandas.Timestamp")
 
-    # Lazily load full history into memory (using cached parquet if available)
+    # Lazily load full history into memory. Prefer the *bundled* parquet that
+    # ships with the repository (instant load, no network) and fall back to
+    # the cache-building logic only if the file is missing.
     if _HISTORY_DF is None:
-        _HISTORY_DF = build_history(pd.Timestamp(2004, 1, 1), pd.Timestamp.today())
+        # Attempt to locate the *bundled* history parquet relative to repo root.
+        repo_root = next(
+            (p for p in Path(__file__).resolve().parents
+             if (p / "data" / "spy_holdings_full.parquet").exists()),
+            None,
+        )
 
-    target_ts = pd.Timestamp(date)
+        if repo_root is not None:
+            bundled = repo_root / "data" / "spy_holdings_full.parquet"
+            logger.info(f"Loading bundled holdings history: {bundled}")
+            _HISTORY_DF = pd.read_parquet(bundled)
+            if not isinstance(_HISTORY_DF, pd.DataFrame):
+                _HISTORY_DF = None # force rebuild
+            logger.info(f"Loaded bundled history with shape: {_HISTORY_DF.shape}")
+            logger.info(f"Bundled history date range: {_HISTORY_DF['date'].min()} to {_HISTORY_DF['date'].max()}")
+        else:
+            # Fallback – will download and build history which can be slow and
+            # hit SEC rate limits, but ensures the function still works in
+            # environments where the repo was packaged without the parquet.
+            logger.warning("Bundled holdings history not found – building from scratch. This may take a while.")
+            _HISTORY_DF = build_history(pd.Timestamp(2004, 1, 1), pd.Timestamp.today())
+            logger.info(f"Built history with shape: {_HISTORY_DF.shape}")
+            logger.info(f"Built history date range: {_HISTORY_DF['date'].min()} to {_HISTORY_DF['date'].max()}")
+
+    target_ts = date
     df = _HISTORY_DF[_HISTORY_DF["date"] == target_ts]
+    logger.info(f"Attempting to get holdings for target_ts: {target_ts}. Found {len(df)} rows.")
 
     if df.empty and not exact:
-        # fallback to the latest available date before *date*
-        avail_dates = _HISTORY_DF["date"].unique()
-        earlier = avail_dates[avail_dates <= target_ts]
-        if len(earlier):
-            nearest = max(earlier)
-            logger.info(f"Exact holdings for {date} unavailable – using nearest previous date {nearest.date()}.")
+        # fallback to the latest available date before *date* (robust implementation)
+        earlier_mask = _HISTORY_DF["date"] <= target_ts
+        if earlier_mask.any():
+            nearest = _HISTORY_DF.loc[earlier_mask, "date"].max()
+            logger.info(
+                "Exact holdings for %s unavailable – using nearest previous date %s.",
+                date,
+                nearest.date(),
+            )
             df = _HISTORY_DF[_HISTORY_DF["date"] == nearest]
 
     if df.empty:
@@ -688,13 +753,31 @@ def get_spy_holdings(date: Union[str, dt.date, pd.Timestamp], *, exact: bool = F
     return df.sort_values("weight_pct", ascending=False).reset_index(drop=True)
 
 
-def update_full_history(out_path: Path, start_date: pd.Timestamp, end_date: pd.Timestamp) -> pd.DataFrame:
-    """Incrementally update *out_path* parquet file between *start_date* and *end_date*.
+def update_full_history(
+    out_path: Path,
+    start_date: pd.Timestamp,
+    end_date: pd.Timestamp,
+    *,
+    rebuild: bool = False,
+) -> pd.DataFrame:
+    """Update or rebuild the SPY holdings parquet.
 
-    If the file exists it is loaded and only the missing date range after the
-    latest stored date is downloaded. If no update is necessary the existing
-    DataFrame is returned unchanged.
+    Parameters
+    ----------
+    out_path : Path
+        Destination parquet file.
+    start_date, end_date : pandas.Timestamp
+        Date range to cover.
+    rebuild : bool, default ``False``
+        When ``True`` existing *out_path* is ignored and the full history is
+        rebuilt from scratch. This is the safest way to back-fill historical
+        daily baskets after improving the download logic.
     """
+
+    if rebuild and out_path.exists():
+        logger.info("--rebuild specified → deleting existing parquet and starting fresh …")
+        out_path.unlink(missing_ok=True)
+
     if out_path.exists():
         existing = pd.read_parquet(out_path)
         if not existing.empty:
@@ -705,15 +788,19 @@ def update_full_history(out_path: Path, start_date: pd.Timestamp, end_date: pd.T
                 return existing
             # we need to extend from the day after latest
             incremental_start = latest + pd.Timedelta(days=1)
-            logger.info(f"Updating history from {incremental_start} to {end_date} …")
-            new_df = build_history(incremental_start, end_date)
-            combined = pd.concat([existing, new_df], ignore_index=True).drop_duplicates(subset=["date", "ticker"]).sort_values(["date", "ticker"]).reset_index(drop=True)
-            combined = _forward_fill_history(combined, start_date, end_date)
+            logger.info(f"Updating history from {incremental_start.date()} to {end_date.date()} …")
+            new_df = build_history(incremental_start, end_date, ignore_cache=rebuild)
+            combined = (
+                pd.concat([existing, new_df], ignore_index=True)
+                  .drop_duplicates(subset=["date", "ticker"])
+                  .sort_values(["date", "ticker"])
+                  .reset_index(drop=True)
+            )
         else:
-            combined = build_history(start_date, end_date)
+            combined = build_history(start_date, end_date, ignore_cache=rebuild)
     else:
         logger.info(f"Creating new holdings history {out_path}")
-        combined = build_history(start_date, end_date)
+        combined = build_history(start_date, end_date, ignore_cache=rebuild)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     combined.to_parquet(out_path, index=False)
@@ -724,6 +811,117 @@ def update_full_history(out_path: Path, start_date: pd.Timestamp, end_date: pd.T
 def _forward_fill_history(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     """Return *df* unchanged – forward-fill disabled to avoid synthetic data."""
     return df
+
+
+def get_top_weight_sp500_components(date: Union[str, dt.date, pd.Timestamp], top_n: int = 30, *, exact: bool = False) -> List[tuple[str, float]]:
+    """Return the *top_n* ticker symbols by weight in the S&P 500 (via SPY) for *date*.
+
+    Parameters
+    ----------
+    date : "YYYY-MM-DD" | datetime.date | pandas.Timestamp
+        Date for which to retrieve the universe constituents.
+    top_n : int, default ``30``
+        Number of tickers to return ordered by descending index weight.
+    exact : bool, default ``False``
+        Forward-looking bias safeguard. When ``exact=False`` (default) the most
+        recent *past* trading day will be used if *date* itself is missing.
+        When ``exact=True`` an error is raised if *date* is not available.
+
+    Notes
+    -----
+    Results are cached in-memory for the duration of the Python interpreter
+    using :pyfunc:`functools.lru_cache` to make repeated optimiser calls
+    essentially free.
+    """
+    # We wrap the real implementation in an LRU cache because `lru_cache` does
+    # not play nicely with pandas objects directly.
+    return _get_top_weight_sp500_components_cached(_normalise_date_key(date), top_n, exact)
+
+
+from functools import lru_cache
+
+def _normalise_date_key(date: Union[str, dt.date, pd.Timestamp]) -> str:
+    """Return ISO "YYYY-MM-DD" string representation for *date* suitable as cache key."""
+    if isinstance(date, str):
+        return date
+    if isinstance(date, pd.Timestamp):
+        return date.strftime("%Y-%m-%d")
+    if isinstance(date, dt.date):
+        return date.isoformat()
+    raise TypeError("date must be str | datetime.date | pandas.Timestamp")
+
+
+@lru_cache(maxsize=4096)
+def _get_top_weight_sp500_components_cached(
+    date_key: str, top_n: int, exact: bool
+) -> List[tuple[str, float]]:
+    """Private LRU-cached helper.
+
+    Returns a *list* of *(ticker, weight_pct)* tuples ordered by descending
+    weight. ``weight_pct`` is the raw float value found in the SPY basket file
+    (e.g. ``7.52`` meaning **7.52 %**).
+    """
+
+    target_ts = pd.Timestamp(date_key)
+    logger.info(f"_get_top_weight_sp500_components_cached: target_ts={target_ts}, top_n={top_n}, exact={exact}")
+
+    # Ensure the global history is loaded (side-effect of get_spy_holdings)
+    try:
+        _ = get_spy_holdings(target_ts, exact=False)
+    except ValueError:
+        # If even the generic fallback failed we proceed – the history may
+        # still load for earlier dates.
+        logger.warning(f"get_spy_holdings failed for {target_ts}, but proceeding to check _HISTORY_DF.")
+        pass
+
+    global _HISTORY_DF  # guarantee visibility
+    if _HISTORY_DF is None or _HISTORY_DF.empty:
+        logger.error("SPY holdings history is not available after attempting to load.")
+        raise ValueError("SPY holdings history is not available – data load failed.")
+
+    hist = _HISTORY_DF
+    logger.info(f"_HISTORY_DF shape: {hist.shape}")
+    logger.info(f"_HISTORY_DF date range: {hist['date'].min()} to {hist['date'].max()}")
+
+    mask_valid = (
+        (hist["date"] <= target_ts) &
+        hist["weight_pct"].notna() &
+        (hist["ticker"] != "-")
+    )
+    logger.info(f"mask_valid count: {mask_valid.sum()}")
+
+    if not mask_valid.any():
+        raise ValueError(f"No valid SPY holdings found on or before {date_key}.")
+
+    latest_date = hist.loc[mask_valid, "date"].max()
+    logger.info(f"latest_date found: {latest_date}")
+    df_valid = hist[(hist["date"] == latest_date) & (hist["ticker"] != "-") & hist["weight_pct"].notna()]  # noqa: E501
+    logger.info(f"df_valid shape for latest_date: {df_valid.shape}")
+
+    slice_df = df_valid.sort_values("weight_pct", ascending=False).head(top_n)
+    logger.info(f"slice_df shape: {slice_df.shape}")
+    return list(zip(slice_df["ticker"].tolist(), slice_df["weight_pct"].tolist()))
+
+
+# --------------------------------------------------------------------------- #
+# Utility – mainly for interactive notebooks / REPL sessions                 #
+# --------------------------------------------------------------------------- #
+
+
+def reset_history_cache() -> None:
+    """Clear the in-memory holdings DataFrame *and* the LRU caches.
+
+    This is handy when you rebuild ``spy_holdings_full.parquet`` in a separate
+    process and want the current Python session to pick up the fresh data
+    without restart.
+    """
+
+    global _HISTORY_DF
+    _HISTORY_DF = None
+
+    # Clear LRU caches so next call reloads with the updated DataFrame
+    get_top_weight_sp500_components.cache_clear()  # type: ignore[attr-defined]
+    _get_top_weight_sp500_components_cached.cache_clear()  # type: ignore[attr-defined]
 
 
 if __name__ == "__main__":

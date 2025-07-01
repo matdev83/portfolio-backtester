@@ -8,6 +8,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 import pandas as pd
 import numpy as np
 from portfolio_backtester.strategies.calmar_momentum_strategy import CalmarMomentumStrategy
+from portfolio_backtester.feature import CalmarRatio
+from portfolio_backtester.feature_engineering import precompute_features
 
 def test_calmar_strategy():
     """Test the Calmar Momentum Strategy."""
@@ -55,8 +57,8 @@ def test_calmar_strategy():
     
     # Test rolling Calmar calculation
     print("Testing rolling Calmar calculation...")
-    rets = data.pct_change(fill_method=None)
-    rolling_calmar = strategy._calculate_rolling_calmar(rets, 6)
+    calmar_feature = CalmarRatio(rolling_window=6)
+    rolling_calmar = calmar_feature.compute(data)
     
     print(f"Rolling Calmar shape: {rolling_calmar.shape}")
     print(f"Rolling Calmar has NaN: {rolling_calmar.isna().any().any()}")
@@ -72,7 +74,9 @@ def test_calmar_strategy():
     
     # Test signal generation
     print("\nTesting signal generation...")
-    signals = strategy.generate_signals(data, benchmark_data)
+    required_features = CalmarMomentumStrategy.get_required_features({'strategy_params': strategy_config})
+    features = precompute_features(data, required_features, benchmark_data)
+    signals = strategy.generate_signals(data, features, benchmark_data)
     print(f"Signals shape: {signals.shape}")
     print(f"Final signals:\n{signals.iloc[-1]}")
     print(f"Signals have NaN: {signals.isna().any().any()}")
@@ -83,12 +87,14 @@ def test_calmar_strategy():
     strategy_config_sma = strategy_config.copy()
     strategy_config_sma['sma_filter_window'] = 3
     strategy_sma = CalmarMomentumStrategy(strategy_config_sma)
-    signals_sma = strategy_sma.generate_signals(data, benchmark_data)
+    required_features_sma = CalmarMomentumStrategy.get_required_features({'strategy_params': strategy_config_sma})
+    features_sma = precompute_features(data, required_features_sma, benchmark_data)
+    signals_sma = strategy_sma.generate_signals(data, features_sma, benchmark_data)
     print(f"SMA filtered signals shape: {signals_sma.shape}")
     print(f"Final SMA filtered signals:\n{signals_sma.iloc[-1]}")
     
     print("\n✅ All tests passed! Calmar Momentum Strategy is working correctly.")
-    return True
+    
 
 if __name__ == '__main__':
     try:

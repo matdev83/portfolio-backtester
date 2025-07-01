@@ -27,6 +27,9 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy"):
     def ann_vol(x): return x.std() * np.sqrt(CAL_FACTOR)
     def sharpe(x): return (ann(x) / ann_vol(x)) if ann_vol(x) != 0 else 0
     def mdd(series): return (series / series.cummax() - 1).min() if not series.empty else 0
+    def calmar(x):
+        max_dd = mdd((1 + x).cumprod())
+        return ann(x) / abs(max_dd) if max_dd != 0 else np.inf
 
     common_index = rets.index.intersection(bench_rets.index)
     rets_aligned, bench_aligned = rets.loc[common_index], bench_rets.loc[common_index]
@@ -42,6 +45,7 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy"):
         "Ann. Vol": ann_vol(rets),
         "Sharpe": sharpe(rets),
         "Sortino": sortino_ratio(rets),
+        "Calmar": calmar(rets),
         "Alpha (ann)": alpha,
         "Beta": beta,
         "Max DD": mdd((1 + rets).cumprod()),

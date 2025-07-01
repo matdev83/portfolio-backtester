@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from portfolio_backtester.strategies.sharpe_momentum_strategy import SharpeMomentumStrategy
 from portfolio_backtester.strategies.sortino_momentum_strategy import SortinoMomentumStrategy
+from portfolio_backtester.feature_engineering import precompute_features
 
 def create_sample_data():
     dates = pd.date_range('2020-01-01', periods=60, freq='ME')
@@ -31,15 +32,14 @@ def test_sortino_vs_sharpe_weights():
     sharpe_strategy = SharpeMomentumStrategy(strategy_config)
     sortino_strategy = SortinoMomentumStrategy(strategy_config)
 
-    sharpe_weights = sharpe_strategy.generate_signals(data, benchmark_data)
-    sortino_weights = sortino_strategy.generate_signals(data, benchmark_data)
+    sharpe_required_features = sharpe_strategy.get_required_features({'strategy_params': strategy_config})
+    sortino_required_features = sortino_strategy.get_required_features({'strategy_params': strategy_config})
 
-    # Get the rolling ratios for inspection
-    sharpe_rets = data.pct_change(fill_method=None)
-    sortino_rets = data.pct_change(fill_method=None)
+    sharpe_features = precompute_features(data, sharpe_required_features, benchmark_data)
+    sortino_features = precompute_features(data, sortino_required_features, benchmark_data)
 
-    sharpe_ratios = sharpe_strategy._calculate_rolling_sharpe(sharpe_rets, strategy_config.get('rolling_window', 6))
-    sortino_ratios = sortino_strategy._calculate_rolling_sortino(sortino_rets, strategy_config.get('rolling_window', 6), strategy_config.get('target_return', 0.0))
+    sharpe_weights = sharpe_strategy.generate_signals(data, sharpe_features, benchmark_data)
+    sortino_weights = sortino_strategy.generate_signals(data, sortino_features, benchmark_data)
 
     diff = (sharpe_weights - sortino_weights).abs().sum().sum()
     assert diff < 10.0 # Relaxed threshold for expected differences

@@ -1,40 +1,46 @@
+from typing import Set
 import pandas as pd
 import numpy as np
 
 from .base_strategy import BaseStrategy
+from ..feature import DPVAMS, BenchmarkSMA, Feature
+
 
 class VAMSMomentumStrategy(BaseStrategy):
     """Momentum strategy implementation using Volatility Adjusted Momentum Scores (VAMS)."""
 
-    def _calculate_downside_deviation(self, rets: pd.DataFrame, window: int) -> pd.DataFrame:
-        """Calculates rolling downside deviation for each asset."""
-        negative_rets = rets[rets < 0].fillna(0)
-        downside_deviation = negative_rets.rolling(window).std()
-        return downside_deviation.fillna(0)
+    @classmethod
+    def tunable_parameters(cls) -> set[str]:
+        return {"num_holdings", "lookback_months", "alpha", "sma_filter_window"}
 
-    def _calculate_total_volatility(self, rets: pd.DataFrame, window: int) -> pd.DataFrame:
-        """Calculates rolling total volatility (standard deviation) for each asset."""
-        return rets.rolling(window).std().fillna(0)
-
-    def _calculate_dp_vams(self, rets: pd.DataFrame, lookback_months: int, alpha: float) -> pd.DataFrame:
-        """Calculates Downside Penalized Volatility Adjusted Momentum Scores (dp-VAMS)."""
-        # Calculate rolling momentum (R_N)
-        momentum = (1 + rets).rolling(lookback_months).apply(np.prod, raw=True) - 1
-
-        # Calculate total volatility (sigma_N)
-        total_vol = self._calculate_total_volatility(rets, lookback_months)
-
-        # Calculate downside deviation (sigma_D)
-        downside_dev = self._calculate_downside_deviation(rets, lookback_months)
-
-        # Calculate the denominator: alpha * sigma_D + (1 - alpha) * sigma_N
-        denominator = alpha * downside_dev + (1 - alpha) * total_vol
+    @classmethod
+    def get_required_features(cls, strategy_config: dict) -> Set[Feature]:
+        """Specifies the features required by the VAMS momentum strategy."""
+        features = set()
+        params = strategy_config.get("strategy_params", {})
         
-        # Avoid division by zero
-        denominator = denominator.replace(0, np.nan)
+        if "lookback_months" in params and "alpha" in params:
+            features.add(DPVAMS(lookback_months=params["lookback_months"], alpha=params["alpha"]))
+        
+        if "sma_filter_window" in params and params["sma_filter_window"] is not None:
+            features.add(BenchmarkSMA(sma_filter_window=params["sma_filter_window"]))
+            
+        if "optimize" in strategy_config:
+            for opt_spec in strategy_config["optimize"]:
+                param_name = opt_spec["parameter"]
+                min_val, max_val, step = opt_spec["min_value"], opt_spec["max_value"], opt_spec.get("step", 1)
+                
+                if param_name == "lookback_months":
+                    for val in np.arange(min_val, max_val + step, step):
+                        features.add(DPVAMS(lookback_months=int(val), alpha=params.get("alpha", 0.5)))
+                elif param_name == "alpha":
+                    for val in np.arange(min_val, max_val + step, step):
+                        features.add(DPVAMS(lookback_months=params.get("lookback_months", 6), alpha=val))
+                elif param_name == "sma_filter_window":
+                    for val in np.arange(min_val, max_val + step, step):
+                        features.add(BenchmarkSMA(sma_filter_window=int(val)))
 
-        dp_vams = momentum / denominator
-        return dp_vams.fillna(0) # Fill NaN (from division by zero) with 0
+        return features
 
     def _calculate_candidate_weights(self, look: pd.Series) -> pd.Series:
         """Calculates initial candidate weights based on VAMS."""
@@ -74,21 +80,17 @@ class VAMSMomentumStrategy(BaseStrategy):
 
         return w_new
 
-    def generate_signals(self, data: pd.DataFrame, benchmark_data: pd.Series) -> pd.DataFrame:
+    def generate_signals(self, prices: pd.DataFrame, features: dict, benchmark_data: pd.Series) -> pd.DataFrame:
         """Generates trading signals based on the VAMS momentum strategy."""
-        rets = data.pct_change(fill_method=None)
-        
-        # Calculate dp-VAMS scores
-        dp_vams_scores = self._calculate_dp_vams(
-            rets,
-            self.strategy_config.get('lookback_months', 6),
-            self.strategy_config.get('alpha', 0.5)
-        )
+        lookback_months = self.strategy_config.get('lookback_months', 6)
+        alpha = self.strategy_config.get('alpha', 0.5)
+        dp_vams_feature_name = f"dp_vams_{lookback_months}m_{alpha}a"
+        dp_vams_scores = features[dp_vams_feature_name]
 
-        weights = pd.DataFrame(index=rets.index, columns=rets.columns, dtype=float)
-        w_prev = pd.Series(index=rets.columns, dtype=float).fillna(0.0)
+        weights = pd.DataFrame(index=prices.index, columns=prices.columns, dtype=float)
+        w_prev = pd.Series(index=prices.columns, dtype=float).fillna(0.0)
 
-        for date in rets.index:
+        for date in prices.index:
             look = dp_vams_scores.loc[date]
 
             if look.count() == 0:
@@ -103,8 +105,9 @@ class VAMSMomentumStrategy(BaseStrategy):
 
         # Apply SMA filter if configured
         if self.strategy_config.get('sma_filter_window'):
-            sma = benchmark_data.rolling(self.strategy_config['sma_filter_window']).mean()
-            risk_on = benchmark_data.shift(1) > sma.shift(1)
-            weights[~risk_on] = 0.0
+            sma_window = self.strategy_config['sma_filter_window']
+            sma_feature_name = f"benchmark_sma_{sma_window}m"
+            risk_on = features[sma_feature_name].reindex(weights.index, fill_value=True)
+            weights.loc[risk_on.index[~risk_on]] = 0.0
 
         return weights

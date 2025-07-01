@@ -9,8 +9,6 @@ import numpy as np
 from portfolio_backtester.strategies.sortino_momentum_strategy import SortinoMomentumStrategy
 
 def test_sortino_strategy():
-    print("Testing Sortino Momentum Strategy...")
-    
     # Create sample data
     dates = pd.date_range(start='2020-01-01', periods=12, freq='ME')
     data = pd.DataFrame({
@@ -31,31 +29,22 @@ def test_sortino_strategy():
         'target_return': 0.0
     }
     
+    strategy = SortinoMomentumStrategy(strategy_config)
+    # Mock features for testing
+    mock_features = {
+        f"sortino_{strategy_config['rolling_window']}m": pd.DataFrame(np.random.rand(*data.shape), index=data.index, columns=data.columns),
+        f"benchmark_sma_{strategy_config['rolling_window']}m": pd.Series(True, index=data.index) # Mock all True for risk_on
+    }
     try:
-        strategy = SortinoMomentumStrategy(strategy_config)
-        weights = strategy.generate_signals(data, benchmark_data)
-        
-        print(f"Strategy created successfully!")
-        print(f"Weights shape: {weights.shape}")
-        print(f"Final weights:\n{weights.iloc[-1]}")
-        print(f"Sum of final weights: {weights.iloc[-1].sum():.4f}")
-        
-        # Test rolling Sortino calculation
-        rets = data.pct_change(fill_method=None)
-        rolling_sortino = strategy._calculate_rolling_sortino(rets, 3, 0.0)
-        print(f"\nFinal Sortino ratios:\n{rolling_sortino.iloc[-1]}")
-        
-        return True
-        
+        weights = strategy.generate_signals(data, mock_features, benchmark_data)
+
+        assert not weights.empty, "Generated weights DataFrame should not be empty"
+        assert weights.shape[0] > 0, "Generated weights DataFrame should have rows"
+        assert weights.shape[1] > 0, "Generated weights DataFrame should have columns"
+
     except Exception as e:
-        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        raise  # Re-raise the exception to fail the test
 
-if __name__ == "__main__":
-    success = test_sortino_strategy()
-    if success:
-        print("\n✅ Sortino Momentum Strategy test passed!")
-    else:
-        print("\n❌ Sortino Momentum Strategy test failed!")
+    

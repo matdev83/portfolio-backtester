@@ -1,24 +1,43 @@
+from typing import Set
 import pandas as pd
 import numpy as np
 
 from .base_strategy import BaseStrategy
+from ..feature import SharpeRatio, BenchmarkSMA, Feature
+
 
 class SharpeMomentumStrategy(BaseStrategy):
     """Momentum strategy implementation using Sharpe ratio for ranking."""
 
-    def _calculate_rolling_sharpe(self, rets: pd.DataFrame, window: int) -> pd.DataFrame:
-        """Calculates rolling Sharpe ratio for each asset."""
-        # Annualization factor for monthly data
-        CAL_FACTOR = np.sqrt(12)
+    @classmethod
+    def tunable_parameters(cls) -> set[str]:
+        return {"num_holdings", "rolling_window", "sma_filter_window"}
 
-        # Calculate rolling mean and standard deviation
-        rolling_mean = rets.rolling(window).mean()
-        rolling_std = rets.rolling(window).std()
+    @classmethod
+    def get_required_features(cls, strategy_config: dict) -> Set[Feature]:
+        """Specifies the features required by the Sharpe momentum strategy."""
+        features = set()
+        params = strategy_config.get("strategy_params", {})
+        
+        if "rolling_window" in params:
+            features.add(SharpeRatio(rolling_window=params["rolling_window"]))
+        
+        if "sma_filter_window" in params and params["sma_filter_window"] is not None:
+            features.add(BenchmarkSMA(sma_filter_window=params["sma_filter_window"]))
+            
+        if "optimize" in strategy_config:
+            for opt_spec in strategy_config["optimize"]:
+                param_name = opt_spec["parameter"]
+                min_val, max_val, step = opt_spec["min_value"], opt_spec["max_value"], opt_spec.get("step", 1)
+                
+                if param_name == "rolling_window":
+                    for val in np.arange(min_val, max_val + step, step):
+                        features.add(SharpeRatio(rolling_window=int(val)))
+                elif param_name == "sma_filter_window":
+                    for val in np.arange(min_val, max_val + step, step):
+                        features.add(BenchmarkSMA(sma_filter_window=int(val)))
 
-        # Calculate Sharpe ratio
-        # Add a small epsilon to avoid division by zero for assets with zero volatility
-        sharpe_ratio = (rolling_mean * CAL_FACTOR) / (rolling_std * CAL_FACTOR).replace(0, np.nan)
-        return sharpe_ratio.fillna(0) # Fill NaN (from division by zero) with 0
+        return features
 
     def _calculate_candidate_weights(self, look: pd.Series) -> pd.Series:
         """Calculates initial candidate weights based on momentum."""
@@ -58,17 +77,16 @@ class SharpeMomentumStrategy(BaseStrategy):
 
         return w_new
 
-    def generate_signals(self, data: pd.DataFrame, benchmark_data: pd.Series) -> pd.DataFrame:
+    def generate_signals(self, prices: pd.DataFrame, features: dict, benchmark_data: pd.Series) -> pd.DataFrame:
         """Generates trading signals based on the momentum strategy."""
-        rets = data.pct_change(fill_method=None)
-        
-        # Calculate rolling Sharpe ratio
-        rolling_sharpe = self._calculate_rolling_sharpe(rets, self.strategy_config.get('rolling_window', 6))
+        rolling_window = self.strategy_config.get('rolling_window', 6)
+        sharpe_feature_name = f"sharpe_{rolling_window}m"
+        rolling_sharpe = features[sharpe_feature_name]
 
-        weights = pd.DataFrame(index=rets.index, columns=rets.columns, dtype=float)
-        w_prev = pd.Series(index=rets.columns, dtype=float).fillna(0.0)
+        weights = pd.DataFrame(index=prices.index, columns=prices.columns, dtype=float)
+        w_prev = pd.Series(index=prices.columns, dtype=float).fillna(0.0)
 
-        for date in rets.index:
+        for date in prices.index:
             look = rolling_sharpe.loc[date]
 
             if look.count() == 0:
@@ -83,8 +101,9 @@ class SharpeMomentumStrategy(BaseStrategy):
 
         # Apply SMA filter if configured
         if self.strategy_config.get('sma_filter_window'):
-            sma = benchmark_data.rolling(self.strategy_config['sma_filter_window']).mean()
-            risk_on = benchmark_data.shift(1) > sma.shift(1)
-            weights[~risk_on] = 0.0
+            sma_window = self.strategy_config['sma_filter_window']
+            sma_feature_name = f"benchmark_sma_{sma_window}m"
+            risk_on = features[sma_feature_name].reindex(weights.index, fill_value=True)
+            weights.loc[risk_on.index[~risk_on]] = 0.0
 
         return weights
