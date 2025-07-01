@@ -13,6 +13,17 @@ BACKTEST_SCENARIOS = [
         "rebalance_frequency": "ME",
         "position_sizer": "equal_weight",
         "transaction_costs_bps": 10,
+        "train_window_months": 24,
+        "test_window_months": 12,
+        "optimize": [
+            {
+                "parameter": "num_holdings",
+                "metric": "Total Return",
+                "min_value": 10,
+                "max_value": 30,
+                "step": 1
+            }
+        ],
         "strategy_params": {
             "lookback_months": 11,
             "top_decile_fraction": 0.10,
@@ -28,6 +39,17 @@ BACKTEST_SCENARIOS = [
         "rebalance_frequency": "ME",
         "position_sizer": "equal_weight",
         "transaction_costs_bps": 10,
+        "train_window_months": 24,
+        "test_window_months": 12,
+        "optimize": [
+            {
+                "parameter": "num_holdings",
+                "metric": "Total Return",
+                "min_value": 10,
+                "max_value": 30,
+                "step": 1
+            }
+        ],
         "strategy_params": {
             "lookback_months": 11,
             "top_decile_fraction": 0.10,
@@ -35,21 +57,6 @@ BACKTEST_SCENARIOS = [
             "leverage": 0.50,
             "long_only": True,
             "sma_filter_window": 10, # 10-month SMA filter
-        }
-    },
-    {
-        "name": "Momentum_Optimized",
-        "strategy": "momentum",
-        "rebalance_frequency": "ME",
-        "position_sizer": "equal_weight",
-        "transaction_costs_bps": 10,
-        "strategy_params": {
-            "lookback_months": 11,
-            "top_decile_fraction": 0.10,
-            "smoothing_lambda": 0.5,
-            "leverage": 0.50,
-            "long_only": True,
-            "sma_filter_window": None,
         }
     },
     {
@@ -61,6 +68,13 @@ BACKTEST_SCENARIOS = [
         "train_window_months": 24,
         "test_window_months": 12,
         "optimize": [
+            {
+                "parameter": "num_holdings",
+                "metric": "Sortino",
+                "min_value": 10,
+                "max_value": 30,
+                "step": 1
+            },
             {
                 "parameter": "rolling_window",
                 "metric": "Sortino",
@@ -91,6 +105,13 @@ BACKTEST_SCENARIOS = [
             "sma_filter_window": None,
         },
         "optimize": [
+            {
+                "parameter": "num_holdings",
+                "metric": "Sortino",
+                "min_value": 10,
+                "max_value": 30,
+                "step": 1
+            },
             {
                 "parameter": "lookback_months",
                 "metric": "Sortino",
@@ -142,6 +163,13 @@ BACKTEST_SCENARIOS = [
         },
         "optimize": [
             {
+                "parameter": "num_holdings",
+                "metric": "Sortino",
+                "min_value": 10,
+                "max_value": 30,
+                "step": 1
+            },
+            {
                 "parameter": "lookback_months",
                 "metric": "Sortino",
                 "min_value": 6,
@@ -181,6 +209,13 @@ BACKTEST_SCENARIOS = [
         "test_window_months": 12,
         "optimize": [
             {
+                "parameter": "num_holdings",
+                "metric": "Sortino",
+                "min_value": 10,
+                "max_value": 30,
+                "step": 1
+            },
+            {
                 "parameter": "rolling_window",
                 "metric": "Sortino",
                 "min_value": 1,
@@ -207,6 +242,13 @@ BACKTEST_SCENARIOS = [
         "train_window_months": 24,
         "test_window_months": 12,
         "optimize": [
+            {
+                "parameter": "num_holdings",
+                "metric": "Calmar",
+                "min_value": 10,
+                "max_value": 30,
+                "step": 1
+            },
             {
                 "parameter": "rolling_window",
                 "metric": "Calmar",

@@ -6,6 +6,10 @@ from .base_strategy import BaseStrategy
 class VAMSNoDownsideStrategy(BaseStrategy):
     """Momentum strategy implementation using Volatility Adjusted Momentum Scores (VAMS), without downside volatility penalization."""
 
+    @classmethod
+    def tunable_parameters(cls):
+        return {"num_holdings", "lookback_months", "top_decile_fraction", "smoothing_lambda", "leverage"}
+
     def _calculate_downside_deviation(self, rets: pd.DataFrame, window: int) -> pd.DataFrame:
         """Calculates rolling downside deviation for each asset."""
         negative_rets = rets[rets < 0].fillna(0)
@@ -37,13 +41,8 @@ class VAMSNoDownsideStrategy(BaseStrategy):
         else:
             num_holdings = max(int(np.ceil(self.strategy_config.get('top_decile_fraction', 0.1) * look.count())), 1)
 
-        # Only consider positive scores for winners
-        positive_scores = look[look > 0]
-        winners = positive_scores.nlargest(num_holdings).index
-
-        # Only consider negative scores for losers
-        negative_scores = look[look < 0]
-        losers = negative_scores.nsmallest(num_holdings).index
+        winners = look.nlargest(num_holdings).index
+        losers = look.nsmallest(num_holdings).index
 
         cand = pd.Series(index=look.index, dtype=float).fillna(0.0)
         if len(winners) > 0:
@@ -102,7 +101,9 @@ class VAMSNoDownsideStrategy(BaseStrategy):
         # Apply SMA filter if configured
         if self.strategy_config.get('sma_filter_window'):
             sma = benchmark_data.rolling(self.strategy_config['sma_filter_window']).mean()
-            risk_on = benchmark_data.shift(1) > sma.shift(1)
+            risk_on = benchmark_data > sma
+            # Assume risk-on if SMA is not available (at the beginning of the series)
+            risk_on[sma.isna()] = True
             weights[~risk_on] = 0.0
 
         return weights

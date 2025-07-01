@@ -6,6 +6,13 @@ from .base_strategy import BaseStrategy
 class MomentumStrategy(BaseStrategy):
     """Momentum strategy implementation."""
 
+    @classmethod
+    def tunable_parameters(cls) -> set[str]:
+        return {
+            "lookback_months", "num_holdings", "top_decile_fraction",
+            "smoothing_lambda", "leverage", "long_only", "sma_filter_window",
+        }
+
     def _calculate_candidate_weights(self, look: pd.Series) -> pd.Series:
         """Calculates initial candidate weights based on momentum."""
         if self.strategy_config.get('num_holdings'):
@@ -48,7 +55,10 @@ class MomentumStrategy(BaseStrategy):
         """Generates trading signals based on the momentum strategy."""
         rets = data.pct_change(fill_method=None)
         # Calculate momentum based on past returns only.
-        momentum = (1 + rets).shift(1).rolling(self.strategy_config.get('lookback_months', 6)).apply(np.prod, raw=True) - 1
+        momentum = (1 + rets).rolling(
+            self.strategy_config.get('lookback_months', 6)
+        ).apply(np.prod, raw=True) - 1
+        momentum.fillna(0, inplace=True)
         
         weights = pd.DataFrame(index=rets.index, columns=rets.columns, dtype=float)
         w_prev = pd.Series(index=rets.columns, dtype=float).fillna(0.0)
@@ -71,7 +81,9 @@ class MomentumStrategy(BaseStrategy):
         # Apply SMA filter if configured
         if self.strategy_config.get('sma_filter_window'):
             sma = benchmark_data.rolling(self.strategy_config['sma_filter_window']).mean()
-            risk_on = benchmark_data.shift(1) > sma.shift(1)
+            risk_on = benchmark_data > sma
+            # Assume risk-on if SMA is not available (at the beginning of the series)
+            risk_on[sma.isna()] = True
             weights[~risk_on] = 0.0
 
         return weights

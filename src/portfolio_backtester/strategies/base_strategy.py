@@ -1,4 +1,3 @@
-
 from abc import ABC, abstractmethod
 import pandas as pd
 
@@ -12,3 +11,11 @@ class BaseStrategy(ABC):
     def generate_signals(self, data: pd.DataFrame, benchmark_data: pd.Series) -> pd.DataFrame:
         """Generates trading signals for the given data."""
         pass
+
+    # ------------------------------------------------------------------ #
+    # Optimiser-introspection hook                                       #
+    # ------------------------------------------------------------------ #
+    @classmethod
+    def tunable_parameters(cls) -> set[str]:
+        """Names of hyper-parameters this strategy understands."""
+        return set()

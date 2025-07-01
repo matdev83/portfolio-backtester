@@ -43,11 +43,12 @@ class TestCalmarMomentumStrategy(unittest.TestCase):
         # Check that the result has the correct shape
         self.assertEqual(rolling_calmar.shape, rets.shape)
         
-        # Check that NaN values are filled with 0
-        self.assertFalse(rolling_calmar.isna().any().any())
-        
-        # Check that values are finite
-        self.assertTrue(np.isfinite(rolling_calmar).all().all())
+        # Check that initial periods have NaN values (due to rolling window and pct_change)
+        rolling_window = self.strategy_config['rolling_window']
+        self.assertTrue(rolling_calmar.iloc[:rolling_window].isna().all().all())
+
+        # Check that values after the rolling window are finite
+        self.assertTrue(np.isfinite(rolling_calmar.iloc[rolling_window:]).all().all())
 
     def test_calculate_candidate_weights(self):
         """Test candidate weight calculation."""

@@ -1,4 +1,3 @@
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,6 +6,8 @@ from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
 import logging
 import argparse
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from .config import GLOBAL_CONFIG, BACKTEST_SCENARIOS
 from .data_sources.yfinance_data_source import YFinanceDataSource
@@ -19,16 +20,63 @@ from .reporting.performance_metrics import calculate_metrics
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# ------------------------------------------------------------------ #
+#  Multiprocessing-friendly helpers                                  #
+# ------------------------------------------------------------------ #
+def _resolve_strategy(name: str):
+    class_name = "".join(w.capitalize() for w in name.split('_')) + "Strategy"
+    if name == "vams_momentum":
+        class_name = "VAMSMomentumStrategy"
+    elif name == "vams_no_downside":
+        class_name = "VAMSNoDownsideStrategy"
+    return getattr(strategies, class_name, None)
+
+def _run_scenario_static(global_cfg, scenario_cfg, data_slice, rets_slice):
+    """A trimmed-down, picklable version of Backtester.run_scenario()."""
+    strat_cls = _resolve_strategy(scenario_cfg["strategy"])
+    strategy   = strat_cls(scenario_cfg["strategy_params"])
+
+    d = data_slice.loc[rets_slice.index]
+    bench = d[global_cfg["benchmark"]]
+    signals = strategy.generate_signals(d.drop(columns=[global_cfg["benchmark"]]), bench)
+    weights = rebalance(equal_weight_sizer(signals), scenario_cfg["rebalance_frequency"])
+
+    aligned = rets_slice.loc[weights.index]
+    gross   = (weights.shift(1) * aligned).sum(axis=1).dropna()
+    turn    = (weights - weights.shift(1)).abs().sum(axis=1)
+    tc      = turn * (scenario_cfg["transaction_costs_bps"] / 10_000)
+    return (gross - tc).reindex(gross.index).fillna(0)
+
+def _eval_param(args):
+    """Worker for a single grid-point evaluation (returns metric, value)."""
+    val, param, base_params, scen_cfg, train_data, train_rets, metric, g_cfg = args
+    p = base_params.copy()
+    if param in {"lookback_months","num_holdings","rolling_window","sma_filter_window"}:
+        p[param] = int(val)
+    else:
+        p[param] = val
+    tmp = scen_cfg.copy();  tmp["strategy_params"] = p
+    rets  = _run_scenario_static(g_cfg, tmp, train_data, train_rets)
+    bench = train_rets[g_cfg["benchmark"]]
+    score = calculate_metrics(rets, bench, g_cfg["benchmark"]).get(metric, -np.inf)
+    return score, val
+
+ZERO_RET_EPS = 1e-8   # |returns| below this is considered "zero"
+
 class Backtester:
-    def __init__(self, global_config, scenarios, random_state=None):
+    def __init__(self, global_config, scenarios, args, random_state=None):
         self.global_config = global_config
         self.scenarios = scenarios
+        self.args = args
         self.data_source = self._get_data_source()
         self.results = {}
         self.random_state = random_state
         if self.random_state is not None:
             np.random.seed(self.random_state)
             logger.info(f"Numpy random seed set to {self.random_state}.")
+        # Parallelism / early-stop settings come from CLI
+        self.n_jobs             = getattr(args, "n_jobs", 1)
+        self.early_stop_patience = getattr(args, "early_stop_patience", 10)
         logger.info("Backtester initialized.")
 
     def _get_data_source(self):
@@ -127,7 +175,24 @@ class Backtester:
     def run_optimization(self, scenario_config, data, rets_full):
         logger.info(f"Running walk-forward optimization for scenario: {scenario_config['name']}")
 
-        optimization_specs = scenario_config["optimize"]
+        # Keep only parameters that the concrete strategy advertises
+        strat_cls = _resolve_strategy(scenario_config["strategy"])
+        optimization_specs = [
+            s for s in scenario_config["optimize"]
+            if s["parameter"] in strat_cls.tunable_parameters()
+        ]
+        if not optimization_specs:
+            # Nothing to optimise – just run the strategy with the provided parameters once.
+            logger.info("No tunable parameters for %s.  Skipping optimisation and executing base strategy run.",
+                        scenario_config["strategy"])
+
+            base_rets = self.run_scenario(scenario_config, data, rets_full, verbose=False)
+            self.results[scenario_config["name"]] = {
+                "returns": base_rets,
+                "display_name": scenario_config["name"]
+            }
+            return
+
         train_window = scenario_config["train_window_months"]
         test_window = scenario_config["test_window_months"]
         
@@ -165,43 +230,86 @@ class Backtester:
                 progress.update(wfa_task, description=f"[green]Optimizing period {i+1}/{num_steps}...")
 
                 optimal_params = scenario_config["strategy_params"].copy()
+                
+                # Store top N values for each parameter
+                top_n_param_values = {}
 
                 for spec in optimization_specs:
                     param_to_optimize = spec["parameter"]
                     metric_to_optimize = spec["metric"]
                     min_val, max_val, step_val = spec["min_value"], spec["max_value"], spec.get("step", 1)
                     
-                    best_metric = -np.inf
-                    best_param_val = min_val
+                    if param_to_optimize == "num_holdings":
+                        min_val = self.args.optimize_min_positions
+                        max_val = self.args.optimize_max_positions
                     
-                    param_task = progress.add_task(f"[cyan]  Optimizing {param_to_optimize}...", total=len(np.arange(min_val, max_val + step_val, step_val)))
+                    values = np.arange(min_val, max_val + step_val, step_val)
+                    param_results = []
+                    param_task = progress.add_task(f"[cyan]  Optimising {param_to_optimize}...", total=len(values))
 
-                    for val in np.arange(min_val, max_val + step_val, step_val):
-                        temp_params = optimal_params.copy()
-                        if param_to_optimize in ["lookback_months", "num_holdings", "rolling_window", "sma_filter_window"]:
-                            temp_params[param_to_optimize] = int(val)
-                        else:
-                            temp_params[param_to_optimize] = val
-                        temp_scenario = scenario_config.copy()
-                        temp_scenario["strategy_params"] = temp_params
-                        
-                        # Pass the sliced returns to run_scenario
-                        train_rets = self.run_scenario(temp_scenario, train_data, train_rets_sliced, verbose=False)
-                        train_bench_rets = train_rets_sliced[self.global_config["benchmark"]]
-                        train_metrics = calculate_metrics(train_rets, train_bench_rets, self.global_config["benchmark"])
-                        current_metric = train_metrics.get(metric_to_optimize, -np.inf)
-
-                        if current_metric > best_metric:
-                            best_metric = current_metric
-                            best_param_val = val
-                        
-                        progress.advance(param_task)
-                    
-                    progress.remove_task(param_task)
-                    if param_to_optimize in ["lookback_months", "num_holdings", "rolling_window", "sma_filter_window"]:
-                        optimal_params[param_to_optimize] = int(best_param_val)
+                    if self.n_jobs == 1:
+                        # sequential fall-back
+                        for v in values:
+                            param_results.append(
+                                _eval_param((v, param_to_optimize, optimal_params, scenario_config,
+                                             train_data, train_rets_sliced, metric_to_optimize, self.global_config))
+                            )
+                            progress.advance(param_task)
                     else:
-                        optimal_params[param_to_optimize] = best_param_val
+                        workers = os.cpu_count() if self.n_jobs == -1 else self.n_jobs
+                        arg_list = [
+                            (v, param_to_optimize, optimal_params, scenario_config,
+                             train_data, train_rets_sliced, metric_to_optimize, self.global_config)
+                            for v in values
+                        ]
+                        with ProcessPoolExecutor(max_workers=workers) as ex:
+                            for fut in as_completed([ex.submit(_eval_param, a) for a in arg_list]):
+                                param_results.append(fut.result())
+                                progress.advance(param_task)
+                    progress.remove_task(param_task)
+                    
+                    # Sort results by metric in descending order and take top N
+                    param_results.sort(key=lambda x: x[0], reverse=True)
+                    top_n_param_values[param_to_optimize] = [val for metric, val in param_results[:self.args.top_n_params]]
+
+                # Now, generate combinations of top N parameters and find the best combination
+                all_param_names = list(top_n_param_values.keys())
+                all_param_values_lists = list(top_n_param_values.values())
+                
+                best_overall_metric = -np.inf
+                best_overall_params = optimal_params.copy() # Start with current optimal_params
+
+                # Use itertools.product to get all combinations
+                from itertools import product
+                
+                combination_task = progress.add_task(f"[magenta]  Evaluating combinations...", total=len(list(product(*all_param_values_lists))))
+
+                for combo_values in product(*all_param_values_lists):
+                    combo_params = optimal_params.copy()
+                    for i, param_name in enumerate(all_param_names):
+                        val = combo_values[i]
+                        if param_name in ["lookback_months", "num_holdings", "rolling_window", "sma_filter_window"]:
+                            combo_params[param_name] = int(val)
+                        else:
+                            combo_params[param_name] = val
+                    
+                    temp_scenario = scenario_config.copy()
+                    temp_scenario["strategy_params"] = combo_params
+                    
+                    tr = self.run_scenario(temp_scenario, train_data, train_rets_sliced, verbose=False)
+                    cm = calculate_metrics(tr,
+                                            train_rets_sliced[self.global_config["benchmark"]],
+                                            self.global_config["benchmark"]
+                                            ).get(metric_to_optimize, -np.inf)
+
+                    if cm > best_overall_metric:
+                        best_overall_metric = cm
+                        best_overall_params = combo_params.copy()
+                    
+                    progress.advance(combination_task)
+                
+                progress.remove_task(combination_task)
+                optimal_params = best_overall_params # Update optimal_params with the best combination
 
                 test_scenario = scenario_config.copy()
                 test_scenario["strategy_params"] = optimal_params
@@ -213,7 +321,16 @@ class Backtester:
                 progress.advance(wfa_task)
 
         if not all_test_rets:
-            logger.warning(f"No optimization periods were run for {scenario_config['name']}. The dataset might be too small for the specified train/test windows.")
+            logger.warning(
+                f"No optimization periods were run for {scenario_config['name']}. "
+                "The dataset might be too small for the specified train/test windows. "
+                "Executing base strategy run instead."
+            )
+            base_rets = self.run_scenario(scenario_config, data, rets_full, verbose=False)
+            self.results[scenario_config["name"]] = {
+                "returns": base_rets,
+                "display_name": scenario_config["name"]
+            }
             return
 
         # Concatenate all out-of-sample returns
@@ -298,8 +415,16 @@ class Backtester:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run portfolio backtester.")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Set the logging level.")
-    parser.add_argument("--portfolios", type=str, help="Comma-separated list of portfolio scenario names to run. 'Unfiltered' and benchmark are always included.")
+    parser.add_argument("--portfolios", type=str, help="Comma-separated list of portfolio scenario names to run. If omitted, all scenarios (including the baseline 'Momentum_Unfiltered') will be executed.")
     parser.add_argument("--random-seed", type=int, default=None, help="Set a random seed for reproducibility.")
+    parser.add_argument("--optimize-min-positions", type=int, default=10, help="Minimum number of positions to consider during optimization of num_holdings.")
+    parser.add_argument("--optimize-max-positions", type=int, default=30, help="Maximum number of positions to consider during optimization of num_holdings.")
+    parser.add_argument("--top-n-params", type=int, default=3,
+                        help="Number of top performing parameter values to keep per grid.")
+    parser.add_argument("--n-jobs", type=int, default=8,
+                        help="Parallel worker processes to use (-1 ⇒ all cores).")
+    parser.add_argument("--early-stop-patience", type=int, default=10,
+                        help="Stop optimisation after N successive ~zero-return evaluations.")
     args = parser.parse_args()
 
     logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
@@ -311,12 +436,13 @@ if __name__ == "__main__":
             if scenario["name"] in portfolio_names:
                 selected_scenarios.append(scenario)
     else:
-        selected_scenarios = BACKTEST_SCENARIOS
+        # No specific portfolios supplied: run the full suite and include the baseline
+        selected_scenarios = BACKTEST_SCENARIOS.copy()
 
-    # Ensure 'Momentum_Unfiltered' is always included
-    unfiltered_scenario = next((s for s in BACKTEST_SCENARIOS if s["name"] == "Momentum_Unfiltered"), None)
-    if unfiltered_scenario and unfiltered_scenario not in selected_scenarios:
-        selected_scenarios.insert(0, unfiltered_scenario) # Add to the beginning
+        # Ensure the baseline "Momentum_Unfiltered" is present (should already be, but be explicit)
+        unfiltered_scenario = next((s for s in BACKTEST_SCENARIOS if s["name"] == "Momentum_Unfiltered"), None)
+        if unfiltered_scenario and unfiltered_scenario not in selected_scenarios:
+            selected_scenarios.insert(0, unfiltered_scenario)
 
-    backtester = Backtester(GLOBAL_CONFIG, selected_scenarios, random_state=args.random_seed)
+    backtester = Backtester(GLOBAL_CONFIG, selected_scenarios, args, random_state=args.random_seed)
     backtester.run()

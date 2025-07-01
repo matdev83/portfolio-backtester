@@ -36,7 +36,13 @@ class TestBacktester(unittest.TestCase):
                 ]
             }
         ]
-        self.backtester = Backtester(self.global_config, self.scenarios)
+        class MockArgs:
+            def __init__(self):
+                self.optimize_min_positions = 10
+                self.optimize_max_positions = 30
+                self.top_n_params = 3
+        self.mock_args = MockArgs()
+        self.backtester = Backtester(self.global_config, self.scenarios, self.mock_args)
         
         # Create mock data
         dates = pd.date_range(start="2020-01-01", periods=48, freq="ME")

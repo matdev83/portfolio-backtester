@@ -6,32 +6,55 @@ from .base_strategy import BaseStrategy
 class CalmarMomentumStrategy(BaseStrategy):
     """Momentum strategy implementation using Calmar ratio for ranking."""
 
+    @classmethod
+    def tunable_parameters(cls):
+        return {"num_holdings", "rolling_window"}
+
+    CAL_FACTOR = 12 # Annualization factor for monthly data
+
     def _calculate_rolling_calmar(self, rets: pd.DataFrame, window: int) -> pd.DataFrame:
-        """Calculates rolling Calmar ratio for each asset."""
-        # Annualization factor for monthly data
-        CAL_FACTOR = 12
+        """Calculates the rolling Calmar ratio for a DataFrame of returns."""
 
         # Calculate rolling mean (annualized)
-        rolling_mean = rets.rolling(window).mean() * CAL_FACTOR
+        rolling_mean = rets.rolling(window).mean() * self.CAL_FACTOR
 
-        # Calculate rolling maximum drawdown
         def max_drawdown(series):
-            """Calculate maximum drawdown for a series."""
-            if len(series) == 0:
-                return np.nan
+            """Calculates maximum drawdown for a series."""
+            series = series.dropna()
+            if series.empty:
+                return 0.0
+            
             cumulative_returns = (1 + series).cumprod()
             peak = cumulative_returns.expanding(min_periods=1).max()
+            
+            # Avoid division by zero if the portfolio value drops to zero.
+            peak = peak.replace(0, 1e-9)
             drawdown = (cumulative_returns / peak) - 1
-            return abs(drawdown.min())  # Return positive value
+            
+            # Ensure drawdown is finite before taking min
+            drawdown = drawdown.replace([np.inf, -np.inf], [0, 0]).fillna(0)
+            
+            min_drawdown = abs(drawdown.min())
+            return min_drawdown
 
         # Calculate rolling maximum drawdown
         rolling_max_dd = rets.rolling(window).apply(max_drawdown, raw=False)
 
-        # Calculate Calmar ratio
-        # Calmar = Annualized Return / Maximum Drawdown
-        calmar_ratio = rolling_mean / rolling_max_dd.replace(0, np.nan)
+        # --- Calmar Ratio Calculation and Cleanup ---
+        # Calculate ratio, suppressing expected division by zero warnings.
+        with np.errstate(divide='ignore', invalid='ignore'):
+            calmar_ratio = rolling_mean / rolling_max_dd
+
+        # Replace inf/-inf with capped values.
+        calmar_ratio.replace([np.inf, -np.inf], [10.0, -10.0], inplace=True)
         
-        return calmar_ratio.fillna(0)  # Fill NaN (from division by zero) with 0
+        # Fill all NaNs with 0
+        calmar_ratio = calmar_ratio.fillna(0)
+        
+        # Final clip to ensure everything is within bounds.
+        calmar_ratio = calmar_ratio.clip(-10.0, 10.0)
+
+        return calmar_ratio
 
     def _calculate_candidate_weights(self, look: pd.Series) -> pd.Series:
         """Calculates initial candidate weights based on Calmar ratio ranking."""
@@ -100,7 +123,9 @@ class CalmarMomentumStrategy(BaseStrategy):
         # Apply SMA filter if configured
         if self.strategy_config.get('sma_filter_window'):
             sma = benchmark_data.rolling(self.strategy_config['sma_filter_window']).mean()
-            risk_on = benchmark_data.shift(1) > sma.shift(1)
+            risk_on = benchmark_data > sma
+            # Assume risk-on if SMA is not available (at the beginning of the series)
+            risk_on[sma.isna()] = True
             weights[~risk_on] = 0.0
 
         return weights
