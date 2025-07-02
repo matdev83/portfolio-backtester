@@ -18,8 +18,6 @@ from functools import reduce
 from operator import mul
 
 from .config import GLOBAL_CONFIG, BACKTEST_SCENARIOS, OPTIMIZER_PARAMETER_DEFAULTS
-from .data_sources.yfinance_data_source import YFinanceDataSource
-from .data_sources.stooq_data_source import StooqDataSource
 from . import strategies
 from .portfolio.position_sizer import get_position_sizer
 from .portfolio.rebalancing import rebalance
@@ -64,12 +62,16 @@ class Backtester:
         logger.info("Backtester initialized.")
 
     def _get_data_source(self):
+        """Instantiate the data source lazily to avoid heavy imports during test
+        collection."""
         ds = self.global_config.get("data_source", "yfinance").lower()
         if ds == "stooq":
             logger.debug("Using StooqDataSource.")
+            from .data_sources.stooq_data_source import StooqDataSource
             return StooqDataSource()
         elif ds == "yfinance":
             logger.debug("Using YFinanceDataSource.")
+            from .data_sources.yfinance_data_source import YFinanceDataSource
             return YFinanceDataSource()
         else:
             logger.error(f"Unsupported data source: {self.global_config['data_source']}")

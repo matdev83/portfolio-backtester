@@ -1,4 +1,4 @@
-from datetime import datetime
+
 
 # =============================================================================
 # MAIN CONFIGURATION
@@ -30,6 +30,21 @@ BACKTEST_SCENARIOS = [
         },
         "mc_simulations": 1000,
         "mc_years": 10
+    },
+    {
+        "name": "Momentum_RollingBeta",
+        "strategy": "momentum",
+        "rebalance_frequency": "ME",
+        "position_sizer": "rolling_beta",
+        "transaction_costs_bps": 10,
+        "train_window_months": 60,
+        "test_window_months": 24,
+        "strategy_params": {
+            "long_only": True
+        },
+        "mc_simulations": 1000,
+        "mc_years": 10,
+        "optimize": [],
     },
     {
         "name": "Momentum_SMA_Filtered",
@@ -334,7 +349,7 @@ BACKTEST_SCENARIOS = [
 # These settings are shared across all backtest scenarios.
 # =============================================================================
 GLOBAL_CONFIG = {
-    "data_source": "stooq",
+    "data_source": "yfinance",
     "universe": [
         "AAPL","AMZN","MSFT","GOOGL","NVDA","TSLA","V","MCD","AVGO","AMD",
         "WMT","COST","JPM","MA","MU","LLY","TGT","META","ORCL","PG","HD",
@@ -435,3 +450,35 @@ OPTIMIZER_PARAMETER_DEFAULTS = {
   "sizer_beta_window": {"type": "int", "low": 2, "high": 12, "step": 1},
   "sizer_corr_window": {"type": "int", "low": 2, "high": 12, "step": 1}
 }
+
+
+def populate_default_optimizations():
+    """Ensure each scenario has an optimize section covering all tunable
+    parameters of its strategy and dynamic position sizer."""
+    from .utils import _resolve_strategy
+
+    sizer_param_map = {
+        "rolling_sharpe": "sizer_sharpe_window",
+        "rolling_sortino": "sizer_sortino_window",
+        "rolling_beta": "sizer_beta_window",
+        "rolling_benchmark_corr": "sizer_corr_window",
+    }
+
+    for scen in BACKTEST_SCENARIOS:
+        if "optimize" not in scen:
+            scen["optimize"] = []
+        existing = {opt["parameter"] for opt in scen["optimize"]}
+
+        strat_cls = _resolve_strategy(scen["strategy"])
+        if strat_cls is not None:
+            for param in strat_cls.tunable_parameters():
+                if param not in existing:
+                    scen["optimize"].append({"parameter": param})
+
+        sizer_param = sizer_param_map.get(scen.get("position_sizer"))
+        if sizer_param and sizer_param not in existing:
+            scen["optimize"].append({"parameter": sizer_param})
+
+
+# Populate optimization lists on import
+populate_default_optimizations()
