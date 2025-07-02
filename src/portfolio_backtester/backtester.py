@@ -21,7 +21,7 @@ from .config import GLOBAL_CONFIG, BACKTEST_SCENARIOS, OPTIMIZER_PARAMETER_DEFAU
 from .data_sources.yfinance_data_source import YFinanceDataSource
 from .data_sources.stooq_data_source import StooqDataSource
 from . import strategies
-from .portfolio.position_sizer import equal_weight_sizer
+from .portfolio.position_sizer import POSITION_SIZER_REGISTRY
 from .portfolio.rebalancing import rebalance
 from .reporting.performance_metrics import calculate_metrics
 from .feature import get_required_features_from_scenarios
@@ -131,15 +131,37 @@ class Backtester:
             logger.info(f"Signals head:\n{signals.head()}")
             logger.info(f"Signals tail:\n{signals.tail()}")
 
-        sized_signals = signals # Initialize sized_signals with raw signals
-        if scenario_config["position_sizer"] == "equal_weight":
-            sized_signals = equal_weight_sizer(signals)
-            if verbose:
-                logger.debug("Positions sized using equal_weight_sizer.")
-                logger.info(f"Sized signals head:\n{sized_signals.head()}")
-                logger.info(f"Sized signals tail:\n{sized_signals.tail()}")
-        elif scenario_config["position_sizer"] != "none": # Add other sizers here if they exist
-            logger.warning(f"Unsupported position sizer: {scenario_config['position_sizer']}. Using raw signals.")
+        sized_signals = signals
+        sizer_name = scenario_config.get("position_sizer", "equal_weight")
+        sizer = POSITION_SIZER_REGISTRY.get(sizer_name)
+
+        rets_monthly = strategy_data_monthly.pct_change().fillna(0)
+        bench_rets_monthly = benchmark_data_monthly.pct_change().fillna(0)
+
+        if sizer_name == "equal_weight" or sizer is None:
+            if sizer is None and sizer_name != "none":
+                logger.warning(
+                    f"Unsupported position sizer: {sizer_name}. Using equal_weight."
+                )
+            sized_signals = POSITION_SIZER_REGISTRY["equal_weight"](signals)
+        elif sizer_name == "rolling_sharpe":
+            window = scenario_config["strategy_params"].get("sharpe_sizer_window", 6)
+            sized_signals = sizer(signals, rets_monthly, window)
+        elif sizer_name == "rolling_sortino":
+            window = scenario_config["strategy_params"].get("sortino_sizer_window", 6)
+            target = scenario_config["strategy_params"].get("sizer_target_return", 0.0)
+            sized_signals = sizer(signals, rets_monthly, window, target)
+        elif sizer_name == "rolling_beta":
+            window = scenario_config["strategy_params"].get("beta_sizer_window", 6)
+            sized_signals = sizer(signals, rets_monthly, bench_rets_monthly, window)
+        elif sizer_name == "rolling_corr":
+            window = scenario_config["strategy_params"].get("corr_sizer_window", 6)
+            sized_signals = sizer(signals, rets_monthly, bench_rets_monthly, window)
+        else:
+            if sizer_name != "none":
+                logger.warning(
+                    f"Unsupported position sizer: {sizer_name}. Using raw signals."
+                )
 
         # ------------------------------------------------------------------
         # 2) Rebalance (monthly) and expand weights to daily frequency
