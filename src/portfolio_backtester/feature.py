@@ -12,7 +12,7 @@ class Feature(ABC):
         self.params = kwargs
 
     @abstractmethod
-    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
+    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame | pd.Series:
         """Computes the feature."""
         pass
 
@@ -43,7 +43,7 @@ class CalmarRatio(Feature):
         return f"calmar_{self.rolling_window}m"
 
     def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
-        rets = data.pct_change(fill_method=None).fillna(0)
+        rets = data.pct_change().fillna(0)
         cal_factor = 12  # Annualization factor for monthly data
         rolling_mean = rets.rolling(self.rolling_window).mean() * cal_factor
 
@@ -79,7 +79,7 @@ class VAMS(Feature):
         return f"vams_{self.lookback_months}m"
 
     def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
-        rets = data.pct_change(fill_method=None).fillna(0)
+        rets = data.pct_change().fillna(0)
         momentum = (1 + rets).rolling(self.lookback_months).apply(np.prod, raw=True) - 1
         total_vol = rets.rolling(self.lookback_months).std()
         denominator = total_vol.replace(0, np.nan)
@@ -99,7 +99,7 @@ class Momentum(Feature):
         return f"momentum_{self.lookback_months}m"
 
     def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
-        rets = data.pct_change(fill_method=None).fillna(0)
+        rets = data.pct_change().fillna(0)
         momentum = (1 + rets).rolling(self.lookback_months).apply(np.prod, raw=True) - 1
         return momentum
 
@@ -115,7 +115,7 @@ class BenchmarkSMA(Feature):
     def name(self) -> str:
         return f"benchmark_sma_{self.sma_filter_window}m"
 
-    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
+    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.Series:
         if benchmark_data is None:
             raise ValueError("Benchmark data is required for BenchmarkSMA feature.")
         return (benchmark_data > benchmark_data.rolling(self.sma_filter_window).mean()).astype(int)
@@ -133,7 +133,7 @@ class SharpeRatio(Feature):
         return f"sharpe_{self.rolling_window}m"
 
     def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
-        rets = data.pct_change(fill_method=None).fillna(0)
+        rets = data.pct_change().fillna(0)
         cal_factor = np.sqrt(12)  # Annualization factor for monthly data
         rolling_mean = rets.rolling(self.rolling_window).mean()
         rolling_std = rets.rolling(self.rolling_window).std()
@@ -154,7 +154,7 @@ class SortinoRatio(Feature):
         return f"sortino_{self.rolling_window}m"
 
     def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
-        rets = data.pct_change(fill_method=None).fillna(0)
+        rets = data.pct_change().fillna(0)
         cal_factor = np.sqrt(12)  # Annualization factor for monthly data
         rolling_mean = rets.rolling(self.rolling_window).mean()
 
@@ -185,7 +185,7 @@ class DPVAMS(Feature):
         return f"dp_vams_{self.lookback_months}m_{self.alpha:.2f}a"
 
     def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
-        rets = data.pct_change(fill_method=None).fillna(0)
+        rets = data.pct_change().fillna(0)
         momentum = (1 + rets).rolling(self.lookback_months).apply(np.prod, raw=True) - 1
         
         negative_rets = rets[rets < 0].fillna(0)
@@ -209,4 +209,15 @@ def get_required_features_from_scenarios(strategy_configs: list, strategy_regist
         strategy_class = strategy_registry.get(strategy_name)
         if strategy_class:
             required_features.update(strategy_class.get_required_features(scen))
+
+        # Also check for features needed for optimization
+        if "optimize" in scen:
+            for opt_param in scen["optimize"]:
+                if opt_param["parameter"] == "sma_filter_window":
+                    min_val = opt_param.get("min_value", 2)
+                    max_val = opt_param.get("max_value", 24)
+                    step = opt_param.get("step", 1)
+                    for window in range(min_val, max_val + 1, step):
+                        required_features.add(BenchmarkSMA(sma_filter_window=window))
+
     return required_features

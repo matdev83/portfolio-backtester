@@ -6,7 +6,7 @@ def precompute_features(
     data: pd.DataFrame,
     required_features: Set[Feature],
     benchmark_data: pd.Series = None
-) -> dict:
+) -> dict[str, pd.DataFrame | pd.Series]:
     """
     Pre-computes all necessary features and indicators for all strategies.
     

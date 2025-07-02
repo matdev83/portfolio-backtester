@@ -529,7 +529,7 @@ class Backtester:
             console.print(table)
 
         # --- Prepare data for different periods ---
-        bench_rets = data[self.global_config["benchmark"]].pct_change(fill_method=None).fillna(0)
+        bench_rets = data[self.global_config["benchmark"]].pct_change().fillna(0)
         
         # Full period data
         full_period_returns = {name: res["returns"] for name, res in self.results.items()}
