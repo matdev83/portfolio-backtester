@@ -520,36 +520,57 @@ def _process_sec_filing(filing, start_date, end_date):
         for it in items:
             # Handle both new EdgarTools format (InvestmentOrSecurity objects) and old format (dicts)
             if hasattr(it, 'model_dump'):  # New format: InvestmentOrSecurity object
-                # Extract ticker - try CUSIP lookup or use company name as fallback
                 ticker = getattr(it, 'ticker', None) or ""
                 if not ticker and hasattr(it, 'cusip') and it.cusip:
                     # Use CUSIP-to-ticker mapping
                     ticker = _cusip_to_ticker(it.cusip)
-                elif not ticker and hasattr(it, 'name') and it.name:
-                    # Fallback to company name (not ideal but better than nothing)
-                    ticker = it.name.replace(" ", "_").upper()[:10]
-                
-                # Map new attribute names to old format
+                # Fallback to a modified name if ticker is still empty and CUSIP was not present or not mapped
+                if not ticker and hasattr(it, 'name') and it.name:
+                    # Only use name as last resort if CUSIP is also missing or was present but unmapped
+                    # (in which case ticker would be the CUSIP itself, so this condition means no CUSIP or empty CUSIP)
+                    if not (hasattr(it, 'cusip') and it.cusip and _cusip_to_ticker(it.cusip) != it.cusip):
+                        # Avoid using name heuristic if a CUSIP was present but just not in our map
+                        # unless ticker is still effectively empty (e.g. _cusip_to_ticker returned empty for empty cusip)
+                        if not ticker or ticker == it.cusip: # if ticker is still the cusip or empty
+                           ticker = it.name.replace(" ", "_").upper()[:10] # Heuristic for name-based ticker
+
                 pct_nav = float(getattr(it, 'pct_value', 0)) if hasattr(it, 'pct_value') and it.pct_value else None
                 shares = float(getattr(it, 'balance', 0)) if hasattr(it, 'balance') and it.balance else None
                 value = float(getattr(it, 'value_usd', 0)) if hasattr(it, 'value_usd') and it.value_usd else None
                 
-                # Check asset category (new format uses 'EC' for equity common stock)
                 asset_category = getattr(it, 'asset_category', '').upper()
-                if asset_category == 'EC':  # Equity Common stock
+                # Ensure ticker is not empty and is a valid stock before adding
+                if ticker and asset_category == 'EC':  # Equity Common stock
                     rows.append((date, ticker.upper(), pct_nav, shares, value))
                     
             elif isinstance(it, dict):  # Old format: dictionary
                 security_type = it.get("security_type", "").lower()
                 if security_type == "common stock":
-                    pct = it.get("pct_nav") if it.get("pct_nav") is not None else it.get("pct_value")
-                    rows.append((
-                        date,
-                        it.get("identifier", "").upper(),
-                        pct,
-                        it.get("shares"),
-                        it.get("value")
-                    ))
+                    identifier = str(it.get("identifier", "")).upper() # Ensure string
+                    ticker_to_use = identifier # Default to identifier
+
+                    # Basic CUSIP check: 9 chars, alphanumeric.
+                    # CUSIPs are 9 characters. First 6: alphanumeric (issuer). Next 2: alphanumeric (issue). Last 1: digit (check digit).
+                    is_cusip_like = len(identifier) == 9 and identifier.isalnum()
+
+                    if is_cusip_like:
+                        resolved_ticker = _cusip_to_ticker(identifier)
+                        # _cusip_to_ticker returns the original CUSIP if not found in map.
+                        # So, if resolved_ticker is different from identifier, it means we found a map.
+                        if resolved_ticker != identifier:
+                            ticker_to_use = resolved_ticker
+                        # else: resolved_ticker is the CUSIP itself, _cusip_to_ticker should have logged it if it was unmapped.
+
+                    # Ensure ticker_to_use is not empty before appending
+                    if ticker_to_use: # Avoid empty strings if identifier was empty
+                        pct = it.get("pct_nav") if it.get("pct_nav") is not None else it.get("pct_value")
+                        rows.append((
+                            date,
+                            ticker_to_use.upper(), # Ensure upper case
+                            pct,
+                            it.get("shares"),
+                            it.get("value")
+                        ))
         if rows:
             df = pd.DataFrame(rows, columns=["date", "ticker",
                                              "weight_pct", "shares",
