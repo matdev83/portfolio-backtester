@@ -25,9 +25,25 @@ def build_objective(
     # Extract optimization specifications from base_scen_cfg
     optimization_specs = base_scen_cfg.get("optimize", [])
     # Get the optimization metric from the scenario configuration
-    metric_to_optimize = base_scen_cfg.get("optimization_metric", "Calmar") # Default to Calmar if not specified
+    optimization_targets_config = base_scen_cfg.get("optimization_targets")
+    single_metric_to_optimize = base_scen_cfg.get("optimization_metric")
 
-    def objective(trial: optuna.trial.Trial) -> float:
+    is_multi_objective = bool(optimization_targets_config)
+
+    if is_multi_objective:
+        metrics_to_optimize = [target["name"] for target in optimization_targets_config]
+        # Directions are handled at study creation, but good to have them here if needed later
+        # optimization_directions = [target["direction"] for target in optimization_targets_config]
+    elif single_metric_to_optimize:
+        metrics_to_optimize = [single_metric_to_optimize]
+    else:
+        # Default to Calmar if no optimization metric is specified at all
+        metrics_to_optimize = ["Calmar"]
+        # Ensure this default is reflected in study creation if it reaches that far
+        # For single objective, Optuna defaults to 'maximize' if direction isn't specified,
+        # but our old code implicitly maximized.
+
+    def objective(trial: optuna.trial.Trial) -> Any: # Return type can be float or Tuple[float, ...]
         # 1 ─ suggest parameters ----------------------------------------
         p = base_scen_cfg["strategy_params"].copy()
 
@@ -65,14 +81,31 @@ def build_objective(
 
         bench_rets_daily = bench_series_daily.pct_change(fill_method=None).fillna(0)
 
-        val = calculate_metrics(
-            rets, bench_rets_daily, g_cfg["benchmark"])[metric_to_optimize]
+        all_calculated_metrics = calculate_metrics(
+            rets, bench_rets_daily, g_cfg["benchmark"]
+        )
 
-        # Penalise invalid metrics with negative infinity (since we maximise)
-        if pd.isna(val) or not np.isfinite(val):
-            return float("-inf")
+        results = []
+        for metric_name in metrics_to_optimize:
+            val = all_calculated_metrics.get(metric_name)
+            if pd.isna(val) or not np.isfinite(val):
+                # For multi-objective, Optuna prefers numerical values or NaN.
+                # For single-objective maximization, -inf was used.
+                # Let's return NaN for invalid metrics in multi-objective,
+                # and -inf for single-objective if it's maximizing (or +inf if minimizing).
+                # However, the direction isn't explicitly passed here for single objective fallback.
+                # The original code assumed maximization for single objective.
+                if not is_multi_objective: # Single objective case
+                    # Assuming maximization as per original logic for single objective.
+                    # If minimization is ever supported for single obj via this path, this needs adjustment.
+                    val = float("-inf")
+                else:
+                    val = float("nan") # Optuna handles NaNs appropriately in multi-objective.
+            results.append(val)
 
-        # Study direction is "maximize" – return the metric directly
-        return val
+        if is_multi_objective:
+            return tuple(results)
+        else:
+            return results[0]
 
     return objective
