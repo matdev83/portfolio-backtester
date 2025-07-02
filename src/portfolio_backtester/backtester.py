@@ -16,6 +16,7 @@ from optuna.storages.journal import JournalFileBackend, JournalFileOpenLock
 from typing import Dict, Any, Tuple
 from functools import reduce
 from operator import mul
+from datetime import datetime
 
 from .config import GLOBAL_CONFIG, BACKTEST_SCENARIOS, OPTIMIZER_PARAMETER_DEFAULTS
 from . import strategies
@@ -402,12 +403,27 @@ class Backtester:
             metric=scenario_config["optimize"][0]["metric"]
         )
 
-        study.optimize(
-            objective,
-            n_trials=n_trials,
-            timeout=self.args.optuna_timeout_sec,
-            n_jobs=self.n_jobs
-        )
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            console=Console()
+        ) as progress:
+            task = progress.add_task("[cyan]Optimizing...", total=n_trials)
+            
+            def callback(study, trial):
+                progress.update(task, advance=1)
+
+            study.optimize(
+                objective,
+                n_trials=n_trials,
+                timeout=self.args.optuna_timeout_sec,
+                n_jobs=self.n_jobs,
+                callbacks=[callback]
+            )
         
         optimal_params = scenario_config["strategy_params"].copy()
         optimal_params.update(study.best_params)
@@ -535,7 +551,7 @@ class Backtester:
             console.print(table)
 
         # --- Prepare data for different periods ---
-        bench_rets = data[self.global_config["benchmark"]].pct_change().fillna(0)
+        bench_rets = data[self.global_config["benchmark"]].pct_change(fill_method=None).fillna(0)
         
         # Full period data
         full_period_returns = {name: res["returns"] for name, res in self.results.items()}
@@ -617,11 +633,24 @@ class Backtester:
         ax2.fill_between(bench_drawdown.index, 0, bench_drawdown, color='gray', alpha=0.2)
 
         plt.tight_layout()
+        
+        plots_dir = "plots"
+        os.makedirs(plots_dir, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        scenario_name_for_filename = list(self.results.keys())[0].replace(" ", "_").replace("(", "").replace(")", "")
+        filename = f"cumulative_returns_drawdown_{scenario_name_for_filename}_{timestamp}.png"
+        filepath = os.path.join(plots_dir, filename)
+        
+        plt.savefig(filepath)
+        logger.info(f"P&L plot saved to: {filepath}")
+
         if getattr(self, 'args', None) and getattr(self.args, 'interactive', False):
-            plt.show()
+            plt.show(block=False) # Display asynchronously
+            logger.info("Cumulative returns and drawdown plots displayed interactively.")
         else:
-            plt.close()
-        logger.info("Cumulative returns and drawdown plots displayed.")
+            plt.close(fig) # Close the figure to free memory if not interactive
+            logger.info("Cumulative returns and drawdown plots generated and saved.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run portfolio backtester.")

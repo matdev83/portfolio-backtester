@@ -35,6 +35,8 @@ def _run_scenario_static(
     from .portfolio.rebalancing import rebalance
 
     strat_cls = _resolve_strategy(scenario_cfg["strategy"])
+    if not strat_cls:
+        raise ValueError(f"Could not resolve strategy: {scenario_cfg['strategy']}")
     strategy = strat_cls(scenario_cfg["strategy_params"])
 
     # --- 1) Generate signals on monthly data --------------------------------
@@ -47,11 +49,25 @@ def _run_scenario_static(
 
     sizer_name = scenario_cfg.get("position_sizer", "equal_weight")
     sizer_func = get_position_sizer(sizer_name)
+
+    sizer_params = scenario_cfg.get("strategy_params", {}).copy()
+    # Map sizer-specific parameters from strategy_params to expected sizer argument names
+    sizer_param_mapping = {
+        "sizer_sharpe_window": "window",
+        "sizer_sortino_window": "window",
+        "sizer_beta_window": "window",
+        "sizer_corr_window": "window",
+        "sizer_target_return": "target_return",  # For Sortino sizer
+    }
+    for old_key, new_key in sizer_param_mapping.items():
+        if old_key in sizer_params:
+            sizer_params[new_key] = sizer_params.pop(old_key)
+
     sized = sizer_func(
         signals,
         price_monthly[universe_cols],
         price_monthly[global_cfg["benchmark"]],
-        **scenario_cfg.get("strategy_params", {}),
+        **sizer_params,
     )
     weights_monthly = rebalance(sized, scenario_cfg["rebalance_frequency"])
 
