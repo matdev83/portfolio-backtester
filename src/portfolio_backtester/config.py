@@ -32,6 +32,31 @@ BACKTEST_SCENARIOS = [
         "mc_years": 10
     },
     {
+        "name": "Momentum_Beta_Sized",
+        "strategy": "momentum",
+        "rebalance_frequency": "ME",
+        "position_sizer": "rolling_beta",
+        "transaction_costs_bps": 10,
+        "train_window_months": 60,
+        "test_window_months": 24,
+        "optimize": [
+            {"parameter": "num_holdings", "metric": "Sortino", "min_value": 10, "max_value": 35, "step": 1},
+            {"parameter": "top_decile_fraction", "metric": "Sortino", "min_value": 0.05, "max_value": 0.3, "step": 0.01},
+            {"parameter": "lookback_months", "metric": "Sortino", "min_value": 3, "max_value": 14, "step": 1},
+            {"parameter": "smoothing_lambda", "metric": "Sortino", "min_value": 0.0, "max_value": 1.0, "step": 0.05},
+            {"parameter": "leverage", "metric": "Sortino", "min_value": 0.1, "max_value": 2.0, "step": 0.1},
+            {"parameter": "sma_filter_window", "metric": "Sortino", "min_value": 2, "max_value": 24, "step": 1},
+            {"parameter": "derisk_days_under_sma", "metric": "Sortino", "min_value": 0, "max_value": 30, "step": 1},
+            {"parameter": "sizer_beta_window", "metric": "Sortino", "min_value": 2, "max_value": 12, "step": 1}
+        ],
+        "strategy_params": {
+            "long_only": True,
+            "sizer_beta_window": 3
+        },
+        "mc_simulations": 1000,
+        "mc_years": 10
+    },
+    {
         "name": "Momentum_SMA_Filtered",
         "strategy": "momentum",
         "rebalance_frequency": "ME",
@@ -433,5 +458,6 @@ OPTIMIZER_PARAMETER_DEFAULTS = {
   "sizer_sharpe_window": {"type": "int", "low": 2, "high": 12, "step": 1},
   "sizer_sortino_window": {"type": "int", "low": 2, "high": 12, "step": 1},
   "sizer_beta_window": {"type": "int", "low": 2, "high": 12, "step": 1},
-  "sizer_corr_window": {"type": "int", "low": 2, "high": 12, "step": 1}
+  "sizer_corr_window": {"type": "int", "low": 2, "high": 12, "step": 1},
+  "long_only": {"type": "int", "low": 0, "high": 1, "step": 1}
 }

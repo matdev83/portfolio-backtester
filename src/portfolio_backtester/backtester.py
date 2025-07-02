@@ -133,11 +133,18 @@ class Backtester:
 
         sizer_name = scenario_config.get("position_sizer", "equal_weight")
         sizer_func = get_position_sizer(sizer_name)
+        sizer_params = scenario_config.get("strategy_params", {}).copy()
+        for k in list(sizer_params.keys()):
+            if k.startswith("sizer_"):
+                parts = k.split("_", 2)
+                if len(parts) == 3:
+                    sizer_params[parts[2]] = sizer_params.pop(k)
+
         sized_signals = sizer_func(
             signals,
             strategy_data_monthly,
             benchmark_data_monthly,
-            **scenario_config.get("strategy_params", {}),
+            **sizer_params,
         )
         if verbose:
             logger.debug(f"Positions sized using {sizer_name}.")
