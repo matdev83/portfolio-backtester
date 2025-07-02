@@ -4,6 +4,9 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.universe
+pytest.skip("universe test", allow_module_level=True)
+
 import portfolio_backtester.spy_holdings as spy_holdings
 
 

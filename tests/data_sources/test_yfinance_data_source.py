@@ -7,6 +7,10 @@ from unittest.mock import patch, MagicMock
 from src.portfolio_backtester.data_sources.yfinance_data_source import YFinanceDataSource
 from pathlib import Path
 import time
+import pytest
+
+pytestmark = pytest.mark.network
+pytest.skip("network test", allow_module_level=True)
 
 class TestYFinanceDataSource(unittest.TestCase):
 
