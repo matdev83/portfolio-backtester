@@ -13,7 +13,12 @@ BACKTEST_SCENARIOS = [
         "transaction_costs_bps": 10,
         "train_window_months": 60,
         "test_window_months": 24,
-        "optimization_metric": "Sortino", # Added scenario-level metric
+        # Example of new multi-objective optimization
+        "optimization_targets": [
+            {"name": "Sortino", "direction": "maximize"},
+            {"name": "Max Drawdown", "direction": "minimize"}
+        ],
+        # "optimization_metric": "Sortino", # Replaced by optimization_targets
         "optimize": [
             {"parameter": "num_holdings", "min_value": 10, "max_value": 35, "step": 1},
             {"parameter": "top_decile_fraction", "min_value": 0.05, "max_value": 0.3, "step": 0.01},

@@ -378,12 +378,32 @@ class Backtester:
             except Exception as e:
                 logger.warning(f"Could not check for or delete existing Optuna study '{study_name}': {e}")
 
+        # Determine study direction(s) based on scenario config
+        optimization_targets_config = scenario_config.get("optimization_targets")
+
+        study_directions = []
+        if optimization_targets_config:
+            # Multi-objective
+            for target in optimization_targets_config:
+                direction = target.get("direction", "maximize").lower()
+                if direction not in ["maximize", "minimize"]:
+                    logger.warning(f"Invalid direction '{direction}' for target '{target['name']}'. Defaulting to 'maximize'.")
+                    direction = "maximize"
+                study_directions.append(direction)
+        else:
+            # Single-objective (or default if nothing specified)
+            # Optuna's default direction is 'minimize', but our historical implicit behavior was 'maximize'.
+            # The build_objective function defaults to "Calmar" which implies maximization.
+            # If optimization_metric is specified, we assume 'maximize' unless specified otherwise (not currently supported).
+            study_directions.append("maximize") # Default to maximize for single objective as per old behavior
+
         study = optuna.create_study(
             study_name=study_name,
             storage=storage,
             sampler=sampler,
             pruner=pruner,
-            direction="maximize",
+            directions=study_directions if len(study_directions) > 1 else None, # Optuna expects None for single objective, or a list for multi
+            direction=study_directions[0] if len(study_directions) == 1 else None, # Use 'direction' for single objective
             load_if_exists=(self.args.random_seed is None) # Only load if no explicit random seed is provided
         )
 
