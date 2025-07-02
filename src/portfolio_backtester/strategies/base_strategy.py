@@ -9,11 +9,6 @@ import pandas as pd
 from ..feature import Feature, BenchmarkSMA
 from ..portfolio.position_sizer import get_position_sizer
 from ..signal_generators import BaseSignalGenerator
-from ..portfolio.volatility_targeting import (
-    VolatilityTargetingBase,
-    NoVolatilityTargeting,
-    AnnualizedVolatilityTargeting,
-)
 
 
 class BaseStrategy(ABC):
@@ -37,55 +32,6 @@ class BaseStrategy(ABC):
     def get_position_sizer(self) -> Callable[[pd.DataFrame], pd.DataFrame]:
         name = self.strategy_config.get("position_sizer", "equal_weight")
         return get_position_sizer(name)
-
-    def get_volatility_target(self) -> float | None:
-        """
-        DEPRECATED potentially: This method might be superseded by get_volatility_targeting_mechanism.
-        Returns a static volatility target if defined in config.
-        """
-        return self.strategy_config.get("volatility_target")
-
-    def get_volatility_targeting_mechanism(self) -> VolatilityTargetingBase | None:
-        """
-        Initializes and returns the volatility targeting mechanism based on strategy configuration.
-        Example config:
-        self.strategy_config = {
-            # ... other params
-            "volatility_targeting": {
-                "name": "annualized",  # or "none"
-                "target_annual_vol": 0.15,
-                "lookback_days": 60,
-                "max_leverage": 2.0,
-                "min_leverage": 0.5
-            }
-        }
-        """
-        config = self.strategy_config.get("volatility_targeting")
-
-        if not config or not isinstance(config, dict):
-            return NoVolatilityTargeting() # Default to no targeting if config is missing or malformed
-
-        name = config.get("name", "none").lower()
-
-        if name == "annualized":
-            try:
-                return AnnualizedVolatilityTargeting(
-                    target_annual_volatility=config["target_annual_vol"],
-                    lookback_period_days=config["lookback_days"],
-                    max_leverage=config.get("max_leverage", 2.0),
-                    min_leverage=config.get("min_leverage", 0.1),
-                    # annualization_factor can be added if needed in config
-                )
-            except KeyError as e:
-                raise ValueError(
-                    f"Missing required parameter for AnnualizedVolatilityTargeting: {e}"
-                )
-            except ValueError as e:
-                raise ValueError(f"Error initializing AnnualizedVolatilityTargeting: {e}")
-        elif name == "none":
-            return NoVolatilityTargeting()
-        else:
-            raise ValueError(f"Unknown volatility targeting mechanism: {name}")
 
     # ------------------------------------------------------------------ #
     # Required features

@@ -22,7 +22,6 @@ from .config import GLOBAL_CONFIG, BACKTEST_SCENARIOS, OPTIMIZER_PARAMETER_DEFAU
 from . import strategies
 from .portfolio.position_sizer import get_position_sizer
 from .portfolio.rebalancing import rebalance
-from .portfolio.volatility_targeting import AnnualizedVolatilityTargeting, NoVolatilityTargeting # Added
 from .reporting.performance_metrics import calculate_metrics
 from .feature import get_required_features_from_scenarios
 from .feature_engineering import precompute_features
@@ -170,100 +169,23 @@ class Backtester:
         )
 
         # ------------------------------------------------------------------
-        # 3) Iterative P&L calculation and Dynamic Leverage Application
+        # 3) Calculate daily weights and P&L
         # ------------------------------------------------------------------
-        vol_target_mech = strategy.get_volatility_targeting_mechanism()
-
-        # Ensure rets_daily is aligned with price_data_daily.index and contains all universe_tickers
-        # The original rets_daily is based on price_data_daily which includes all universe tickers + benchmark
-        aligned_rets_daily = rets_daily.reindex(price_data_daily.index).fillna(0.0)
-
-        # Initialize DataFrames/Series for the loop
-        # adjusted_daily_weights will store the final weights AFTER volatility targeting
-        adjusted_daily_weights = pd.DataFrame(0.0, index=price_data_daily.index, columns=universe_tickers)
-        # daily_portfolio_returns_gross stores gross returns before transaction costs
-        daily_portfolio_returns_gross = pd.Series(0.0, index=price_data_daily.index)
-
-        # current_raw_weights holds the output of the sizer for the current rebalancing period
-        # Initialize with zero weights for all tickers in the universe
-        current_raw_weights = pd.Series(0.0, index=universe_tickers)
-        last_leverage_factor = 1.0 # Initialize leverage factor
-
         # Ensure weights_monthly has the same columns as universe_tickers, filling missing with 0
         weights_monthly = weights_monthly.reindex(columns=universe_tickers).fillna(0.0)
 
-        if verbose:
-            logger.info(f"Starting iterative P&L calculation with volatility targeting: {type(vol_target_mech).__name__}")
+        # Expand monthly weights to daily frequency (forward fill)
+        weights_daily = weights_monthly.reindex(price_data_daily.index, method="ffill")
+        weights_daily = weights_daily.shift(1).fillna(0.0) # Shift to avoid look-ahead bias
 
-        for i, current_date in enumerate(price_data_daily.index):
-            # Determine previous date for fetching last weights and for P&L history slicing
-            previous_date = price_data_daily.index[i-1] if i > 0 else None
+        # Ensure rets_daily is aligned with price_data_daily.index and contains all universe_tickers
+        aligned_rets_daily = rets_daily.reindex(price_data_daily.index).fillna(0.0)
 
-            # Update raw weights if it's a rebalancing day
-            if current_date in weights_monthly.index:
-                current_raw_weights = weights_monthly.loc[current_date].reindex(universe_tickers).fillna(0.0)
-                if verbose and i < 5: # Log first few rebalances
-                    logger.debug(f"Rebalancing on {current_date}: New raw weights sum: {current_raw_weights.abs().sum()}")
+        # Calculate daily portfolio returns
+        daily_portfolio_returns_gross = (weights_daily * aligned_rets_daily[universe_tickers]).sum(axis=1)
 
-            # Calculate leverage factor using the chosen mechanism
-            if vol_target_mech and not isinstance(vol_target_mech, NoVolatilityTargeting):
-                # History should only include returns strictly before current_date
-                portfolio_returns_history = daily_portfolio_returns_gross.loc[daily_portfolio_returns_gross.index < current_date]
-
-                lookback_days = getattr(vol_target_mech, 'lookback_period_days', 0)
-
-                leverage_factor = vol_target_mech.calculate_leverage_factor(
-                    current_raw_weights=current_raw_weights,
-                    portfolio_returns_history=portfolio_returns_history,
-                    current_date=current_date,
-                    daily_prices=price_data_daily[universe_tickers], # Pass only universe ticker prices
-                    lookback_period_days=lookback_days
-                )
-                last_leverage_factor = leverage_factor
-                if verbose and i < 10: # Log first few leverage factors
-                     logger.debug(f"Date: {current_date}, Leverage Factor: {leverage_factor:.4f}, History Length: {len(portfolio_returns_history)}")
-
-
-            # Apply leverage to raw weights
-            # Note: The static leverage from strategy_config.get("leverage", 1.0) in _apply_leverage_and_smoothing
-            # is applied *before* the sizer. This `last_leverage_factor` is applied *after* the sizer.
-            # This means they can compound. This interaction should be clarified or one should be prioritized.
-            # For now, assume the `last_leverage_factor` is the final scaler for the overall portfolio exposure.
-            # If `vol_target_mech` is `NoVolatilityTargeting`, `last_leverage_factor` remains 1.0 unless changed by a static setting.
-            # To make dynamic vol targeting override static leverage, we might need to ensure signals fed to sizer are effectively at 1x leverage.
-            # Or, ensure that `current_raw_weights` (output of sizer) are normalized before applying `last_leverage_factor`.
-            # Most sizers already normalize their output to sum to 1 (for long/short parts).
-            effective_weights_today = current_raw_weights * last_leverage_factor
-            adjusted_daily_weights.loc[current_date] = effective_weights_today.reindex(universe_tickers).fillna(0.0)
-
-            # Calculate portfolio return for current_date using weights from previous_date (or adjusted today for T+0 settlement)
-            # Standard practice: use weights determined at market open of current_date (or close of previous_date) to calculate returns for current_date
-            if previous_date is not None:
-                # Weights applied are those determined based on data up to previous_date, applied for current_date's price changes.
-                # So, `adjusted_daily_weights.loc[previous_date]` would be more standard if weights are set at end of day.
-                # If weights are set at open of `current_date`, then `adjusted_daily_weights.loc[current_date]` is used for returns of `current_date`.
-                # The original code used `weights_daily.shift(1)`. We need to be consistent.
-                # Let's assume weights are decided based on `current_date`'s signal/volatility, and applied for `current_date`'s returns.
-                # This means `adjusted_daily_weights.loc[current_date]` are the weights held *during* `current_date`.
-                # The return is then calculated using `rets_daily.loc[current_date]`.
-                # However, portfolio return calculation typically uses weights from t-1 for returns at t.
-
-                # Sticking to previous logic: weights_daily.shift(1) * aligned_rets_daily
-                # This means weights set on `previous_date` (or start of `current_date` before market open)
-                # are used against `current_date`'s returns.
-                weights_for_calc = adjusted_daily_weights.loc[previous_date]
-                today_asset_returns = aligned_rets_daily.loc[current_date, universe_tickers].fillna(0.0)
-                daily_portfolio_returns_gross.loc[current_date] = (weights_for_calc * today_asset_returns).sum()
-
-        if verbose:
-            logger.info(f"Portfolio gross returns calculated. Head:\n{daily_portfolio_returns_gross.head()}")
-            logger.info(f"Adjusted daily weights head:\n{adjusted_daily_weights.head()}")
-            logger.info(f"Adjusted daily weights sum head:\n{adjusted_daily_weights.abs().sum(axis=1).head()}")
-
-
-        # Calculate turnover and transaction costs using the final adjusted daily weights
-        # The .shift(1) is crucial here as turnover is the change in weights from end of t-1 to end of t.
-        turnover = (adjusted_daily_weights - adjusted_daily_weights.shift(1)).abs().sum(axis=1).fillna(0.0)
+        # Calculate turnover and transaction costs
+        turnover = (weights_daily - weights_daily.shift(1)).abs().sum(axis=1).fillna(0.0)
         transaction_costs = turnover * (scenario_config.get("transaction_costs_bps", 0) / 10000.0)
 
         portfolio_rets_net = (daily_portfolio_returns_gross - transaction_costs).fillna(0.0)
