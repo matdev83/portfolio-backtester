@@ -56,7 +56,7 @@ BACKTEST_SCENARIOS = [
     },
     {
         "name": "Momentum_DVOL_Sizer",
-        "strategy": "momentum",
+        "strategy": "momentum_dvol_sizer",
         "rebalance_frequency": "ME",
         "position_sizer": "rolling_downside_volatility",
         "transaction_costs_bps": 10,
