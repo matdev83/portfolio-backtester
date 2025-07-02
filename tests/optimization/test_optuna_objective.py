@@ -1,7 +1,4 @@
 import pytest
-pytestmark = pytest.mark.network
-pytest.skip("network test", allow_module_level=True)
-
 from unittest.mock import MagicMock, patch
 from src.portfolio_backtester.optimization.optuna_objective import build_objective
 

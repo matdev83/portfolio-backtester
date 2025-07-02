@@ -1,7 +1,3 @@
-import pytest
-pytestmark = pytest.mark.network
-pytest.skip("network test", allow_module_level=True)
-
 import unittest
 import pandas as pd
 import numpy as np
