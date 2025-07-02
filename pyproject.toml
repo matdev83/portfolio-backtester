@@ -31,10 +31,16 @@ dependencies = [
     "openpyxl",
     "xlrd==2.0.1",
     "pyarrow",
-    "radon",
-    "xenon",
     "optuna>=4.4",
     "pandas-datareader"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "coverage",
+    "radon",
+    "xenon"
 ]
 
 [project.urls]
