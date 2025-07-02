@@ -27,19 +27,10 @@ class MomentumStrategy(BaseStrategy):
         # For now, we assume it's present as per typical scenario structure.
         # If this method is called with a raw strategy_config (not a full scenario dict),
         # 'lookback_months' should be directly in it.
+        features: Set[Feature] = set()
         lookback = params.get("lookback_months")
-        if lookback is None:
-            # This might happen if called with a config that's not a full scenario
-            # and doesn't directly contain 'lookback_months'.
-            # Consider accessing self.strategy_config if this were an instance method,
-            # or ensure callers always provide it.
-            # For a classmethod, the input dict is all we have.
-            # Fallback to a default or raise a more specific error.
-            # The __init__ sets a default, but that's not accessible here directly.
-            # Let's assume 'lookback_months' must be resolvable from 'params'.
-            raise KeyError("'lookback_months' not found in strategy parameters. Ensure it is defined in 'strategy_params' or directly in the passed config.")
-
-        features: Set[Feature] = {Momentum(lookback_months=lookback)}
+        if lookback is not None:
+            features.add(Momentum(lookback_months=lookback))
 
         sma_filter = params.get("sma_filter_window")
         if sma_filter is not None:
