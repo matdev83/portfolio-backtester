@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.universe
-pytest.skip("universe test", allow_module_level=True)
+# pytestmark = pytest.mark.universe # Unskipped
+# pytest.skip("universe test", allow_module_level=True) # Unskipped
 
 import portfolio_backtester.spy_holdings as spy_holdings
 
