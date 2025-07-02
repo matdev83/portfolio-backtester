@@ -143,6 +143,7 @@ cython_debug/
 
 # Project-specific cache directories
 cache/
+plots/
 
 # Added by Gemini
 optuna_studies.db
