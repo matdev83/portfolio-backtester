@@ -10,6 +10,7 @@ from src.portfolio_backtester.portfolio.position_sizer import (
     rolling_sortino_sizer,
     rolling_beta_sizer,
     rolling_benchmark_corr_sizer,
+    rolling_downside_volatility_sizer,
 )
 
 class TestPositionSizer(unittest.TestCase):
@@ -116,6 +117,18 @@ class TestPositionSizer(unittest.TestCase):
         expected = signals.mul(factor).div(signals.mul(factor).abs().sum(axis=1), axis=0)
 
         result = rolling_benchmark_corr_sizer(signals, prices, bench, window)
+        pd.testing.assert_frame_equal(result, expected)
+
+    def test_rolling_downside_volatility_sizer(self):
+        prices, bench, signals = self._create_price_data()
+        window = 2
+        rets = prices.pct_change(fill_method=None).fillna(0)
+        downside = rets.clip(upper=0)
+        dvol = (downside ** 2).rolling(window).mean().pow(0.5)
+        factor = 1 / dvol.replace(0, np.nan)
+        expected = signals.mul(factor).div(signals.mul(factor).abs().sum(axis=1), axis=0)
+
+        result = rolling_downside_volatility_sizer(signals, prices, bench, window)
         pd.testing.assert_frame_equal(result, expected)
 
 if __name__ == '__main__':
