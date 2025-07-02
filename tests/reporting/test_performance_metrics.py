@@ -1,6 +1,7 @@
 import unittest
 import pandas as pd
 import numpy as np
+from scipy.stats import linregress
 from src.portfolio_backtester.reporting.performance_metrics import calculate_metrics
 import warnings
 
@@ -44,6 +45,19 @@ class TestPerformanceMetrics(unittest.TestCase):
                 metrics = calculate_metrics(zero_vol_rets, self.bench_rets, self.bench_ticker_name)
         
         self.assertTrue(np.isnan(metrics['Sharpe'])) # Should be NaN as ann_vol is 0
+
+    def test_r_squared(self):
+        metrics = calculate_metrics(self.rets, self.bench_rets, self.bench_ticker_name)
+        expected = np.corrcoef(self.rets, self.bench_rets)[0, 1] ** 2
+        self.assertAlmostEqual(metrics['R^2'], expected, places=6)
+
+    def test_k_ratio(self):
+        metrics = calculate_metrics(self.rets, self.bench_rets, self.bench_ticker_name)
+        log_eq = np.log((1 + self.rets).cumprod())
+        idx = np.arange(len(log_eq))
+        reg = linregress(idx, log_eq)
+        expected = (reg.slope / reg.stderr) * np.sqrt(len(log_eq))
+        self.assertAlmostEqual(metrics['K-Ratio'], expected, places=6)
 
 if __name__ == '__main__':
     unittest.main()
