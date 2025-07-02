@@ -143,6 +143,7 @@ class Backtester:
             "sizer_sortino_window": "window",
             "sizer_beta_window": "window",
             "sizer_corr_window": "window",
+            "sizer_dvol_window": "window",
             "sizer_target_return": "target_return", # For Sortino sizer
         }
         for old_key, new_key in sizer_param_mapping.items():

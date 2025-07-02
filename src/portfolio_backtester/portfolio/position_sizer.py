@@ -80,12 +80,32 @@ def rolling_benchmark_corr_sizer(
     return sized.div(sized.abs().sum(axis=1), axis=0)
 
 
+def rolling_downside_volatility_sizer(
+    signals: pd.DataFrame,
+    prices: pd.DataFrame,
+    benchmark: pd.Series,
+    window: int,
+    **_,
+) -> pd.DataFrame:
+    """Size positions inversely proportional to downside volatility.
+
+    Only negative returns are used when computing volatility so that
+    upside moves do not lead to smaller position sizes."""
+    rets = prices.pct_change(fill_method=None).fillna(0)
+    downside = rets.clip(upper=0)
+    downside_vol = (downside ** 2).rolling(window).mean().pow(0.5)
+    factor = 1 / downside_vol.replace(0, np.nan)
+    sized = signals.mul(factor)
+    return sized.div(sized.abs().sum(axis=1), axis=0)
+
+
 SIZER_REGISTRY: Dict[str, Callable] = {
     "equal_weight": equal_weight_sizer,
     "rolling_sharpe": rolling_sharpe_sizer,
     "rolling_sortino": rolling_sortino_sizer,
     "rolling_beta": rolling_beta_sizer,
     "rolling_benchmark_corr": rolling_benchmark_corr_sizer,
+    "rolling_downside_volatility": rolling_downside_volatility_sizer,
 }
 
 

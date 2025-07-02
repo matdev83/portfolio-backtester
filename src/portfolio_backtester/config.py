@@ -55,6 +55,30 @@ BACKTEST_SCENARIOS = [
         "mc_years": 10
     },
     {
+        "name": "Momentum_DVOL_Sizer",
+        "strategy": "momentum_dvol_sizer",
+        "rebalance_frequency": "ME",
+        "position_sizer": "rolling_downside_volatility",
+        "transaction_costs_bps": 10,
+        "train_window_months": 60,
+        "test_window_months": 24,
+        "optimize": [
+            {"parameter": "num_holdings", "metric": "Total Return", "min_value": 10, "max_value": 35, "step": 1},
+            {"parameter": "top_decile_fraction", "metric": "Total Return", "min_value": 0.05, "max_value": 0.3, "step": 0.01},
+            {"parameter": "lookback_months", "metric": "Total Return", "min_value": 3, "max_value": 14, "step": 1},
+            {"parameter": "smoothing_lambda", "metric": "Total Return", "min_value": 0.0, "max_value": 1.0, "step": 0.05},
+            {"parameter": "leverage", "metric": "Total Return", "min_value": 0.1, "max_value": 2.0, "step": 0.1},
+            {"parameter": "sma_filter_window", "metric": "Total Return", "min_value": 2, "max_value": 24, "step": 1},
+            {"parameter": "derisk_days_under_sma", "metric": "Total Return", "min_value": 0, "max_value": 30, "step": 1},
+            {"parameter": "sizer_dvol_window", "metric": "Total Return", "min_value": 2, "max_value": 12, "step": 1}
+        ],
+        "strategy_params": {
+            "long_only": True
+        },
+        "mc_simulations": 1000,
+        "mc_years": 10
+    },
+    {
         "name": "Momentum_SMA_Filtered",
         "strategy": "momentum",
         "rebalance_frequency": "ME",
@@ -457,6 +481,7 @@ OPTIMIZER_PARAMETER_DEFAULTS = {
   "sizer_sortino_window": {"type": "int", "low": 2, "high": 12, "step": 1},
   "sizer_beta_window": {"type": "int", "low": 2, "high": 12, "step": 1},
   "sizer_corr_window": {"type": "int", "low": 2, "high": 12, "step": 1},
+  "sizer_dvol_window": {"type": "int", "low": 2, "high": 12, "step": 1},
   "long_only": {"type": "int", "low": 0, "high": 1, "step": 1}
 }
 
@@ -471,6 +496,7 @@ def populate_default_optimizations():
         "rolling_sortino": "sizer_sortino_window",
         "rolling_beta": "sizer_beta_window",
         "rolling_benchmark_corr": "sizer_corr_window",
+        "rolling_downside_volatility": "sizer_dvol_window",
     }
 
     for scen in BACKTEST_SCENARIOS:
