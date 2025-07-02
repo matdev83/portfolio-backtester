@@ -20,9 +20,10 @@ class MomentumStrategy(BaseStrategy):
 
     @classmethod
     def get_required_features(cls, strategy_config: dict) -> Set[Feature]:
-        features: Set[Feature] = {Momentum(lookback_months=strategy_config["lookback_months"])}
-        if strategy_config.get("sma_filter_window") is not None:
-            features.add(BenchmarkSMA(sma_filter_window=strategy_config["sma_filter_window"]))
+        params = strategy_config.get("strategy_params", {})
+        features: Set[Feature] = {Momentum(lookback_months=params["lookback_months"])}
+        if "sma_filter_window" in params and params["sma_filter_window"] is not None:
+            features.add(BenchmarkSMA(sma_filter_window=params["sma_filter_window"]))
         return features
 
     def __init__(self, strategy_config):
