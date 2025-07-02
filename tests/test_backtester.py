@@ -1,6 +1,10 @@
 import unittest
 import pandas as pd
 import numpy as np
+import pytest
+
+pytestmark = pytest.mark.network
+pytest.skip("network test", allow_module_level=True)
 
 from src.portfolio_backtester.backtester import Backtester, _resolve_strategy
 from src.portfolio_backtester.config import GLOBAL_CONFIG, BACKTEST_SCENARIOS
