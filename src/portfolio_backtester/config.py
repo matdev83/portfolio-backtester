@@ -13,14 +13,15 @@ BACKTEST_SCENARIOS = [
         "transaction_costs_bps": 10,
         "train_window_months": 60,
         "test_window_months": 24,
+        "optimization_metric": "Sortino", # Added scenario-level metric
         "optimize": [
-            {"parameter": "num_holdings", "metric": "Sortino", "min_value": 10, "max_value": 35, "step": 1},
-            {"parameter": "top_decile_fraction", "metric": "Sortino", "min_value": 0.05, "max_value": 0.3, "step": 0.01},
-            {"parameter": "lookback_months", "metric": "Sortino", "min_value": 3, "max_value": 14, "step": 1},
-            {"parameter": "smoothing_lambda", "metric": "Sortino", "min_value": 0.0, "max_value": 1.0, "step": 0.05},
-            {"parameter": "leverage", "metric": "Sortino", "min_value": 0.1, "max_value": 2.0, "step": 0.1},
-            {"parameter": "sma_filter_window", "metric": "Sortino", "min_value": 2, "max_value": 24, "step": 1},
-            {"parameter": "derisk_days_under_sma", "metric": "Sortino", "min_value": 0, "max_value": 30, "step": 1}
+            {"parameter": "num_holdings", "min_value": 10, "max_value": 35, "step": 1},
+            {"parameter": "top_decile_fraction", "min_value": 0.05, "max_value": 0.3, "step": 0.01},
+            {"parameter": "lookback_months", "min_value": 3, "max_value": 14, "step": 1},
+            {"parameter": "smoothing_lambda", "min_value": 0.0, "max_value": 1.0, "step": 0.05},
+            {"parameter": "leverage", "min_value": 0.1, "max_value": 2.0, "step": 0.1},
+            {"parameter": "sma_filter_window", "min_value": 2, "max_value": 24, "step": 1},
+            {"parameter": "derisk_days_under_sma", "min_value": 0, "max_value": 30, "step": 1}
         ],
         "strategy_params": {
             # All optimized parameters are omitted here
@@ -64,15 +65,16 @@ BACKTEST_SCENARIOS = [
         "transaction_costs_bps": 10,
         "train_window_months": 60,
         "test_window_months": 24,
+        "optimization_metric": "Sortino", # Added scenario-level metric
         "optimize": [
-            {"parameter": "num_holdings", "metric": "Sortino", "min_value": 10, "max_value": 35, "step": 1},
-            {"parameter": "top_decile_fraction", "metric": "Sortino", "min_value": 0.05, "max_value": 0.3, "step": 0.01},
-            {"parameter": "lookback_months", "metric": "Sortino", "min_value": 3, "max_value": 14, "step": 1},
-            {"parameter": "smoothing_lambda", "metric": "Sortino", "min_value": 0.0, "max_value": 1.0, "step": 0.05},
-            {"parameter": "leverage", "metric": "Sortino", "min_value": 0.1, "max_value": 2.0, "step": 0.1},
-            {"parameter": "sma_filter_window", "metric": "Sortino", "min_value": 2, "max_value": 24, "step": 1},
-            {"parameter": "derisk_days_under_sma", "metric": "Sortino", "min_value": 0, "max_value": 30, "step": 1},
-            {"parameter": "sizer_beta_window", "metric": "Sortino", "min_value": 2, "max_value": 12, "step": 1}
+            {"parameter": "num_holdings", "min_value": 10, "max_value": 35, "step": 1},
+            {"parameter": "top_decile_fraction", "min_value": 0.05, "max_value": 0.3, "step": 0.01},
+            {"parameter": "lookback_months", "min_value": 3, "max_value": 14, "step": 1},
+            {"parameter": "smoothing_lambda", "min_value": 0.0, "max_value": 1.0, "step": 0.05},
+            {"parameter": "leverage", "min_value": 0.1, "max_value": 2.0, "step": 0.1},
+            {"parameter": "sma_filter_window", "min_value": 2, "max_value": 24, "step": 1},
+            {"parameter": "derisk_days_under_sma", "min_value": 0, "max_value": 30, "step": 1},
+            {"parameter": "sizer_beta_window", "min_value": 2, "max_value": 12, "step": 1}
         ],
         "strategy_params": {
             "long_only": True,
@@ -89,16 +91,17 @@ BACKTEST_SCENARIOS = [
         "transaction_costs_bps": 10,
         "train_window_months": 60,
         "test_window_months": 24,
+        "optimization_metric": "Total Return", # Added scenario-level metric
         "optimize": [
-            {"parameter": "num_holdings", "metric": "Total Return", "min_value": 10, "max_value": 35, "step": 1},
-            {"parameter": "top_decile_fraction", "metric": "Total Return", "min_value": 0.05, "max_value": 0.3, "step": 0.01},
-            {"parameter": "lookback_months", "metric": "Total Return", "min_value": 3, "max_value": 14, "step": 1},
-            {"parameter": "smoothing_lambda", "metric": "Total Return", "min_value": 0.0, "max_value": 1.0, "step": 0.05},
-            {"parameter": "leverage", "metric": "Total Return", "min_value": 0.1, "max_value": 2.0, "step": 0.1},
-            {"parameter": "sma_filter_window", "metric": "Total Return", "min_value": 2, "max_value": 24, "step": 1},
-            {"parameter": "derisk_days_under_sma", "metric": "Total Return", "min_value": 0, "max_value": 30, "step": 1},
-            {"parameter": "sizer_dvol_window", "metric": "Total Return", "min_value": 2, "max_value": 12, "step": 1},
-            {"parameter": "target_volatility", "metric": "Total Return", "min_value": 0.05, "max_value": 0.3, "step": 0.01}
+            {"parameter": "num_holdings", "min_value": 10, "max_value": 35, "step": 1},
+            {"parameter": "top_decile_fraction", "min_value": 0.05, "max_value": 0.3, "step": 0.01},
+            {"parameter": "lookback_months", "min_value": 3, "max_value": 14, "step": 1},
+            {"parameter": "smoothing_lambda", "min_value": 0.0, "max_value": 1.0, "step": 0.05},
+            {"parameter": "leverage", "min_value": 0.1, "max_value": 2.0, "step": 0.1},
+            {"parameter": "sma_filter_window", "min_value": 2, "max_value": 24, "step": 1},
+            {"parameter": "derisk_days_under_sma", "min_value": 0, "max_value": 30, "step": 1},
+            {"parameter": "sizer_dvol_window", "min_value": 2, "max_value": 12, "step": 1},
+            {"parameter": "target_volatility", "min_value": 0.05, "max_value": 0.3, "step": 0.01}
         ],
         "strategy_params": {
             "long_only": True
@@ -114,17 +117,16 @@ BACKTEST_SCENARIOS = [
         "transaction_costs_bps": 10,
         "train_window_months": 24,
         "test_window_months": 12,
+        "optimization_metric": "Total Return", # Added scenario-level metric
         "optimize": [
             {
                 "parameter": "num_holdings",
-                "metric": "Total Return",
                 "min_value": 10,
                 "max_value": 30,
                 "step": 1
             },
             {
                 "parameter": "derisk_days_under_sma",
-                "metric": "Total Return",
                 "min_value": 1,
                 "max_value": 30,
                 "step": 1
@@ -150,17 +152,16 @@ BACKTEST_SCENARIOS = [
         "transaction_costs_bps": 10,
         "train_window_months": 24,
         "test_window_months": 12,
+        "optimization_metric": "Sharpe", # Added scenario-level metric
         "optimize": [
             {
                 "parameter": "num_holdings",
-                "metric": "Sharpe",
                 "min_value": 10,
                 "max_value": 30,
                 "step": 1
             },
             {
                 "parameter": "rolling_window",
-                "metric": "Sharpe",
                 "min_value": 1,
                 "max_value": 6,
                 "step": 1
@@ -185,6 +186,7 @@ BACKTEST_SCENARIOS = [
         "transaction_costs_bps": 10,
         "train_window_months": 24, # Use a 24-month training window
         "test_window_months": 12, # Test on the next 12 months
+        "optimization_metric": "Sortino", # Added scenario-level metric
         "strategy_params": {
             "long_only": True,
             "sma_filter_window": None,
@@ -194,42 +196,36 @@ BACKTEST_SCENARIOS = [
         "optimize": [
             {
                 "parameter": "num_holdings",
-                "metric": "Sortino",
                 "min_value": 10,
                 "max_value": 30,
                 "step": 1
             },
             {
                 "parameter": "lookback_months",
-                "metric": "Sortino",
                 "min_value": 3,
                 "max_value": 24,
                 "step": 1,
             },
             {
                 "parameter": "top_decile_fraction",
-                "metric": "Sortino",
                 "min_value": 0.05,
                 "max_value": 0.20,
                 "step": 0.05,
             },
             {
                 "parameter": "smoothing_lambda",
-                "metric": "Sortino",
                 "min_value": 0.1,
                 "max_value": 0.9,
                 "step": 0.1,
             },
             {
                 "parameter": "leverage",
-                "metric": "Sortino",
                 "min_value": 0.1,
                 "max_value": 2.0,
                 "step": 0.1,
             },
             {
                 "parameter": "alpha",
-                "metric": "Sortino",
                 "min_value": 0.0,
                 "max_value": 1.0,
                 "step": 0.1,
@@ -244,6 +240,7 @@ BACKTEST_SCENARIOS = [
         "transaction_costs_bps": 10,
         "train_window_months": 24, # Use a 24-month training window
         "test_window_months": 12, # Test on the next 12 months
+        "optimization_metric": "Sortino", # Added scenario-level metric
         "strategy_params": {
             "long_only": True,
             "sma_filter_window": None,
@@ -253,35 +250,30 @@ BACKTEST_SCENARIOS = [
         "optimize": [
             {
                 "parameter": "num_holdings",
-                "metric": "Sortino",
                 "min_value": 10,
                 "max_value": 30,
                 "step": 1
             },
             {
                 "parameter": "lookback_months",
-                "metric": "Sortino",
                 "min_value": 6,
                 "max_value": 24,
                 "step": 1,
             },
             {
                 "parameter": "top_decile_fraction",
-                "metric": "Sortino",
                 "min_value": 0.05,
                 "max_value": 0.20,
                 "step": 0.05,
             },
             {
                 "parameter": "smoothing_lambda",
-                "metric": "Sortino",
                 "min_value": 0.1,
                 "max_value": 0.9,
                 "step": 0.1,
             },
             {
                 "parameter": "leverage",
-                "metric": "Sortino",
                 "min_value": 0.1,
                 "max_value": 1.0,
                 "step": 0.1,
@@ -296,17 +288,16 @@ BACKTEST_SCENARIOS = [
         "transaction_costs_bps": 10,
         "train_window_months": 24,
         "test_window_months": 12,
+        "optimization_metric": "Sortino", # Added scenario-level metric
         "optimize": [
             {
                 "parameter": "num_holdings",
-                "metric": "Sortino",
                 "min_value": 10,
                 "max_value": 30,
                 "step": 1
             },
             {
                 "parameter": "rolling_window",
-                "metric": "Sortino",
                 "min_value": 1,
                 "max_value": 6,
                 "step": 1
@@ -332,17 +323,16 @@ BACKTEST_SCENARIOS = [
         "transaction_costs_bps": 10,
         "train_window_months": 24,
         "test_window_months": 12,
+        "optimization_metric": "Calmar", # Added scenario-level metric
         "optimize": [
             {
                 "parameter": "num_holdings",
-                "metric": "Calmar",
                 "min_value": 10,
                 "max_value": 30,
                 "step": 1
             },
             {
                 "parameter": "rolling_window",
-                "metric": "Calmar",
                 "min_value": 1,
                 "max_value": 6,
                 "step": 1
@@ -367,24 +357,22 @@ BACKTEST_SCENARIOS = [
         "transaction_costs_bps": 10,
         "train_window_months": 24,
         "test_window_months": 12,
+        "optimization_metric": "Sharpe", # Added scenario-level metric
         "optimize": [
             {
                 "parameter": "num_holdings",
-                "metric": "Sharpe",
                 "min_value": 10,
                 "max_value": 30,
                 "step": 1
             },
             {
                 "parameter": "rolling_window",
-                "metric": "Sharpe",
                 "min_value": 1,
                 "max_value": 6,
                 "step": 1
             },
             {
                 "parameter": "sizer_sharpe_window",
-                "metric": "Sharpe",
                 "min_value": 2,
                 "max_value": 12,
                 "step": 1
@@ -531,18 +519,28 @@ def populate_default_optimizations():
     for scen in BACKTEST_SCENARIOS:
         if "optimize" not in scen:
             scen["optimize"] = []
-        existing = {opt["parameter"] for opt in scen["optimize"]}
+
+        # Ensure optimization_metric is present if optimize section exists
+        if "optimize" in scen and "optimization_metric" not in scen:
+            # Default to "Calmar" or another suitable default if not inferable
+            # For now, this logic assumes it's added manually or by a previous step
+            # If we need to infer it, we'd look at the first param's old metric
+            pass # We expect optimization_metric to be set by the refactoring
+
+        existing_params = {opt["parameter"] for opt in scen["optimize"]}
 
         strat_cls = _resolve_strategy(scen["strategy"])
         if strat_cls is not None:
             for param in strat_cls.tunable_parameters():
-                if param not in existing:
+                if param not in existing_params:
+                    # Add parameter without metric, as metric is scenario-level
                     scen["optimize"].append({"parameter": param})
 
         position_sizer_name = scen.get("position_sizer")
         if position_sizer_name:
             sizer_param = sizer_param_map.get(position_sizer_name)
-            if sizer_param and sizer_param not in existing:
+            if sizer_param and sizer_param not in existing_params:
+                # Add sizer parameter without metric
                 scen["optimize"].append({"parameter": sizer_param})
 
 

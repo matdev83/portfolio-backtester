@@ -28,10 +28,11 @@ class TestBacktester(unittest.TestCase):
                 "transaction_costs_bps": 10,
                 "train_window_months": 24,
                 "test_window_months": 6,
+                "optimization_metric": "Sharpe", # Added scenario-level metric
                 "optimize": [
                     {
                         "parameter": "lookback_months",
-                        "metric": "Sharpe",
+                        # "metric": "Sharpe", # Metric removed from here
                         "min_value": 3,
                         "max_value": 9,
                         "step": 3

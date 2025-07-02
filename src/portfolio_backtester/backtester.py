@@ -472,8 +472,8 @@ class Backtester:
             train_data_daily,
             train_rets_sliced,
             daily_data[self.global_config["benchmark"]],
-            train_features_sliced,
-            metric=scenario_config["optimize"][0]["metric"]
+            train_features_sliced
+            # metric is now sourced from scenario_config within build_objective
         )
 
         with Progress(
