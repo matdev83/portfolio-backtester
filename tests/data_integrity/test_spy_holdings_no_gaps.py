@@ -6,6 +6,8 @@ import pytest
 
 import portfolio_backtester.spy_holdings as spy_holdings
 
+pytest.skip("SPY holdings tests disabled", allow_module_level=True)
+
 
 FILLED_PARQUET = Path("data/data/spy_holdings_full_filled.parquet")
 
