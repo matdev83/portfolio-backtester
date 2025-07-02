@@ -283,6 +283,48 @@ BACKTEST_SCENARIOS = [
         },
         "mc_simulations": 500,
         "mc_years": 20
+    },
+    {
+        "name": "Sharpe_Sized_Momentum",
+        "strategy": "sharpe_momentum",
+        "rebalance_frequency": "ME",
+        "position_sizer": "rolling_sharpe",
+        "transaction_costs_bps": 10,
+        "train_window_months": 24,
+        "test_window_months": 12,
+        "optimize": [
+            {
+                "parameter": "num_holdings",
+                "metric": "Sharpe",
+                "min_value": 10,
+                "max_value": 30,
+                "step": 1
+            },
+            {
+                "parameter": "rolling_window",
+                "metric": "Sharpe",
+                "min_value": 1,
+                "max_value": 6,
+                "step": 1
+            },
+            {
+                "parameter": "sizer_sharpe_window",
+                "metric": "Sharpe",
+                "min_value": 2,
+                "max_value": 12,
+                "step": 1
+            }
+        ],
+        "strategy_params": {
+            "lookback_months": 11,
+            "top_decile_fraction": 0.10,
+            "smoothing_lambda": 0.5,
+            "leverage": 0.50,
+            "long_only": True,
+            "sma_filter_window": None,
+        },
+        "mc_simulations": 1000,
+        "mc_years": 10
     }
 ]
 
@@ -387,5 +429,9 @@ OPTIMIZER_PARAMETER_DEFAULTS = {
     "low": 4,
     "high": 18,
     "step": 2
-  }
+  },
+  "sizer_sharpe_window": {"type": "int", "low": 2, "high": 12, "step": 1},
+  "sizer_sortino_window": {"type": "int", "low": 2, "high": 12, "step": 1},
+  "sizer_beta_window": {"type": "int", "low": 2, "high": 12, "step": 1},
+  "sizer_corr_window": {"type": "int", "low": 2, "high": 12, "step": 1}
 }

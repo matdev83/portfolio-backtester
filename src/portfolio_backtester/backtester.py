@@ -21,7 +21,7 @@ from .config import GLOBAL_CONFIG, BACKTEST_SCENARIOS, OPTIMIZER_PARAMETER_DEFAU
 from .data_sources.yfinance_data_source import YFinanceDataSource
 from .data_sources.stooq_data_source import StooqDataSource
 from . import strategies
-from .portfolio.position_sizer import equal_weight_sizer
+from .portfolio.position_sizer import get_position_sizer
 from .portfolio.rebalancing import rebalance
 from .reporting.performance_metrics import calculate_metrics
 from .feature import get_required_features_from_scenarios
@@ -131,15 +131,18 @@ class Backtester:
             logger.info(f"Signals head:\n{signals.head()}")
             logger.info(f"Signals tail:\n{signals.tail()}")
 
-        sized_signals = signals # Initialize sized_signals with raw signals
-        if scenario_config["position_sizer"] == "equal_weight":
-            sized_signals = equal_weight_sizer(signals)
-            if verbose:
-                logger.debug("Positions sized using equal_weight_sizer.")
-                logger.info(f"Sized signals head:\n{sized_signals.head()}")
-                logger.info(f"Sized signals tail:\n{sized_signals.tail()}")
-        elif scenario_config["position_sizer"] != "none": # Add other sizers here if they exist
-            logger.warning(f"Unsupported position sizer: {scenario_config['position_sizer']}. Using raw signals.")
+        sizer_name = scenario_config.get("position_sizer", "equal_weight")
+        sizer_func = get_position_sizer(sizer_name)
+        sized_signals = sizer_func(
+            signals,
+            strategy_data_monthly,
+            benchmark_data_monthly,
+            **scenario_config.get("strategy_params", {}),
+        )
+        if verbose:
+            logger.debug(f"Positions sized using {sizer_name}.")
+            logger.info(f"Sized signals head:\n{sized_signals.head()}")
+            logger.info(f"Sized signals tail:\n{sized_signals.tail()}")
 
         # ------------------------------------------------------------------
         # 2) Rebalance (monthly) and expand weights to daily frequency
