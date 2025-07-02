@@ -20,7 +20,8 @@ class VAMSMomentumStrategy(BaseStrategy):
         params = strategy_config.get("strategy_params", {})
         
         if "lookback_months" in params and "alpha" in params:
-            features.add(DPVAMS(lookback_months=params["lookback_months"], alpha=params["alpha"]))
+            alpha_val = params["alpha"]
+            features.add(DPVAMS(lookback_months=params["lookback_months"], alpha=f"{alpha_val:.2f}"))
         
         if "sma_filter_window" in params and params["sma_filter_window"] is not None:
             features.add(BenchmarkSMA(sma_filter_window=params["sma_filter_window"]))
@@ -28,14 +29,17 @@ class VAMSMomentumStrategy(BaseStrategy):
         if "optimize" in strategy_config:
             for opt_spec in strategy_config["optimize"]:
                 param_name = opt_spec["parameter"]
-                min_val, max_val, step = opt_spec["min_value"], opt_spec["max_value"], opt_spec.get("step", 1)
+                min_val = opt_spec["min_value"]
+                max_val = opt_spec["max_value"]
+                step = opt_spec.get("step", 1)
                 
                 if param_name == "lookback_months":
                     for val in np.arange(min_val, max_val + step, step):
-                        features.add(DPVAMS(lookback_months=int(val), alpha=params.get("alpha", 0.5)))
+                        alpha_default_val = params.get("alpha", 0.5)
+                        features.add(DPVAMS(lookback_months=int(val), alpha=f"{alpha_default_val:.2f}"))
                 elif param_name == "alpha":
                     for val in np.arange(min_val, max_val + step, step):
-                        features.add(DPVAMS(lookback_months=params.get("lookback_months", 6), alpha=val))
+                        features.add(DPVAMS(lookback_months=params.get("lookback_months", 6), alpha=f"{val:.2f}"))
                 elif param_name == "sma_filter_window":
                     for val in np.arange(min_val, max_val + step, step):
                         features.add(BenchmarkSMA(sma_filter_window=int(val)))
@@ -83,8 +87,8 @@ class VAMSMomentumStrategy(BaseStrategy):
     def generate_signals(self, prices: pd.DataFrame, features: dict, benchmark_data: pd.Series) -> pd.DataFrame:
         """Generates trading signals based on the VAMS momentum strategy."""
         lookback_months = self.strategy_config.get('lookback_months', 6)
-        alpha = self.strategy_config.get('alpha', 0.5)
-        dp_vams_feature_name = f"dp_vams_{lookback_months}m_{alpha}a"
+        alpha_val = self.strategy_config.get('alpha', 0.5)
+        dp_vams_feature_name = f"dp_vams_{lookback_months}m_{alpha_val:.2f}a"
         dp_vams_scores = features[dp_vams_feature_name]
 
         weights = pd.DataFrame(index=prices.index, columns=prices.columns, dtype=float)

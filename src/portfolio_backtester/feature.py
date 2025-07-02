@@ -182,7 +182,7 @@ class DPVAMS(Feature):
 
     @property
     def name(self) -> str:
-        return f"dp_vams_{self.lookback_months}m_{self.alpha}a"
+        return f"dp_vams_{self.lookback_months}m_{self.alpha:.2f}a"
 
     def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
         rets = data.pct_change(fill_method=None).fillna(0)

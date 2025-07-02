@@ -37,12 +37,12 @@ def build_objective(
                 continue
 
             param_type = optimizer_config[param_name]["type"]
-            low = opt_spec.get("min_value", optimizer_config[param_name]["low"])
-            high = opt_spec.get("max_value", optimizer_config[param_name]["high"])
-            step = opt_spec.get("step", optimizer_config[param_name].get("step"))
+            low = float(opt_spec.get("min_value", optimizer_config[param_name]["low"]))
+            high = float(opt_spec.get("max_value", optimizer_config[param_name]["high"]))
+            step = float(opt_spec.get("step", optimizer_config[param_name].get("step")))
 
             if param_type == "int":
-                p[param_name] = trial.suggest_int(param_name, low, high, step=step)
+                p[param_name] = trial.suggest_int(param_name, int(low), int(high), step=int(step))
             elif param_type == "float":
                 log = opt_spec.get("log", optimizer_config[param_name].get("log", False))
                 p[param_name] = trial.suggest_float(param_name, low, high, step=step, log=log)

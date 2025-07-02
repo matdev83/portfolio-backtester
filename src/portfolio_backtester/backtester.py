@@ -331,7 +331,7 @@ class Backtester:
 
         is_grid_search = all(pt == "int" for pt in param_types)
         
-        if is_grid_search:
+        if is_grid_search and self.n_jobs == 1:
             search_space = {}
             for spec in optimization_specs:
                 param_name = spec["parameter"]
@@ -344,6 +344,8 @@ class Backtester:
             n_trials = reduce(mul, [len(v) for v in search_space.values()], 1)
             logger.info(f"Using GridSampler for optimization with search space: {search_space}. Total trials: {n_trials}")
         else:
+            if is_grid_search and self.n_jobs > 1:
+                logger.warning("Grid search is not supported with n_jobs > 1. Using TPESampler instead.")
             sampler = optuna.samplers.TPESampler(seed=self.random_state)
             n_trials = self.args.optuna_trials
             logger.info("Using TPESampler for optimization.")
@@ -351,16 +353,16 @@ class Backtester:
         pruner = optuna.pruners.MedianPruner()
 
         if self.args.random_seed is not None: # If a random seed is provided, force a new study
-            db_path = storage_url.replace("sqlite:///", "")
-            if os.path.exists(db_path):
-                logger.info(f"Attempting to delete existing Optuna study database at {db_path}.")
-                try:
-                    os.remove(db_path)
-                    logger.info(f"Successfully deleted existing Optuna study database at {db_path}.")
-                except Exception as e:
-                    logger.error(f"Failed to delete Optuna study database at {db_path}. Reason: {e}")
-            else:
-                logger.info(f"No existing Optuna study database found at {db_path}. A new one will be created.")
+            # Check if a study with this name already exists and delete it to ensure a fresh start
+            try:
+                existing_studies = optuna.study.get_all_study_summaries(storage=storage)
+                for s in existing_studies:
+                    if s.study_name == study_name:
+                        logger.info(f"Deleting existing Optuna study '{study_name}' to ensure a fresh start with random seed.")
+                        optuna.delete_study(study_name=study_name, storage=storage)
+                        break
+            except Exception as e:
+                logger.warning(f"Could not check for or delete existing Optuna study '{study_name}': {e}")
 
         study = optuna.create_study(
             study_name=study_name,
@@ -441,7 +443,13 @@ class Backtester:
         }
         
         # Plot the MC results
-        plot_monte_carlo_results(mc_sims, title=f"Monte Carlo Simulation: {scenario_config['name']} (Optimized)")
+        plot_monte_carlo_results(
+            mc_sims,
+            title=f"Monte Carlo Simulation: {scenario_config['name']} (Optimized)",
+            scenario_name=scenario_config.get('name'),
+            params=scenario_config.get('strategy_params'),
+            interactive=getattr(self.args, 'interactive', False)
+        )
         logger.info("Monte Carlo simulation finished.")
 
     def display_results(self, data):
@@ -591,7 +599,10 @@ class Backtester:
         ax2.fill_between(bench_drawdown.index, 0, bench_drawdown, color='gray', alpha=0.2)
 
         plt.tight_layout()
-        plt.show()
+        if getattr(self, 'args', None) and getattr(self.args, 'interactive', False):
+            plt.show()
+        else:
+            plt.close()
         logger.info("Cumulative returns and drawdown plots displayed.")
 
 if __name__ == "__main__":
@@ -617,7 +628,7 @@ if __name__ == "__main__":
     # Monte Carlo specific arguments
     parser.add_argument("--mc-simulations", type=int, default=1000, help="Number of simulations for Monte Carlo analysis.")
     parser.add_argument("--mc-years", type=int, default=10, help="Number of years to project in Monte Carlo analysis.")
-
+    parser.add_argument("--interactive", action="store_true", help="Show plots interactively (blocks execution). Default: off, only saves plots.")
     args = parser.parse_args()
 
     logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
@@ -627,9 +638,10 @@ if __name__ == "__main__":
         parser.error("--scenario-name is required for 'optimize' mode.")
 
     if args.scenario_name is not None:
-        selected_scenarios = [s for s in BACKTEST_SCENARIOS if s["name"] == args.scenario_name]
+        scenario_name = args.scenario_name.strip("'\"")
+        selected_scenarios = [s for s in BACKTEST_SCENARIOS if s["name"] == scenario_name]
         if not selected_scenarios:
-            parser.error(f"Scenario '{args.scenario_name}' not found in BACKTEST_SCENARIOS.")
+            parser.error(f"Scenario '{scenario_name}' not found in BACKTEST_SCENARIOS.")
     else:
         selected_scenarios = BACKTEST_SCENARIOS
 

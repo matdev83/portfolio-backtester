@@ -57,9 +57,6 @@ class MomentumStrategy(BaseStrategy):
         }
         for k, v in defaults.items():
             strategy_config.setdefault(k, v)
-        # Convert long_only to bool if it's 0/1
-        if "long_only" in strategy_config:
-            strategy_config["long_only"] = bool(strategy_config["long_only"])
         self.strategy_config = strategy_config
         super().__init__(strategy_config)
 
