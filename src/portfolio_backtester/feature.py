@@ -12,7 +12,7 @@ class Feature(ABC):
         self.params = kwargs
 
     @abstractmethod
-    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame | pd.Series:
+    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame | pd.Series:
         """Computes the feature."""
         pass
 
@@ -42,7 +42,7 @@ class CalmarRatio(Feature):
     def name(self) -> str:
         return f"calmar_{self.rolling_window}m"
 
-    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
+    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame:
         rets = data.pct_change().fillna(0)
         cal_factor = 12  # Annualization factor for monthly data
         rolling_mean = rets.rolling(self.rolling_window).mean() * cal_factor
@@ -78,7 +78,7 @@ class VAMS(Feature):
     def name(self) -> str:
         return f"vams_{self.lookback_months}m"
 
-    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
+    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame:
         rets = data.pct_change().fillna(0)
         momentum = (1 + rets).rolling(self.lookback_months).apply(np.prod, raw=True) - 1
         total_vol = rets.rolling(self.lookback_months).std()
@@ -98,8 +98,8 @@ class Momentum(Feature):
     def name(self) -> str:
         return f"momentum_{self.lookback_months}m"
 
-    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
-        rets = data.pct_change().fillna(0)
+    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame:
+        rets = data.pct_change(fill_method=None).fillna(0)
         momentum = (1 + rets).rolling(self.lookback_months).apply(np.prod, raw=True) - 1
         return momentum
 
@@ -115,7 +115,7 @@ class BenchmarkSMA(Feature):
     def name(self) -> str:
         return f"benchmark_sma_{self.sma_filter_window}m"
 
-    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.Series:
+    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.Series:
         if benchmark_data is None:
             raise ValueError("Benchmark data is required for BenchmarkSMA feature.")
         return (benchmark_data > benchmark_data.rolling(self.sma_filter_window).mean()).astype(int)
@@ -132,7 +132,7 @@ class SharpeRatio(Feature):
     def name(self) -> str:
         return f"sharpe_{self.rolling_window}m"
 
-    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
+    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame:
         rets = data.pct_change().fillna(0)
         cal_factor = np.sqrt(12)  # Annualization factor for monthly data
         rolling_mean = rets.rolling(self.rolling_window).mean()
@@ -153,7 +153,7 @@ class SortinoRatio(Feature):
     def name(self) -> str:
         return f"sortino_{self.rolling_window}m"
 
-    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
+    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame:
         rets = data.pct_change().fillna(0)
         cal_factor = np.sqrt(12)  # Annualization factor for monthly data
         rolling_mean = rets.rolling(self.rolling_window).mean()
@@ -184,7 +184,7 @@ class DPVAMS(Feature):
     def name(self) -> str:
         return f"dp_vams_{self.lookback_months}m_{self.alpha:.2f}a"
 
-    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series = None) -> pd.DataFrame:
+    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame:
         rets = data.pct_change().fillna(0)
         momentum = (1 + rets).rolling(self.lookback_months).apply(np.prod, raw=True) - 1
         

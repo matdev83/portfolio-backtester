@@ -136,11 +136,17 @@ class Backtester:
         sizer_name = scenario_config.get("position_sizer", "equal_weight")
         sizer_func = get_position_sizer(sizer_name)
         sizer_params = scenario_config.get("strategy_params", {}).copy()
-        for k in list(sizer_params.keys()):
-            if k.startswith("sizer_"):
-                parts = k.split("_", 2)
-                if len(parts) == 3:
-                    sizer_params[parts[2]] = sizer_params.pop(k)
+        # Map sizer-specific parameters from strategy_params to expected sizer argument names
+        sizer_param_mapping = {
+            "sizer_sharpe_window": "window",
+            "sizer_sortino_window": "window",
+            "sizer_beta_window": "window",
+            "sizer_corr_window": "window",
+            "sizer_target_return": "target_return", # For Sortino sizer
+        }
+        for old_key, new_key in sizer_param_mapping.items():
+            if old_key in sizer_params:
+                sizer_params[new_key] = sizer_params.pop(old_key)
 
         sized_signals = sizer_func(
             signals,

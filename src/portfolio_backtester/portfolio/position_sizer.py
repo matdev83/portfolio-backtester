@@ -14,7 +14,7 @@ def rolling_sharpe_sizer(
     window: int,
     **_,
 ) -> pd.DataFrame:
-    rets = prices.pct_change(fill_method=None).fillna(0)
+    rets = prices.pct_change().fillna(0)
     mean = rets.rolling(window).mean()
     std = rets.rolling(window).std()
     sharpe = mean / std.replace(0, np.nan)
@@ -29,7 +29,7 @@ def rolling_sortino_sizer(
     target_return: float = 0.0,
     **_,
 ) -> pd.DataFrame:
-    rets = prices.pct_change(fill_method=None).fillna(0)
+    rets = prices.pct_change().fillna(0)
     mean = rets.rolling(window).mean() - target_return
 
     def downside(series):
@@ -51,8 +51,8 @@ def rolling_beta_sizer(
     window: int,
     **_,
 ) -> pd.DataFrame:
-    rets = prices.pct_change(fill_method=None).fillna(0)
-    bench_rets = benchmark.pct_change(fill_method=None).fillna(0)
+    rets = prices.pct_change().fillna(0)
+    bench_rets = benchmark.pct_change().fillna(0)
     beta = pd.DataFrame(index=rets.index, columns=rets.columns)
     for col in rets.columns:
         cov = rets[col].rolling(window).cov(bench_rets)
@@ -70,8 +70,8 @@ def rolling_benchmark_corr_sizer(
     window: int,
     **_,
 ) -> pd.DataFrame:
-    rets = prices.pct_change(fill_method=None).fillna(0)
-    bench_rets = benchmark.pct_change(fill_method=None).fillna(0)
+    rets = prices.pct_change().fillna(0)
+    bench_rets = benchmark.pct_change().fillna(0)
     corr = pd.DataFrame(index=rets.index, columns=rets.columns)
     for col in rets.columns:
         corr[col] = rets[col].rolling(window).corr(bench_rets)
