@@ -25,9 +25,36 @@ BACKTEST_SCENARIOS = [
         "strategy_params": {
             # All optimized parameters are omitted here
             "long_only": True
+            # Example: No volatility targeting (default behavior)
+            # "volatility_targeting": {"name": "none"}
         },
         "mc_simulations": 1000,
         "mc_years": 10
+    },
+    {
+        "name": "Momentum_Vol_Targeted_10pct",
+        "strategy": "momentum",
+        "rebalance_frequency": "ME",
+        "position_sizer": "equal_weight",
+        "transaction_costs_bps": 10,
+        "train_window_months": 60,
+        "test_window_months": 24,
+        "strategy_params": {
+            "lookback_months": 6,
+            "num_holdings": 20,
+            "smoothing_lambda": 0.5,
+            "long_only": True,
+            "volatility_targeting": {
+                "name": "annualized",
+                "target_annual_vol": 0.10, # Target 10% annualized volatility
+                "lookback_days": 60,       # Use 60 trading days for vol calculation
+                "max_leverage": 1.5,       # Max leverage capped at 1.5x
+                "min_leverage": 0.5        # Min leverage at 0.5x
+            }
+        },
+        "mc_simulations": 1000,
+        "mc_years": 10
+        # "optimize" section could be added here too if desired
     },
     {
         "name": "Momentum_Beta_Sized",
