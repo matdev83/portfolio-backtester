@@ -15,7 +15,7 @@ def build_objective(
     train_rets_daily,
     bench_series_daily,
     features_slice,
-    metric: str = "Calmar",
+    # metric: str = "Calmar", # Metric is now part of base_scen_cfg
 ):
     """
     Factory to build a customized Optuna objective function.
@@ -24,6 +24,8 @@ def build_objective(
 
     # Extract optimization specifications from base_scen_cfg
     optimization_specs = base_scen_cfg.get("optimize", [])
+    # Get the optimization metric from the scenario configuration
+    metric_to_optimize = base_scen_cfg.get("optimization_metric", "Calmar") # Default to Calmar if not specified
 
     def objective(trial: optuna.trial.Trial) -> float:
         # 1 ─ suggest parameters ----------------------------------------
@@ -64,7 +66,7 @@ def build_objective(
         bench_rets_daily = bench_series_daily.pct_change(fill_method=None).fillna(0)
 
         val = calculate_metrics(
-            rets, bench_rets_daily, g_cfg["benchmark"])[metric]
+            rets, bench_rets_daily, g_cfg["benchmark"])[metric_to_optimize]
 
         # Penalise invalid metrics with negative infinity (since we maximise)
         if pd.isna(val) or not np.isfinite(val):
