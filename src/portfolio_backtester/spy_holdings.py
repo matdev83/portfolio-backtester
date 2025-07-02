@@ -25,7 +25,12 @@ import pandas as pd
 import requests
 from lxml import etree
 from tqdm import tqdm
-from edgar import set_identity, Company        # EdgarTools ≥4.3.0
+try:  # EdgarTools ≥4.3.0 provides set_identity
+    from edgar import set_identity, Company
+except Exception:  # pragma: no cover - fallback for missing API
+    import edgar
+    set_identity = getattr(edgar, "set_identity", lambda _: None)
+    Company = getattr(edgar, "Company", None)
 import json
 from urllib.parse import quote
 from httpx import HTTPStatusError

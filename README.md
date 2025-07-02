@@ -217,7 +217,8 @@ Individual scenarios in `BACKTEST_SCENARIOS` can still override these defaults b
 │   │       ├───base_strategy.py: Abstract base class for trading strategies.
 │   │       ├───momentum_strategy.py: Implements a basic momentum strategy.
 │   │       ├───sharpe_momentum_strategy.py: Implements a Sharpe ratio-based momentum strategy.
-│   │       └───vams_momentum_strategy.py: Implements a VAMS (Volatility-Adjusted Momentum Strategy).
+│   │       ├───vams_momentum_strategy.py: Implements a VAMS (Volatility-Adjusted Momentum Strategy).
+│   │       └───momentum_dvol_sizer_strategy.py: Momentum strategy using downside-volatility sizing.
 │   └───portfolio_backtester.egg-info/: Metadata for the Python package.
 └───tests/: Unit and integration tests for the project.
     ├───__init__.py: Initializes the tests package.
@@ -234,7 +235,8 @@ Individual scenarios in `BACKTEST_SCENARIOS` can still override these defaults b
     │   └───test_performance_metrics.py: Tests for performance metrics calculation.
     └───strategies/: Tests for trading strategies.
         ├───__init__.py: Initializes the strategies tests package.
-        └───test_momentum_strategy.py: Tests for the momentum strategy.
+        ├───test_momentum_strategy.py: Tests for the momentum strategy.
+        └───test_momentum_dvol_sizer_strategy.py: Tests for the momentum strategy using downside-volatility sizing.
 ```
 
 ### Development Practices and Standards
