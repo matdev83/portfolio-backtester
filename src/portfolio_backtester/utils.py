@@ -82,4 +82,7 @@ def _run_scenario_static(
     turn = (weights_daily - weights_daily.shift(1)).abs().sum(axis=1)
     tc = turn * (scenario_cfg["transaction_costs_bps"] / 10_000)
 
-    return (gross - tc).reindex(price_daily.index).fillna(0)
+    returns = (gross - tc).reindex(price_daily.index).fillna(0)
+
+    vt = strategy.get_volatility_targeting()
+    return vt.adjust_returns(returns)

@@ -194,6 +194,9 @@ class Backtester:
         portfolio_rets_net = (
             portfolio_rets_gross - transaction_costs
         ).reindex(price_data_daily.index).fillna(0)
+
+        vt = strategy.get_volatility_targeting()
+        portfolio_rets_net = vt.adjust_returns(portfolio_rets_net)
         if verbose:
             logger.info(f"Portfolio returns calculated for {scenario_config['name']}. First few returns: {portfolio_rets_net.head().to_dict()}")
             logger.info(f"portfolio_rets_gross index: {portfolio_rets_gross.index.min()} to {portfolio_rets_gross.index.max()}")
