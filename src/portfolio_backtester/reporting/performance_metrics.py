@@ -1,6 +1,20 @@
 import pandas as pd
 import numpy as np
-from scipy.stats import skew, kurtosis, norm
+from scipy.stats import skew, kurtosis, norm, linregress
+import scipy._lib._util as sp_util
+
+if not hasattr(sp_util, "_lazywhere"):
+    def _lazywhere(cond, arrays, func, fillvalue=np.nan, out=None):
+        arrays = tuple(np.asarray(a) for a in arrays)
+        if out is None:
+            out = np.full_like(arrays[0], fillvalue, dtype=float)
+        mask = cond(*arrays)
+        if mask.any():
+            out[mask] = func(*[a[mask] for a in arrays])
+        return out
+
+    sp_util._lazywhere = _lazywhere
+
 import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller
 
@@ -163,17 +177,35 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
     if len(rets_aligned) < 2 or len(bench_aligned) < 2 or bench_aligned.std() == 0:
         alpha = np.nan
         beta = np.nan
+        r_squared = np.nan
     else:
         X = sm.add_constant(bench_aligned)
         try:
             capm = sm.OLS(rets_aligned, X).fit()
             alpha = capm.params.get("const", np.nan) * steps_per_year
             beta = capm.params.get(bench_ticker_name, np.nan)
+            r_squared = capm.rsquared
         except Exception:
             alpha = np.nan
             beta = np.nan
+            r_squared = np.nan
 
     adf_stat, adf_p_value = stationarity_test(active_rets)
+
+    # Coefficient of determination (R^2)
+    r_squared = r_squared if 'r_squared' in locals() else np.nan
+
+    # K-Ratio: slope of log equity curve scaled by its standard error
+    if len(active_rets) >= 2:
+        log_equity = np.log((1 + active_rets).cumprod())
+        idx = np.arange(len(log_equity))
+        reg = linregress(idx, log_equity)
+        if reg.stderr < EPSILON_FOR_DIVISION:
+            k_ratio = np.nan
+        else:
+            k_ratio = (reg.slope / reg.stderr) * np.sqrt(len(log_equity))
+    else:
+        k_ratio = np.nan
 
     metrics = pd.Series({
         "Total Return": total_ret(active_rets),
@@ -187,6 +219,8 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
         "Max DD": mdd((1 + active_rets).cumprod()),
         "Skew": skew(active_rets),
         "Kurtosis": kurtosis(active_rets),
+        "R^2": r_squared,
+        "K-Ratio": k_ratio,
         "ADF Statistic": adf_stat,
         "ADF p-value": adf_p_value,
         "Deflated Sharpe": deflated_sharpe_ratio(active_rets, num_trials)
