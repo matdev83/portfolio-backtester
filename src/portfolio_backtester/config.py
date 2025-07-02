@@ -70,7 +70,8 @@ BACKTEST_SCENARIOS = [
             {"parameter": "leverage", "metric": "Total Return", "min_value": 0.1, "max_value": 2.0, "step": 0.1},
             {"parameter": "sma_filter_window", "metric": "Total Return", "min_value": 2, "max_value": 24, "step": 1},
             {"parameter": "derisk_days_under_sma", "metric": "Total Return", "min_value": 0, "max_value": 30, "step": 1},
-            {"parameter": "sizer_dvol_window", "metric": "Total Return", "min_value": 2, "max_value": 12, "step": 1}
+            {"parameter": "sizer_dvol_window", "metric": "Total Return", "min_value": 2, "max_value": 12, "step": 1},
+            {"parameter": "target_volatility", "metric": "Total Return", "min_value": 0.05, "max_value": 0.3, "step": 0.01}
         ],
         "strategy_params": {
             "long_only": True
@@ -482,7 +483,8 @@ OPTIMIZER_PARAMETER_DEFAULTS = {
   "sizer_beta_window": {"type": "int", "low": 2, "high": 12, "step": 1},
   "sizer_corr_window": {"type": "int", "low": 2, "high": 12, "step": 1},
   "sizer_dvol_window": {"type": "int", "low": 2, "high": 12, "step": 1},
-  "long_only": {"type": "int", "low": 0, "high": 1, "step": 1}
+  "long_only": {"type": "int", "low": 0, "high": 1, "step": 1},
+  "target_volatility": {"type": "float", "low": 0.05, "high": 0.3, "step": 0.01}
 }
 
 

@@ -2,6 +2,7 @@ from typing import Set
 
 from .base_strategy import BaseStrategy
 from ..signal_generators import MomentumSignalGenerator
+from ..feature import Momentum, BenchmarkSMA, Feature
 
 
 class MomentumStrategy(BaseStrategy):
@@ -17,6 +18,12 @@ class MomentumStrategy(BaseStrategy):
             "derisk_days_under_sma",
         }
 
+    @classmethod
+    def get_required_features(cls, strategy_config: dict) -> Set[Feature]:
+        features: Set[Feature] = {Momentum(lookback_months=strategy_config["lookback_months"])}
+        if strategy_config.get("sma_filter_window") is not None:
+            features.add(BenchmarkSMA(sma_filter_window=strategy_config["sma_filter_window"]))
+        return features
 
     def __init__(self, strategy_config):
         # Ensure all tunable parameters are present in the config with sensible defaults
@@ -34,4 +41,3 @@ class MomentumStrategy(BaseStrategy):
             strategy_config.setdefault(k, v)
         self.strategy_config = strategy_config
         super().__init__(strategy_config)
-

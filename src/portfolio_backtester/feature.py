@@ -219,5 +219,13 @@ def get_required_features_from_scenarios(strategy_configs: list, strategy_regist
                     step = opt_param.get("step", 1)
                     for window in range(min_val, max_val + 1, step):
                         required_features.add(BenchmarkSMA(sma_filter_window=window))
+                elif opt_param["parameter"] == "lookback_months":
+                    min_val = opt_param.get("min_value", 1)
+                    max_val = opt_param.get("max_value", 12)
+                    step = opt_param.get("step", 1)
+                    for lookback in range(min_val, max_val + 1, step):
+                        required_features.add(Momentum(lookback_months=lookback))
+                        required_features.add(VAMS(lookback_months=lookback))
+                        required_features.add(DPVAMS(lookback_months=lookback, alpha=0.5)) # Alpha is a placeholder, as it's also optimized
 
     return required_features

@@ -85,16 +85,21 @@ def rolling_downside_volatility_sizer(
     prices: pd.DataFrame,
     benchmark: pd.Series,
     window: int,
+    target_volatility: float = 1.0, # New parameter for target volatility
     **_,
 ) -> pd.DataFrame:
-    """Size positions inversely proportional to downside volatility.
+    """Size positions inversely proportional to downside volatility, scaled by a target volatility.
 
     Only negative returns are used when computing volatility so that
     upside moves do not lead to smaller position sizes."""
     rets = prices.pct_change(fill_method=None).fillna(0)
     downside = rets.clip(upper=0)
     downside_vol = (downside ** 2).rolling(window).mean().pow(0.5)
-    factor = 1 / downside_vol.replace(0, np.nan)
+    
+    # Scale the factor by target_volatility. If target_volatility is 1.0, no change.
+    # If downside_vol is 0, replace with a small number to avoid division by zero.
+    factor = target_volatility / downside_vol.replace(0, np.nan)
+    
     sized = signals.mul(factor)
     return sized.div(sized.abs().sum(axis=1), axis=0)
 

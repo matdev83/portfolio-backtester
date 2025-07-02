@@ -11,11 +11,9 @@ class MomentumDvolSizerStrategy(MomentumStrategy):
     def __init__(self, strategy_config: dict) -> None:
         cfg = dict(strategy_config)
         cfg.setdefault("position_sizer", "rolling_downside_volatility")
+        cfg.setdefault("target_volatility", 1.0) # Set a default for static use
         super().__init__(cfg)
 
     @classmethod
     def tunable_parameters(cls) -> set[str]:
-        return MomentumStrategy.tunable_parameters().union({"sizer_dvol_window"})
-
-
-
+        return MomentumStrategy.tunable_parameters().union({"sizer_dvol_window", "target_volatility"})
