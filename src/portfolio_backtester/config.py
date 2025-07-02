@@ -387,5 +387,9 @@ OPTIMIZER_PARAMETER_DEFAULTS = {
     "low": 4,
     "high": 18,
     "step": 2
-  }
+  },
+  "sizer_sharpe_window": {"type": "int", "low": 2, "high": 12, "step": 1},
+  "sizer_sortino_window": {"type": "int", "low": 2, "high": 12, "step": 1},
+  "sizer_beta_window": {"type": "int", "low": 2, "high": 12, "step": 1},
+  "sizer_corr_window": {"type": "int", "low": 2, "high": 12, "step": 1}
 }

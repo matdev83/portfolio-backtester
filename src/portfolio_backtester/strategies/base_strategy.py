@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..feature import Feature, BenchmarkSMA
-from ..portfolio.position_sizer import equal_weight_sizer
+from ..portfolio.position_sizer import get_position_sizer
 from ..signal_generators import BaseSignalGenerator
 
 
@@ -30,7 +30,8 @@ class BaseStrategy(ABC):
         return self.signal_generator_class(self.strategy_config)
 
     def get_position_sizer(self) -> Callable[[pd.DataFrame], pd.DataFrame]:
-        return equal_weight_sizer
+        name = self.strategy_config.get("position_sizer", "equal_weight")
+        return get_position_sizer(name)
 
     def get_volatility_target(self) -> float | None:
         return self.strategy_config.get("volatility_target")
