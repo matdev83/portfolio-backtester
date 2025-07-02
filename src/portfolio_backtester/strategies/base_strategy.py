@@ -8,6 +8,11 @@ import pandas as pd
 
 from ..feature import Feature, BenchmarkSMA
 from ..portfolio.position_sizer import get_position_sizer
+from ..portfolio.volatility_targeting import (
+    VolatilityTargetingMethod,
+    NoVolatilityTargeting,
+    AnnualizedVolatilityTargeting,
+)
 from ..signal_generators import BaseSignalGenerator
 
 
@@ -16,6 +21,8 @@ class BaseStrategy(ABC):
 
     #: class attribute specifying which signal generator to use
     signal_generator_class: type[BaseSignalGenerator] | None = None
+    #: class attribute specifying the volatility targeting implementation
+    volatility_targeting_class: type[VolatilityTargetingMethod] = NoVolatilityTargeting
 
     def __init__(self, strategy_config: dict):
         self.strategy_config = strategy_config
@@ -35,6 +42,18 @@ class BaseStrategy(ABC):
 
     def get_volatility_target(self) -> float | None:
         return self.strategy_config.get("volatility_target")
+
+    def get_volatility_targeting(self) -> VolatilityTargetingMethod:
+        """Instantiate the configured volatility targeting method."""
+        vt_cls = getattr(self, "volatility_targeting_class", NoVolatilityTargeting)
+        if vt_cls is AnnualizedVolatilityTargeting:
+            target = self.get_volatility_target()
+            window = self.strategy_config.get("vol_target_window", 63)
+            max_leverage = self.strategy_config.get("vol_target_max_leverage", 3.0)
+            if target is None:
+                return NoVolatilityTargeting()
+            return vt_cls(target, window=window, max_leverage=max_leverage)
+        return vt_cls()
 
     # ------------------------------------------------------------------ #
     # Required features

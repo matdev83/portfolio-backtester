@@ -2,12 +2,14 @@ from typing import Set
 
 from .base_strategy import BaseStrategy
 from ..signal_generators import MomentumSignalGenerator
+from ..portfolio.volatility_targeting import NoVolatilityTargeting
 
 
 class MomentumStrategy(BaseStrategy):
     """Momentum strategy implementation."""
 
     signal_generator_class = MomentumSignalGenerator
+    volatility_targeting_class = NoVolatilityTargeting
 
     @classmethod
     def tunable_parameters(cls) -> set[str]:

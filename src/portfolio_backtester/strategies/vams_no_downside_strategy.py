@@ -2,12 +2,14 @@ from typing import Set
 
 from .base_strategy import BaseStrategy
 from ..signal_generators import VAMSSignalGenerator
+from ..portfolio.volatility_targeting import NoVolatilityTargeting
 
 
 class VAMSNoDownsideStrategy(BaseStrategy):
     """Momentum strategy implementation using Volatility Adjusted Momentum Scores (VAMS), without downside volatility penalization."""
 
     signal_generator_class = VAMSSignalGenerator
+    volatility_targeting_class = NoVolatilityTargeting
 
     @classmethod
     def tunable_parameters(cls) -> set[str]:
