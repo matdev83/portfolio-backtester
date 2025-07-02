@@ -48,7 +48,7 @@ class TestPositionSizer(unittest.TestCase):
         pd.testing.assert_frame_equal(result_weights, expected_weights)
 
     def _create_price_data(self):
-        dates = pd.date_range('2020-01-31', periods=5, freq='M')
+        dates = pd.date_range('2020-01-31', periods=5, freq='ME')
         prices = pd.DataFrame({
             'A': [100, 110, 132, 145, 160],
             'B': [100, 102, 104, 105, 107],
