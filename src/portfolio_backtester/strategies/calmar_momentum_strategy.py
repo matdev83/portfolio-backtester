@@ -85,7 +85,7 @@ class CalmarMomentumStrategy(BaseStrategy):
         """Generates trading signals based on the Calmar momentum strategy."""
         rolling_window = self.strategy_config.get('rolling_window', 6)
         calmar_feature_name = f"calmar_{rolling_window}m"
-        rolling_calmar = features[calmar_feature_name][prices.columns]
+        rolling_calmar = features[calmar_feature_name]
 
         weights = pd.DataFrame(index=prices.index, columns=prices.columns, dtype=float)
         w_prev = pd.Series(index=prices.columns, dtype=float).fillna(0.0)

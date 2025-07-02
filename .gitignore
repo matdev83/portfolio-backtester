@@ -96,10 +96,6 @@ ipython_config.py
 #   commonly ignored for libraries.
 #   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file
 # poetry.lock
-
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-# pdm.lock
 # .pdm.toml
 
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow
@@ -147,3 +143,8 @@ cython_debug/
 
 # Project-specific cache directories
 cache/
+
+# Added by Gemini
+optuna_studies.db
+tmp/
+tests/universe/

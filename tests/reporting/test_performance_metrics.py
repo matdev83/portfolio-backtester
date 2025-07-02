@@ -43,7 +43,7 @@ class TestPerformanceMetrics(unittest.TestCase):
             with self.assertWarns(RuntimeWarning):
                 metrics = calculate_metrics(zero_vol_rets, self.bench_rets, self.bench_ticker_name)
         
-        self.assertEqual(metrics['Sharpe'], 0) # Should be 0 as ann_vol is not 0
+        self.assertTrue(np.isnan(metrics['Sharpe'])) # Should be NaN as ann_vol is 0
 
 if __name__ == '__main__':
     unittest.main()

@@ -38,13 +38,47 @@ python src/portfolio_backtester/backtester.py
     *   **Choices:** `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
     *   **Default:** `INFO`
     *   **Description:** Controls the verbosity of the backtester's output.
-*   `--portfolios`: Comma-separated list of portfolio scenario names to run.
-    *   **Example:** `--portfolios "Momentum,Sharpe Momentum,VAMS Momentum"`
-    *   **Description:** Allows you to select specific strategies to compare. The 'Unfiltered' portfolio and the benchmark (SPX) will always be included in the results, with the benchmark appearing as the rightmost column in the statistics table.
+*   `--mode`: Mode to run the backtester in.
+    *   **Choices:** `backtest`, `optimize`
+    *   **Required:** Yes
+    *   **Description:** `backtest` for single scenario backtesting, `optimize` for walk-forward optimization.
+*   `--scenario-name`: Name of the scenario to run/optimize from `BACKTEST_SCENARIOS` in `src/portfolio_backtester/config.py`.
+    *   **Required:** Yes
+    *   **Description:** Specifies which predefined scenario configuration to use.
+*   `--study-name`: Name of the Optuna study to use.
+    *   **Description:** In `optimize` mode, this names the study where optimization results are saved. In `backtest` mode, if provided, it loads the best parameters from this study; otherwise, default parameters from the scenario are used.
+*   `--random-seed`: Set a random seed for reproducibility.
+    *   **Default:** `None`
+*   `--optimize-min-positions`: Minimum number of positions to consider during optimization of `num_holdings`.
+    *   **Default:** `10`
+*   `--optimize-max-positions`: Maximum number of positions to consider during optimization of `num_holdings`.
+    *   **Default:** `30`
+*   `--top-n-params`: Number of top performing parameter values to keep per grid.
+    *   **Default:** `3`
+*   `--n-jobs`: Parallel worker processes to use.
+    *   **Default:** `8` (`-1` means all cores).
+*   `--early-stop-patience`: Stop optimization after N successive ~zero-return evaluations.
+    *   **Default:** `10`
+*   `--optuna-trials`: Maximum trials per WFA slice.
+    *   **Default:** `200`
+*   `--optuna-timeout-sec`: Time budget per WFA slice (seconds).
+    *   **Default:** `None` (no timeout)
 
-Example:
+### Examples:
+
+**1. Run an optimization for a scenario:**
 ```bash
-python src/portfolio_backtester/backtester.py --portfolios "Momentum,Sharpe Momentum" --log-level DEBUG
+python src/portfolio_backtester/backtester.py --mode optimize --scenario-name "Sharpe_Momentum" --study-name "sharpe_momentum_opt_run_1" --optuna-trials 100 --optuna-timeout-sec 3600
+```
+
+**2. Run a backtest using optimized parameters from a study:**
+```bash
+python src/portfolio_backtester/backtester.py --mode backtest --scenario-name "Sharpe_Momentum" --study-name "sharpe_momentum_opt_run_1"
+```
+
+**3. Run a backtest using default parameters for a scenario:**
+```bash
+python src/portfolio_backtester/backtester.py --mode backtest --scenario-name "Momentum_Unfiltered"
 ```
 
 The tool for downloading SPY holdings can be run with:
@@ -90,6 +124,12 @@ python -m portfolio_backtester.spy_holdings \
 ```
 
 The script saves the file inside the top-level `data/` directory (never in `src/data`).  Internally it automatically forward-fills missing business days so every ticker has a continuous daily weight series.
+
+### Optimizer Configuration
+
+The default search space for optimizable parameters is now defined in `src/portfolio_backtester/config.py` within the `OPTIMIZER_PARAMETER_DEFAULTS` dictionary. This centralizes the configuration and makes it easier to manage.
+
+Individual scenarios in `BACKTEST_SCENARIOS` can still override these defaults by specifying `min_value`, `max_value`, and `step` within their `optimize` section.
 
 ## Development
 

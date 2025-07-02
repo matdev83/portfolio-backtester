@@ -322,8 +322,22 @@ def ssga_daily(date: Union[dt.date, pd.Timestamp]):
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / f"{date:%Y-%m-%d}.parquet"
 
-    # Check cache
+    # ------------------------------------------------------------------
+    # Cache logic
+    #   • For snapshots older than *yesterday* we treat the parquet as immutable
+    #     and always reuse it, regardless of its file timestamp. Historical
+    #     Wayback files never change.
+    #   • For today/very recent dates (<48 h old) we keep the 6-hour freshness
+    #     window so a rerun during the trading day can pick up the latest
+    #     basket.
+    # ------------------------------------------------------------------
+
     if cache_file.exists():
+        # Snapshots older than one week never change – always reuse the local parquet
+        if (pd.Timestamp.today() - date) > pd.Timedelta(days=7):
+            return pd.read_parquet(cache_file)
+
+        # Recent snapshot (≤7 days old) – honour the 6-hour freshness threshold
         mod_time = dt.datetime.fromtimestamp(cache_file.stat().st_mtime)
         if (dt.datetime.now() - mod_time) < dt.timedelta(hours=6):
             return pd.read_parquet(cache_file)
@@ -392,7 +406,21 @@ def ssga_daily(date: Union[dt.date, pd.Timestamp]):
     df["date"] = pd.Timestamp(date)
     df["ticker"] = df["ticker"].str.upper()
 
-    result_df = df[["date", "ticker", "weight_pct", "shares", "market_value"]]
+    result_df = df[["date", "ticker", "weight_pct", "shares", "market_value"]].copy()
+
+    # ------------------------------------------------------------------
+    # Sanitise *weight_pct* – convert any string like "2.41%" → 2.41 (float)
+    # ------------------------------------------------------------------
+    if result_df["weight_pct"].dtype == object:
+        clean = (
+            result_df["weight_pct"].astype(str)
+                      .str.strip()
+                      .str.rstrip("%")
+                      .replace({"": pd.NA})
+        )
+        result_df.loc[:, "weight_pct"] = clean
+
+    result_df.loc[:, "weight_pct"] = pd.to_numeric(result_df["weight_pct"], errors="coerce")
 
     # Success message for live fetch already logged above for Wayback; do it for direct fetch now.
     if date == pd.Timestamp.today() and last_status == 200:
@@ -472,10 +500,11 @@ def _process_sec_filing(filing, start_date, end_date):
             elif isinstance(it, dict):  # Old format: dictionary
                 security_type = it.get("security_type", "").lower()
                 if security_type == "common stock":
+                    pct = it.get("pct_nav") if it.get("pct_nav") is not None else it.get("pct_value")
                     rows.append((
                         date,
                         it.get("identifier", "").upper(),
-                        it.get("pct_nav"),
+                        pct,
                         it.get("shares"),
                         it.get("value")
                     ))
@@ -642,22 +671,17 @@ def _history_cache_file(start: dt.date, end: dt.date) -> Path:
 
 
 def _load_history_from_cache(start: pd.Timestamp, end: pd.Timestamp) -> Optional[pd.DataFrame]:
-    """Load aggregate history DataFrame from cache if present.
-
-    The original implementation treated local parquet files older than
-    ``_CACHE_EXPIRY_HOURS`` as stale and triggered a full redownload that can
-    take several minutes (or hang on a machine without network access).
-
-    For typical back-tests the *historical* holdings do **not** change once
-    downloaded, so we treat the cache as immutable and load it regardless of
-    modification time. If users really need to refresh the data they can
-    delete the parquet manually or call the CLI with ``--update``.
-    """
+    """Load aggregate history DataFrame from cache if present and it fully covers the requested date range."""
     cache_file = _history_cache_file(start, end)
     if cache_file.exists():
         logger.info(f"Loading aggregated holdings history from cache: {cache_file}")
         try:
-            return pd.read_parquet(cache_file)
+            df = pd.read_parquet(cache_file)
+            # Verify the cached data covers the required date range
+            if not df.empty and df['date'].min() <= start and df['date'].max() >= end:
+                return df
+            else:
+                logger.warning(f"Cached data in {cache_file} does not cover the full range {start}-{end}. Ignoring cache.")
         except Exception as exc:
             logger.warning(f"Failed to read cached parquet {cache_file}: {exc} – ignoring cache.")
     return None
@@ -920,7 +944,7 @@ def reset_history_cache() -> None:
     _HISTORY_DF = None
 
     # Clear LRU caches so next call reloads with the updated DataFrame
-    get_top_weight_sp500_components.cache_clear()  # type: ignore[attr-defined]
+    # get_top_weight_sp500_components.cache_clear()  # type: ignore[attr-defined]
     _get_top_weight_sp500_components_cached.cache_clear()  # type: ignore[attr-defined]
 
 

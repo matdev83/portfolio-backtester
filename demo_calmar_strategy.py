@@ -14,11 +14,11 @@ from portfolio_backtester.strategies.calmar_momentum_strategy import CalmarMomen
 def demo_calmar_strategy():
     """Demonstrate the Calmar Momentum Strategy with sample data."""
     
-    print("🚀 Calmar Momentum Strategy Demo")
+    print("Calmar Momentum Strategy Demo")
     print("=" * 50)
     
     # Create sample data
-    print("📊 Creating sample data...")
+    print("Creating sample data...")
     dates = pd.date_range('2020-01-01', periods=24, freq='ME')
     
     # Create 5 stocks with different risk/return profiles
@@ -59,7 +59,7 @@ def demo_calmar_strategy():
     print(f"   Date range: {data.index[0].strftime('%Y-%m-%d')} to {data.index[-1].strftime('%Y-%m-%d')}")
     
     # Configure strategy
-    print("\n⚙️  Configuring Calmar Momentum Strategy...")
+    print("\nConfiguring Calmar Momentum Strategy...")
     strategy_config = {
         'rolling_window': 6,           # 6-month rolling window
         'top_decile_fraction': 0.4,    # Top 40% (2 out of 5 stocks)
@@ -98,7 +98,7 @@ def demo_calmar_strategy():
             print(f"     {stock}: {weight:.1%}")
     
     # Show some statistics
-    print("\n📋 Strategy Statistics:")
+    print("\nStrategy Statistics:")
     print(f"   Total periods: {len(weights)}")
     print(f"   Periods with positions: {(weights.sum(axis=1) > 0).sum()}")
     print(f"   Average number of holdings: {(weights > 0).sum(axis=1).mean():.1f}")
@@ -108,7 +108,7 @@ def demo_calmar_strategy():
     portfolio_returns = (weights.shift(1) * returns).sum(axis=1).dropna()
     benchmark_returns = benchmark_data.pct_change().dropna()
     
-    print("\n🎯 Performance Summary:")
+    print("\nPerformance Summary:")
     print(f"   Portfolio Total Return: {(1 + portfolio_returns).prod() - 1:.1%}")
     print(f"   Benchmark Total Return: {(1 + benchmark_returns).prod() - 1:.1%}")
     print(f"   Portfolio Volatility: {portfolio_returns.std() * np.sqrt(12):.1%}")

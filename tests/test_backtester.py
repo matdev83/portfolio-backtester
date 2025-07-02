@@ -46,6 +46,9 @@ class TestBacktester(unittest.TestCase):
                 self.n_jobs = 1
                 self.optuna_trials = 10  # Add a small number for testing
                 self.optuna_timeout_sec = 60
+                self.study_name = "test_study" # Add study_name for testing
+                self.random_seed = None # Add random_seed for testing
+                self.storage_url = None
         self.mock_args = MockArgs()
         self.backtester = Backtester(self.global_config, self.scenarios, self.mock_args)
         
@@ -59,7 +62,11 @@ class TestBacktester(unittest.TestCase):
         )
         # Pre-compute features for the mock data
         strategy_registry = {"momentum": _resolve_strategy("momentum")}
+        # Manually add all possible lookback months to required features for testing
+        from src.portfolio_backtester.feature import Momentum
         required_features = get_required_features_from_scenarios(self.scenarios, strategy_registry)
+        for i in range(1, 13):
+            required_features.add(Momentum(lookback_months=i))
         self.backtester.features = precompute_features(self.mock_data, required_features, self.mock_data[self.global_config["benchmark"]])
 
     def test_walk_forward_optimization_runs(self):
@@ -67,13 +74,13 @@ class TestBacktester(unittest.TestCase):
         # Pre-calculate returns for the mock data
         rets_full = self.mock_data.pct_change().fillna(0)
         
-        self.backtester.run_optimization(self.scenarios[0], self.mock_data, rets_full)
+        self.backtester._run_optimize_mode(self.scenarios[0], self.mock_data, self.mock_data, rets_full)
         
         # Check that results are generated
-        self.assertIn("Test_Momentum_WFO (Walk-Forward Optimized)", self.backtester.results)
+        self.assertIn("Test_Momentum_WFO (Optimized)", self.backtester.results)
         
         # Check that the returns are a pandas Series
-        result_data = self.backtester.results["Test_Momentum_WFO (Walk-Forward Optimized)"]
+        result_data = self.backtester.results["Test_Momentum_WFO (Optimized)"]
         self.assertIsInstance(result_data["returns"], pd.Series)
         
         # Check that the returns are not empty

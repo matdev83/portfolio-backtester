@@ -33,7 +33,8 @@ dependencies = [
     "pyarrow",
     "radon",
     "xenon",
-    "optuna>=4.4"
+    "optuna>=4.4",
+    "pandas-datareader"
 ]
 
 [project.urls]

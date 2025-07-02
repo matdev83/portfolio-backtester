@@ -43,15 +43,37 @@ class MomentumStrategy(BaseStrategy):
 
         return features
 
+    def __init__(self, strategy_config):
+        # Ensure all tunable parameters are present in the config with sensible defaults
+        defaults = {
+            "lookback_months": 6,
+            "num_holdings": None,
+            "top_decile_fraction": 0.1,
+            "smoothing_lambda": 0.5,
+            "leverage": 1.0,
+            "long_only": True,
+            "sma_filter_window": None,
+            "derisk_days_under_sma": 10,
+        }
+        for k, v in defaults.items():
+            strategy_config.setdefault(k, v)
+        # Convert long_only to bool if it's 0/1
+        if "long_only" in strategy_config:
+            strategy_config["long_only"] = bool(strategy_config["long_only"])
+        self.strategy_config = strategy_config
+        super().__init__(strategy_config)
+
     def _calculate_candidate_weights(self, look: pd.Series) -> pd.Series:
         """Calculates initial candidate weights based on momentum."""
-        if self.strategy_config.get('num_holdings'):
-            num_holdings = self.strategy_config['num_holdings']
+        num_holdings = self.strategy_config.get('num_holdings', None)
+        # Only use num_holdings if it is not None and > 0, otherwise use top_decile_fraction
+        if num_holdings is not None and num_holdings > 0:
+            nh = int(num_holdings)
         else:
-            num_holdings = max(int(np.ceil(self.strategy_config.get('top_decile_fraction', 0.1) * look.count())), 1)
+            nh = max(int(np.ceil(self.strategy_config.get('top_decile_fraction', 0.1) * look.count())), 1)
 
-        winners = look.nlargest(num_holdings).index
-        losers = look.nsmallest(num_holdings).index
+        winners = look.nlargest(nh).index
+        losers = look.nsmallest(nh).index
 
         cand = pd.Series(index=look.index, dtype=float).fillna(0.0)
         if len(winners) > 0:
@@ -93,7 +115,8 @@ class MomentumStrategy(BaseStrategy):
         # --- Immediate derisk logic ---
         sma_window = self.strategy_config.get('sma_filter_window')
         derisk_days = self.strategy_config.get('derisk_days_under_sma', 10)
-        if sma_window:
+        use_derisk = sma_window and derisk_days > 0
+        if use_derisk:
             sma_feature_name = f"benchmark_sma_{sma_window}m"
             risk_on_series = features[sma_feature_name].reindex(prices.index, fill_value=1)
             # Count consecutive days under SMA
@@ -106,7 +129,6 @@ class MomentumStrategy(BaseStrategy):
                     under_sma_counter += 1
                     if under_sma_counter > derisk_days:
                         derisk_flags.loc[date] = True
-            # Now, in the main loop, use derisk_flags
         else:
             derisk_flags = pd.Series(False, index=prices.index)
 
@@ -123,7 +145,7 @@ class MomentumStrategy(BaseStrategy):
             w_new = self._apply_leverage_and_smoothing(cand, w_prev)
 
             # Immediate derisk if triggered
-            if derisk_flags.loc[date]:
+            if use_derisk and derisk_flags.loc[date]:
                 w_new[:] = 0.0
 
             weights.loc[date] = w_new

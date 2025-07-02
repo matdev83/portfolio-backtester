@@ -25,6 +25,15 @@ class BaseStrategy(ABC):
         """
         return set()
 
+    def get_universe(self, global_config: dict) -> list[tuple[str, float]]:
+        """
+        Returns the list of (ticker, weight_in_index) tuples for the strategy.
+        By default, it returns the universe from the global config with a default weight of 1.0.
+        Concrete strategies can override this to provide a custom universe and weights.
+        """
+        default_universe = global_config.get("universe", [])
+        return [(ticker, 1.0) for ticker in default_universe]
+
     # ------------------------------------------------------------------ #
     # Optimiser-introspection hook                                       #
     # ------------------------------------------------------------------ #
