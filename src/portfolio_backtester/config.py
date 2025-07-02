@@ -1,5 +1,3 @@
-from datetime import datetime
-
 # =============================================================================
 # MAIN CONFIGURATION
 # =============================================================================
@@ -461,3 +459,37 @@ OPTIMIZER_PARAMETER_DEFAULTS = {
   "sizer_corr_window": {"type": "int", "low": 2, "high": 12, "step": 1},
   "long_only": {"type": "int", "low": 0, "high": 1, "step": 1}
 }
+
+
+def populate_default_optimizations():
+    """Ensure each scenario has an optimize section covering all tunable
+    parameters of its strategy and dynamic position sizer."""
+    from .utils import _resolve_strategy
+
+    sizer_param_map = {
+        "rolling_sharpe": "sizer_sharpe_window",
+        "rolling_sortino": "sizer_sortino_window",
+        "rolling_beta": "sizer_beta_window",
+        "rolling_benchmark_corr": "sizer_corr_window",
+    }
+
+    for scen in BACKTEST_SCENARIOS:
+        if "optimize" not in scen:
+            scen["optimize"] = []
+        existing = {opt["parameter"] for opt in scen["optimize"]}
+
+        strat_cls = _resolve_strategy(scen["strategy"])
+        if strat_cls is not None:
+            for param in strat_cls.tunable_parameters():
+                if param not in existing:
+                    scen["optimize"].append({"parameter": param})
+
+        position_sizer_name = scen.get("position_sizer")
+        if position_sizer_name:
+            sizer_param = sizer_param_map.get(position_sizer_name)
+            if sizer_param and sizer_param not in existing:
+                scen["optimize"].append({"parameter": sizer_param})
+
+
+# Populate optimization lists on import
+populate_default_optimizations()
