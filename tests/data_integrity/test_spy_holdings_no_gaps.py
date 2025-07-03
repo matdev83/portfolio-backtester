@@ -38,7 +38,7 @@ def test_spy_holdings_coverage_no_gaps():
     spy_holdings.reset_history_cache()
     spy_holdings._HISTORY_DF = df.copy()  # type: ignore[attr-defined]  # noqa: SLF001
 
-    start = pd.Timestamp("2004-01-02")  # first business day in 2004
+    start = pd.Timestamp("2015-03-16")  # first business day with SSGA data
     end = df["date"].max()
 
     # Fast vectorised check: compare unique dates
