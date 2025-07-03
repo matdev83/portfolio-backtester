@@ -142,7 +142,7 @@ dmypy.json
 cython_debug/
 
 # Project-specific cache directories
-cache/
+#cache/
 plots/
 
 # Added by Gemini
