@@ -89,28 +89,27 @@ class CusipMappingDB:
         if ticker in self._cache:
             return self._cache[ticker]
 
-        # Attempt live lookup – only OpenFIGI for now
-        cusip, name = self._lookup_openfigi(ticker, throttle=throttle)
-        if cusip:
-            self._append_to_db(ticker, cusip, name or "", source="openfigi")
-            self._cache[ticker] = (cusip, name or "")
-            return cusip, name or ""
+        lookup_methods = [
+            ("openfigi", self._lookup_openfigi),
+            ("edgar", self._lookup_edgar),
+            ("duckduckgo", self._lookup_duckduckgo),
+        ]
 
-        # EDGAR fallback – scrape latest filing HTML for CUSIP
-        cusip, name = self._lookup_edgar(ticker, throttle=throttle)
-        if cusip:
-            self._append_to_db(ticker, cusip, name or "", source="edgar")
-            self._cache[ticker] = (cusip, name or "")
-            return cusip, name or ""
+        for source, lookup_function in lookup_methods:
+            cusip, name = lookup_function(ticker, throttle=throttle)
+            if cusip:
+                return self._cache_and_store_mapping(ticker, cusip, name or "", source)
 
-        # Web search fallback – DuckDuckGo HTML scrape
-        cusip, name = self._lookup_duckduckgo(ticker, throttle=throttle)
-        if cusip:
-            self._append_to_db(ticker, cusip, name or "", source="duckduckgo")
-            self._cache[ticker] = (cusip, name or "")
-            return cusip, name or ""
-
+        logger.warning(f"CUSIP not found for ticker {ticker} after trying all lookup methods.")
         raise KeyError(f"CUSIP not found for ticker {ticker}")
+
+    def _cache_and_store_mapping(self, ticker: str, cusip: str, name: str, source: str) -> Tuple[str, str]:
+        """Caches the resolved mapping and appends it to the live DB."""
+        self._append_to_db(ticker, cusip, name, source=source)
+        self_cache_key = ticker.upper() # Ensure cache key is uppercase
+        self._cache[self_cache_key] = (cusip, name)
+        logger.info(f"Resolved and cached {ticker} -> {cusip} (Name: '{name}') via {source}.")
+        return cusip, name
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -159,33 +158,63 @@ class CusipMappingDB:
             return None, None
 
         url = "https://api.openfigi.com/v3/mapping"
+        payloads = [
+            [{"idType": "TICKER", "idValue": ticker, "exchCode": "US"}],  # Prioritize US exchanges
+            [{"idType": "TICKER", "idValue": ticker}]  # Fallback to any exchange
+        ]
+
+        for payload in payloads:
+            try:
+                response_data = self._query_openfigi_api(url, payload)
+                # OpenFIGI returns a list of results for the batch query.
+                # We sent one item, so we expect one item in the response list.
+                if response_data and isinstance(response_data, list) and response_data[0].get("data"):
+                    for security_info in response_data[0]["data"]:
+                        cusip = security_info.get("cusip")
+                        # Prioritize more descriptive names
+                        name = security_info.get("securityDescription") or \
+                               security_info.get("name") or \
+                               security_info.get("securityName") # Less common but seen
+
+                        if cusip and 8 <= len(cusip) <= 9:
+                            logger.debug(f"OpenFIGI found CUSIP {cusip} for ticker {ticker}")
+                            time.sleep(throttle)  # Respect API rate limits
+                            return cusip, name
+                elif response_data and isinstance(response_data, list) and "warning" in response_data[0]:
+                    logger.debug(f"OpenFIGI warning for {ticker} with payload {payload}: {response_data[0]['warning']}")
+
+            except requests.RequestException as e:
+                logger.warning(f"OpenFIGI API request failed for {ticker} with payload {payload}: {e}")
+            except Exception as e: # Catch other potential errors like JSON parsing
+                logger.error(f"Error processing OpenFIGI response for {ticker} with payload {payload}: {e}")
+
+        logger.debug(f"CUSIP not found via OpenFIGI for ticker {ticker}")
+        return None, None
+
+    def _query_openfigi_api(self, url: str, payload: list) -> Optional[list]:
+        """Helper to perform the actual OpenFIGI API call."""
+        if not OPENFIGI_API_KEY: # Should be checked before calling, but as a safeguard
+            logger.debug("OPENFIGI_API_KEY missing – skipping API query.")
+            return None
+
         headers = {
             "Content-Type": "application/json",
             "X-OPENFIGI-APIKEY": OPENFIGI_API_KEY,
         }
-
-        def _query(payload):
+        try:
             resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=10)
-            resp.raise_for_status()
+            resp.raise_for_status()  # Raises HTTPError for bad responses (4XX or 5XX)
             return resp.json()
-
-        payload_us = [{"idType": "TICKER", "idValue": ticker, "exchCode": "US"}]
-        payload_any = [{"idType": "TICKER", "idValue": ticker}]
-        responses = []
-        for pl in (payload_us, payload_any):
-            try:
-                responses.append(_query(pl))
-            except Exception:
-                continue
-        for data in responses:
-            if isinstance(data, list) and data and "data" in data[0] and data[0]["data"]:
-                rec = data[0]["data"][0]
-                cusip = rec.get("cusip")
-                name = rec.get("securityDescription") or rec.get("securityName") or rec.get("securityDescription") or rec.get("securityName") or rec.get("name")
-                if cusip and 8 <= len(cusip) <= 9:
-                    time.sleep(throttle)
-                    return cusip, name
-        return None, None
+        except requests.exceptions.Timeout:
+            logger.warning(f"OpenFIGI API request timed out for payload: {payload}")
+        except requests.exceptions.HTTPError as http_err:
+            # Log specific HTTP errors, e.g., 401 Unauthorized, 429 Too Many Requests
+            logger.warning(f"OpenFIGI API HTTP error for payload {payload}: {http_err.response.status_code} - {http_err.response.text}")
+        except requests.RequestException as req_err: # Catch other request-related errors
+            logger.warning(f"OpenFIGI API request failed for payload {payload}: {req_err}")
+        except json.JSONDecodeError as json_err:
+            logger.error(f"Failed to decode JSON response from OpenFIGI for payload {payload}: {json_err}")
+        return None
 
     # --------------------------------------------------------------
     # DuckDuckGo last-resort lookup

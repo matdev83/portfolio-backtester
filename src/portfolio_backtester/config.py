@@ -508,11 +508,26 @@ OPTIMIZER_PARAMETER_DEFAULTS = {
 }
 
 
+def _get_strategy_tunable_params(strategy_name: str) -> set[str]:
+    """Resolves strategy and returns its tunable parameters."""
+    from .utils import _resolve_strategy # Local import to avoid circular dependency issues at module load time
+    strat_cls = _resolve_strategy(strategy_name)
+    if strat_cls:
+        return set(strat_cls.tunable_parameters())
+    return set()
+
+def _get_sizer_tunable_param(sizer_name: str | None, sizer_param_map: dict) -> str | None:
+    """Returns the tunable parameter name for a given sizer, if applicable."""
+    if sizer_name:
+        return sizer_param_map.get(sizer_name)
+    return None
+
 def populate_default_optimizations():
     """Ensure each scenario has an optimize section covering all tunable
-    parameters of its strategy and dynamic position sizer."""
-    from .utils import _resolve_strategy
-
+    parameters of its strategy and dynamic position sizer.
+    Min/max/step values for these parameters are sourced from
+    OPTIMIZER_PARAMETER_DEFAULTS at runtime by the optimizer.
+    """
     sizer_param_map = {
         "rolling_sharpe": "sizer_sharpe_window",
         "rolling_sortino": "sizer_sortino_window",
@@ -521,33 +536,33 @@ def populate_default_optimizations():
         "rolling_downside_volatility": "sizer_dvol_window",
     }
 
-    for scen in BACKTEST_SCENARIOS:
-        if "optimize" not in scen:
-            scen["optimize"] = []
+    for scenario_config in BACKTEST_SCENARIOS:
+        # Ensure "optimize" list exists
+        if "optimize" not in scenario_config:
+            scenario_config["optimize"] = []
 
-        # Ensure optimization_metric is present if optimize section exists
-        if "optimize" in scen and "optimization_metric" not in scen:
-            # Default to "Calmar" or another suitable default if not inferable
-            # For now, this logic assumes it's added manually or by a previous step
-            # If we need to infer it, we'd look at the first param's old metric
-            pass # We expect optimization_metric to be set by the refactoring
+        # Note: 'optimization_metric' or 'optimization_targets' are expected to be
+        # manually defined in the scenario if optimization is intended.
+        # This function focuses on populating the 'parameter' names.
 
-        existing_params = {opt["parameter"] for opt in scen["optimize"]}
+        optimized_parameters_in_scenario = {opt_spec["parameter"] for opt_spec in scenario_config["optimize"]}
 
-        strat_cls = _resolve_strategy(scen["strategy"])
-        if strat_cls is not None:
-            for param in strat_cls.tunable_parameters():
-                if param not in existing_params:
-                    # Add parameter without metric, as metric is scenario-level
-                    scen["optimize"].append({"parameter": param})
+        # Get tunable parameters from the strategy
+        strategy_params_to_add = _get_strategy_tunable_params(scenario_config["strategy"])
 
-        position_sizer_name = scen.get("position_sizer")
-        if position_sizer_name:
-            sizer_param = sizer_param_map.get(position_sizer_name)
-            if sizer_param and sizer_param not in existing_params:
-                # Add sizer parameter without metric
-                scen["optimize"].append({"parameter": sizer_param})
+        # Get tunable parameter from the sizer, if any
+        sizer_param_to_add = _get_sizer_tunable_param(scenario_config.get("position_sizer"), sizer_param_map)
 
+        # Combine all potential parameters to be added
+        all_potential_params = strategy_params_to_add
+        if sizer_param_to_add:
+            all_potential_params.add(sizer_param_to_add)
+
+        # Add missing parameters to the scenario's "optimize" list
+        for param_name in all_potential_params:
+            if param_name not in optimized_parameters_in_scenario:
+                scenario_config["optimize"].append({"parameter": param_name})
+                # Default min/max/step will be picked up from OPTIMIZER_PARAMETER_DEFAULTS later
 
 # Populate optimization lists on import
 populate_default_optimizations()

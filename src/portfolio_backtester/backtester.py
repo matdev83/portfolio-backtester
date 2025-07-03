@@ -14,7 +14,7 @@ import os
 import optuna
 from optuna.storages import JournalStorage
 from optuna.storages.journal import JournalFileBackend, JournalFileOpenLock
-from typing import Dict, Any, Tuple
+from typing import Any, Dict, Tuple, List
 from functools import reduce
 from operator import mul
 from datetime import datetime
@@ -354,125 +354,27 @@ class Backtester:
         study_name_base = f"{scenario_config['name']}_walk_forward"
         if self.args.study_name:
             study_name_base = f"{self.args.study_name}_{study_name_base}"
-        study_name = f"{study_name_base}_seed_{self.random_state}" if self.args.random_seed is not None else study_name_base
         
-        # --- Sampler selection ---
-        optimization_specs = scenario_config.get("optimize", [])
-        param_types = [
-            self.global_config.get("optimizer_parameter_defaults", {}).get(spec["parameter"], {}).get("type")
-            for spec in optimization_specs
-        ]
+        study, n_trials = self._setup_optuna_study(scenario_config, storage, study_name_base)
 
-        is_grid_search = all(pt == "int" for pt in param_types)
-        
-        if is_grid_search and self.n_jobs == 1:
-            search_space = {}
-            for spec in optimization_specs:
-                param_name = spec["parameter"]
-                low = spec["min_value"]
-                high = spec["max_value"]
-                step = spec.get("step", 1)
-                search_space[param_name] = list(range(low, high + 1, step))
-            
-            sampler = optuna.samplers.GridSampler(search_space)
-            n_trials = reduce(mul, [len(v) for v in search_space.values()], 1)
-            logger.info(f"Using GridSampler for optimization with search space: {search_space}. Total trials: {n_trials}")
-        else:
-            if is_grid_search and self.n_jobs > 1:
-                logger.warning("Grid search is not supported with n_jobs > 1. Using TPESampler instead.")
-            sampler = optuna.samplers.TPESampler(seed=self.random_state)
-            n_trials = self.args.optuna_trials
-            logger.info("Using TPESampler for optimization.")
-
-        pruner = optuna.pruners.MedianPruner()
-
-        if self.args.random_seed is not None: # If a random seed is provided, force a new study
-            # Check if a study with this name already exists and delete it to ensure a fresh start
-            try:
-                existing_studies = optuna.study.get_all_study_summaries(storage=storage)
-                for s in existing_studies:
-                    if s.study_name == study_name:
-                        logger.info(f"Deleting existing Optuna study '{study_name}' to ensure a fresh start with random seed.")
-                        optuna.delete_study(study_name=study_name, storage=storage)
-                        break
-            except Exception as e:
-                logger.warning(f"Could not check for or delete existing Optuna study '{study_name}': {e}")
-
-        # Determine study direction(s) based on scenario config
-        optimization_targets_config = scenario_config.get("optimization_targets")
-
-        study_directions = []
-        if optimization_targets_config:
-            # Multi-objective
-            for target in optimization_targets_config:
-                direction = target.get("direction", "maximize").lower()
-                if direction not in ["maximize", "minimize"]:
-                    logger.warning(f"Invalid direction '{direction}' for target '{target['name']}'. Defaulting to 'maximize'.")
-                    direction = "maximize"
-                study_directions.append(direction)
-        else:
-            # Single-objective (or default if nothing specified)
-            # Optuna's default direction is 'minimize', but our historical implicit behavior was 'maximize'.
-            # The build_objective function defaults to "Calmar" which implies maximization.
-            # If optimization_metric is specified, we assume 'maximize' unless specified otherwise (not currently supported).
-            study_directions.append("maximize") # Default to maximize for single objective as per old behavior
-
-        study = optuna.create_study(
-            study_name=study_name,
-            storage=storage,
-            sampler=sampler,
-            pruner=pruner,
-            directions=study_directions if len(study_directions) > 1 else None, # Optuna expects None for single objective, or a list for multi
-            direction=study_directions[0] if len(study_directions) == 1 else None, # Use 'direction' for single objective
-            load_if_exists=(self.args.random_seed is None) # Only load if no explicit random seed is provided
-        )
-
-        metrics_to_optimize = [t["name"] for t in optimization_targets_config] if optimization_targets_config else [scenario_config.get("optimization_metric", "Calmar")]
+        metrics_to_optimize = [t["name"] for t in scenario_config.get("optimization_targets", [])] or \
+                              [scenario_config.get("optimization_metric", "Calmar")]
         is_multi_objective = len(metrics_to_optimize) > 1
 
+        # Define the objective function for Optuna
         def objective(trial: optuna.trial.Trial):
-            params = scenario_config["strategy_params"].copy()
-            for opt_spec in optimization_specs:
-                pname = opt_spec["parameter"]
-                opt_def = self.global_config.get("optimizer_parameter_defaults", {}).get(pname, {})
-                ptype = opt_def.get("type")
-                low = float(opt_spec.get("min_value", opt_def.get("low")))
-                high = float(opt_spec.get("max_value", opt_def.get("high")))
-                step = float(opt_spec.get("step", opt_def.get("step", 1)))
-                if ptype == "int":
-                    params[pname] = trial.suggest_int(pname, int(low), int(high), step=int(step))
-                elif ptype == "float":
-                    log = opt_spec.get("log", opt_def.get("log", False))
-                    params[pname] = trial.suggest_float(pname, low, high, step=step, log=log)
+            # Suggest parameters for the current trial
+            current_params = self._suggest_optuna_params(trial, scenario_config["strategy_params"], scenario_config.get("optimize", []))
 
-            scen_cfg = scenario_config.copy()
-            scen_cfg["strategy_params"] = params
+            # Create a scenario configuration for the current trial
+            trial_scenario_config = scenario_config.copy()
+            trial_scenario_config["strategy_params"] = current_params
 
-            metric_sums = np.zeros(len(metrics_to_optimize))
-
-            for (tr_start, tr_end, te_start, te_end) in windows:
-                m_slice = monthly_data.loc[tr_start:te_end]
-                d_slice = daily_data.loc[tr_start:te_end]
-                r_slice = rets_full.loc[tr_start:te_end]
-                f_slice = {}
-                if self.features:
-                    f_slice = {n: f.loc[tr_start:te_end] for n, f in self.features.items()}
-
-                rets = self.run_scenario(scen_cfg, m_slice, d_slice, r_slice, f_slice, verbose=False)
-
-                test_rets = rets.loc[te_start:te_end]
-                bench_ser = d_slice[self.global_config["benchmark"]].loc[te_start:te_end]
-                bench_rets = bench_ser.pct_change(fill_method=None).fillna(0)
-                metrics = calculate_metrics(test_rets, bench_rets, self.global_config["benchmark"])
-                metric_sums += np.array([metrics.get(m, np.nan) for m in metrics_to_optimize], dtype=float)
-
-            metric_avgs = metric_sums / len(windows)
-            metric_avgs = np.where(np.isfinite(metric_avgs), metric_avgs, float("nan"))
-
-            if is_multi_objective:
-                return tuple(metric_avgs)
-            else:
-                return metric_avgs[0]
+            # Evaluate parameters across all walk-forward windows
+            return self._evaluate_params_walk_forward(
+                trial_scenario_config, windows, monthly_data, daily_data, rets_full,
+                metrics_to_optimize, is_multi_objective
+            )
 
         with Progress(
             SpinnerColumn(),
@@ -510,6 +412,151 @@ class Backtester:
         logger.info(f"Best parameters found on training set: {study.best_params}")
         
         return optimal_params, study.best_trial.number # Return optimal_params and number of trials
+
+    def _setup_optuna_study(self, scenario_config, storage, study_name_base: str) -> Tuple[optuna.Study, int]:
+        """Sets up and returns an Optuna study object and the number of trials."""
+        study_name = f"{study_name_base}_seed_{self.random_state}" if self.args.random_seed is not None else study_name_base
+
+        optimization_specs = scenario_config.get("optimize", [])
+        param_types = [
+            self.global_config.get("optimizer_parameter_defaults", {}).get(spec["parameter"], {}).get("type")
+            for spec in optimization_specs
+        ]
+        is_grid_search = all(pt == "int" for pt in param_types)
+
+        n_trials_actual = self.args.optuna_trials
+        if is_grid_search and self.n_jobs == 1:
+            search_space = {
+                spec["parameter"]: list(range(spec["min_value"], spec["max_value"] + 1, spec.get("step", 1)))
+                for spec in optimization_specs
+            }
+            sampler = optuna.samplers.GridSampler(search_space)
+            n_trials_actual = reduce(mul, [len(v) for v in search_space.values()], 1)
+            logger.info(f"Using GridSampler with search space: {search_space}. Total trials: {n_trials_actual}")
+        else:
+            if is_grid_search and self.n_jobs > 1:
+                logger.warning("Grid search is not supported with n_jobs > 1. Using TPESampler instead.")
+            sampler = optuna.samplers.TPESampler(seed=self.random_state)
+            logger.info(f"Using TPESampler with {n_trials_actual} trials.")
+
+        pruner = optuna.pruners.MedianPruner()
+
+        if self.args.random_seed is not None:
+            try:
+                optuna.delete_study(study_name=study_name, storage=storage)
+                logger.info(f"Deleted existing Optuna study '{study_name}' for fresh start with random seed.")
+            except KeyError: # Study doesn't exist
+                pass
+            except Exception as e:
+                logger.warning(f"Could not delete existing Optuna study '{study_name}': {e}")
+
+        optimization_targets_config = scenario_config.get("optimization_targets", [])
+        study_directions = [t.get("direction", "maximize").lower() for t in optimization_targets_config] or ["maximize"]
+        for i, d in enumerate(study_directions):
+            if d not in ["maximize", "minimize"]:
+                logger.warning(f"Invalid direction '{d}' for target. Defaulting to 'maximize'.")
+                study_directions[i] = "maximize"
+
+        study = optuna.create_study(
+            study_name=study_name, storage=storage, sampler=sampler, pruner=pruner,
+            directions=study_directions if len(study_directions) > 1 else None,
+            direction=study_directions[0] if len(study_directions) == 1 else None,
+            load_if_exists=(self.args.random_seed is None)
+        )
+        return study, n_trials_actual
+
+    def _suggest_optuna_params(self, trial: optuna.trial.Trial, base_params: Dict[str, Any], opt_specs: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Suggests parameters for an Optuna trial based on optimization specifications."""
+        params = base_params.copy()
+        for spec in opt_specs:
+            pname = spec["parameter"]
+            opt_def = self.global_config.get("optimizer_parameter_defaults", {}).get(pname, {})
+            ptype = opt_def.get("type", spec.get("type")) # Fallback to spec type
+
+            low = spec.get("min_value", opt_def.get("low"))
+            high = spec.get("max_value", opt_def.get("high"))
+            step = spec.get("step", opt_def.get("step", 1 if ptype == "int" else None))
+            log = spec.get("log", opt_def.get("log", False))
+
+            if ptype == "int":
+                params[pname] = trial.suggest_int(pname, int(low), int(high), step=int(step) if step else 1)
+            elif ptype == "float":
+                params[pname] = trial.suggest_float(pname, float(low), float(high), step=float(step) if step else None, log=log)
+            else:
+                logger.warning(f"Unsupported parameter type '{ptype}' for {pname}. Skipping suggestion.")
+        return params
+
+    def _evaluate_params_walk_forward(self, scenario_config: Dict[str, Any], windows: list,
+                                     monthly_data: pd.DataFrame, daily_data: pd.DataFrame, rets_full: pd.DataFrame,
+                                     metrics_to_optimize: List[str], is_multi_objective: bool) -> Any:
+        """Evaluates a set of parameters across walk-forward windows."""
+        metric_sums = np.zeros(len(metrics_to_optimize))
+        num_valid_windows = 0
+
+        for (tr_start, tr_end, te_start, te_end) in windows:
+            # Slice data for the current window
+            m_slice = monthly_data.loc[tr_start:te_end]
+            d_slice = daily_data.loc[tr_start:te_end] # daily_data is used for benchmark in calculate_metrics
+            r_slice = rets_full.loc[tr_start:te_end]
+
+            f_slice = {n: f.loc[tr_start:te_end] for n, f in (self.features or {}).items() if tr_start <= f.index.min() and te_end >= f.index.max()}
+
+
+            # Run scenario for the current window's training and testing period combined
+            # The scenario internally might use only training data for signals if designed that way.
+            # For evaluation, we need returns over the test period.
+            window_returns = self.run_scenario(scenario_config, m_slice, d_slice, r_slice, f_slice, verbose=False)
+
+            if window_returns is None or window_returns.empty:
+                logger.warning(f"No returns generated for window {tr_start}-{te_end}. Skipping.")
+                continue
+
+            # Extract test period returns
+            test_rets = window_returns.loc[te_start:te_end]
+            if test_rets.empty:
+                logger.debug(f"Test returns empty for window {tr_start}-{te_end} with params {scenario_config['strategy_params']}.")
+                # For safety, if test_rets is empty, we might return NaN or a very bad score
+                # For now, let's assume this means the strategy didn't trade or something went wrong.
+                # Returning NaN will likely cause Optuna to prune or ignore this trial.
+                if is_multi_objective:
+                    return tuple([float("nan")] * len(metrics_to_optimize))
+                return float("nan")
+
+
+            # Check for near-zero returns to enable early stopping
+            if abs(test_rets.mean()) < ZERO_RET_EPS and abs(test_rets.std()) < ZERO_RET_EPS:
+                 # Access the current trial object if available (Optuna specific)
+                current_trial = optuna.trial.TrialContext.get_current_trial()
+                if current_trial:
+                    current_trial.set_user_attr("zero_returns", True)
+
+
+            bench_ser = d_slice[self.global_config["benchmark"]].loc[te_start:te_end]
+            bench_period_rets = bench_ser.pct_change(fill_method=None).fillna(0)
+
+            # Calculate metrics for the test period
+            # Pass benchmark_returns to calculate_metrics
+            metrics = calculate_metrics(test_rets, bench_period_rets, self.global_config["benchmark"])
+
+            current_metrics = np.array([metrics.get(m, np.nan) for m in metrics_to_optimize], dtype=float)
+
+            if np.isnan(current_metrics).any():
+                logger.warning(f"NaN metric found for window {tr_start}-{te_end}. Params: {scenario_config['strategy_params']}")
+                # If any metric is NaN, this set of parameters might be problematic for this window.
+                # Depending on strategy, could skip this window or penalize. For now, let's add NaNs.
+
+            metric_sums += np.nan_to_num(current_metrics) # Convert NaNs to 0 for sum, count separately
+            if not np.isnan(current_metrics).all(): # Count if at least one metric was not NaN
+                num_valid_windows +=1
+
+        if num_valid_windows == 0:
+            logger.warning(f"No valid windows produced results for params: {scenario_config['strategy_params']}. Returning NaN.")
+            return tuple([float("nan")] * len(metrics_to_optimize)) if is_multi_objective else float("nan")
+
+        metric_avgs = metric_sums / num_valid_windows
+        metric_avgs = np.where(np.isfinite(metric_avgs), metric_avgs, float("nan")) # Ensure non-finite results are NaN
+
+        return tuple(metric_avgs) if is_multi_objective else metric_avgs[0]
 
     def _run_monte_carlo_mode(self, scenario_config, monthly_data, daily_data, rets_full):
         logger.info(f"Running Monte Carlo simulation for scenario: {scenario_config['name']}")
@@ -568,94 +615,109 @@ class Backtester:
 
     def display_results(self, data):
         logger.info("Generating performance report.")
-        
         console = Console()
-        
-        # Get the train_end_date from the first scenario if available
-        first_scenario_name = list(self.results.keys())[0]
-        train_end_date = self.results[first_scenario_name].get("train_end_date")
+        bench_rets_full = data[self.global_config["benchmark"]].pct_change(fill_method=None).fillna(0)
 
-        # --- Helper to generate and print a table for a specific period ---
-        def generate_table(period_re_turns, bench_period_rets, title, num_trials_map):
-            table = Table(title=title)
-            table.add_column("Metric", style="cyan", no_wrap=True)
+        # Determine if train/test split is applicable
+        first_result_key = list(self.results.keys())[0]
+        train_end_date = self.results[first_result_key].get("train_end_date")
 
-            # Calculate benchmark metrics for the period
-            bench_metrics = calculate_metrics(bench_period_rets, bench_period_rets, self.global_config["benchmark"], name=self.global_config["benchmark"], num_trials=1)
-            
-            all_metrics = {self.global_config["benchmark"]: bench_metrics}
-            
-            # Add columns for each strategy
-            for name in self.results.keys():
-                display_name = self.results[name]["display_name"]
-                table.add_column(display_name, style="magenta")
-
-            table.add_column(self.global_config["benchmark"], style="green")
-
-            # Calculate and add metrics for each strategy
-            for name, result_data in self.results.items():
-                rets = period_re_turns[name]
-                display_name = result_data["display_name"]
-                strategy_num_trials = num_trials_map.get(name, 1)
-                
-                metrics = calculate_metrics(rets, bench_period_rets, self.global_config["benchmark"], name=display_name, num_trials=strategy_num_trials)
-                all_metrics[display_name] = metrics
-
-            # Define which metrics are percentages and which need higher precision
-            percentage_metrics = ["Total Return", "Ann. Return"]
-            high_precision_metrics = ["ADF p-value"]
-
-            for metric_name in bench_metrics.index:
-                row = [metric_name]
-                # Strategy metrics
-                for name in all_metrics.keys():
-                    if name != self.global_config["benchmark"]:
-                        value = all_metrics[name].loc[metric_name]
-                        if metric_name in percentage_metrics:
-                            row.append(f"{value:.2%}")
-                        elif metric_name in high_precision_metrics:
-                            row.append(f"{value:.6f}")
-                        else:
-                            row.append(f"{value:.4f}")
-                
-                # Benchmark metrics
-                bench_value = bench_metrics.loc[metric_name]
-                if metric_name in percentage_metrics:
-                    row.append(f"{bench_value:.2%}")
-                elif metric_name in high_precision_metrics:
-                    row.append(f"{bench_value:.6f}")
-                else:
-                    row.append(f"{bench_value:.4f}")
-                table.add_row(*row)
-            
-            console.print(table)
-
-        # --- Prepare data for different periods ---
-        bench_rets = data[self.global_config["benchmark"]].pct_change(fill_method=None).fillna(0)
-        
-        # Full period data
-        full_period_returns = {name: res["returns"] for name, res in self.results.items()}
+        # Prepare data for different periods
+        periods_data = []
         num_trials_full = {name: res.get("num_trials_for_dsr", 1) for name, res in self.results.items()}
 
-        # In-sample and out-of-sample data
         if train_end_date:
-            in_sample_returns = {name: res["returns"][res["returns"].index <= train_end_date] for name, res in self.results.items()}
-            out_of_sample_returns = {name: res["returns"][res["returns"].index > train_end_date] for name, res in self.results.items()}
-            
-            bench_in_sample = bench_rets[bench_rets.index <= train_end_date]
-            bench_out_of_sample = bench_rets[bench_rets.index > train_end_date]
-            
-            # For in-sample and out-of-sample, DSR is not applicable in the same way, so we use 1
-            num_trials_split = {name: 1 for name in self.results.keys()}
+            periods_data.append({
+                "title": "In-Sample Performance (Net of Costs)",
+                "returns_map": {name: res["returns"][res["returns"].index <= train_end_date] for name, res in self.results.items()},
+                "bench_returns": bench_rets_full[bench_rets_full.index <= train_end_date],
+                "num_trials_map": {name: 1 for name in self.results.keys()} # DSR not typically applied to in-sample alone
+            })
+            periods_data.append({
+                "title": "Out-of-Sample Performance (Net of Costs)",
+                "returns_map": {name: res["returns"][res["returns"].index > train_end_date] for name, res in self.results.items()},
+                "bench_returns": bench_rets_full[bench_rets_full.index > train_end_date],
+                "num_trials_map": num_trials_full # OOS uses the num_trials from optimization
+            })
 
-            # --- Generate and display tables ---
-            generate_table(in_sample_returns, bench_in_sample, "In-Sample Performance (Net of Costs)", num_trials_split)
-            generate_table(out_of_sample_returns, bench_out_of_sample, "Out-of-Sample Performance (Net of Costs)", num_trials_split)
+        periods_data.append({
+            "title": "Full Period Performance (Net of Costs)",
+            "returns_map": {name: res["returns"] for name, res in self.results.items()},
+            "bench_returns": bench_rets_full,
+            "num_trials_map": num_trials_full
+        })
+
+        for period_data in periods_data:
+            self._generate_performance_table(
+                console,
+                period_data["returns_map"],
+                period_data["bench_returns"],
+                period_data["title"],
+                period_data["num_trials_map"]
+            )
         
-        generate_table(full_period_returns, bench_rets, "Full Period Performance (Net of Costs)", num_trials_full)
-
         logger.info("Performance tables displayed.")
 
+        # Plotting
+        self._plot_performance_summary(bench_rets_full, train_end_date)
+
+    def _generate_performance_table(self, console: Console, period_returns: Dict[str, pd.Series],
+                                    bench_period_rets: pd.Series, title: str,
+                                    num_trials_map: Dict[str, int]):
+        """Generates and prints a Rich table for performance metrics."""
+        table = Table(title=title)
+        table.add_column("Metric", style="cyan", no_wrap=True)
+
+        # Calculate benchmark metrics for the period
+        bench_metrics = calculate_metrics(bench_period_rets, bench_period_rets, self.global_config["benchmark"], name=self.global_config["benchmark"], num_trials=1)
+
+        all_period_metrics = {self.global_config["benchmark"]: bench_metrics}
+
+        # Add columns for each strategy result present in period_returns
+        for name in period_returns.keys():
+            display_name = self.results[name]["display_name"] # Get full display name from original results
+            table.add_column(display_name, style="magenta")
+        table.add_column(self.global_config["benchmark"], style="green") # Benchmark column
+
+        # Calculate and store metrics for each strategy for the current period
+        for name, rets in period_returns.items():
+            display_name = self.results[name]["display_name"]
+            strategy_num_trials = num_trials_map.get(name, 1)
+            metrics = calculate_metrics(rets, bench_period_rets, self.global_config["benchmark"], name=display_name, num_trials=strategy_num_trials)
+            all_period_metrics[display_name] = metrics
+
+        percentage_metrics = ["Total Return", "Ann. Return"]
+        high_precision_metrics = ["ADF p-value"]
+
+        # Populate rows for each metric
+        if not bench_metrics.empty:
+            for metric_name in bench_metrics.index:
+                row_values = [metric_name]
+                # Strategy metrics (in the order they were added to table columns)
+                for strategy_name_key in period_returns.keys(): # Iterate in consistent order
+                    display_name = self.results[strategy_name_key]["display_name"]
+                    value = all_period_metrics[display_name].loc[metric_name]
+                    if metric_name in percentage_metrics:
+                        row_values.append(f"{value:.2%}")
+                    elif metric_name in high_precision_metrics:
+                        row_values.append(f"{value:.6f}")
+                    else:
+                        row_values.append(f"{value:.4f}")
+                
+                # Benchmark metrics last
+                bench_value = bench_metrics.loc[metric_name]
+                if metric_name in percentage_metrics:
+                    row_values.append(f"{bench_value:.2%}")
+                elif metric_name in high_precision_metrics:
+                    row_values.append(f"{bench_value:.6f}")
+                else:
+                    row_values.append(f"{bench_value:.4f}")
+                table.add_row(*row_values)
+        
+        console.print(table)
+
+    def _plot_performance_summary(self, bench_rets_full: pd.Series, train_end_date: pd.Timestamp | None):
+        """Generates and saves/shows the performance summary plot."""
         plt.style.use('seaborn-v0_8-darkgrid')
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), gridspec_kw={'height_ratios': [3, 1]})
 
@@ -664,48 +726,44 @@ class Backtester:
         ax1.set_ylabel("Cumulative Returns (Log Scale)", fontsize=12)
         ax1.set_yscale('log')
         
-        # Calculate cumulative returns for all strategies and benchmark
-        all_cumulative_returns = []
+        all_cumulative_returns_plotting = []
         for name, result_data in self.results.items():
             cumulative_strategy_returns = (1 + result_data["returns"]).cumprod()
             cumulative_strategy_returns.plot(ax=ax1, label=result_data["display_name"])
-            all_cumulative_returns.append(cumulative_strategy_returns)
+            all_cumulative_returns_plotting.append(cumulative_strategy_returns)
         
-        cumulative_bench_returns = (1 + bench_rets).cumprod()
+        cumulative_bench_returns = (1 + bench_rets_full).cumprod()
         cumulative_bench_returns.plot(ax=ax1, label=self.global_config["benchmark"], linestyle='--')
-        all_cumulative_returns.append(cumulative_bench_returns)
+        all_cumulative_returns_plotting.append(cumulative_bench_returns)
 
-        # Determine the maximum cumulative return across all series for setting y-limit
-        max_cumulative_return = pd.concat(all_cumulative_returns).max()
-        ax1.set_ylim(bottom=0.9, top=max_cumulative_return * 1.1) # Ensure initial flat line and add 10% buffer at top
+        if all_cumulative_returns_plotting:
+            max_val = pd.concat(all_cumulative_returns_plotting).max()
+            min_val = pd.concat(all_cumulative_returns_plotting).min()
+            # Ensure bottom is slightly less than 1 for log scale if min_val is positive
+            ax1.set_ylim(bottom=min(0.9, min_val * 0.9) if min_val > 0 else 0.1, top=max_val * 1.1)
 
         ax1.legend()
         ax1.grid(True, which="both", ls="-", alpha=0.5)
 
-        # Add vertical line for train/test split
-        if self.args.mode == "optimize" or self.args.mode == "backtest":
-            # Get train_end_date from the first scenario's result_data if available
-            first_scenario_name = list(self.results.keys())[0]
-            first_scenario_data = self.results[first_scenario_name]
-            if "train_end_date" in first_scenario_data:
-                train_end_date = first_scenario_data["train_end_date"]
-                ax1.axvline(train_end_date, color='gray', linestyle='--', lw=2, label='Train/Test Split')
+        if train_end_date and (self.args.mode == "optimize" or self.args.mode == "backtest"):
+            ax1.axvline(train_end_date, color='gray', linestyle='--', lw=2, label='Train/Test Split')
+            ax1.legend() # Re-call legend to include the vline label if applicable
 
         # Plot Drawdown
         ax2.set_ylabel("Drawdown", fontsize=12)
         ax2.set_xlabel("Date", fontsize=12)
 
-        def calculate_drawdown(returns):
-            cumulative_returns = (1 + returns).cumprod()
-            peak = cumulative_returns.expanding(min_periods=1).max()
-            drawdown = (cumulative_returns / peak) - 1
+        def calculate_drawdown(returns_series):
+            cumulative = (1 + returns_series).cumprod()
+            peak = cumulative.expanding(min_periods=1).max()
+            drawdown = (cumulative / peak) - 1
             return drawdown
 
         for name, result_data in self.results.items():
             drawdown = calculate_drawdown(result_data["returns"])
             drawdown.plot(ax=ax2, label=result_data["display_name"])
         
-        bench_drawdown = calculate_drawdown(bench_rets)
+        bench_drawdown = calculate_drawdown(bench_rets_full)
         bench_drawdown.plot(ax=ax2, label=self.global_config["benchmark"], linestyle='--')
 
         ax2.legend()
@@ -718,19 +776,22 @@ class Backtester:
         os.makedirs(plots_dir, exist_ok=True)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        scenario_name_for_filename = list(self.results.keys())[0].replace(" ", "_").replace("(", "").replace(")", "")
-        filename = f"cumulative_returns_drawdown_{scenario_name_for_filename}_{timestamp}.png"
+        # Use the original scenario name from args if available, else derive from results
+        base_filename = self.args.scenario_name if self.args.scenario_name else list(self.results.keys())[0]
+        scenario_name_for_filename = base_filename.replace(" ", "_").replace("(", "").replace(")", "")
+
+        filename = f"performance_summary_{scenario_name_for_filename}_{timestamp}.png"
         filepath = os.path.join(plots_dir, filename)
         
         plt.savefig(filepath)
-        logger.info(f"P&L plot saved to: {filepath}")
+        logger.info(f"Performance plot saved to: {filepath}")
 
-        if getattr(self, 'args', None) and getattr(self.args, 'interactive', False):
-            plt.show(block=False) # Display asynchronously
-            logger.info("Cumulative returns and drawdown plots displayed interactively.")
+        if getattr(self.args, 'interactive', False):
+            plt.show(block=False)
+            logger.info("Performance plots displayed interactively.")
         else:
-            plt.close(fig) # Close the figure to free memory if not interactive
-            logger.info("Cumulative returns and drawdown plots generated and saved.")
+            plt.close(fig)
+            logger.info("Performance plots generated and saved.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run portfolio backtester.")
