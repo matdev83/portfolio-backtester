@@ -1,3 +1,4 @@
+import setuptools # Ensure setuptools is imported before pandas_datareader
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -146,15 +147,22 @@ class Backtester:
             "sizer_dvol_window": "window",
             "sizer_target_return": "target_return", # For Sortino sizer
         }
+        # Create a new dictionary for sizer parameters, including only those relevant to the sizer
+        filtered_sizer_params = {}
         for old_key, new_key in sizer_param_mapping.items():
             if old_key in sizer_params:
-                sizer_params[new_key] = sizer_params.pop(old_key)
+                filtered_sizer_params[new_key] = sizer_params[old_key]
+        
+        # Also include any other parameters that are explicitly part of the sizer's expected arguments
+        # For example, 'num_holdings' might be a direct sizer param, not mapped from strategy_params
+        # This part might need refinement based on actual sizer implementations.
+        # For now, let's assume only mapped params are relevant.
 
         sized_signals = sizer_func(
             signals,
             strategy_data_monthly,
             benchmark_data_monthly,
-            **sizer_params,
+            **filtered_sizer_params,
         )
         if verbose:
             logger.debug(f"Positions sized using {sizer_name}.")

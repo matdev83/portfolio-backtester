@@ -32,7 +32,9 @@ dependencies = [
     "xlrd==2.0.1",
     "pyarrow",
     "optuna>=4.4",
-    "pandas-datareader"
+    "pandas-datareader",
+    "pytest-cov",
+    "httpx"
 ]
 
 [project.optional-dependencies]
