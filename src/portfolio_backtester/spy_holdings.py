@@ -255,19 +255,29 @@ def _fetch_from_wayback(orig_url: str, date: pd.Timestamp) -> bytes | None:
         f"&timestamp={date:%Y%m%d}"
     )
 
-    try:
-        meta_resp = requests.get(api, timeout=30)
-        meta_resp.raise_for_status()
-        payload = meta_resp.json()
-        closest = payload.get("archived_snapshots", {}).get("closest") or {}
-        if closest.get("available") and closest.get("status") == "200":
-            snap_url = closest.get("url")
-            if snap_url:
-                file_resp = requests.get(snap_url, timeout=60)
-                if file_resp.status_code == 200:
-                    return file_resp.content
-    except Exception as exc:  # noqa: BLE001 – we want a broad net here
-        logger.debug(f"Wayback fetch failed for {orig_url}: {exc}")
+    for attempt in range(5):  # 5 retries
+        try:
+            meta_resp = requests.get(api, timeout=30)
+            meta_resp.raise_for_status()
+            payload = meta_resp.json()
+            closest = payload.get("archived_snapshots", {}).get("closest") or {}
+            if closest.get("available") and closest.get("status") == "200":
+                snap_url = closest.get("url")
+                if snap_url:
+                    file_resp = requests.get(snap_url, timeout=60)
+                    if file_resp.status_code == 200:
+                        return file_resp.content
+            break  # Break if successful
+        except requests.exceptions.RequestException as exc:
+            if attempt < 4:
+                wait = 2 ** attempt  # Exponential backoff
+                logger.warning(f"Wayback fetch failed for {orig_url} (attempt {attempt + 1}/5), retrying in {wait}s: {exc}")
+                time.sleep(wait)
+            else:
+                logger.error(f"Wayback fetch failed for {orig_url} after 5 attempts: {exc}")
+        except Exception as exc:  # noqa: BLE001 – we want a broad net here
+            logger.debug(f"Wayback fetch failed for {orig_url}: {exc}")
+            break  # Break on other exceptions
     return None
 
 def ssga_daily(date: Union[dt.date, pd.Timestamp]):
@@ -944,7 +954,7 @@ def _forward_fill_history(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timesta
     expected_business_days_in_df_range = pd.date_range(df_min_date, df_max_date, freq='B')
 
     # Identify missing business days within the DataFrame's actual date range
-    missing_dates_in_df_range = pd.Series(expected_business_days_in_df_range).difference(pd.Series(df_dates))
+    missing_dates_in_df_range = pd.Index(expected_business_days_in_df_range).difference(pd.Index(df_dates))
 
     # For each missing date, find the closest previous date with data
     # and duplicate that day's holdings.
