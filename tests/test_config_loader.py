@@ -10,6 +10,7 @@ import sys
 
 # Now import the module to be tested
 from src.portfolio_backtester import config_loader
+from src.portfolio_backtester import config_initializer
 from src.portfolio_backtester.strategies.base_strategy import BaseStrategy # For mocking
 
 # Define mock content for YAML files
@@ -100,12 +101,30 @@ class TestConfigLoader(unittest.TestCase):
         self.mock_exists = self.patch_exists.start()
         self.addCleanup(self.patch_exists.stop)
 
+        # Patch _resolve_strategy where it is used (in config_initializer)
+        self.patch_resolve = patch('src.portfolio_backtester.config_initializer._resolve_strategy')
+        self.mock_resolve = self.patch_resolve.start()
+        self.addCleanup(self.patch_resolve.stop)
+
+        def resolve_side_effect(strategy_name):
+            if strategy_name == "mock_strategy":
+                return MockStrategy
+            if strategy_name == "another_mock_strategy":
+                return AnotherMockStrategy
+            if strategy_name == "mock_strategy_non_default":
+                class MockStrategyWithNonDefaultParam(BaseStrategy):
+                    @classmethod
+                    def tunable_parameters(cls) -> list[str]:
+                        return ["param_not_in_defaults", "num_holdings"]
+                return MockStrategyWithNonDefaultParam
+            return None
+        self.mock_resolve.side_effect = resolve_side_effect
+
 
     def run_load_config_with_mocks(self, params_yaml_str, scenarios_yaml_str):
         """Helper to run load_config with mocked file contents and strategy resolution, using context managers for patches."""
 
-        with patch('builtins.open', new_callable=mock_open) as mock_open_obj, \
-             patch('src.portfolio_backtester.utils._resolve_strategy') as mock_resolve_obj:
+        with patch('builtins.open', new_callable=mock_open) as mock_open_obj:
 
             # Configure mock_open_obj to return different content based on the file path
             def side_effect_open(file_path, mode):
@@ -116,15 +135,6 @@ class TestConfigLoader(unittest.TestCase):
                 raise FileNotFoundError(f"Unexpected file open: {file_path}")
             mock_open_obj.side_effect = side_effect_open
 
-            # Mock strategy resolution
-            def resolve_side_effect(strategy_name):
-                if strategy_name == "mock_strategy":
-                    return MockStrategy
-                if strategy_name == "another_mock_strategy":
-                    return AnotherMockStrategy
-                return None
-            mock_resolve_obj.side_effect = resolve_side_effect
-
             # Reset module state before loading, as load_config might be called multiple times by tests
             config_loader.GLOBAL_CONFIG = {}
             config_loader.OPTIMIZER_PARAMETER_DEFAULTS = {}
@@ -132,7 +142,7 @@ class TestConfigLoader(unittest.TestCase):
 
             # (Re)Load config using the mocks
             config_loader.load_config()
-            config_loader.populate_default_optimizations()
+            config_initializer.populate_default_optimizations(config_loader.BACKTEST_SCENARIOS, config_loader.OPTIMIZER_PARAMETER_DEFAULTS)
 
 
     def test_load_config_success(self):
@@ -164,27 +174,26 @@ class TestConfigLoader(unittest.TestCase):
         self.assertEqual(self.mock_exists.call_count, 2) # Called for PARAMETERS_FILE then SCENARIOS_FILE
 
 
-    @patch('src.portfolio_backtester.utils._resolve_strategy') # Patched at source
-    def test_get_strategy_tunable_params(self, mock_resolve_strategy):
+    def test_get_strategy_tunable_params(self):
         """Test the helper function for getting tunable strategy parameters."""
-        mock_resolve_strategy.return_value = MockStrategy
-        params = config_loader._get_strategy_tunable_params("mock_strategy")
+        self.mock_resolve.return_value = MockStrategy
+        params = config_initializer._get_strategy_tunable_params("mock_strategy")
         self.assertEqual(params, {"mock_strategy_param1", "num_holdings"})
 
-        mock_resolve_strategy.return_value = None
-        params = config_loader._get_strategy_tunable_params("non_existent_strategy")
+        self.mock_resolve.return_value = None
+        params = config_initializer._get_strategy_tunable_params("non_existent_strategy")
         self.assertEqual(params, set())
 
     def test_get_sizer_tunable_param(self):
         """Test the helper function for getting tunable sizer parameters."""
         sizer_map = {"mock_sizer": "sizer_mock_window"}
-        param = config_loader._get_sizer_tunable_param("mock_sizer", sizer_map)
+        param = config_initializer._get_sizer_tunable_param("mock_sizer", sizer_map)
         self.assertEqual(param, "sizer_mock_window")
 
-        param = config_loader._get_sizer_tunable_param("non_existent_sizer", sizer_map)
+        param = config_initializer._get_sizer_tunable_param("non_existent_sizer", sizer_map)
         self.assertIsNone(param)
 
-        param = config_loader._get_sizer_tunable_param(None, sizer_map)
+        param = config_initializer._get_sizer_tunable_param(None, sizer_map)
         self.assertIsNone(param)
 
     def test_populate_default_optimizations(self):
@@ -216,12 +225,6 @@ class TestConfigLoader(unittest.TestCase):
     def test_populate_default_optimizations_parameter_not_in_defaults(self):
         """Test that parameters are not added if not in OPTIMIZER_PARAMETER_DEFAULTS."""
 
-        # Modify MockStrategy to return a param not in MOCK_PARAMS_YAML_CONTENT's defaults
-        class MockStrategyWithNonDefaultParam(BaseStrategy):
-            @classmethod
-            def tunable_parameters(cls) -> list[str]:
-                return ["param_not_in_defaults", "num_holdings"]
-
         custom_scenarios_content = """
 BACKTEST_SCENARIOS:
   - name: "Test_Non_Default_Param"
@@ -229,20 +232,17 @@ BACKTEST_SCENARIOS:
     position_sizer: "equal_weight"
     strategy_params: {}
 """
-        with patch('src.portfolio_backtester.utils._resolve_strategy') as mock_resolve: # Patched at source
-            mock_resolve.side_effect = lambda name: MockStrategyWithNonDefaultParam if name == "mock_strategy_non_default" else None
+        with patch('builtins.open', new_callable=mock_open) as mock_file:
+            def side_effect_open(file_path, mode):
+                if file_path == config_loader.PARAMETERS_FILE:
+                    return mock_open(read_data=MOCK_PARAMS_YAML_CONTENT).return_value
+                elif file_path == config_loader.SCENARIOS_FILE:
+                    return mock_open(read_data=custom_scenarios_content).return_value
+                raise FileNotFoundError(f"Unexpected file open: {file_path}")
+            mock_file.side_effect = side_effect_open
 
-            with patch('builtins.open', new_callable=mock_open) as mock_file:
-                def side_effect_open(file_path, mode):
-                    if file_path == config_loader.PARAMETERS_FILE:
-                        return mock_open(read_data=MOCK_PARAMS_YAML_CONTENT).return_value
-                    elif file_path == config_loader.SCENARIOS_FILE:
-                        return mock_open(read_data=custom_scenarios_content).return_value
-                    raise FileNotFoundError(f"Unexpected file open: {file_path}")
-                mock_file.side_effect = side_effect_open
-
-                config_loader.load_config()
-                config_loader.populate_default_optimizations()
+            config_loader.load_config()
+            config_initializer.populate_default_optimizations(config_loader.BACKTEST_SCENARIOS, config_loader.OPTIMIZER_PARAMETER_DEFAULTS)
 
         scenario = config_loader.BACKTEST_SCENARIOS[0]
         opt_params = {opt["parameter"] for opt in scenario.get("optimize", [])}
