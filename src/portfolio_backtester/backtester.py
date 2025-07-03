@@ -372,6 +372,7 @@ class Backtester:
 
             # Evaluate parameters across all walk-forward windows
             return self._evaluate_params_walk_forward(
+                trial,  # Pass the trial object
                 trial_scenario_config, windows, monthly_data, daily_data, rets_full,
                 metrics_to_optimize, is_multi_objective
             )
@@ -439,7 +440,17 @@ class Backtester:
             sampler = optuna.samplers.TPESampler(seed=self.random_state)
             logger.info(f"Using TPESampler with {n_trials_actual} trials.")
 
-        pruner = optuna.pruners.MedianPruner()
+        if self.args.pruning_enabled:
+            pruner = optuna.pruners.MedianPruner(
+                n_startup_trials=self.args.pruning_n_startup_trials,
+                n_warmup_steps=self.args.pruning_n_warmup_steps,
+                interval_steps=self.args.pruning_interval_steps
+            )
+            logger.info(f"MedianPruner enabled with n_startup_trials={self.args.pruning_n_startup_trials}, n_warmup_steps={self.args.pruning_n_warmup_steps}, interval_steps={self.args.pruning_interval_steps}.")
+        else:
+            # If pruning is not enabled via CLI, use a pruner that never prunes.
+            pruner = optuna.pruners.NopPruner()
+            logger.info("Pruning disabled (NopPruner used).")
 
         if self.args.random_seed is not None:
             try:
@@ -486,14 +497,19 @@ class Backtester:
                 logger.warning(f"Unsupported parameter type '{ptype}' for {pname}. Skipping suggestion.")
         return params
 
-    def _evaluate_params_walk_forward(self, scenario_config: Dict[str, Any], windows: list,
+    def _evaluate_params_walk_forward(self, trial: optuna.trial.Trial, scenario_config: Dict[str, Any], windows: list,
                                      monthly_data: pd.DataFrame, daily_data: pd.DataFrame, rets_full: pd.DataFrame,
                                      metrics_to_optimize: List[str], is_multi_objective: bool) -> Any:
-        """Evaluates a set of parameters across walk-forward windows."""
+        """Evaluates a set of parameters across walk-forward windows, with intermediate reporting for pruning."""
         metric_sums = np.zeros(len(metrics_to_optimize))
         num_valid_windows = 0
+        processed_steps_for_pruning = 0 # Tracks steps for pruning interval
 
-        for (tr_start, tr_end, te_start, te_end) in windows:
+        # Get pruning configuration from args (will be properly set in Step 3 of the plan)
+        pruning_enabled = getattr(self.args, "pruning_enabled", False) # Default to False for now
+        pruning_interval_steps = getattr(self.args, "pruning_interval_steps", 1) # Default to 1 for now
+
+        for window_idx, (tr_start, tr_end, te_start, te_end) in enumerate(windows):
             # Slice data for the current window
             m_slice = monthly_data.loc[tr_start:te_end]
             d_slice = daily_data.loc[tr_start:te_end] # daily_data is used for benchmark in calculate_metrics
@@ -525,10 +541,10 @@ class Backtester:
 
             # Check for near-zero returns to enable early stopping
             if abs(test_rets.mean()) < ZERO_RET_EPS and abs(test_rets.std()) < ZERO_RET_EPS:
-                 # Access the current trial object if available (Optuna specific)
-                current_trial = optuna.trial.TrialContext.get_current_trial()
-                if current_trial:
-                    current_trial.set_user_attr("zero_returns", True)
+                # trial is passed as an argument to this function
+                if trial: # Should always be true when called from Optuna objective
+                    trial.set_user_attr("zero_returns", True)
+                    logger.debug(f"Trial {trial.number}, window {window_idx+1}: Marked with zero_returns.")
 
 
             bench_ser = d_slice[self.global_config["benchmark"]].loc[te_start:te_end]
@@ -548,6 +564,32 @@ class Backtester:
             metric_sums += np.nan_to_num(current_metrics) # Convert NaNs to 0 for sum, count separately
             if not np.isnan(current_metrics).all(): # Count if at least one metric was not NaN
                 num_valid_windows +=1
+                processed_steps_for_pruning += 1
+
+            # Intermediate reporting and pruning logic
+            if pruning_enabled and num_valid_windows > 0 and processed_steps_for_pruning % pruning_interval_steps == 0:
+                # For MedianPruner, report a single float.
+                # If multi-objective, Optuna's pruners typically use the first objective by default.
+                # We use metric_sums[0] which corresponds to the first metric in metrics_to_optimize.
+                intermediate_value = metric_sums[0] / num_valid_windows
+
+                # If intermediate_value is NaN or Inf, MedianPruner might handle it,
+                # but providing a very bad value consistent with optimization direction is safer.
+                if not np.isfinite(intermediate_value):
+                    # Access directions from trial.study. Optuna pruners typically work on the first metric.
+                    first_metric_direction = trial.study.directions[0]
+                    if first_metric_direction == optuna.study.StudyDirection.MAXIMIZE:
+                        intermediate_value = -1e12 # A very small number for maximization
+                    else: # MINIMIZE
+                        intermediate_value = 1e12  # A very large number for minimization
+                    logger.debug(f"Trial {trial.number}, window {window_idx+1}: intermediate metric {metrics_to_optimize[0]} was non-finite. Reporting {intermediate_value}")
+
+                trial.report(intermediate_value, window_idx + 1) # Use window_idx + 1 as step, since steps are 1-indexed
+                current_trial_number_for_logs = trial.number # Store for logging if pruned
+
+                if trial.should_prune():
+                    logger.info(f"Trial {current_trial_number_for_logs} pruned at window {window_idx + 1} (step {window_idx + 1}) with intermediate value for '{metrics_to_optimize[0]}': {intermediate_value:.4f}")
+                    raise optuna.exceptions.TrialPruned()
 
         if num_valid_windows == 0:
             logger.warning(f"No valid windows produced results for params: {scenario_config['strategy_params']}. Returning NaN.")
@@ -813,6 +855,13 @@ if __name__ == "__main__":
                         help="Maximum trials per optimization.")
     parser.add_argument("--optuna-timeout-sec", type=int, default=None,
                         help="Time budget per optimization (seconds).")
+
+    # Pruning specific arguments
+    parser.add_argument("--pruning-enabled", action="store_true", help="Enable trial pruning with MedianPruner. Default: False.")
+    parser.add_argument("--pruning-n-startup-trials", type=int, default=5, help="MedianPruner: Number of trials to complete before pruning begins. Default: 5.")
+    parser.add_argument("--pruning-n-warmup-steps", type=int, default=0, help="MedianPruner: Number of intermediate steps (walk-forward windows) to observe before pruning a trial. Default: 0.")
+    parser.add_argument("--pruning-interval-steps", type=int, default=1, help="MedianPruner: Report intermediate value and check for pruning every X walk-forward windows. Default: 1.")
+
     # Monte Carlo specific arguments
     parser.add_argument("--mc-simulations", type=int, default=1000, help="Number of simulations for Monte Carlo analysis.")
     parser.add_argument("--mc-years", type=int, default=10, help="Number of years to project in Monte Carlo analysis.")

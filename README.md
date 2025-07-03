@@ -69,6 +69,29 @@ python src/portfolio_backtester/backtester.py
 * `--optuna-timeout-sec`: Time budget per WFA slice (seconds).
   * **Default:** `None` (no timeout)
 
+#### Optuna Pruning Configuration
+
+Trial pruning can significantly speed up optimization by stopping unpromising trials early. This is based on evaluating intermediate results during the walk-forward analysis. The `MedianPruner` is used.
+
+* `--pruning-enabled`: Enable trial pruning.
+  * **Action:** `store_true` (flag, disabled by default)
+  * **Description:** If set, enables the `MedianPruner` to stop trials early if their intermediate performance (e.g., average Sharpe ratio over initial walk-forward windows) is poor compared to other trials.
+* `--pruning-n-startup-trials`: Number of initial trials to complete before pruning begins.
+  * **Default:** `5`
+  * **Description:** The pruner will not prune any of the first `N` trials, allowing it to gather initial data.
+* `--pruning-n-warmup-steps`: Number of intermediate steps (walk-forward windows) to complete within a trial before it can be pruned.
+  * **Default:** `0`
+  * **Description:** A trial will report intermediate values after each walk-forward window (or every `pruning-interval-steps`). This parameter specifies how many such reports must occur before the pruner considers pruning that trial.
+* `--pruning-interval-steps`: Report intermediate value and check for pruning every N walk-forward windows.
+  * **Default:** `1`
+  * **Description:** For example, if set to `2`, a trial reports its performance and is eligible for pruning after its 2nd, 4th, 6th, etc., walk-forward window evaluation (subject to `pruning-n-warmup-steps`).
+
+**Note on Early Stopping Mechanisms:**
+*   **Trial Pruning** (configured above): Stops *individual unpromising trials* early during the optimization process based on intermediate performance across walk-forward windows. This helps focus computational resources on more promising parameter sets.
+*   `--early-stop-patience`: Stops the *entire optimization study* if a specified number of *consecutive trials* result in near-zero returns in any of their test windows. This acts as a global failsafe for the overall optimization process.
+
+These two mechanisms are complementary.
+
 ### Examples
 
 **1. Run an optimization for a scenario:**
