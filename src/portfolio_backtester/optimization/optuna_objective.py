@@ -54,39 +54,74 @@ def build_objective(
         trial: optuna.trial.Trial,
     ) -> Any:  # Return type can be float or Tuple[float, ...]
         # 1 ─ suggest parameters ----------------------------------------
+        # p holds parameters that will go into strategy_params
         p = base_scen_cfg["strategy_params"].copy()
+        # scen_cfg_overrides holds parameters that will directly set/override keys in scen_cfg
+        scen_cfg_overrides = {}
+
+        # Define keys that, if optimized, should directly modify the scenario config
+        # instead of just strategy_params.
+        # Example: "position_sizer" is a key in scen_cfg, not scen_cfg["strategy_params"].
+        # If we optimize "position_sizer", the chosen value should go to scen_cfg["position_sizer"].
+        SPECIAL_SCEN_CFG_KEYS = ["position_sizer"] # Add other keys like "signal_generator_class" if needed
 
         for opt_spec in optimization_specs:
             param_name = opt_spec["parameter"]
-            if param_name not in optimizer_config:
-                # This should ideally not happen if optimizer_config is comprehensive
+            default_param_config = optimizer_config.get(param_name, {})
+
+            # Type: opt_spec takes precedence over default_param_config
+            param_type = opt_spec.get("type", default_param_config.get("type"))
+
+            if not param_type:
                 print(
-                    f"Warning: Parameter '{param_name}' requested for optimization but not found in optimizer_config.json"
+                    f"Warning: Parameter '{param_name}' has no type defined in scenario specification's 'optimize' section or in OPTIMIZER_PARAMETER_DEFAULTS. Skipping parameter."
                 )
                 continue
 
-            param_type = optimizer_config[param_name]["type"]
-            low = float(opt_spec.get("min_value", optimizer_config[param_name]["low"]))
-            high = float(
-                opt_spec.get("max_value", optimizer_config[param_name]["high"])
-            )
-            step = float(opt_spec.get("step", optimizer_config[param_name].get("step")))
+            suggested_value = None
 
             if param_type == "int":
-                p[param_name] = trial.suggest_int(
-                    param_name, int(low), int(high), step=int(step)
-                )
+                low = int(opt_spec.get("min_value", default_param_config.get("low", 0))) # Default low to 0 if not found
+                high = int(opt_spec.get("max_value", default_param_config.get("high", 10))) # Default high to 10 if not found
+                step = int(opt_spec.get("step", default_param_config.get("step", 1)))
+                # Ensure low < high, Optuna requires low <= high for suggest_int if step=1, and low < high if step > 1.
+                # More robustly, Optuna expects low <= high for integers.
+                # If high < low due to bad config, Optuna will error. Let it.
+                suggested_value = trial.suggest_int(param_name, low, high, step=step)
             elif param_type == "float":
-                log = opt_spec.get(
-                    "log", optimizer_config[param_name].get("log", False)
-                )
-                p[param_name] = trial.suggest_float(
-                    param_name, low, high, step=step, log=log
-                )
+                low = float(opt_spec.get("min_value", default_param_config.get("low", 0.0)))
+                high = float(opt_spec.get("max_value", default_param_config.get("high", 1.0)))
+                step = opt_spec.get("step", default_param_config.get("step"))  # Can be None
+                log = bool(opt_spec.get("log", default_param_config.get("log", False)))
+                # Optuna requires low <= high for suggest_float.
+                # If high < low due to bad config, Optuna will error. Let it.
+                suggested_value = trial.suggest_float(param_name, low, high, step=step, log=log)
+            elif param_type == "categorical":
+                choices = opt_spec.get("values", default_param_config.get("values"))
+                if not choices or not isinstance(choices, list) or len(choices) == 0:
+                    raise ValueError(
+                        f"Categorical parameter '{param_name}' has no choices defined or choices are invalid. Ensure 'values' is a non-empty list in scenario or defaults."
+                    )
+                suggested_value = trial.suggest_categorical(param_name, choices)
+            else:
+                raise ValueError(f"Unsupported parameter type '{param_type}' for parameter '{param_name}'. Supported types are 'int', 'float', 'categorical'.")
+
+            if suggested_value is None: # Should not happen if param_type is valid and choices are present for categorical
+                print(f"Warning: No value suggested for parameter '{param_name}'. This may indicate a configuration issue.")
+                continue
+
+            if param_name in SPECIAL_SCEN_CFG_KEYS:
+                scen_cfg_overrides[param_name] = suggested_value
+            else:
+                p[param_name] = suggested_value
+
 
         # 2 ─ evaluate --------------------------------------------------
         scen_cfg = base_scen_cfg.copy()
         scen_cfg["strategy_params"] = p
+        # Apply direct scenario config overrides
+        for key, value in scen_cfg_overrides.items():
+            scen_cfg[key] = value
 
         rets = _run_scenario_static(
             g_cfg,

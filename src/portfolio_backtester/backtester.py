@@ -493,6 +493,12 @@ class Backtester:
                 params[pname] = trial.suggest_int(pname, int(low), int(high), step=int(step) if step else 1)
             elif ptype == "float":
                 params[pname] = trial.suggest_float(pname, float(low), float(high), step=float(step) if step else None, log=log)
+            elif ptype == "categorical":
+                choices = spec.get("values", opt_def.get("values"))
+                if not choices or not isinstance(choices, list) or len(choices) == 0:
+                    logger.warning(f"Categorical parameter '{pname}' has no choices defined or choices are invalid. Skipping suggestion.")
+                    continue # Skip this parameter
+                params[pname] = trial.suggest_categorical(pname, choices)
             else:
                 logger.warning(f"Unsupported parameter type '{ptype}' for {pname}. Skipping suggestion.")
         return params
@@ -515,7 +521,14 @@ class Backtester:
             d_slice = daily_data.loc[tr_start:te_end] # daily_data is used for benchmark in calculate_metrics
             r_slice = rets_full.loc[tr_start:te_end]
 
-            f_slice = {n: f.loc[tr_start:te_end] for n, f in (self.features or {}).items() if tr_start <= f.index.min() and te_end >= f.index.max()}
+            # Slice features to the current combined train+test window (m_slice.index covers this)
+            # Ensure that all feature dataframes in f_slice share the same index as m_slice
+            # and that all required features are present, possibly with NaNs if they don't cover the full window.
+            f_slice = {}
+            if self.features:
+                for name, feat_df in self.features.items():
+                    # Align feature's index with m_slice.index (which spans tr_start to te_end for monthly)
+                    f_slice[name] = feat_df.reindex(m_slice.index)
 
 
             # Run scenario for the current window's training and testing period combined

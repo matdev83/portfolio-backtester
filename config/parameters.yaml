@@ -104,11 +104,9 @@ OPTIMIZER_PARAMETER_DEFAULTS:
     low: 0.0
     high: 0.1
     step: 0.01
-  lookback_months:
-    type: "int"
-    low: 1
-    high: 12
-    step: 1
+  lookback_months: # Temporarily changed to single categorical for testing sizer optimization
+    type: "categorical"
+    values: [6] # Fixed to 6 months, assuming 'momentum_6m' feature exists
   alpha:
     type: "float"
     low: 0.1
@@ -159,3 +157,12 @@ OPTIMIZER_PARAMETER_DEFAULTS:
     low: 0.05
     high: 0.3
     step: 0.01
+  rsi_period_enum: # Example of a numeric enum
+    type: "categorical"
+    values: [14, 21, 28]
+  signal_generator_type: # Example of a string-based enum (for class names)
+    type: "categorical"
+    values: ["RSI", "MovingAverageCrossover"]
+  position_sizer: # For optimizing the choice of position sizer
+    type: "categorical"
+    values: ["equal_weight", "rolling_sharpe", "rolling_sortino", "rolling_beta", "rolling_benchmark_corr", "rolling_downside_volatility"]
