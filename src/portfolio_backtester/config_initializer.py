@@ -19,6 +19,7 @@ def populate_default_optimizations(scenarios: list, optimizer_parameter_defaults
     parameters of its strategy and dynamic position sizer.
     Min/max/step values for these parameters are sourced from
     OPTIMIZER_PARAMETER_DEFAULTS at runtime by the optimizer.
+    Also populate strategy_params with default values for optimization parameters.
     """
     sizer_param_map = {
         "rolling_sharpe": "sizer_sharpe_window",
@@ -32,6 +33,10 @@ def populate_default_optimizations(scenarios: list, optimizer_parameter_defaults
         # Ensure "optimize" list exists
         if "optimize" not in scenario_config:
             scenario_config["optimize"] = []
+        
+        # Ensure "strategy_params" exists
+        if "strategy_params" not in scenario_config:
+            scenario_config["strategy_params"] = {}
 
         optimized_parameters_in_scenario = {opt_spec["parameter"] for opt_spec in scenario_config["optimize"]}
 
@@ -46,9 +51,34 @@ def populate_default_optimizations(scenarios: list, optimizer_parameter_defaults
         if sizer_param_to_add:
             all_potential_params.add(sizer_param_to_add)
 
-        # Add missing parameters to the scenario's "optimize" list
+        # Add missing parameters to the scenario's "optimize" list and populate strategy_params with defaults
         for param_name in all_potential_params:
             if param_name not in optimized_parameters_in_scenario:
                 # Ensure the parameter exists in OPTIMIZER_PARAMETER_DEFAULTS before adding
                 if param_name in optimizer_parameter_defaults:
                     scenario_config["optimize"].append({"parameter": param_name})
+            
+            # Also populate strategy_params with default values if not already present
+            if param_name not in scenario_config["strategy_params"] and param_name in optimizer_parameter_defaults:
+                param_config = optimizer_parameter_defaults[param_name]
+                default_value = _get_default_value_for_parameter(param_config)
+                scenario_config["strategy_params"][param_name] = default_value
+
+
+def _get_default_value_for_parameter(param_config: dict):
+    """Get a reasonable default value for a parameter based on its configuration."""
+    param_type = param_config.get("type")
+    
+    if param_type == "int":
+        # Use the low value as default for int parameters
+        return param_config.get("low", 1)
+    elif param_type == "float":
+        # Use the low value as default for float parameters
+        return param_config.get("low", 0.0)
+    elif param_type == "categorical":
+        # Use the first value as default for categorical parameters
+        values = param_config.get("values", [])
+        return values[0] if values else None
+    else:
+        # Fallback to low value or None
+        return param_config.get("low")

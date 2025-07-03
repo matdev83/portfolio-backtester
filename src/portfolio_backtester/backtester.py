@@ -46,6 +46,7 @@ class Backtester:
         # Add optimizer defaults to global_config for easy access
         self.global_config["optimizer_parameter_defaults"] = OPTIMIZER_PARAMETER_DEFAULTS
         self.scenarios = scenarios
+        logger.debug(f"Backtester initialized with scenario strategy_params: {self.scenarios[0].get('strategy_params')}")
         populate_default_optimizations(self.scenarios, OPTIMIZER_PARAMETER_DEFAULTS) # Call after scenarios are loaded
         self.args = args
         self.data_source = self._get_data_source()
@@ -138,31 +139,75 @@ class Backtester:
 
         sizer_name = scenario_config.get("position_sizer", "equal_weight")
         sizer_func = get_position_sizer(sizer_name)
-        sizer_params = scenario_config.get("strategy_params", {}).copy()
-        # Map sizer-specific parameters from strategy_params to expected sizer argument names
+        
+        # Start with all strategy_params as potential sizer parameters
+        # This ensures 'target_volatility' and 'target_return' are included if present
+        filtered_sizer_params = scenario_config.get("strategy_params", {}).copy()
+        logger.debug(f"Initial filtered_sizer_params: {filtered_sizer_params}")
+        
+        # Define mappings for parameters that need to be renamed for the sizer function
         sizer_param_mapping = {
             "sizer_sharpe_window": "window",
             "sizer_sortino_window": "window",
             "sizer_beta_window": "window",
             "sizer_corr_window": "window",
             "sizer_dvol_window": "window",
-            "sizer_target_return": "target_return", # For Sortino sizer
+            "sizer_target_return": "target_return", # For Sortino sizer, if it's ever mapped
+            "sizer_max_leverage": "max_leverage", # Add mapping for max_leverage
         }
-        # Create a new dictionary for sizer parameters, including only those relevant to the sizer
-        filtered_sizer_params = {}
-        for old_key, new_key in sizer_param_mapping.items():
-            if old_key in sizer_params:
-                filtered_sizer_params[new_key] = sizer_params[old_key]
         
-        # Also include any other parameters that are explicitly part of the sizer's expected arguments
-        # For example, 'num_holdings' might be a direct sizer param, not mapped from strategy_params
-        # This part might need refinement based on actual sizer implementations.
-        # For now, let's assume only mapped params are relevant.
+        # Apply remapping: if an old_key exists, rename it to new_key and remove old_key
+        for old_key, new_key in sizer_param_mapping.items():
+            if old_key in filtered_sizer_params:
+                filtered_sizer_params[new_key] = filtered_sizer_params.pop(old_key)
+        logger.debug(f"Filtered_sizer_params after remapping: {filtered_sizer_params}")
+
+        # Extract 'window' if it's present, as it's a required positional argument for some sizers
+        window_param = filtered_sizer_params.pop("window", None)
+        logger.debug(f"window_param extracted: {window_param}")
+        logger.debug(f"Filtered_sizer_params after window pop: {filtered_sizer_params}")
+
+        # Extract 'target_return' if it's present, as it's a required positional argument for some sizers
+        target_return_param = filtered_sizer_params.pop("target_return", None)
+        logger.debug(f"target_return_param extracted: {target_return_param}")
+        logger.debug(f"Filtered_sizer_params after target_return pop: {filtered_sizer_params}")
+
+        # Extract 'max_leverage' if it's present, as it's a keyword argument for some sizers
+        max_leverage_param = filtered_sizer_params.pop("max_leverage", None)
+        logger.debug(f"max_leverage_param extracted: {max_leverage_param}")
+        logger.debug(f"Filtered_sizer_params after max_leverage pop: {filtered_sizer_params}")
+
+        # Prepare arguments for the sizer function
+        sizer_args = [signals, strategy_data_monthly, benchmark_data_monthly]
+        
+        # Pass daily data for volatility calculation if the sizer needs it
+        if sizer_name == "rolling_downside_volatility":
+            # Ensure daily_data is sliced to universe_tickers for the sizer
+            daily_prices_for_vol = price_data_daily[universe_tickers]
+            sizer_args.append(daily_prices_for_vol)
+
+        if sizer_name in ["rolling_sharpe", "rolling_sortino", "rolling_beta", "rolling_benchmark_corr", "rolling_downside_volatility"]:
+            if window_param is None:
+                raise ValueError(f"Sizer '{sizer_name}' requires a 'window' parameter, but it was not found in strategy_params.")
+            sizer_args.append(window_param)
+        
+        # Add target_return for Sortino sizer if applicable
+        if sizer_name == "rolling_sortino":
+            if target_return_param is None:
+                # Use default from sizer function if not provided in config
+                sizer_args.append(0.0) # Default target_return for rolling_sortino_sizer
+            else:
+                sizer_args.append(target_return_param)
+        
+        # Add max_leverage for rolling_downside_volatility sizer if applicable
+        if sizer_name == "rolling_downside_volatility" and max_leverage_param is not None:
+            filtered_sizer_params["max_leverage"] = max_leverage_param
+
+        logger.debug(f"Sizer arguments prepared: {sizer_args}")
+        logger.debug(f"Final keyword arguments for sizer: {filtered_sizer_params}")
 
         sized_signals = sizer_func(
-            signals,
-            strategy_data_monthly,
-            benchmark_data_monthly,
+            *sizer_args,
             **filtered_sizer_params,
         )
         if verbose:
@@ -795,8 +840,9 @@ class Backtester:
         all_cumulative_returns_plotting.append(cumulative_bench_returns)
 
         if all_cumulative_returns_plotting:
-            max_val = pd.concat(all_cumulative_returns_plotting).max()
-            min_val = pd.concat(all_cumulative_returns_plotting).min()
+            combined_cumulative_returns = pd.concat(all_cumulative_returns_plotting)
+            max_val = combined_cumulative_returns.max().max() # Get scalar max from potentially multi-column Series
+            min_val = combined_cumulative_returns.min().min() # Get scalar min from potentially multi-column Series
             # Ensure bottom is slightly less than 1 for log scale if min_val is positive
             ax1.set_ylim(bottom=min(0.9, min_val * 0.9) if min_val > 0 else 0.1, top=max_val * 1.1)
 
@@ -886,17 +932,26 @@ if __name__ == "__main__":
 
     logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
 
+    # Reload configuration to ensure latest changes from YAML are picked up
+    import src.portfolio_backtester.config_loader as config_loader_module
+    config_loader_module.load_config()
+
+    # Access the global variables directly from the reloaded module
+    GLOBAL_CONFIG_RELOADED = config_loader_module.GLOBAL_CONFIG
+    BACKTEST_SCENARIOS_RELOADED = config_loader_module.BACKTEST_SCENARIOS
+    OPTIMIZER_PARAMETER_DEFAULTS_RELOADED = config_loader_module.OPTIMIZER_PARAMETER_DEFAULTS
+
     # Only require --scenario-name for 'optimize' mode
     if args.mode == "optimize" and args.scenario_name is None:
         parser.error("--scenario-name is required for 'optimize' mode.")
 
     if args.scenario_name is not None:
         scenario_name = args.scenario_name.strip("'\"")
-        selected_scenarios = [s for s in BACKTEST_SCENARIOS if s["name"] == scenario_name]
+        selected_scenarios = [s for s in BACKTEST_SCENARIOS_RELOADED if s["name"] == scenario_name]
         if not selected_scenarios:
-            parser.error(f"Scenario '{scenario_name}' not found in BACKTEST_SCENARIOS.")
+            parser.error(f"Scenario '{scenario_name}' not found in BACKTEST_SCENARIOS_RELOADED.")
     else:
-        selected_scenarios = BACKTEST_SCENARIOS
+        selected_scenarios = BACKTEST_SCENARIOS_RELOADED
 
-    backtester = Backtester(GLOBAL_CONFIG, selected_scenarios, args, random_state=args.random_seed)
+    backtester = Backtester(GLOBAL_CONFIG_RELOADED, selected_scenarios, args, random_state=args.random_seed)
     backtester.run()

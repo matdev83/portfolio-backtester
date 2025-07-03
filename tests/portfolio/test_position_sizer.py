@@ -134,8 +134,10 @@ class TestPositionSizer(unittest.TestCase):
         # To align the test, we should use the same logic as in the sizer.
         downside_sq_sum = (downside ** 2).rolling(window).sum()
         dvol = (downside_sq_sum / window).pow(0.5)
+        dvol = pd.DataFrame(dvol, index=prices.index, columns=prices.columns) # Convert to DataFrame
 
         factor = target_volatility / np.maximum(dvol, epsilon)
+        factor = pd.DataFrame(factor, index=prices.index, columns=prices.columns) # Convert to DataFrame
         factor = factor.replace([np.inf, -np.inf], np.nan).fillna(0)
 
         sized = signals.mul(factor)
@@ -144,7 +146,12 @@ class TestPositionSizer(unittest.TestCase):
 
         # Explicitly pass target_volatility if the sizer uses it and it's part of the test parameters
         # In this case, the sizer has a default for target_volatility, so we ensure the test reflects that.
-        result = rolling_downside_volatility_sizer(signals, prices, bench, window, target_volatility=target_volatility)
+        
+        # Create a dummy daily_prices_for_vol for the test
+        daily_prices_for_vol = prices.resample('D').ffill().reindex(pd.date_range(prices.index.min(), prices.index.max(), freq='D'))
+        daily_prices_for_vol = daily_prices_for_vol.reindex(columns=prices.columns) # Ensure columns match
+
+        result = rolling_downside_volatility_sizer(signals, prices, bench, daily_prices_for_vol, window, target_volatility=target_volatility)
         pd.testing.assert_frame_equal(result, expected, check_dtype=False)
 
 if __name__ == '__main__':

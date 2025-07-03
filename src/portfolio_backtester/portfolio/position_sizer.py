@@ -82,48 +82,68 @@ def rolling_benchmark_corr_sizer(
 
 def rolling_downside_volatility_sizer(
     signals: pd.DataFrame,
-    prices: pd.DataFrame,
+    prices: pd.DataFrame, # This is monthly prices for signals
     benchmark: pd.Series,
+    daily_prices_for_vol: pd.DataFrame, # New parameter for daily prices for vol calc
     window: int,
-    target_volatility: float = 1.0, # New parameter for target volatility
+    target_volatility: float = 1.0,
+    max_leverage: float = 2.0,
     **_,
 ) -> pd.DataFrame:
     """Size positions inversely proportional to downside volatility, scaled by a target volatility.
 
     Only negative returns are used when computing volatility so that
     upside moves do not lead to smaller position sizes."""
-    rets = prices.pct_change(fill_method=None).fillna(0)
-    downside = rets.clip(upper=0)
-    # Calculate rolling sum of squared downside returns and count of non-zero downside returns
-    downside_sq_sum = (downside ** 2).rolling(window).sum()
-    # A window might have all zero returns, so downside_vol would be 0.
-    # We need to handle division by zero or by very small numbers.
-    # Let's use a minimum threshold for downside_vol.
-    epsilon = 1e-9  # Small constant to prevent division by zero
-
-    # Calculate downside volatility.
-    # .mean() would count all days in window. We only want to average over days with actual downside returns,
-    # but standard deviation calculation typically uses N or N-1 of the window.
-    # For this sizer, the intent is usually vol of negative returns.
-    # If all returns in window are >=0, downside_vol will be 0.
-    downside_vol = (downside_sq_sum / window).pow(0.5) # More aligned with typical volatility calc.
-
-    # Replace exact zeros with epsilon to prevent division by zero and extremely large factors.
-    # Also, if downside_vol is NaN (e.g., not enough data points yet in window), factor becomes NaN.
-    # We will fill NaN factors with 0 later, effectively giving no weight.
-    factor = target_volatility / np.maximum(downside_vol, epsilon)
     
-    # Handle cases where factor might be inf (if downside_vol was epsilon and target_volatility is large)
-    # or NaN (if downside_vol was NaN due to insufficient window data initially).
-    # Fill NaN/inf with 0 to avoid issues in portfolio construction. This means no position.
-    factor = factor.replace([np.inf, -np.inf], np.nan).fillna(0)
+    # Calculate downside volatility for each asset using monthly prices
+    rets_monthly = prices.pct_change(fill_method=None).fillna(0)
+    downside_monthly = rets_monthly.clip(upper=0)
+    downside_sq_sum_monthly = (downside_monthly ** 2).rolling(window).sum()
+    downside_vol_monthly = (downside_sq_sum_monthly / window).pow(0.5)
+    downside_vol_monthly = pd.DataFrame(downside_vol_monthly, index=signals.index, columns=signals.columns)
 
-    sized = signals.mul(factor)
-    # Normalize weights. If all factors for a given day are zero (e.g. all assets had zero downside vol),
-    # then sum will be zero, leading to NaN weights. Handle this by filling NaN with 0.
-    # It's important that signals are already 0 for assets not to be included.
-    weight_sum = sized.abs().sum(axis=1)
-    weights = sized.div(weight_sum, axis=0).fillna(0)
+    # Calculate initial factor based on target volatility and asset downside volatility
+    epsilon = 1e-9
+    factor = target_volatility / np.maximum(downside_vol_monthly, epsilon)
+    factor = pd.DataFrame(factor, index=signals.index, columns=signals.columns)
+    factor = factor.clip(upper=max_leverage)
+
+    # Apply factor to signals to get initial sized positions
+    sized_initial = signals.mul(factor)
+
+    # Now, perform volatility targeting using daily data
+    # Expand monthly sized_initial to daily frequency (forward fill)
+    daily_weights_from_sized_initial = sized_initial.reindex(daily_prices_for_vol.index, method="ffill")
+    daily_weights_from_sized_initial = daily_weights_from_sized_initial.shift(1).fillna(0.0) # Shift to avoid look-ahead bias
+
+    # Calculate daily returns for the assets
+    daily_rets_for_vol = daily_prices_for_vol.pct_change(fill_method=None).fillna(0)
+
+    # Calculate daily portfolio returns based on initial sized weights
+    daily_portfolio_returns_initial = (daily_weights_from_sized_initial * daily_rets_for_vol).sum(axis=1)
+
+    # Calculate rolling actual portfolio volatility (annualized)
+    # Assuming 252 trading days in a year for annualization
+    annualization_factor = np.sqrt(252)
+    actual_portfolio_vol = daily_portfolio_returns_initial.rolling(window=window*21).std() * annualization_factor # Approx monthly to daily window
+
+    # Calculate scaling factor to hit target volatility
+    # Avoid division by zero or very small numbers for actual_portfolio_vol
+    scaling_factor = target_volatility / np.maximum(actual_portfolio_vol, epsilon)
+    scaling_factor = scaling_factor.clip(upper=max_leverage) # Cap the scaling factor as well
+
+    # Apply the scaling factor to the initial sized positions
+    # Need to reindex scaling_factor to match signals index (monthly)
+    scaling_factor_monthly = scaling_factor.reindex(signals.index, method="ffill")
+    
+    # Final weights are initial sized signals multiplied by the overall scaling factor
+    weights = sized_initial.mul(scaling_factor_monthly, axis=0)
+    
+    # Ensure weights are capped by max_leverage after scaling
+    weights = weights.clip(upper=max_leverage, lower=-max_leverage) # Assuming long/short possible, clip both sides
+
+    # Fill any remaining NaNs with 0 (e.g., for periods where no signals or vol could be calculated)
+    weights = weights.fillna(0)
 
     return weights
 
