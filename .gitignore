@@ -149,3 +149,5 @@ plots/
 optuna_studies.db
 tmp/
 tests/universe/
+
+.workflows/
