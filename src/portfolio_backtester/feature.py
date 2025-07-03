@@ -199,9 +199,13 @@ class DPVAMS(Feature):
         return dp_vams.fillna(0)
 
 
+from .config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+
+
 def get_required_features_from_scenarios(strategy_configs: list, strategy_registry: dict) -> Set[Feature]:
     """
     Gathers all unique feature requirements from a list of strategy configurations.
+    It considers both static strategy parameters and optimized parameters.
     """
     required_features = set()
     for scen in strategy_configs:
@@ -212,20 +216,87 @@ def get_required_features_from_scenarios(strategy_configs: list, strategy_regist
 
         # Also check for features needed for optimization
         if "optimize" in scen:
-            for opt_param in scen["optimize"]:
-                if opt_param["parameter"] == "sma_filter_window":
-                    min_val = opt_param.get("min_value", 2)
-                    max_val = opt_param.get("max_value", 24)
-                    step = opt_param.get("step", 1)
-                    for window in range(min_val, max_val + 1, step):
-                        required_features.add(BenchmarkSMA(sma_filter_window=window))
-                elif opt_param["parameter"] == "lookback_months":
-                    min_val = opt_param.get("min_value", 1)
-                    max_val = opt_param.get("max_value", 12)
-                    step = opt_param.get("step", 1)
-                    for lookback in range(min_val, max_val + 1, step):
+            for opt_spec in scen["optimize"]: # Renamed opt_param to opt_spec for clarity
+                param_name = opt_spec["parameter"]
+                default_param_config = OPTIMIZER_PARAMETER_DEFAULTS.get(param_name, {})
+
+                # Determine type: opt_spec takes precedence over default_param_config
+                param_type = opt_spec.get("type", default_param_config.get("type"))
+
+                if param_name == "sma_filter_window":
+                    if param_type == "categorical":
+                        values = opt_spec.get("values", default_param_config.get("values", []))
+                        for window in values:
+                            if isinstance(window, int):
+                                required_features.add(BenchmarkSMA(sma_filter_window=window))
+                    elif param_type == "int":
+                        min_val = int(opt_spec.get("min_value", default_param_config.get("low", 2)))
+                        max_val = int(opt_spec.get("max_value", default_param_config.get("high", 24)))
+                        step = int(opt_spec.get("step", default_param_config.get("step", 1)))
+                        for window in range(min_val, max_val + 1, step):
+                            required_features.add(BenchmarkSMA(sma_filter_window=window))
+
+                elif param_name == "lookback_months":
+                    lookback_values_to_add = set()
+                    if param_type == "categorical":
+                        values = opt_spec.get("values", default_param_config.get("values", []))
+                        for val in values:
+                            if isinstance(val, int):
+                                lookback_values_to_add.add(val)
+                    elif param_type == "int":
+                        min_val = int(opt_spec.get("min_value", default_param_config.get("low", 1)))
+                        max_val = int(opt_spec.get("max_value", default_param_config.get("high", 12)))
+                        step = int(opt_spec.get("step", default_param_config.get("step", 1)))
+                        for lookback in range(min_val, max_val + 1, step):
+                            lookback_values_to_add.add(lookback)
+
+                    for lookback in lookback_values_to_add:
                         required_features.add(Momentum(lookback_months=lookback))
                         required_features.add(VAMS(lookback_months=lookback))
-                        required_features.add(DPVAMS(lookback_months=lookback, alpha=0.5)) # Alpha is a placeholder, as it's also optimized
+                        # For DPVAMS, alpha is also needed. If alpha is optimized, this gets more complex.
+                        # Assuming a default or common alpha if not explicitly handled.
+                        # This part might need further refinement if alpha optimization is deeply tied here.
+                        # For now, using a common placeholder or relying on strategy_class.get_required_features
+                        # to handle DPVAMS based on static/optimized alpha.
+                        # Let's assume alpha is handled by the strategy's get_required_features or is static for this feature collection.
+                        # If 'alpha' is also in opt_spec, we might need to create combinations.
+                        # For simplicity, we'll stick to the original DPVAMS addition or assume strategy handles it.
+                        # A fixed common alpha for DPVAMS feature precomputation:
+                        fixed_alpha_for_dpvams_precomp = 0.5 # Or fetch from strategy_params if available
+                        alpha_param_config = OPTIMIZER_PARAMETER_DEFAULTS.get("alpha", {})
+                        alpha_values = scen.get("strategy_params",{}).get("alpha") # static alpha
+
+                        if isinstance(alpha_values, (int,float)): # static alpha
+                             required_features.add(DPVAMS(lookback_months=lookback, alpha=alpha_values))
+                        else: # alpha is optimized or not set, use placeholder or default
+                            # Check if alpha is optimized
+                            alpha_is_optimized = any(p["parameter"] == "alpha" for p in scen.get("optimize", []))
+                            if alpha_is_optimized:
+                                # If alpha is optimized, we'd ideally iterate its possible values too.
+                                # This creates a cartesian product of features, which can be large.
+                                # For now, let's add DPVAMS with a common alpha or skip if too complex here.
+                                # Sticking to simpler: add with a default alpha if alpha is optimized.
+                                # The strategy will ultimately pick the right one at runtime.
+                                alpha_opt_spec = next((s for s in scen["optimize"] if s["parameter"] == "alpha"), None)
+                                default_alpha_config = OPTIMIZER_PARAMETER_DEFAULTS.get("alpha", {})
+                                alpha_type = alpha_opt_spec.get("type", default_alpha_config.get("type")) if alpha_opt_spec else default_alpha_config.get("type")
+
+                                if alpha_type == "categorical":
+                                    alpha_choices = alpha_opt_spec.get("values", default_alpha_config.get("values", [fixed_alpha_for_dpvams_precomp])) if alpha_opt_spec else default_alpha_config.get("values", [fixed_alpha_for_dpvams_precomp])
+                                    for a_val in alpha_choices: required_features.add(DPVAMS(lookback_months=lookback, alpha=float(a_val)))
+                                elif alpha_type == "float": # iterate through range
+                                    a_min = float(alpha_opt_spec.get("min_value", default_alpha_config.get("low", 0.1))) if alpha_opt_spec else float(default_alpha_config.get("low", 0.1))
+                                    a_max = float(alpha_opt_spec.get("max_value", default_alpha_config.get("high", 0.9))) if alpha_opt_spec else float(default_alpha_config.get("high", 0.9))
+                                    a_step = float(alpha_opt_spec.get("step", default_alpha_config.get("step", 0.1))) if alpha_opt_spec else float(default_alpha_config.get("step", 0.1))
+                                    current_a = a_min
+                                    while current_a <= a_max:
+                                        required_features.add(DPVAMS(lookback_months=lookback, alpha=round(current_a,4))) # round to avoid float issues
+                                        current_a += a_step
+                                else: # Default if alpha type is unknown or not optimized
+                                     required_features.add(DPVAMS(lookback_months=lookback, alpha=fixed_alpha_for_dpvams_precomp))
+                            else: # Alpha not optimized, use static from strategy_params or default
+                                static_alpha = scen.get("strategy_params",{}).get("alpha", fixed_alpha_for_dpvams_precomp)
+                                required_features.add(DPVAMS(lookback_months=lookback, alpha=float(static_alpha)))
+
 
     return required_features
