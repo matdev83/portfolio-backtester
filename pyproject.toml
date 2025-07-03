@@ -32,6 +32,7 @@ dependencies = [
     "xlrd==2.0.1",
     "pyarrow",
     "optuna>=4.4",
+    "pygad>=3.2.0", # Added pygad
     "pandas-datareader",
     "pytest-cov",
     "httpx",
