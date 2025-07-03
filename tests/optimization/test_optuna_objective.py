@@ -150,3 +150,45 @@ def test_build_objective_multi_metric_invalid_values(common_mocks):
     assert np.isnan(result[0]) # Total Return was np.nan
     assert result[1] == 0.1     # Max Drawdown was valid
     assert np.isnan(result[2]) # Sharpe was np.inf, should be nan for multi-obj
+
+def test_build_objective_param_not_in_optimizer_config(common_mocks):
+    g_cfg, train_data_monthly, train_data_daily, train_rets_daily, bench_series_daily, features_slice, trial = common_mocks
+
+    base_scen_cfg = {
+        "strategy_params": {"leverage": 1.0}, # Ensure there's at least one valid param if needed by later code
+        "optimization_metric": "Sharpe", # Or any metric, doesn't matter much for this test
+        "optimize": [
+            {"parameter": "this_param_does_not_exist_in_defaults"},
+            {"parameter": "leverage"} # A valid parameter to ensure the function proceeds
+        ]
+    }
+    # OPTIMIZER_PARAMETER_DEFAULTS is imported directly, so we patch it where it's used.
+    # We need to ensure 'leverage' is in the patched defaults.
+    patched_optimizer_defaults = {
+        "leverage": {"type": "float", "low": 0.5, "high": 2.0, "step": 0.1, "log": False}
+    }
+
+    objective_fn = build_objective(
+        g_cfg, base_scen_cfg, train_data_monthly, train_data_daily,
+        train_rets_daily, bench_series_daily, features_slice
+    )
+
+    mock_metrics_result = {"Sharpe": 1.0} # Dummy value
+    mock_calculate_metrics = MagicMock(return_value=mock_metrics_result)
+
+    # Patch the print function within the module where it's called
+    with patch('src.portfolio_backtester.optimization.optuna_objective.print') as mock_print, \
+         patch('src.portfolio_backtester.optimization.optuna_objective.OPTIMIZER_PARAMETER_DEFAULTS', patched_optimizer_defaults), \
+         patch('src.portfolio_backtester.optimization.optuna_objective._run_scenario_static', return_value=MagicMock()), \
+         patch('src.portfolio_backtester.optimization.optuna_objective.calculate_metrics', mock_calculate_metrics):
+        result = objective_fn(trial)
+
+    # Check that print was called with the warning for the missing parameter
+    mock_print.assert_called_once_with("Warning: Parameter 'this_param_does_not_exist_in_defaults' requested for optimization but not found in optimizer_config.json")
+
+    # Check that the valid parameter 'leverage' was still suggested
+    trial.suggest_float.assert_called_with("leverage", 0.5, 2.0, step=0.1, log=False)
+
+    # Check that the function still completed and returned a result
+    mock_calculate_metrics.assert_called_once()
+    assert result == 1.0

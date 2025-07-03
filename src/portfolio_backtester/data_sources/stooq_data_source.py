@@ -1,3 +1,4 @@
+import setuptools # Ensure setuptools is imported before pandas_datareader
 import os
 import time
 import logging

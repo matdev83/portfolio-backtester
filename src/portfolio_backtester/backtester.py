@@ -1,3 +1,4 @@
+import setuptools # Ensure setuptools is imported before pandas_datareader
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
