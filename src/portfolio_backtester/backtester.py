@@ -33,12 +33,11 @@ from .spy_holdings import (
 from .utils import _resolve_strategy
 from .optimization.optuna_objective import build_objective
 from .monte_carlo import run_monte_carlo_simulation, plot_monte_carlo_results
+from .constants import ZERO_RET_EPS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-ZERO_RET_EPS = 1e-8   # |returns| below this is considered "zero"
 
 class Backtester:
     def __init__(self, global_config, scenarios, args, random_state=None):
@@ -437,8 +436,17 @@ class Backtester:
         ) as progress:
             task = progress.add_task("[cyan]Optimizing...", total=n_trials)
             
+            zero_streak = 0
+
             def callback(study, trial):
+                nonlocal zero_streak
                 progress.update(task, advance=1)
+                if trial.user_attrs.get("zero_returns"):
+                    zero_streak += 1
+                else:
+                    zero_streak = 0
+                if zero_streak > self.early_stop_patience:
+                    study.stop()
 
             study.optimize(
                 objective,

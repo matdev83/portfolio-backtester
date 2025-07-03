@@ -6,6 +6,7 @@ import numpy as np
 from ..utils import _run_scenario_static
 from ..reporting.performance_metrics import calculate_metrics
 from ..config import OPTIMIZER_PARAMETER_DEFAULTS
+from ..constants import ZERO_RET_EPS
 
 
 def build_objective(
@@ -96,6 +97,16 @@ def build_objective(
             bench_series_daily,
             features_slice,
         )
+
+        # Mark trials that effectively produce no returns for early stopping
+        if isinstance(rets, pd.Series):
+            zero_ret = rets.abs().max() < ZERO_RET_EPS
+        else:
+            try:
+                zero_ret = rets.abs().max() < ZERO_RET_EPS
+            except Exception:
+                zero_ret = False
+        trial.set_user_attr("zero_returns", bool(zero_ret))
 
         bench_rets_daily = bench_series_daily.pct_change(fill_method=None).fillna(0)
 
