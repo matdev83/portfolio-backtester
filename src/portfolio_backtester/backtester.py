@@ -20,6 +20,7 @@ from operator import mul
 from datetime import datetime
 
 from .config_loader import GLOBAL_CONFIG, BACKTEST_SCENARIOS, OPTIMIZER_PARAMETER_DEFAULTS
+from .config_initializer import populate_default_optimizations
 from . import strategies
 from .portfolio.position_sizer import get_position_sizer
 from .portfolio.rebalancing import rebalance
@@ -45,6 +46,7 @@ class Backtester:
         # Add optimizer defaults to global_config for easy access
         self.global_config["optimizer_parameter_defaults"] = OPTIMIZER_PARAMETER_DEFAULTS
         self.scenarios = scenarios
+        populate_default_optimizations(self.scenarios, OPTIMIZER_PARAMETER_DEFAULTS) # Call after scenarios are loaded
         self.args = args
         self.data_source = self._get_data_source()
         self.results = {}
