@@ -1,0 +1,161 @@
+GLOBAL_CONFIG:
+  data_source: "stooq"
+  universe:
+    - "AAPL"
+    - "AMZN"
+    - "MSFT"
+    - "GOOGL"
+    - "NVDA"
+    - "TSLA"
+    - "V"
+    - "MCD"
+    - "AVGO"
+    - "AMD"
+    - "WMT"
+    - "COST"
+    - "JPM"
+    - "MA"
+    - "MU"
+    - "LLY"
+    - "TGT"
+    - "META"
+    - "ORCL"
+    - "PG"
+    - "HD"
+    - "JNJ"
+    - "BAC"
+    - "ABBV"
+    - "XOM"
+    - "CVX"
+    - "WFC"
+    - "CRM"
+    - "GE"
+    - "BA"
+    - "ABT"
+    - "MS"
+    - "GS"
+    - "DIS"
+    - "LIN"
+    - "MRK"
+    - "RTX"
+    - "BKNG"
+    - "CAT"
+    - "PEP"
+    - "KO"
+    - "INTU"
+    - "TMUS"
+    - "ACN"
+    - "SCHW"
+    - "TMO"
+    - "SYK"
+    - "AMGN"
+    - "HON"
+    - "AMAT"
+    - "DHR"
+    - "NEE"
+    - "PLTR"
+    - "UNH"
+    - "GBTC"
+  benchmark: "SPY"
+  start_date: "2010-01-01"
+  end_date: "2025-06-30"
+  ibkr_commission_per_share: 0.005
+  ibkr_commission_min_per_order: 1.0
+  ibkr_commission_max_percent_of_trade: 0.005 # 0.5% of trade value
+  slippage_bps: 1 # 1 basis point (0.01%) of trade value
+
+OPTIMIZER_PARAMETER_DEFAULTS:
+  max_lookback:
+    type: "int"
+    low: 20
+    high: 252
+    step: 10
+  calmar_lookback:
+    type: "int"
+    low: 20
+    high: 252
+    step: 10
+  leverage:
+    type: "float"
+    low: 0.5
+    high: 2.0
+    step: 0.1
+  smoothing_lambda:
+    type: "float"
+    low: 0.0
+    high: 0.9
+  num_holdings:
+    type: "int"
+    low: 1
+    high: 50
+    step: 1
+  rolling_window:
+    type: "int"
+    low: 20
+    high: 252
+    step: 10
+  sma_filter_window:
+    type: "int"
+    low: 20
+    high: 252
+    step: 10
+  target_return:
+    type: "float"
+    low: 0.0
+    high: 0.1
+    step: 0.01
+  lookback_months:
+    type: "int"
+    low: 1
+    high: 12
+    step: 1
+  alpha:
+    type: "float"
+    low: 0.1
+    high: 0.9
+    step: 0.1
+  top_decile_fraction:
+    type: "float"
+    low: 0.1
+    high: 0.5
+    step: 0.1
+  derisk_days_under_sma:
+    type: "int"
+    low: 4
+    high: 18
+    step: 2
+  sizer_sharpe_window:
+    type: "int"
+    low: 2
+    high: 12
+    step: 1
+  sizer_sortino_window:
+    type: "int"
+    low: 2
+    high: 12
+    step: 1
+  sizer_beta_window:
+    type: "int"
+    low: 2
+    high: 12
+    step: 1
+  sizer_corr_window:
+    type: "int"
+    low: 2
+    high: 12
+    step: 1
+  sizer_dvol_window:
+    type: "int"
+    low: 2
+    high: 12
+    step: 1
+  long_only:
+    type: "int"
+    low: 0
+    high: 1
+    step: 1
+  target_volatility:
+    type: "float"
+    low: 0.05
+    high: 0.3
+    step: 0.01

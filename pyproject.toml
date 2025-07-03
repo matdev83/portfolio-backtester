@@ -34,7 +34,9 @@ dependencies = [
     "optuna>=4.4",
     "pandas-datareader",
     "pytest-cov",
-    "httpx"
+    "httpx",
+    "PyYAML",
+    "setuptools"
 ]
 
 [project.optional-dependencies]

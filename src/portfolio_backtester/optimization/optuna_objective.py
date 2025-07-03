@@ -5,7 +5,7 @@ import numpy as np
 
 from ..utils import _run_scenario_static
 from ..reporting.performance_metrics import calculate_metrics
-from ..config import OPTIMIZER_PARAMETER_DEFAULTS
+from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
 from ..constants import ZERO_RET_EPS
 
 

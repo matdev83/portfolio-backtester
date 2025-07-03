@@ -19,7 +19,7 @@ from functools import reduce
 from operator import mul
 from datetime import datetime
 
-from .config import GLOBAL_CONFIG, BACKTEST_SCENARIOS, OPTIMIZER_PARAMETER_DEFAULTS
+from .config_loader import GLOBAL_CONFIG, BACKTEST_SCENARIOS, OPTIMIZER_PARAMETER_DEFAULTS
 from . import strategies
 from .portfolio.position_sizer import get_position_sizer
 from .portfolio.rebalancing import rebalance
