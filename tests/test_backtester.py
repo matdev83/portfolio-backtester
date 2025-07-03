@@ -23,6 +23,10 @@ class TestBacktester(unittest.TestCase):
             self.storage_url = None
             # Add default for early_stop_patience if Backtester relies on it being present
             self.early_stop_patience = 10
+            self.pruning_enabled = False
+            self.pruning_n_startup_trials = 5
+            self.pruning_n_warmup_steps = 0
+            self.pruning_interval_steps = 1
 
     def setUp(self):
         """Set up a mock backtester and data for testing."""
