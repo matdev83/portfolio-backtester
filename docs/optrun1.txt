@@ -1,4 +1,3 @@
-```powershell
 PS C:\Users\Mateusz\source\repos\portfolio-backtester> ./.venv/scripts/activate
 (.venv) PS C:\Users\Mateusz\source\repos\portfolio-backtester> python -m src.portfolio_backtester.backtester --mode optimize --scenario-name Momentum_DVOL_Sizer
 2025-07-03 15:47:25,107 - INFO - No random seed provided. Using generated seed: 16087552.
@@ -419,4 +418,3 @@ Date                                                         ...
 2025-07-03 15:53:34,682 - INFO - P&L plot saved to: plots\cumulative_returns_drawdown_Momentum_DVOL_Sizer_Optimized_20250703_155334.png
 2025-07-03 15:53:34,690 - INFO - Cumulative returns and drawdown plots generated and saved.
 (.venv) PS C:\Users\Mateusz\source\repos\portfolio-backtester> 
-```
