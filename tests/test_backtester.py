@@ -27,6 +27,7 @@ class TestBacktester(unittest.TestCase):
             self.pruning_n_startup_trials = 5
             self.pruning_n_warmup_steps = 0
             self.pruning_interval_steps = 1
+            self.optimizer = "optuna" # Add optimizer default
 
     def setUp(self):
         """Set up a mock backtester and data for testing."""
@@ -375,6 +376,105 @@ class TestBacktester(unittest.TestCase):
         result_data = backtester_for_wfo.results["Test_Momentum_WFO (Optimized)"]
         self.assertIsInstance(result_data["returns"], pd.Series)
         self.assertFalse(result_data["returns"].empty)
+
+    @patch('src.portfolio_backtester.backtester.GeneticOptimizer')
+    @patch('src.portfolio_backtester.backtester.Backtester._get_data_source') # Mock data source loading
+    @patch('src.portfolio_backtester.backtester.precompute_features') # Mock feature precomputation
+    def test_run_optimization_with_genetic_optimizer(self, mock_precompute, mock_get_ds, mock_genetic_optimizer_class):
+        """Test that run_optimization calls GeneticOptimizer when specified."""
+        args = self.MockArgs()
+        args.optimizer = "genetic" # Specify genetic optimizer
+        args.mode = "optimize" # Ensure optimize mode
+
+        # Mock data source and feature computation for Backtester initialization
+        mock_get_ds.return_value = MagicMock()
+        mock_precompute.return_value = {} # Empty features dict
+
+        # Minimal scenario for testing optimizer dispatch
+        scenario_config = self.scenarios[0].copy() # Use a copy of the existing scenario
+
+        backtester = Backtester(self.global_config, [scenario_config], args, random_state=42)
+
+        # Mock the GeneticOptimizer instance and its run method
+        mock_ga_instance = MagicMock()
+        mock_ga_instance.run.return_value = ({"param1": 10}, 50) # optimal_params, num_evaluations
+        mock_genetic_optimizer_class.return_value = mock_ga_instance
+
+        # Mock data (can be simplified as GeneticOptimizer itself is mocked)
+        mock_monthly_data = pd.DataFrame({'A': [1,2,3]})
+        mock_daily_data = pd.DataFrame({'A': [1,2,3,4,5,6]})
+        mock_rets_full = pd.DataFrame({'A': [0.1,0.01,0.02, -0.01, 0.005, 0.003]})
+
+        # We need to ensure that the walk-forward window generation doesn't fail due to insufficient data.
+        # Provide enough data for at least one window.
+        # train_window_months = 24, test_window_months = 12
+        # Need at least 36 months of data.
+        long_monthly_idx = pd.date_range(start="2018-01-01", periods=40, freq="ME")
+        mock_monthly_data_long = pd.DataFrame(index=long_monthly_idx, data={'PRICE': np.arange(len(long_monthly_idx))})
+
+
+        optimal_params, num_trials = backtester.run_optimization(
+            scenario_config,
+            mock_monthly_data_long, # Use data that allows window generation
+            mock_daily_data,
+            mock_rets_full
+        )
+
+        mock_genetic_optimizer_class.assert_called_once_with(
+            scenario_config=scenario_config,
+            backtester_instance=backtester,
+            global_config=self.global_config,
+            monthly_data=mock_monthly_data_long,
+            daily_data=mock_daily_data,
+            rets_full=mock_rets_full,
+            random_state=42
+        )
+        mock_ga_instance.run.assert_called_once()
+        self.assertEqual(optimal_params, {"param1": 10})
+        self.assertEqual(num_trials, 50)
+
+    @patch('src.portfolio_backtester.backtester.Backtester._setup_optuna_study')
+    @patch('src.portfolio_backtester.backtester.Backtester._evaluate_params_walk_forward')
+    @patch('src.portfolio_backtester.backtester.Progress') # Mock Progress bar
+    @patch('src.portfolio_backtester.backtester.Backtester._get_data_source')
+    @patch('src.portfolio_backtester.backtester.precompute_features')
+    def test_run_optimization_with_optuna_optimizer(self, mock_precompute, mock_get_ds, mock_progress, mock_evaluate, mock_setup_study):
+        """Test that run_optimization calls Optuna logic when specified (or by default)."""
+        args = self.MockArgs()
+        args.optimizer = "optuna" # Explicitly optuna
+        args.mode = "optimize"
+
+        mock_get_ds.return_value = MagicMock()
+        mock_precompute.return_value = {}
+
+        scenario_config = self.scenarios[0].copy()
+        backtester = Backtester(self.global_config, [scenario_config], args, random_state=42)
+
+        # Mock Optuna study and trial process
+        mock_study_instance = MagicMock()
+        mock_study_instance.best_params = {"lookback_months": 7}
+        mock_study_instance.best_trial.number = 42 # Example trial number
+        mock_setup_study.return_value = (mock_study_instance, 10) # study, n_trials
+
+        mock_evaluate.return_value = 1.2 # Mock evaluation result (e.g., Sharpe ratio)
+
+        # Provide enough data for walk-forward window generation
+        long_monthly_idx = pd.date_range(start="2018-01-01", periods=40, freq="ME")
+        mock_monthly_data_long = pd.DataFrame(index=long_monthly_idx, data={'PRICE': np.arange(len(long_monthly_idx))})
+        mock_daily_data = pd.DataFrame({'A': [1,2,3,4,5,6]}) # Simplified, not directly used by this level of mock
+        mock_rets_full = pd.DataFrame({'A': [0.1,0.01,0.02, -0.01, 0.005, 0.003]}) # Simplified
+
+        optimal_params, num_trials = backtester.run_optimization(
+            scenario_config,
+            mock_monthly_data_long,
+            mock_daily_data,
+            mock_rets_full
+        )
+
+        mock_setup_study.assert_called_once()
+        mock_study_instance.optimize.assert_called_once()
+        self.assertEqual(optimal_params["lookback_months"], 7)
+        self.assertEqual(num_trials, 42) # best_trial.number
 
 
 if __name__ == '__main__':

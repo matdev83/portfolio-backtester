@@ -68,6 +68,10 @@ python src/portfolio_backtester/backtester.py
   * **Default:** `200`
 * `--optuna-timeout-sec`: Time budget per WFA slice (seconds).
   * **Default:** `None` (no timeout)
+* `--optimizer`: Choose the optimization algorithm.
+  * **Choices:** `optuna`, `genetic`
+  * **Default:** `optuna`
+  * **Description:** Selects whether to use Optuna (hyperparameter optimization framework) or a Genetic Algorithm for finding optimal strategy parameters.
 
 #### Optuna Pruning Configuration
 
@@ -192,6 +196,50 @@ The project supports pluggable position sizing methods, defined in `src/portfoli
 The default search space for optimizable parameters is now defined in `src/portfolio_backtester/config.py` within the `OPTIMIZER_PARAMETER_DEFAULTS` dictionary. This centralizes the configuration and makes it easier to manage.
 
 Individual scenarios in `BACKTEST_SCENARIOS` can still override these defaults by specifying `min_value`, `max_value`, and `step` within their `optimize` section.
+
+### Genetic Algorithm (GA) Settings
+
+When using the Genetic Algorithm (`--optimizer genetic`), its behavior can be tuned using parameters specified in `src/portfolio_backtester/config_loader.py` under `OPTIMIZER_PARAMETER_DEFAULTS` (with keys typically starting `ga_`) or overridden per scenario within the `genetic_algorithm_params` dictionary in your scenario configuration.
+
+Key GA parameters include:
+
+*   **`ga_num_generations`**:
+    *   **Description**: The number of generations the GA will run.
+    *   **Default**: `100`
+*   **`ga_sol_per_pop`**:
+    *   **Description**: The number of solutions (individuals) in each population.
+    *   **Default**: `50`
+*   **`ga_num_parents_mating`**:
+    *   **Description**: The number of solutions to be selected as parents for the next generation.
+    *   **Default**: `10`
+*   **`ga_parent_selection_type`**:
+    *   **Description**: Method for selecting parents (e.g., `sss` for steady-state selection, `rws` for roulette wheel, `tournament`).
+    *   **Default**: `sss`
+*   **`ga_crossover_type`**:
+    *   **Description**: Method for crossover (e.g., `single_point`, `two_points`, `uniform`).
+    *   **Default**: `single_point`
+*   **`ga_mutation_type`**:
+    *   **Description**: Method for mutation (e.g., `random`, `swap`, `adaptive`).
+    *   **Default**: `random`
+*   **`ga_mutation_percent_genes`**:
+    *   **Description**: The percentage of genes to mutate in each chromosome. Can be "default" for PyGAD's internal default, or a specific percentage (e.g., 10 for 10%).
+    *   **Default**: `"default"`
+
+These parameters are defined with their defaults in `src/portfolio_backtester/optimization/genetic_optimizer.py` via `get_ga_optimizer_parameter_defaults()` and are loaded into the global `OPTIMIZER_PARAMETER_DEFAULTS`. You can override them in `config/parameters.yaml` under the `OPTIMIZER_PARAMETER_DEFAULTS` section, or for a specific scenario by adding a `genetic_algorithm_params` dictionary to its configuration in `config/scenarios.yaml`.
+
+**Example Scenario Override for GA:**
+```yaml
+# In config/scenarios.yaml
+- name: "My_GA_Optimized_Strategy"
+  # ... other strategy settings ...
+  optimizer: "genetic" # Not a direct config, but implies these params are relevant
+  genetic_algorithm_params:
+    ga_num_generations: 150
+    ga_sol_per_pop: 75
+    ga_mutation_type: "adaptive"
+  optimize:
+    # ... parameter optimization specs ...
+```
 
 ## Development
 
