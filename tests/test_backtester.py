@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from src.portfolio_backtester.backtester import Backtester, _resolve_strategy
-from src.portfolio_backtester.config import GLOBAL_CONFIG, BACKTEST_SCENARIOS
+from src.portfolio_backtester.config_loader import GLOBAL_CONFIG, BACKTEST_SCENARIOS
 from src.portfolio_backtester.feature import get_required_features_from_scenarios
 from src.portfolio_backtester.feature_engineering import precompute_features
 
