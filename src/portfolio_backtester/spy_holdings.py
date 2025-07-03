@@ -296,16 +296,8 @@ def ssga_daily(date: Union[dt.date, pd.Timestamp]):
     #     basket.
     # ------------------------------------------------------------------
     if cache_file.exists():
-        is_historical = (pd.Timestamp.today() - date) > pd.Timedelta(days=7)
-        if is_historical:
-            logger.debug(f"Using historical cache for SSGA {date:%Y-%m-%d}")
-            return pd.read_parquet(cache_file)
-
-        mod_time = dt.datetime.fromtimestamp(cache_file.stat().st_mtime)
-        is_fresh = (dt.datetime.now() - mod_time) < dt.timedelta(hours=6)
-        if is_fresh:
-            logger.debug(f"Using fresh cache for SSGA {date:%Y-%m-%d}")
-            return pd.read_parquet(cache_file)
+        logger.debug(f"Using cached SSGA data for {date:%Y-%m-%d}")
+        return pd.read_parquet(cache_file)
 
     if date < EARLIEST_SSGA_DATE:
         logger.debug(f"SSGA data unavailable before {EARLIEST_SSGA_DATE:%Y-%m-%d} for date {date:%Y-%m-%d}")
@@ -680,12 +672,12 @@ def main():
             hist.to_parquet(out_path, index=False)
         logger.info(f"✓ Done. {len(hist):,} rows written to {out_path}")
 
-def _history_cache_file(start: dt.date, end: dt.date) -> Path:
+def _history_cache_file(start: pd.Timestamp, end: pd.Timestamp) -> Path:
     """Return the path of the aggregate history cache parquet file for the given date range."""
     script_dir = Path(__file__).parent
     cache_dir = script_dir.parent.parent / "cache" / "spy_history"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"{TICKER}_history_{start.date():%Y-%m-%d}_{end.date():%Y-%m-%d}.parquet"
+    return cache_dir / f"{TICKER}_history_{start:%Y-%m-%d}_{end:%Y-%m-%d}.parquet"
 
 
 def _load_history_from_cache(start: pd.Timestamp, end: pd.Timestamp) -> Optional[pd.DataFrame]:
@@ -700,8 +692,10 @@ def _load_history_from_cache(start: pd.Timestamp, end: pd.Timestamp) -> Optional
                 return df
             else:
                 logger.warning(f"Cached data in {cache_file} does not cover the full range {start}-{end}. Ignoring cache.")
+                return None # Explicitly return None if cache does not cover range
         except Exception as exc:
             logger.warning(f"Failed to read cached parquet {cache_file}: {exc} – ignoring cache.")
+            return None # Explicitly return None on exception
     return None
 
 
@@ -943,53 +937,43 @@ def _forward_fill_history(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timesta
         logger.warning("Input DataFrame for forward-fill is empty. No forward-filling performed.")
         return df
 
-    # Get all unique dates from the input DataFrame
-    df_dates = df['date'].dt.normalize().unique()
-    df_min_date = df_dates.min()
-    df_max_date = df_dates.max()
+    # Ensure 'date' column is datetime and set as index for reindexing
+    df['date'] = pd.to_datetime(df['date'])
 
-    # Create a complete range of business days within the DataFrame's actual date range
-    expected_business_days_in_df_range = pd.date_range(df_min_date, df_max_date, freq='B')
+    # Get all unique tickers from the input DataFrame
+    unique_tickers = df['ticker'].unique()
 
-    # Identify missing business days within the DataFrame's actual date range
-    missing_dates_in_df_range = pd.Index(expected_business_days_in_df_range).difference(pd.Index(df_dates))
+    # Create a complete date range of business days
+    full_date_range = pd.date_range(start, end, freq='B')
 
-    # For each missing date, find the closest previous date with data
-    # and duplicate that day's holdings.
-    filled_frames = []
-    current_date_data = pd.DataFrame()
+    # Create a DataFrame with all expected date-ticker combinations
+    # This creates a Cartesian product of dates and tickers
+    from itertools import product
+    all_combinations = pd.DataFrame(list(product(full_date_range, unique_tickers)), columns=['date', 'ticker'])
 
-    # Sort the original DataFrame by date
-    df_sorted = df.sort_values(by='date')
+    # Merge the original data onto this full grid
+    # This will result in NaNs for missing date-ticker combinations
+    merged_df = pd.merge(all_combinations, df, on=['date', 'ticker'], how='left')
 
-    # Iterate through the full date range
-    for single_date in full_date_range:
-        # Check if data exists for the current date
-        data_for_date = df_sorted[df_sorted['date'].dt.normalize() == single_date.normalize()]
+    # Sort by ticker and then by date to ensure correct forward-fill within each ticker group
+    merged_df = merged_df.sort_values(by=['ticker', 'date'])
 
-        if not data_for_date.empty:
-            # If data exists, use it and update current_date_data
-            filled_frames.append(data_for_date)
-            current_date_data = data_for_date.copy()
-        elif not current_date_data.empty:
-            # If data is missing but we have previous data, use the previous data
-            # and update its date to the current missing date
-            filled_data = current_date_data.copy()
-            filled_data['date'] = single_date
-            filled_frames.append(filled_data)
-        else:
-            # If no data exists and no previous data is available (e.g., at the very beginning)
-            # then we cannot fill, and this date will remain missing or be handled by subsequent logic.
-            # For the purpose of this test, we assume data will eventually start.
-            logger.warning(f"No data to forward-fill from for date: {single_date.normalize().date()}")
+    # Perform forward-fill for 'weight_pct', 'shares', and 'market_value' within each ticker group
+    # This will carry forward the last known value for each ticker to subsequent missing dates
+    merged_df['weight_pct'] = merged_df.groupby('ticker')['weight_pct'].ffill()
+    merged_df['shares'] = merged_df.groupby('ticker')['shares'].ffill()
+    merged_df['market_value'] = merged_df.groupby('ticker')['market_value'].ffill()
 
-    if filled_frames:
-        filled_df = pd.concat(filled_frames, ignore_index=True)
-        # Ensure unique date-ticker pairs after filling
-        filled_df = filled_df.drop_duplicates(subset=['date', 'ticker']).sort_values(by=['date', 'ticker']).reset_index(drop=True)
-        return filled_df
-    else:
-        return pd.DataFrame(columns=df.columns) # Return empty if no data was ever found
+    # After forward-filling, there might still be NaNs at the beginning of a ticker's history
+    # if that ticker appeared later than the 'start' date. We should drop these.
+    # Also, drop rows where 'ticker' itself became NaN due to initial merge if a ticker was not present at all.
+    filled_df = merged_df.dropna(subset=['weight_pct', 'ticker']) # Assuming weight_pct is a key indicator of valid holding
+
+    # Ensure unique date-ticker pairs and sort for consistency
+    filled_df = filled_df.drop_duplicates(subset=['date', 'ticker']).sort_values(by=['date', 'ticker']).reset_index(drop=True)
+
+    logger.info(f"Forward-filled history resulted in {len(filled_df)} rows.")
+    return filled_df
 
 
 

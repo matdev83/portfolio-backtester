@@ -10,7 +10,7 @@ import pytest
 import portfolio_backtester.spy_holdings as spy_holdings
 
 
-FILLED_PARQUET = Path("data/data/spy_holdings_full_filled.parquet")
+FILLED_PARQUET = Path("data/spy_holdings_full.parquet")
 
 # --------------------------------------------------------------------------------------
 # Helpers
@@ -52,4 +52,4 @@ def test_spy_holdings_coverage_no_gaps():
     sample_dates = [start, start + pd.Timedelta(days=123), end - pd.Timedelta(days=17)]
     for date in sample_dates:
         res = spy_holdings.get_spy_holdings(date, exact=True)
-        assert not res.empty, f"No holdings returned for {date}" 
+        assert not res.empty, f"No holdings returned for {date}"
