@@ -298,7 +298,7 @@ class TestBacktester(unittest.TestCase):
             pd.testing.assert_frame_equal(args[0], mock_signals) # signals
             pd.testing.assert_frame_equal(args[1], price_data_monthly[mock_universe_tickers]) # strategy_data_monthly
             # benchmark_data_monthly is passed as a Series from backtester
-            pd.testing.assert_series_equal(args[2], price_data_monthly[self.global_config["benchmark"]], name=self.global_config["benchmark"])
+            pd.testing.assert_series_equal(args[2], price_data_monthly[self.global_config["benchmark"]])
             self.assertEqual(kwargs, expected_sizer_params)
 
 
