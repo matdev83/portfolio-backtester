@@ -304,44 +304,57 @@ class Backtester:
         logger.info(f"Full backtest with optimized parameters completed for {scenario_config['name']}.")
 
     def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full):
-        logger.info(f"Running optimization for scenario: {scenario_config['name']} with simple train/test split.")
+        """Optimize parameters using walk-forward train/test splits."""
+        logger.info(
+            f"Running optimization for scenario: {scenario_config['name']} with walk-forward splits."
+        )
 
-        # Define the train/test split point
-        train_end_date = pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
-        
-        train_data_monthly = monthly_data[monthly_data.index <= train_end_date]
-        train_data_daily   = daily_data[daily_data.index <= train_end_date]
-        
-        train_rets_sliced = rets_full[rets_full.index <= train_end_date]
+        train_window_m = scenario_config.get("train_window_months", 24)
+        test_window_m = scenario_config.get("test_window_months", 12)
+        wf_type = scenario_config.get("walk_forward_type", "expanding").lower()
 
-        train_features_sliced = {}
-        if self.features:
-            train_features_sliced = {
-                name: f[f.index <= train_end_date]
-                for name, f in self.features.items()
-            }
+        idx = monthly_data.index
+        windows = []
+        start_idx = train_window_m
+        while start_idx + test_window_m <= len(idx):
+            train_end_idx = start_idx - 1
+            test_start_idx = train_end_idx + 1
+            test_end_idx = test_start_idx + test_window_m - 1
+            if test_end_idx >= len(idx):
+                break
+            if wf_type == "rolling":
+                train_start_idx = train_end_idx - train_window_m + 1
+            else:
+                train_start_idx = 0
+            windows.append(
+                (
+                    idx[train_start_idx],
+                    idx[train_end_idx],
+                    idx[test_start_idx],
+                    idx[test_end_idx],
+                )
+            )
+            start_idx += test_window_m
 
-        logger.info(f"Training period: {train_data_daily.index.min()} to {train_data_daily.index.max()}")
+        if not windows:
+            raise ValueError("Not enough data for the requested walk-forward windows.")
 
-        # --- Optuna Integration for finding best parameters on training set ---
+        logger.info(f"Generated {len(windows)} walk-forward windows using '{wf_type}' splits.")
+
+        # --- Optuna integration ---
         if self.args.storage_url:
             storage = self.args.storage_url
             db_path = storage.replace("sqlite:///", "")
         else:
-            # Use JournalStorage for better file-based parallelization
             journal_dir = "optuna_journal"
             os.makedirs(journal_dir, exist_ok=True)
             db_path = os.path.join(journal_dir, f"{self.args.study_name or scenario_config['name']}.log")
             storage = JournalStorage(JournalFileBackend(file_path=db_path, lock_obj=JournalFileOpenLock(db_path)))
 
-        study_name_base = f"{scenario_config['name']}_train_test"
+        study_name_base = f"{scenario_config['name']}_walk_forward"
         if self.args.study_name:
             study_name_base = f"{self.args.study_name}_{study_name_base}"
-
-        if self.args.random_seed is not None:
-            study_name = f"{study_name_base}_seed_{self.random_state}"
-        else:
-            study_name = study_name_base
+        study_name = f"{study_name_base}_seed_{self.random_state}" if self.args.random_seed is not None else study_name_base
         
         # --- Sampler selection ---
         optimization_specs = scenario_config.get("optimize", [])
@@ -414,16 +427,52 @@ class Backtester:
             load_if_exists=(self.args.random_seed is None) # Only load if no explicit random seed is provided
         )
 
-        objective = build_objective(
-            self.global_config,
-            scenario_config,
-            train_data_monthly,
-            train_data_daily,
-            train_rets_sliced,
-            daily_data[self.global_config["benchmark"]],
-            train_features_sliced
-            # metric is now sourced from scenario_config within build_objective
-        )
+        metrics_to_optimize = [t["name"] for t in optimization_targets_config] if optimization_targets_config else [scenario_config.get("optimization_metric", "Calmar")]
+        is_multi_objective = len(metrics_to_optimize) > 1
+
+        def objective(trial: optuna.trial.Trial):
+            params = scenario_config["strategy_params"].copy()
+            for opt_spec in optimization_specs:
+                pname = opt_spec["parameter"]
+                opt_def = self.global_config.get("optimizer_parameter_defaults", {}).get(pname, {})
+                ptype = opt_def.get("type")
+                low = float(opt_spec.get("min_value", opt_def.get("low")))
+                high = float(opt_spec.get("max_value", opt_def.get("high")))
+                step = float(opt_spec.get("step", opt_def.get("step", 1)))
+                if ptype == "int":
+                    params[pname] = trial.suggest_int(pname, int(low), int(high), step=int(step))
+                elif ptype == "float":
+                    log = opt_spec.get("log", opt_def.get("log", False))
+                    params[pname] = trial.suggest_float(pname, low, high, step=step, log=log)
+
+            scen_cfg = scenario_config.copy()
+            scen_cfg["strategy_params"] = params
+
+            metric_sums = np.zeros(len(metrics_to_optimize))
+
+            for (tr_start, tr_end, te_start, te_end) in windows:
+                m_slice = monthly_data.loc[tr_start:te_end]
+                d_slice = daily_data.loc[tr_start:te_end]
+                r_slice = rets_full.loc[tr_start:te_end]
+                f_slice = {}
+                if self.features:
+                    f_slice = {n: f.loc[tr_start:te_end] for n, f in self.features.items()}
+
+                rets = self.run_scenario(scen_cfg, m_slice, d_slice, r_slice, f_slice, verbose=False)
+
+                test_rets = rets.loc[te_start:te_end]
+                bench_ser = d_slice[self.global_config["benchmark"]].loc[te_start:te_end]
+                bench_rets = bench_ser.pct_change(fill_method=None).fillna(0)
+                metrics = calculate_metrics(test_rets, bench_rets, self.global_config["benchmark"])
+                metric_sums += np.array([metrics.get(m, np.nan) for m in metrics_to_optimize], dtype=float)
+
+            metric_avgs = metric_sums / len(windows)
+            metric_avgs = np.where(np.isfinite(metric_avgs), metric_avgs, float("nan"))
+
+            if is_multi_objective:
+                return tuple(metric_avgs)
+            else:
+                return metric_avgs[0]
 
         with Progress(
             SpinnerColumn(),

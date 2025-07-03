@@ -359,7 +359,6 @@ class TestBacktester(unittest.TestCase):
         
         # Patch Optuna related calls if they are external or too heavy
         with patch('src.portfolio_backtester.backtester.optuna.create_study'), \
-             patch('src.portfolio_backtester.backtester.build_objective'), \
              patch('src.portfolio_backtester.backtester.Progress'), \
              patch('src.portfolio_backtester.backtester.Backtester.run_scenario') as mock_run_scenario:
 
