@@ -137,20 +137,9 @@ class BaseStrategy(ABC):
             sma_name = f"benchmark_sma_{sma_window}m"
             risk_on_series = features[sma_name].reindex(prices.index, fill_value=1)
         else:
-            risk_on_series = pd.Series(1, index=prices.index)
+            risk_on_series = pd.Series(1, index=prices.index, name="risk_on")
 
-        if use_derisk:
-            under_sma = 0
-            derisk_flags = pd.Series(False, index=prices.index)
-            for date in prices.index:
-                if risk_on_series.loc[date]:
-                    under_sma = 0
-                else:
-                    under_sma += 1
-                    if under_sma > derisk_days:
-                        derisk_flags.loc[date] = True
-        else:
-            derisk_flags = pd.Series(False, index=prices.index)
+        derisk_flags = self._calculate_derisk_flags(risk_on_series, derisk_days) if use_derisk else pd.Series(False, index=prices.index)
 
         for date in prices.index:
             look = scores.loc[date]
@@ -179,3 +168,34 @@ class BaseStrategy(ABC):
             weights.loc[~risk_on_series.astype(bool)] = 0.0
 
         return weights
+
+    def _calculate_derisk_flags(self, risk_on_series: pd.Series, derisk_days: int) -> pd.Series:
+        """
+        Calculates flags indicating when to derisk based on consecutive days under SMA.
+
+        Parameters:
+        - risk_on_series (pd.Series): Boolean series indicating if risk is on (True) or off (False).
+                                     Index must match the prices.index.
+        - derisk_days (int): Number of consecutive days asset must be under SMA to trigger derisking.
+
+        Returns:
+        - pd.Series: Boolean series with True where derisking should occur.
+        """
+        if not isinstance(risk_on_series, pd.Series) or not isinstance(derisk_days, int) or derisk_days <= 0:
+            # This case should ideally be handled by the caller (use_derisk check)
+            # but as a safeguard, return an all-false series.
+            return pd.Series(False, index=risk_on_series.index)
+
+        derisk_flags = pd.Series(False, index=risk_on_series.index)
+        consecutive_days_risk_off = 0
+
+        for date in risk_on_series.index:
+            if risk_on_series.loc[date]:  # Risk is ON
+                consecutive_days_risk_off = 0
+            else:  # Risk is OFF (e.g., price is under SMA)
+                consecutive_days_risk_off += 1
+
+            if consecutive_days_risk_off > derisk_days:
+                derisk_flags.loc[date] = True
+
+        return derisk_flags

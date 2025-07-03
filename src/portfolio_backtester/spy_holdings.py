@@ -79,132 +79,86 @@ URL_PATTERNS = [
 # Generic helpers
 # --------------------------------------------------------------------------- #
 
+# Initialize cache for CUSIP to Ticker mapping
+_CUSIP_TICKER_CACHE = {
+    # Top 10 S&P 500 by market cap (most likely to be in SPY)
+    '037833100': 'AAPL', '594918104': 'MSFT', '67066G104': 'NVDA',
+    '023135106': 'AMZN', '30303M102': 'META', '02079K305': 'GOOGL',
+    '02079K107': 'GOOG', '88160R101': 'TSLA', '084670702': 'BRK.B',
+    '92826C839': 'V',
+    # Major financial services
+    '46625H100': 'JPM', '91324P102': 'UNH', '30231G102': 'XOM',
+    '459200101': 'JNJ', '713448108': 'PEP',
+    # Technology leaders
+    '17275R102': 'CSCO', '00724F101': 'ADBE', '79466L302': 'SBUX',
+    '04621X108': 'AVGO',
+    # Consumer & Industrial
+    '931142103': 'WMT', '742718109': 'PG', '437076102': 'HD',
+    '580135101': 'MCD', '438516106': 'HON',
+    # Healthcare & Pharma
+    '88579Y101': 'TMO', '02376R102': 'ABT', '126650100': 'CVS',
+    # Additional common SPY holdings
+    '191216100': 'KO', '254687106': 'DIS', '149123101': 'CAT',
+    '166756103': 'CVX', '65339F101': 'NEE', '57636Q104': 'MA',
+    # Banking & Finance
+    '060505104': 'BAC', '38141G104': 'GS', '58933Y105': 'MS',
+    '172967424': 'C', '807857108': 'SCHW',
+    # Additional holdings from our testing data
+    '26884L109': 'EQT', '655663102': 'NDSN', '169656105': 'CRL',
+    '012653101': 'AMT', '11135F101': 'BLK', '532457108': 'LLY',
+}
+
+UA = os.getenv("SEC_USER_AGENT", "mateusz@bartczak.me Data Downloader")
+HEADERS_SEC = {"User-Agent": UA, "Accept-Encoding": "gzip, deflate"}
+HEADERS_SSGA = {"User-Agent": "Mozilla/5.0"}
+
+
+def _fetch_sec_company_tickers() -> None:
+    """Fetches company tickers from SEC and updates the cache."""
+    try:
+        sec_url = "https://www.sec.gov/files/company_tickers.json"
+        response = requests.get(sec_url, headers=HEADERS_SEC, timeout=10)
+        response.raise_for_status()
+        company_data = response.json()
+        # This part is tricky as SEC data doesn't directly map CUSIPs.
+        # For now, we rely on the static map and log misses.
+        # A more advanced approach would involve cross-referencing CIKs or names,
+        # but that's beyond the scope of simple CUSIP-to-ticker for now.
+        logger.debug("SEC company tickers data fetched, but direct CUSIP mapping is not available from this source.")
+    except requests.RequestException as e:
+        logger.warning(f"Failed to fetch SEC company tickers: {e}")
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse SEC company tickers JSON: {e}")
+
+
 def _cusip_to_ticker(cusip: str) -> str:
     """
-    Convert CUSIP to ticker symbol using multiple data sources.
-    
-    This function uses a combination of:
-    1. Cached mappings from previous lookups
-    2. SEC company tickers API for real-time lookups
-    3. Fallback to a curated list of major S&P 500 companies
-    4. CUSIP as final fallback
+    Convert CUSIP to ticker symbol using a cached mapping.
+    The cache is pre-populated with common CUSIPs and can be (manually) updated.
     """
-    if not cusip or len(cusip) != 9:
-        return cusip  # Invalid CUSIP format
-        
-    try:
-        # Initialize cache on first call
-        if not hasattr(_cusip_to_ticker, '_ticker_cache'):
-            _cusip_to_ticker._ticker_cache = {}
-            
-        # Check cache first
-        if cusip in _cusip_to_ticker._ticker_cache:
-            return _cusip_to_ticker._ticker_cache[cusip]
-        
-        # Try SEC company tickers API (this is the most comprehensive source)
-        try:
-            # SEC provides a company tickers JSON file that's updated regularly
-            sec_url = "https://www.sec.gov/files/company_tickers.json"
-            response = requests.get(sec_url, headers=HEADERS_SEC, timeout=10)
-            response.raise_for_status()
-            
-            company_data = response.json()
-            
-            # Build a reverse lookup from company details to find CUSIP matches
-            # Note: This is not perfect since SEC doesn't directly provide CUSIP mappings
-            # but we can use company names and CIKs to improve our mapping
-            for entry in company_data.values():
-                ticker = entry.get('ticker', '')
-                if ticker and ticker not in _cusip_to_ticker._ticker_cache.values():
-                    # This would require additional CUSIP lookup, which is complex
-                    # For now, we'll rely on the static mapping below
-                    pass
-                    
-        except Exception as e:
-            logger.debug(f"SEC API lookup failed for CUSIP {cusip}: {e}")
-        
-        # Fallback to enhanced static mapping for major S&P 500 companies
-        # This covers the most common holdings in SPY
-        ENHANCED_CUSIP_TICKER_MAP = {
-            # Top 10 S&P 500 by market cap (most likely to be in SPY)
-            '037833100': 'AAPL',    # Apple Inc
-            '594918104': 'MSFT',    # Microsoft Corp
-            '67066G104': 'NVDA',    # NVIDIA Corp
-            '023135106': 'AMZN',    # Amazon.com Inc
-            '30303M102': 'META',    # Meta Platforms Inc
-            '02079K305': 'GOOGL',   # Alphabet Inc Class A
-            '02079K107': 'GOOG',    # Alphabet Inc Class C
-            '88160R101': 'TSLA',    # Tesla Inc
-            '084670702': 'BRK.B',   # Berkshire Hathaway Inc Class B
-            '92826C839': 'V',       # Visa Inc Class A
-            
-            # Major financial services
-            '46625H100': 'JPM',     # JPMorgan Chase & Co
-            '91324P102': 'UNH',     # UnitedHealth Group Inc
-            '30231G102': 'XOM',     # Exxon Mobil Corp (corrected CUSIP)
-            '459200101': 'JNJ',     # Johnson & Johnson
-            '713448108': 'PEP',     # PepsiCo Inc
-            
-            # Technology leaders
-            '17275R102': 'CSCO',    # Cisco Systems Inc
-            '00724F101': 'ADBE',    # Adobe Inc
-            '79466L302': 'SBUX',    # Starbucks Corp
-            '04621X108': 'AVGO',    # Broadcom Inc
-            
-            # Consumer & Industrial
-            '931142103': 'WMT',     # Walmart Inc
-            '742718109': 'PG',      # Procter & Gamble Co
-            '437076102': 'HD',      # Home Depot Inc
-            '580135101': 'MCD',     # McDonald's Corp
-            '438516106': 'HON',     # Honeywell International Inc
-            
-            # Healthcare & Pharma
-            '88579Y101': 'TMO',     # Thermo Fisher Scientific Inc
-            '02376R102': 'ABT',     # Abbott Laboratories
-            '126650100': 'CVS',     # CVS Health Corp
-            
-            # Additional common SPY holdings
-            '191216100': 'KO',      # Coca-Cola Co
-            '254687106': 'DIS',     # Walt Disney Co
-            '149123101': 'CAT',     # Caterpillar Inc
-            '166756103': 'CVX',     # Chevron Corp
-            '65339F101': 'NEE',     # NextEra Energy Inc
-            '57636Q104': 'MA',      # Mastercard Inc Class A
-            
-            # Banking & Finance
-            '060505104': 'BAC',     # Bank of America Corp
-            '38141G104': 'GS',      # Goldman Sachs Group Inc
-            '58933Y105': 'MS',      # Morgan Stanley
-            '172967424': 'C',       # Citigroup Inc
-            '807857108': 'SCHW',    # Charles Schwab Corp
-            
-            # Additional holdings from our testing data
-            '26884L109': 'EQT',     # EQT Corp
-            '655663102': 'NDSN',    # Nordson Corp
-            '169656105': 'CRL',     # Charles River Laboratories
-            '012653101': 'AMT',     # American Tower Corp
-            '11135F101': 'BLK',     # BlackRock Inc (common in SPY)
-            '532457108': 'LLY',     # Eli Lilly & Co (major pharma)
-        }
-        
-        # Update cache with static mappings
-        _cusip_to_ticker._ticker_cache.update(ENHANCED_CUSIP_TICKER_MAP)
-        
-        # Return mapped ticker or CUSIP as fallback
-        result = _cusip_to_ticker._ticker_cache.get(cusip, cusip)
-        
-        # Log unmapped CUSIPs for future enhancement
-        if result == cusip and cusip.isdigit():
-            logger.debug(f"Unmapped CUSIP: {cusip} - consider adding to mapping")
-            
-        return result
-        
-    except Exception as e:
-        logger.debug(f"Error in CUSIP-to-ticker mapping for {cusip}: {e}")
-        return cusip  # Return CUSIP as fallback
-UA = os.getenv("SEC_USER_AGENT", "mateusz@bartczak.me Data Downloader")
-HEADERS_SEC   = {"User-Agent": UA, "Accept-Encoding": "gzip, deflate"}
-HEADERS_SSGA  = {"User-Agent": "Mozilla/5.0"}
+    if not cusip or not isinstance(cusip, str) or len(cusip) != 9:
+        logger.debug(f"Invalid CUSIP format: {cusip}")
+        return cusip
+
+    # Check cache first
+    if cusip in _CUSIP_TICKER_CACHE:
+        return _CUSIP_TICKER_CACHE[cusip]
+
+    # Attempt to fetch from SEC if not in cache (one-time attempt per session for new CUSIPs)
+    # This is a placeholder for a more robust dynamic update mechanism.
+    # For now, we mainly rely on the static map.
+    # if not hasattr(_fetch_sec_company_tickers, '_fetched_once'):
+    #     _fetch_sec_company_tickers()
+    #     setattr(_fetch_sec_company_tickers, '_fetched_once', True)
+    #     if cusip in _CUSIP_TICKER_CACHE: # Check again after potential update
+    #         return _CUSIP_TICKER_CACHE[cusip]
+
+    # Log unmapped CUSIPs for future enhancement
+    # Only log if it looks like a valid CUSIP structure (e.g., not already a ticker)
+    if cusip.isalnum() and not any(c.islower() for c in cusip): # Basic check
+        logger.info(f"Unmapped CUSIP: {cusip}. Consider adding to static mapping or enhancing dynamic lookup.")
+
+    return cusip  # Return CUSIP as fallback
 
 def daterange(start: pd.Timestamp, end: pd.Timestamp):
     cur = start
@@ -337,104 +291,97 @@ def ssga_daily(date: Union[dt.date, pd.Timestamp]):
     #     window so a rerun during the trading day can pick up the latest
     #     basket.
     # ------------------------------------------------------------------
-
     if cache_file.exists():
-        # Snapshots older than one week never change – always reuse the local parquet
-        if (pd.Timestamp.today() - date) > pd.Timedelta(days=7):
+        is_historical = (pd.Timestamp.today() - date) > pd.Timedelta(days=7)
+        if is_historical:
+            logger.debug(f"Using historical cache for SSGA {date:%Y-%m-%d}")
             return pd.read_parquet(cache_file)
 
-        # Recent snapshot (≤7 days old) – honour the 6-hour freshness threshold
         mod_time = dt.datetime.fromtimestamp(cache_file.stat().st_mtime)
-        if (dt.datetime.now() - mod_time) < dt.timedelta(hours=6):
+        is_fresh = (dt.datetime.now() - mod_time) < dt.timedelta(hours=6)
+        if is_fresh:
+            logger.debug(f"Using fresh cache for SSGA {date:%Y-%m-%d}")
             return pd.read_parquet(cache_file)
-
-    # Live site hosts *only* the latest file, but historical copies are archived
-    # on the Internet Archive. We therefore:
-    #   • use direct HTTP fetch only for "recent" dates (within ~30 days)
-    #   • fall back to Wayback Snapshots for anything from
-    #     EARLIEST_SSGA_DATE onward.
-
-    recent_cutoff = pd.Timestamp.today() - pd.Timedelta(days=30)
 
     if date < EARLIEST_SSGA_DATE:
-        # No SSGA basket exists before that point – bail early
+        logger.debug(f"SSGA data unavailable before {EARLIEST_SSGA_DATE:%Y-%m-%d} for date {date:%Y-%m-%d}")
         return None
 
-    # Download if not in cache or cache is stale
-    df = None
-    last_status: int | None = None
-
-    if date == pd.Timestamp.today() and last_status == 200:
-        # For today we can hit the live generic file directly (fast, ~50 KB)
-        try:
-            resp = requests.get(GENERIC_SSGA_URL, headers=HEADERS_SSGA, timeout=10)
-            last_status = resp.status_code
-            if resp.status_code == 200:
-                df = _read_excel_bytes(resp.content, file_ext=".xlsx")
-        except requests.RequestException as exc:
-            logger.debug(f"Live SSGA fetch error for today: {exc}")
-    else:
-        # Historical – ask Wayback for the generic path first (has daily snapshots ≥2015-03-16)
-        archive_bytes = _fetch_from_wayback(GENERIC_SSGA_URL, date)
-        if archive_bytes:
-            df = _read_excel_bytes(archive_bytes, file_ext=".xlsx")
-            logger.info(f"\033[92m✓ SSGA {date:%Y-%m-%d} basket downloaded via Wayback ({len(df)} rows)\033[0m")
+    df = _fetch_ssga_data(date)
 
     if df is None:
-        logger.debug(f"SSGA daily data not found for {date}: {last_status}")
+        logger.debug(f"SSGA daily data not found for {date:%Y-%m-%d}")
         return None
 
-    # --- normalise columns across gigantic vintage drift -----------------------
-    df.columns = df.columns.str.strip().str.lower()
-    df = df.rename(columns={
-        "weight (%)":          "weight_pct",
-        "% weight":            "weight_pct",
-        "weight":              "weight_pct",
-        "ticker":              "ticker",
-        "shares":              "shares",
-        "shares held":         "shares",
-        "market value ($)":    "market_value",
-        "market value":        "market_value",
-        "market value (usd)":  "market_value",
-    })
+    df = _normalize_ssga_columns(df)
+    df["date"] = pd.Timestamp(date)
+    df["ticker"] = df["ticker"].str.upper()
 
-    # Fallback detection for market value if rename missed it
+    result_df = df[["date", "ticker", "weight_pct", "shares", "market_value"]].copy()
+    result_df = _sanitize_ssga_weight_pct(result_df)
+
+    logger.info(f"✓ SSGA {date:%Y-%m-%d} basket processed ({len(result_df)} rows)")
+    result_df.to_parquet(cache_file)
+    return result_df
+
+def _fetch_ssga_data(date: pd.Timestamp) -> pd.DataFrame | None:
+    """Fetches SSGA data for a given date, trying live URL first, then Wayback Machine."""
+    df = None
+    # Try live URL for today's date
+    if date == pd.Timestamp.today().normalize():
+        try:
+            resp = requests.get(GENERIC_SSGA_URL, headers=HEADERS_SSGA, timeout=10)
+            if resp.status_code == 200:
+                df = _read_excel_bytes(resp.content, file_ext=".xlsx")
+                logger.info(f"SSGA {date:%Y-%m-%d} basket downloaded from live URL.")
+                return df
+            else:
+                logger.debug(f"Live SSGA fetch failed for {date:%Y-%m-%d}: status {resp.status_code}")
+        except requests.RequestException as exc:
+            logger.debug(f"Live SSGA fetch error for {date:%Y-%m-%d}: {exc}")
+
+    # Fallback to Wayback Machine for historical dates or if live fetch failed
+    archive_bytes = _fetch_from_wayback(GENERIC_SSGA_URL, date)
+    if archive_bytes:
+        df = _read_excel_bytes(archive_bytes, file_ext=".xlsx")
+        logger.info(f"SSGA {date:%Y-%m-%d} basket downloaded via Wayback ({len(df) if df is not None else 0} rows)")
+    return df
+
+def _normalize_ssga_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalizes column names for SSGA DataFrame."""
+    df.columns = df.columns.str.strip().str.lower()
+    column_renames = {
+        "weight (%)": "weight_pct", "% weight": "weight_pct", "weight": "weight_pct",
+        "ticker": "ticker", "shares": "shares", "shares held": "shares",
+        "market value ($)": "market_value", "market value": "market_value",
+        "market value (usd)": "market_value",
+    }
+    df = df.rename(columns=column_renames)
+
     if "market_value" not in df.columns:
         for col in df.columns:
             if "market value" in col:
                 df.rename(columns={col: "market_value"}, inplace=True)
                 break
 
-    for col in ["shares", "market_value", "weight_pct"]:
+    for col in ["shares", "market_value", "weight_pct", "ticker"]:
         if col not in df.columns:
             df[col] = pd.NA
+    return df
 
-    df["date"] = pd.Timestamp(date)
-    df["ticker"] = df["ticker"].str.upper()
-
-    result_df = df[["date", "ticker", "weight_pct", "shares", "market_value"]].copy()
-
-    # ------------------------------------------------------------------
-    # Sanitise *weight_pct* – convert any string like "2.41%" → 2.41 (float)
-    # ------------------------------------------------------------------
-    if result_df["weight_pct"].dtype == object:
-        clean = (
-            result_df["weight_pct"].astype(str)
-                      .str.strip()
-                      .str.rstrip("%")
-                      .replace({"": pd.NA})
+def _sanitize_ssga_weight_pct(df: pd.DataFrame) -> pd.DataFrame:
+    """Sanitizes the 'weight_pct' column in SSGA DataFrame."""
+    if "weight_pct" in df.columns and df["weight_pct"].dtype == object:
+        clean_weight = (
+            df["weight_pct"].astype(str)
+            .str.strip()
+            .str.rstrip("%")
+            .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA}) # handle various NA representations
         )
-        result_df.loc[:, "weight_pct"] = clean
-
-    result_df.loc[:, "weight_pct"] = pd.to_numeric(result_df["weight_pct"], errors="coerce")
-
-    # Success message for live fetch already logged above for Wayback; do it for direct fetch now.
-    if date == pd.Timestamp.today() and last_status == 200:
-        logger.info(f"\033[92m✓ SSGA {date:%Y-%m-%d} basket downloaded ({len(result_df)} rows)\033[0m")
-
-    # Save to cache and return
-    result_df.to_parquet(cache_file)
-    return result_df
+        df.loc[:, "weight_pct"] = pd.to_numeric(clean_weight, errors="coerce")
+    elif "weight_pct" in df.columns:
+        df.loc[:, "weight_pct"] = pd.to_numeric(df["weight_pct"], errors="coerce")
+    return df
 
 # --------------------------------------------------------------------------- #
 # 2 & 3) SEC filings via EdgarTools (auto-throttled, ~180 filings/min)
@@ -474,110 +421,114 @@ def _filing_obj_with_retry(filing, max_retries: int = 5, initial_delay: float = 
         f"Exceeded {max_retries} retries for {filing.accession_no} due to repeated HTTP 429 responses.")
     return None
 
-def _process_sec_filing(filing, start_date, end_date):
+def _get_filing_date(filing) -> pd.Timestamp | None:
+    """Extracts and validates the period_of_report date from a filing."""
+    period_of_report = filing.period_of_report
+    if isinstance(period_of_report, str):
+        try:
+            return pd.Timestamp(period_of_report)
+        except ValueError:
+            logger.warning(f"Skipping filing {filing.accession_no}: Invalid date string '{period_of_report}'")
+            return None
+    elif isinstance(period_of_report, dt.date):
+        return pd.Timestamp(period_of_report)
+    logger.warning(f"Skipping filing {filing.accession_no}: Invalid period_of_report type {type(period_of_report)}.")
+    return None
+
+def _extract_holdings_from_obj(obj, filing_accession_no: str) -> list:
+    """Extracts holdings items from a parsed SEC filing object."""
+    if FundReport is not None and isinstance(obj, FundReport):
+        return getattr(obj.portfolio, "holdings", [])
+    elif isinstance(obj, dict):
+        return obj.get("portfolio", [])
+    elif hasattr(obj, "portfolio"):
+        port = obj.portfolio
+        if isinstance(port, list):
+            return port
+        elif hasattr(port, "holdings"):
+            return port.holdings or []
+    elif hasattr(obj, "investments"): # edgar 4.3+ FundReport
+        return obj.investments or []
+    elif hasattr(obj, "investment_data"):
+        return obj.investment_data or []
+
+    logger.warning(f"Skipping filing {filing_accession_no}: Unexpected obj type {type(obj)} or no holdings data found.")
+    return []
+
+def _process_holding_item(item, date: pd.Timestamp) -> tuple | None:
+    """Processes a single holding item (either modern object or old dict)."""
+    ticker = None
+    pct_nav = None
+    shares = None
+    value = None
+
+    if hasattr(item, 'model_dump'):  # New EdgarTools format (InvestmentOrSecurity)
+        raw_ticker = getattr(item, 'ticker', None) or ""
+        cusip = getattr(item, 'cusip', None)
+
+        if cusip:
+            ticker = _cusip_to_ticker(cusip)
+            # If CUSIP maps to itself and raw_ticker exists, prefer raw_ticker
+            if ticker == cusip and raw_ticker:
+                ticker = raw_ticker
+        elif raw_ticker:
+            ticker = raw_ticker
+
+        # Fallback to name-based heuristic only if no ticker/CUSIP resolution
+        if not ticker and hasattr(item, 'name') and item.name:
+            ticker = item.name.replace(" ", "_").upper()[:10]
+
+        pct_nav = float(getattr(item, 'pct_value', 0)) if getattr(item, 'pct_value', None) is not None else None
+        shares = float(getattr(item, 'balance', 0)) if getattr(item, 'balance', None) is not None else None
+        value = float(getattr(item, 'value_usd', 0)) if getattr(item, 'value_usd', None) is not None else None
+        asset_category = getattr(item, 'asset_category', '').upper()
+        if ticker and asset_category == 'EC':  # Equity Common stock
+            return date, ticker.upper(), pct_nav, shares, value
+
+    elif isinstance(item, dict):  # Old EdgarTools format (dictionary)
+        security_type = item.get("security_type", "").lower()
+        if security_type == "common stock":
+            identifier = str(item.get("identifier", "")).upper()
+            ticker_to_use = _cusip_to_ticker(identifier) if len(identifier) == 9 and identifier.isalnum() else identifier
+
+            if ticker_to_use:
+                pct_nav = item.get("pct_nav") if item.get("pct_nav") is not None else item.get("pct_value")
+                shares = item.get("shares")
+                value = item.get("value")
+                return date, ticker_to_use.upper(), pct_nav, shares, value
+    return None
+
+def _process_sec_filing(filing, start_date: pd.Timestamp, end_date: pd.Timestamp) -> pd.DataFrame | None:
     """Helper to process a single SEC filing and extract holdings."""
-    try:
-        period_of_report = filing.period_of_report
-        if isinstance(period_of_report, str):
-            date = pd.Timestamp(period_of_report)
-        elif isinstance(period_of_report, dt.date):
-            date = pd.Timestamp(period_of_report)
-        else:
-            logger.warning(f"Skipping filing {filing.accession_no}: Invalid period_of_report type.")
-            return None
+    date = _get_filing_date(filing)
+    if date is None or not (start_date <= date <= end_date):
+        logger.debug(f"Skipping filing {filing.accession_no}: Date {date} out of range or invalid.")
+        return None
 
-        if not (start_date <= date <= end_date):
-            logger.debug(f"Skipping filing {filing.accession_no}: Outside date range.")
-            return None
+    obj = _filing_obj_with_retry(filing)
+    if obj is None:
+        logger.warning(f"Could not retrieve object for filing {filing.accession_no}.")
+        return None
 
-        # Use retry-aware wrapper to fetch parsed object
-        obj = _filing_obj_with_retry(filing)
-        if obj is None:
-            return None
+    items = _extract_holdings_from_obj(obj, filing.accession_no)
+    if not items:
+        logger.debug(f"No items found in filing {filing.accession_no}.")
+        return None
 
-        # edgartools v4 returns FundReport dataclass; v3 returns dict
-        if FundReport is not None and isinstance(obj, FundReport):
-            items = getattr(obj.portfolio, "holdings", [])
-        elif isinstance(obj, dict):
-            items = obj.get("portfolio", [])
-        elif hasattr(obj, "portfolio"):
-            port = obj.portfolio
-            if isinstance(port, list):
-                items = port
-            elif hasattr(port, "holdings"):
-                items = port.holdings or []
-            else:
-                items = []
-        elif hasattr(obj, "investments"):
-            # edgar 4.3+ FundReport exposes list under .investments
-            items = obj.investments or []
-        elif hasattr(obj, "investment_data"):
-            items = obj.investment_data or []
-        else:
-            logger.warning(f"Skipping filing {filing.accession_no}: Unexpected obj type {type(obj)}")
-            return None
-        rows = []
-        for it in items:
-            # Handle both new EdgarTools format (InvestmentOrSecurity objects) and old format (dicts)
-            if hasattr(it, 'model_dump'):  # New format: InvestmentOrSecurity object
-                ticker = getattr(it, 'ticker', None) or ""
-                if not ticker and hasattr(it, 'cusip') and it.cusip:
-                    # Use CUSIP-to-ticker mapping
-                    ticker = _cusip_to_ticker(it.cusip)
-                # Fallback to a modified name if ticker is still empty and CUSIP was not present or not mapped
-                if not ticker and hasattr(it, 'name') and it.name:
-                    # Only use name as last resort if CUSIP is also missing or was present but unmapped
-                    # (in which case ticker would be the CUSIP itself, so this condition means no CUSIP or empty CUSIP)
-                    if not (hasattr(it, 'cusip') and it.cusip and _cusip_to_ticker(it.cusip) != it.cusip):
-                        # Avoid using name heuristic if a CUSIP was present but just not in our map
-                        # unless ticker is still effectively empty (e.g. _cusip_to_ticker returned empty for empty cusip)
-                        if not ticker or ticker == it.cusip: # if ticker is still the cusip or empty
-                           ticker = it.name.replace(" ", "_").upper()[:10] # Heuristic for name-based ticker
+    rows = []
+    for item in items:
+        processed_item = _process_holding_item(item, date)
+        if processed_item:
+            rows.append(processed_item)
 
-                pct_nav = float(getattr(it, 'pct_value', 0)) if hasattr(it, 'pct_value') and it.pct_value else None
-                shares = float(getattr(it, 'balance', 0)) if hasattr(it, 'balance') and it.balance else None
-                value = float(getattr(it, 'value_usd', 0)) if hasattr(it, 'value_usd') and it.value_usd else None
-                
-                asset_category = getattr(it, 'asset_category', '').upper()
-                # Ensure ticker is not empty and is a valid stock before adding
-                if ticker and asset_category == 'EC':  # Equity Common stock
-                    rows.append((date, ticker.upper(), pct_nav, shares, value))
-                    
-            elif isinstance(it, dict):  # Old format: dictionary
-                security_type = it.get("security_type", "").lower()
-                if security_type == "common stock":
-                    identifier = str(it.get("identifier", "")).upper() # Ensure string
-                    ticker_to_use = identifier # Default to identifier
+    if rows:
+        df = pd.DataFrame(rows, columns=["date", "ticker", "weight_pct", "shares", "market_value"])
+        # Ensure weight_pct is numeric, coercing errors
+        if 'weight_pct' in df.columns:
+            df['weight_pct'] = pd.to_numeric(df['weight_pct'], errors='coerce')
+        return df
 
-                    # Basic CUSIP check: 9 chars, alphanumeric.
-                    # CUSIPs are 9 characters. First 6: alphanumeric (issuer). Next 2: alphanumeric (issue). Last 1: digit (check digit).
-                    is_cusip_like = len(identifier) == 9 and identifier.isalnum()
-
-                    if is_cusip_like:
-                        resolved_ticker = _cusip_to_ticker(identifier)
-                        # _cusip_to_ticker returns the original CUSIP if not found in map.
-                        # So, if resolved_ticker is different from identifier, it means we found a map.
-                        if resolved_ticker != identifier:
-                            ticker_to_use = resolved_ticker
-                        # else: resolved_ticker is the CUSIP itself, _cusip_to_ticker should have logged it if it was unmapped.
-
-                    # Ensure ticker_to_use is not empty before appending
-                    if ticker_to_use: # Avoid empty strings if identifier was empty
-                        pct = it.get("pct_nav") if it.get("pct_nav") is not None else it.get("pct_value")
-                        rows.append((
-                            date,
-                            ticker_to_use.upper(), # Ensure upper case
-                            pct,
-                            it.get("shares"),
-                            it.get("value")
-                        ))
-        if rows:
-            df = pd.DataFrame(rows, columns=["date", "ticker",
-                                             "weight_pct", "shares",
-                                             "market_value"])
-            return df
-    except (ValueError, TypeError, Exception) as exc:
-        logger.warning(f"Skipping filing {filing.accession_no}: {exc}")
+    logger.debug(f"No processable common stock holdings found in filing {filing.accession_no}.")
     return None
 
 def _load_sec_holdings_from_cache(cache_file: Path) -> pd.DataFrame | None:
@@ -790,55 +741,85 @@ def get_spy_holdings(date: Union[str, dt.date, pd.Timestamp], *, exact: bool = F
     elif not isinstance(date, pd.Timestamp):
         raise TypeError("date must be a str, datetime.date or pandas.Timestamp")
 
-    # Lazily load full history into memory. Prefer the *bundled* parquet that
-    # ships with the repository (instant load, no network) and fall back to
-    # the cache-building logic only if the file is missing.
-    if _HISTORY_DF is None:
-        # Attempt to locate the *bundled* history parquet relative to repo root.
-        repo_root = next(
-            (p for p in Path(__file__).resolve().parents
-             if (p / "data" / "spy_holdings_full.parquet").exists()),
-            None,
-        )
+    # Lazily load full history into memory.
+    _ensure_history_loaded()
 
-        if repo_root is not None:
-            bundled = repo_root / "data" / "spy_holdings_full.parquet"
-            logger.info(f"Loading bundled holdings history: {bundled}")
-            _HISTORY_DF = pd.read_parquet(bundled)
-            if not isinstance(_HISTORY_DF, pd.DataFrame):
-                _HISTORY_DF = None # force rebuild
-            logger.info(f"Loaded bundled history with shape: {_HISTORY_DF.shape}")
-            logger.info(f"Bundled history date range: {_HISTORY_DF['date'].min()} to {_HISTORY_DF['date'].max()}")
-        else:
-            # Fallback – will download and build history which can be slow and
-            # hit SEC rate limits, but ensures the function still works in
-            # environments where the repo was packaged without the parquet.
-            logger.warning("Bundled holdings history not found – building from scratch. This may take a while.")
-            _HISTORY_DF = build_history(pd.Timestamp(2004, 1, 1), pd.Timestamp.today())
-            logger.info(f"Built history with shape: {_HISTORY_DF.shape}")
-            logger.info(f"Built history date range: {_HISTORY_DF['date'].min()} to {_HISTORY_DF['date'].max()}")
+    target_ts = pd.Timestamp(date) # Ensure it's a Timestamp
 
-    target_ts = date
+    if _HISTORY_DF is None or _HISTORY_DF.empty:
+        # This case should ideally be handled by _ensure_history_loaded,
+        # but as a safeguard:
+        logger.error("SPY holdings history is not available even after attempting to load.")
+        raise ValueError("SPY holdings history could not be loaded.")
+
     df = _HISTORY_DF[_HISTORY_DF["date"] == target_ts]
-    logger.info(f"Attempting to get holdings for target_ts: {target_ts}. Found {len(df)} rows.")
+    logger.debug(f"Holdings query for exact date {target_ts}: {len(df)} rows found.")
 
     if df.empty and not exact:
-        # fallback to the latest available date before *date* (robust implementation)
-        earlier_mask = _HISTORY_DF["date"] <= target_ts
-        if earlier_mask.any():
-            nearest = _HISTORY_DF.loc[earlier_mask, "date"].max()
+        # Fallback to the latest available date on or before the target_ts
+        available_dates_before = _HISTORY_DF[_HISTORY_DF["date"] <= target_ts]["date"]
+        if not available_dates_before.empty:
+            nearest_date = available_dates_before.max()
+            df = _HISTORY_DF[_HISTORY_DF["date"] == nearest_date]
             logger.info(
-                "Exact holdings for %s unavailable – using nearest previous date %s.",
-                date,
-                nearest.date(),
+                f"Exact holdings for {target_ts:%Y-%m-%d} unavailable. Using nearest previous date {nearest_date:%Y-%m-%d} ({len(df)} rows)."
             )
-            df = _HISTORY_DF[_HISTORY_DF["date"] == nearest]
+        else: # Should not happen if history is loaded and target_ts is reasonable
+            logger.warning(f"No holdings data found on or before {target_ts:%Y-%m-%d}, even with exact=False.")
+
 
     if df.empty:
-        raise ValueError(f"No holdings data found for {date} (exact={exact}).")
+        raise ValueError(f"No holdings data found for {target_ts:%Y-%m-%d} (exact={exact}). Ensure date is within data range: {_HISTORY_DF['date'].min():%Y-%m-%d} to {_HISTORY_DF['date'].max():%Y-%m-%d}")
 
     return df.sort_values("weight_pct", ascending=False).reset_index(drop=True)
 
+def _ensure_history_loaded():
+    """Ensures the _HISTORY_DF is loaded, preferring bundled parquet, then building if necessary."""
+    global _HISTORY_DF
+    if _HISTORY_DF is not None and not _HISTORY_DF.empty:
+        return
+
+    logger.debug("Attempting to load SPY holdings history...")
+    # Attempt to locate the *bundled* history parquet relative to repo root.
+    repo_root = next(
+        (p for p in Path(__file__).resolve().parents
+         if (p / "data" / "spy_holdings_full.parquet").exists()),
+        None,
+    )
+
+    if repo_root is not None:
+        bundled_path = repo_root / "data" / "spy_holdings_full.parquet"
+        try:
+            logger.info(f"Loading bundled holdings history from: {bundled_path}")
+            _HISTORY_DF = pd.read_parquet(bundled_path)
+            if not isinstance(_HISTORY_DF, pd.DataFrame) or _HISTORY_DF.empty:
+                logger.warning(f"Bundled parquet at {bundled_path} is invalid or empty.")
+                _HISTORY_DF = None # Force rebuild if file is corrupt or empty
+            else:
+                logger.info(f"Loaded bundled history with shape: {_HISTORY_DF.shape}. Date range: {_HISTORY_DF['date'].min():%Y-%m-%d} to {_HISTORY_DF['date'].max():%Y-%m-%d}")
+                return # Successfully loaded
+        except Exception as e:
+            logger.error(f"Failed to load bundled parquet {bundled_path}: {e}")
+            _HISTORY_DF = None # Ensure it's None if loading failed
+
+    if _HISTORY_DF is None:
+        logger.warning(
+            "Bundled holdings history not found or failed to load. "
+            "Building from scratch. This may take a while and hit SEC rate limits."
+        )
+        try:
+            # Define a reasonable default start date if building from scratch
+            default_start_date = pd.Timestamp(2004, 1, 1)
+            current_date = pd.Timestamp.today().normalize()
+            _HISTORY_DF = build_history(default_start_date, current_date)
+            if _HISTORY_DF is not None and not _HISTORY_DF.empty:
+                logger.info(f"Built history with shape: {_HISTORY_DF.shape}. Date range: {_HISTORY_DF['date'].min():%Y-%m-%d} to {_HISTORY_DF['date'].max():%Y-%m-%d}")
+            else:
+                logger.error("Failed to build history or an empty DataFrame was returned.")
+                _HISTORY_DF = pd.DataFrame() # Assign empty df to prevent repeated build attempts in same session if build fails
+        except Exception as e:
+            logger.error(f"Error building history from scratch: {e}")
+            _HISTORY_DF = pd.DataFrame() # Assign empty df to prevent repeated build attempts
 
 def update_full_history(
     out_path: Path,
