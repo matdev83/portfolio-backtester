@@ -111,7 +111,7 @@ class Backtester:
             logger.info(f"Running scenario: {scenario_config['name']}")
 
         if rets_daily is None:
-            rets_daily = price_data_daily.pct_change().fillna(0)
+            rets_daily = price_data_daily.pct_change(fill_method=None).fillna(0)
         
         strategy = self._get_strategy(
             scenario_config["strategy"], scenario_config["strategy_params"]
@@ -236,6 +236,7 @@ class Backtester:
             "sharpe_momentum": strategies.SharpeMomentumStrategy,
             "sortino_momentum": strategies.SortinoMomentumStrategy,
             "vams_momentum": strategies.VAMSMomentumStrategy,
+            "momentum_dvol_sizer": strategies.MomentumDvolSizerStrategy, # Added this line
         }
         
         required_features = get_required_features_from_scenarios(self.scenarios, strategy_registry)
@@ -250,7 +251,7 @@ class Backtester:
         logger.info("All features pre-computed.")
 
         # Daily return series used for portfolio P&L
-        rets_full = daily_data.pct_change().fillna(0)
+        rets_full = daily_data.pct_change(fill_method=None).fillna(0)
 
         if self.args.mode == "optimize":
             self._run_optimize_mode(self.scenarios[0], monthly_data, daily_data, rets_full)  # pass both data sets

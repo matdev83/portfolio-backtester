@@ -47,8 +47,12 @@ class YFinanceDataSource(BaseDataSource):
     def _download_data(self, ticker: str, start_date: str, end_date: str, file_path: Path) -> pd.DataFrame | None:
         """Downloads data from yfinance and saves to cache. Returns DataFrame if successful, None otherwise."""
         try:
-            downloaded_df = yf.download(ticker, start=start_date, end=end_date, auto_adjust=False, progress=False)
+            # Use auto_adjust=True to get adjusted prices
+            downloaded_df = yf.download(ticker, start=start_date, end=end_date, auto_adjust=True, progress=False)
             if downloaded_df is not None and not downloaded_df.empty:
+                # When auto_adjust=True, yfinance typically returns OHLC adjusted,
+                # and 'Close' is the adjusted close.
+                # We save the full OHLCV for potential future use, even if only 'Close' is used now.
                 downloaded_df.to_csv(file_path, index=True)
                 logger.debug(f"Downloaded {ticker} successfully.")
                 return downloaded_df
@@ -88,15 +92,23 @@ class YFinanceDataSource(BaseDataSource):
 
                 if df is not None and not df.empty:
                     df.index.name = 'Date'
+                    # With auto_adjust=True, 'Close' should be the adjusted close.
+                    # If 'Close' is not present, it's an issue.
                     if 'Close' in df.columns:
                         close_series = df['Close']
+                    # Fallback for unusual cases or if data format from cache/download changes unexpectedly
                     elif 'Adj Close' in df.columns:
+                        logger.warning(f"'Close' column not found for {ticker} despite auto_adjust=True. Using 'Adj Close'.")
                         close_series = df['Adj Close']
-                    elif ticker in df.columns:
+                    elif ticker in df.columns: # Should not happen with yf.download structure
+                        logger.warning(f"'Close' not found, using column named '{ticker}' for {ticker}.")
                         close_series = df[ticker]
                     else:
-                        logger.error(f"Could not find 'Close', 'Adj Close' or '{ticker}' column in downloaded data for {ticker}")
-                        raise ValueError(f"Could not find 'Close', 'Adj Close' or '{ticker}' column in downloaded data for {ticker}")
+                        logger.error(f"Could not find 'Close' or 'Adj Close' column in downloaded/cached data for {ticker}")
+                        # Skip this ticker if no valid close price column is found
+                        progress.advance(download_task)
+                        continue
+
                     close_series.name = ticker
                     all_closes.append(close_series)
                 progress.advance(download_task)

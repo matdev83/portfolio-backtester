@@ -94,14 +94,38 @@ def rolling_downside_volatility_sizer(
     upside moves do not lead to smaller position sizes."""
     rets = prices.pct_change(fill_method=None).fillna(0)
     downside = rets.clip(upper=0)
-    downside_vol = (downside ** 2).rolling(window).mean().pow(0.5)
+    # Calculate rolling sum of squared downside returns and count of non-zero downside returns
+    downside_sq_sum = (downside ** 2).rolling(window).sum()
+    # A window might have all zero returns, so downside_vol would be 0.
+    # We need to handle division by zero or by very small numbers.
+    # Let's use a minimum threshold for downside_vol.
+    epsilon = 1e-9  # Small constant to prevent division by zero
+
+    # Calculate downside volatility.
+    # .mean() would count all days in window. We only want to average over days with actual downside returns,
+    # but standard deviation calculation typically uses N or N-1 of the window.
+    # For this sizer, the intent is usually vol of negative returns.
+    # If all returns in window are >=0, downside_vol will be 0.
+    downside_vol = (downside_sq_sum / window).pow(0.5) # More aligned with typical volatility calc.
+
+    # Replace exact zeros with epsilon to prevent division by zero and extremely large factors.
+    # Also, if downside_vol is NaN (e.g., not enough data points yet in window), factor becomes NaN.
+    # We will fill NaN factors with 0 later, effectively giving no weight.
+    factor = target_volatility / np.maximum(downside_vol, epsilon)
     
-    # Scale the factor by target_volatility. If target_volatility is 1.0, no change.
-    # If downside_vol is 0, replace with a small number to avoid division by zero.
-    factor = target_volatility / downside_vol.replace(0, np.nan)
-    
+    # Handle cases where factor might be inf (if downside_vol was epsilon and target_volatility is large)
+    # or NaN (if downside_vol was NaN due to insufficient window data initially).
+    # Fill NaN/inf with 0 to avoid issues in portfolio construction. This means no position.
+    factor = factor.replace([np.inf, -np.inf], np.nan).fillna(0)
+
     sized = signals.mul(factor)
-    return sized.div(sized.abs().sum(axis=1), axis=0)
+    # Normalize weights. If all factors for a given day are zero (e.g. all assets had zero downside vol),
+    # then sum will be zero, leading to NaN weights. Handle this by filling NaN with 0.
+    # It's important that signals are already 0 for assets not to be included.
+    weight_sum = sized.abs().sum(axis=1)
+    weights = sized.div(weight_sum, axis=0).fillna(0)
+
+    return weights
 
 
 SIZER_REGISTRY: Dict[str, Callable] = {
