@@ -3,6 +3,7 @@ import numpy as np
 from unittest.mock import MagicMock, patch
 from src.portfolio_backtester.optimization.optuna_objective import build_objective
 
+
 # Common setup for tests
 @pytest.fixture
 def common_mocks():
@@ -13,30 +14,57 @@ def common_mocks():
     bench_series_daily = MagicMock()
     features_slice = MagicMock()
     trial = MagicMock()
-    return g_cfg, train_data_monthly, train_data_daily, train_rets_daily, bench_series_daily, features_slice, trial
+    return (
+        g_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
+        trial,
+    )
+
 
 def test_build_objective_single_metric(common_mocks):
-    g_cfg, train_data_monthly, train_data_daily, train_rets_daily, bench_series_daily, features_slice, trial = common_mocks
+    (
+        g_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
+        trial,
+    ) = common_mocks
 
     base_scen_cfg = {
         "strategy_params": {"max_lookback": 50, "leverage": 1.0},
         "optimization_metric": "Sharpe",
-        "optimize": [
-            {"parameter": "max_lookback"},
-            {"parameter": "leverage"}
-        ]
+        "optimize": [{"parameter": "max_lookback"}, {"parameter": "leverage"}],
     }
 
     objective_fn = build_objective(
-        g_cfg, base_scen_cfg, train_data_monthly, train_data_daily,
-        train_rets_daily, bench_series_daily, features_slice
+        g_cfg,
+        base_scen_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
     )
 
     mock_metrics_result = {"Sharpe": 1.5, "Calmar": 0.8}
     mock_calculate_metrics = MagicMock(return_value=mock_metrics_result)
 
-    with patch('src.portfolio_backtester.optimization.optuna_objective._run_scenario_static', return_value=MagicMock()), \
-         patch('src.portfolio_backtester.optimization.optuna_objective.calculate_metrics', mock_calculate_metrics):
+    with (
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective._run_scenario_static",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective.calculate_metrics",
+            mock_calculate_metrics,
+        ),
+    ):
         result = objective_fn(trial)
 
     trial.suggest_int.assert_called_with("max_lookback", 20, 252, step=10)
@@ -44,29 +72,56 @@ def test_build_objective_single_metric(common_mocks):
     mock_calculate_metrics.assert_called_once()
     assert result == 1.5
 
+
 def test_build_objective_multi_metric(common_mocks):
-    g_cfg, train_data_monthly, train_data_daily, train_rets_daily, bench_series_daily, features_slice, trial = common_mocks
+    (
+        g_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
+        trial,
+    ) = common_mocks
 
     base_scen_cfg = {
         "strategy_params": {"param1": 10},
         "optimization_targets": [
             {"name": "Total Return", "direction": "maximize"},
-            {"name": "Max Drawdown", "direction": "minimize"}
+            {"name": "Max Drawdown", "direction": "minimize"},
         ],
-        "optimize": [{"parameter": "param1"}] # Assuming param1 is in OPTIMIZER_PARAMETER_DEFAULTS
+        "optimize": [
+            {"parameter": "param1"}
+        ],  # Assuming param1 is in OPTIMIZER_PARAMETER_DEFAULTS
     }
     # Mock OPTIMIZER_PARAMETER_DEFAULTS for "param1" if not already present
-    with patch('src.portfolio_backtester.optimization.optuna_objective.OPTIMIZER_PARAMETER_DEFAULTS', {"param1": {"type": "int", "low": 1, "high": 20, "step": 1}}):
+    with patch(
+        "src.portfolio_backtester.optimization.optuna_objective.OPTIMIZER_PARAMETER_DEFAULTS",
+        {"param1": {"type": "int", "low": 1, "high": 20, "step": 1}},
+    ):
         objective_fn = build_objective(
-            g_cfg, base_scen_cfg, train_data_monthly, train_data_daily,
-            train_rets_daily, bench_series_daily, features_slice
+            g_cfg,
+            base_scen_cfg,
+            train_data_monthly,
+            train_data_daily,
+            train_rets_daily,
+            bench_series_daily,
+            features_slice,
         )
 
     mock_metrics_result = {"Total Return": 0.25, "Max Drawdown": -0.1, "Sharpe": 1.2}
     mock_calculate_metrics = MagicMock(return_value=mock_metrics_result)
 
-    with patch('src.portfolio_backtester.optimization.optuna_objective._run_scenario_static', return_value=MagicMock()), \
-         patch('src.portfolio_backtester.optimization.optuna_objective.calculate_metrics', mock_calculate_metrics):
+    with (
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective._run_scenario_static",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective.calculate_metrics",
+            mock_calculate_metrics,
+        ),
+    ):
         result = objective_fn(trial)
 
     trial.suggest_int.assert_called_with("param1", 1, 20, step=1)
@@ -74,117 +129,241 @@ def test_build_objective_multi_metric(common_mocks):
     assert isinstance(result, tuple)
     assert result == (0.25, -0.1)
 
-def test_build_objective_default_metric_when_none_specified(common_mocks):
-    g_cfg, train_data_monthly, train_data_daily, train_rets_daily, bench_series_daily, features_slice, trial = common_mocks
 
-    base_scen_cfg = { # No optimization_metric or optimization_targets
+def test_build_objective_default_metric_when_none_specified(common_mocks):
+    (
+        g_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
+        trial,
+    ) = common_mocks
+
+    base_scen_cfg = {  # No optimization_metric or optimization_targets
         "strategy_params": {"leverage": 1.0},
-        "optimize": [{"parameter": "leverage"}]
+        "optimize": [{"parameter": "leverage"}],
     }
 
     objective_fn = build_objective(
-        g_cfg, base_scen_cfg, train_data_monthly, train_data_daily,
-        train_rets_daily, bench_series_daily, features_slice
+        g_cfg,
+        base_scen_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
     )
 
-    mock_metrics_result = {"Calmar": 0.7, "Sharpe": 1.1} # Must contain default "Calmar"
+    mock_metrics_result = {
+        "Calmar": 0.7,
+        "Sharpe": 1.1,
+    }  # Must contain default "Calmar"
     mock_calculate_metrics = MagicMock(return_value=mock_metrics_result)
 
-    with patch('src.portfolio_backtester.optimization.optuna_objective._run_scenario_static', return_value=MagicMock()), \
-         patch('src.portfolio_backtester.optimization.optuna_objective.calculate_metrics', mock_calculate_metrics):
+    with (
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective._run_scenario_static",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective.calculate_metrics",
+            mock_calculate_metrics,
+        ),
+    ):
         result = objective_fn(trial)
 
     mock_calculate_metrics.assert_called_once()
-    assert result == 0.7 # Should default to Calmar
+    assert result == 0.7  # Should default to Calmar
+
 
 def test_build_objective_single_metric_invalid_value(common_mocks):
-    g_cfg, train_data_monthly, train_data_daily, train_rets_daily, bench_series_daily, features_slice, trial = common_mocks
+    (
+        g_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
+        trial,
+    ) = common_mocks
 
-    base_scen_cfg = {"optimization_metric": "Sharpe", "strategy_params": {}, "optimize": []}
+    base_scen_cfg = {
+        "optimization_metric": "Sharpe",
+        "strategy_params": {},
+        "optimize": [],
+    }
     objective_fn = build_objective(
-        g_cfg, base_scen_cfg, train_data_monthly, train_data_daily,
-        train_rets_daily, bench_series_daily, features_slice
+        g_cfg,
+        base_scen_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
     )
 
     mock_metrics_result = {"Sharpe": np.nan}
     mock_calculate_metrics = MagicMock(return_value=mock_metrics_result)
 
-    with patch('src.portfolio_backtester.optimization.optuna_objective._run_scenario_static', return_value=MagicMock()), \
-         patch('src.portfolio_backtester.optimization.optuna_objective.calculate_metrics', mock_calculate_metrics):
+    with (
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective._run_scenario_static",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective.calculate_metrics",
+            mock_calculate_metrics,
+        ),
+    ):
         result = objective_fn(trial)
     assert result == float("-inf")
 
     mock_metrics_result_inf = {"Sharpe": np.inf}
     mock_calculate_metrics_inf = MagicMock(return_value=mock_metrics_result_inf)
-    with patch('src.portfolio_backtester.optimization.optuna_objective._run_scenario_static', return_value=MagicMock()), \
-         patch('src.portfolio_backtester.optimization.optuna_objective.calculate_metrics', mock_calculate_metrics_inf):
+    with (
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective._run_scenario_static",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective.calculate_metrics",
+            mock_calculate_metrics_inf,
+        ),
+    ):
         result_inf = objective_fn(trial)
     assert result_inf == float("-inf")
 
 
 def test_build_objective_multi_metric_invalid_values(common_mocks):
-    g_cfg, train_data_monthly, train_data_daily, train_rets_daily, bench_series_daily, features_slice, trial = common_mocks
+    (
+        g_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
+        trial,
+    ) = common_mocks
 
     base_scen_cfg = {
         "optimization_targets": [
             {"name": "Total Return", "direction": "maximize"},
             {"name": "Max Drawdown", "direction": "minimize"},
-            {"name": "Sharpe", "direction": "maximize"}
+            {"name": "Sharpe", "direction": "maximize"},
         ],
-        "strategy_params": {}, "optimize": []
+        "strategy_params": {},
+        "optimize": [],
     }
     objective_fn = build_objective(
-        g_cfg, base_scen_cfg, train_data_monthly, train_data_daily,
-        train_rets_daily, bench_series_daily, features_slice
+        g_cfg,
+        base_scen_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
     )
 
-    mock_metrics_result = {"Total Return": np.nan, "Max Drawdown": 0.1, "Sharpe": np.inf}
+    mock_metrics_result = {
+        "Total Return": np.nan,
+        "Max Drawdown": 0.1,
+        "Sharpe": np.inf,
+    }
     mock_calculate_metrics = MagicMock(return_value=mock_metrics_result)
 
-    with patch('src.portfolio_backtester.optimization.optuna_objective._run_scenario_static', return_value=MagicMock()), \
-         patch('src.portfolio_backtester.optimization.optuna_objective.calculate_metrics', mock_calculate_metrics):
+    with (
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective._run_scenario_static",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective.calculate_metrics",
+            mock_calculate_metrics,
+        ),
+    ):
         result = objective_fn(trial)
 
     assert isinstance(result, tuple)
     assert len(result) == 3
-    assert np.isnan(result[0]) # Total Return was np.nan
-    assert result[1] == 0.1     # Max Drawdown was valid
-    assert np.isnan(result[2]) # Sharpe was np.inf, should be nan for multi-obj
+    assert np.isnan(result[0])  # Total Return was np.nan
+    assert result[1] == 0.1  # Max Drawdown was valid
+    assert np.isnan(result[2])  # Sharpe was np.inf, should be nan for multi-obj
+
 
 def test_build_objective_param_not_in_optimizer_config(common_mocks):
-    g_cfg, train_data_monthly, train_data_daily, train_rets_daily, bench_series_daily, features_slice, trial = common_mocks
+    (
+        g_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
+        trial,
+    ) = common_mocks
 
     base_scen_cfg = {
-        "strategy_params": {"leverage": 1.0}, # Ensure there's at least one valid param if needed by later code
-        "optimization_metric": "Sharpe", # Or any metric, doesn't matter much for this test
+        "strategy_params": {
+            "leverage": 1.0
+        },  # Ensure there's at least one valid param if needed by later code
+        "optimization_metric": "Sharpe",  # Or any metric, doesn't matter much for this test
         "optimize": [
             {"parameter": "this_param_does_not_exist_in_defaults"},
-            {"parameter": "leverage"} # A valid parameter to ensure the function proceeds
-        ]
+            {
+                "parameter": "leverage"
+            },  # A valid parameter to ensure the function proceeds
+        ],
     }
     # OPTIMIZER_PARAMETER_DEFAULTS is imported directly, so we patch it where it's used.
     # We need to ensure 'leverage' is in the patched defaults.
     patched_optimizer_defaults = {
-        "leverage": {"type": "float", "low": 0.5, "high": 2.0, "step": 0.1, "log": False}
+        "leverage": {
+            "type": "float",
+            "low": 0.5,
+            "high": 2.0,
+            "step": 0.1,
+            "log": False,
+        }
     }
 
     objective_fn = build_objective(
-        g_cfg, base_scen_cfg, train_data_monthly, train_data_daily,
-        train_rets_daily, bench_series_daily, features_slice
+        g_cfg,
+        base_scen_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
     )
 
-    mock_metrics_result = {"Sharpe": 1.0} # Dummy value
+    mock_metrics_result = {"Sharpe": 1.0}  # Dummy value
     mock_calculate_metrics = MagicMock(return_value=mock_metrics_result)
 
     # Patch the print function within the module where it's called
-    with patch('src.portfolio_backtester.optimization.optuna_objective.print') as mock_print, \
-         patch('src.portfolio_backtester.optimization.optuna_objective.OPTIMIZER_PARAMETER_DEFAULTS', patched_optimizer_defaults), \
-         patch('src.portfolio_backtester.optimization.optuna_objective._run_scenario_static', return_value=MagicMock()), \
-         patch('src.portfolio_backtester.optimization.optuna_objective.calculate_metrics', mock_calculate_metrics):
+    with (
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective.print"
+        ) as mock_print,
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective.OPTIMIZER_PARAMETER_DEFAULTS",
+            patched_optimizer_defaults,
+        ),
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective._run_scenario_static",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective.calculate_metrics",
+            mock_calculate_metrics,
+        ),
+    ):
         result = objective_fn(trial)
 
     # Check that print was called with the warning for the missing parameter
-    mock_print.assert_called_once_with("Warning: Parameter 'this_param_does_not_exist_in_defaults' requested for optimization but not found in optimizer_config.json")
+    mock_print.assert_called_once_with(
+        "Warning: Parameter 'this_param_does_not_exist_in_defaults' requested for optimization but not found in optimizer_config.json"
+    )
 
     # Check that the valid parameter 'leverage' was still suggested
     trial.suggest_float.assert_called_with("leverage", 0.5, 2.0, step=0.1, log=False)
@@ -192,3 +371,95 @@ def test_build_objective_param_not_in_optimizer_config(common_mocks):
     # Check that the function still completed and returned a result
     mock_calculate_metrics.assert_called_once()
     assert result == 1.0
+
+
+def test_build_objective_with_constraint_violation(common_mocks):
+    (
+        g_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
+        trial,
+    ) = common_mocks
+
+    base_scen_cfg = {
+        "optimization_metric": "Total Return",
+        "optimization_constraints": [{"metric": "Max Drawdown", "min_value": -0.1}],
+        "strategy_params": {},
+        "optimize": [],
+    }
+
+    objective_fn = build_objective(
+        g_cfg,
+        base_scen_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
+    )
+
+    mock_metrics_result = {"Total Return": 0.2, "Max Drawdown": -0.2}
+    mock_calculate_metrics = MagicMock(return_value=mock_metrics_result)
+
+    with (
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective._run_scenario_static",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective.calculate_metrics",
+            mock_calculate_metrics,
+        ),
+    ):
+        result = objective_fn(trial)
+
+    assert result == float("-inf")
+
+
+def test_build_objective_with_constraint_satisfied(common_mocks):
+    (
+        g_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
+        trial,
+    ) = common_mocks
+
+    base_scen_cfg = {
+        "optimization_metric": "Total Return",
+        "optimization_constraints": [{"metric": "Max Drawdown", "min_value": -0.1}],
+        "strategy_params": {},
+        "optimize": [],
+    }
+
+    objective_fn = build_objective(
+        g_cfg,
+        base_scen_cfg,
+        train_data_monthly,
+        train_data_daily,
+        train_rets_daily,
+        bench_series_daily,
+        features_slice,
+    )
+
+    mock_metrics_result = {"Total Return": 0.3, "Max Drawdown": -0.05}
+    mock_calculate_metrics = MagicMock(return_value=mock_metrics_result)
+
+    with (
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective._run_scenario_static",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "src.portfolio_backtester.optimization.optuna_objective.calculate_metrics",
+            mock_calculate_metrics,
+        ),
+    ):
+        result = objective_fn(trial)
+
+    assert result == 0.3
