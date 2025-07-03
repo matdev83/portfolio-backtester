@@ -62,7 +62,7 @@ def mock_backtester_instance():
     mock_bt = MagicMock(spec=Backtester)
     mock_bt.args = MagicMock()
     mock_bt.args.early_stop_patience = 3
-    mock_bt.args.n_jobs = 1
+    mock_bt.n_jobs = 1 # Set n_jobs directly on the mock_bt
     # Mock the evaluation function that the GeneticOptimizer will call
     mock_bt._evaluate_params_walk_forward = MagicMock()
     return mock_bt
@@ -126,19 +126,16 @@ def test_get_gene_space_and_types(mock_backtester_instance):
     gene_space, gene_type = optimizer._get_gene_space_and_types()
 
     assert len(gene_space) == 3
-    assert len(gene_type) == 3
+    assert gene_type == float # gene_type should now be float
 
     # param1_int
     assert gene_space[0] == {"low": 2, "high": 5, "step": 1} # From MOCK_SCENARIO_CONFIG
-    assert gene_type[0] == int
 
     # param2_float
     assert gene_space[1] == {"low": 0.2, "high": 0.5} # Step not directly in dict for float
-    assert gene_type[1] == float
 
     # param3_cat
     assert gene_space[2] == {"low": 0, "high": 1, "step": 1} # Index for ["A", "B"]
-    assert gene_type[2] == int
 
 
 @patch('portfolio_backtester.optimization.genetic_optimizer.pygad.GA')
@@ -258,8 +255,10 @@ def test_fitness_func_wrapper_minimization(mock_backtester_instance):
     )
 
     # PyGAD maximizes, so for minimization, fitness should be -value
-    fitness_value = optimizer.fitness_func_wrapper(MagicMock(), np.array([3,0.4,0]), 0)
-    assert abs(fitness_value - (-0.2)) < 1e-6
+    raw_fitness_value = optimizer.fitness_func_wrapper(MagicMock(), np.array([3,0.4,0]), 0)
+    # Ensure it's a single float for this test case
+    fitness_value = raw_fitness_value[0] if isinstance(raw_fitness_value, (list, tuple)) else raw_fitness_value
+    assert abs(float(fitness_value) - (-0.2)) < 1e-6
 
 def test_get_ga_optimizer_parameter_defaults():
     defaults = get_ga_optimizer_parameter_defaults()
@@ -300,7 +299,7 @@ class TestGeneticOptimizerWithWalkForward:
         # We might need to patch `load_config` or provide temp config files.
         # For now, let's try to directly instantiate and then override necessary parts.
 
-        with patch('portfolio_backtester.backtester.load_config') as mock_load_config, \
+        with patch('portfolio_backtester.config_loader.load_config') as mock_load_config, \
              patch('portfolio_backtester.backtester.populate_default_optimizations') as mock_populate:
             # Prevent file loading by patching, and assign our mocks
             from portfolio_backtester import backtester as bt_module
@@ -325,7 +324,6 @@ class TestGeneticOptimizerWithWalkForward:
         mock_metrics = pd.Series({
             "Sharpe": 1.5, "Calmar": 1.2, "MaxDrawdown": -0.1, "Total Return": 0.25
         })
-        bt_instance.calculate_metrics = MagicMock(return_value=mock_metrics)
         # Patch calculate_metrics globally as it's imported at the module level in backtester.py
         # and used by _evaluate_params_walk_forward
         self.calculate_metrics_patcher = patch('portfolio_backtester.backtester.calculate_metrics', return_value=mock_metrics)
@@ -414,5 +412,3 @@ class TestGeneticOptimizerWithWalkForward:
             # If calculate_metrics was NOT mocked properly, _evaluate_params_walk_forward might fail or return NaN.
             # The fact that we get 1.5 means the chain likely worked.
             assert optimizer.fitness_func_wrapper(mock_ga_instance, np.array([3,0.4,0]), 0) == 1.5
-
-```python

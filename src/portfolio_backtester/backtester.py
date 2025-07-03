@@ -52,7 +52,10 @@ class Backtester:
         self.args = args
         self.data_source = self._get_data_source()
         self.results = {}
-        self.features = None
+        self.features: Dict[str, pd.DataFrame | pd.Series] | None = None
+        self.monthly_data: pd.DataFrame | None = None
+        self.daily_data: pd.DataFrame | None = None
+        self.rets_full: pd.DataFrame | None = None
         # Ensure random_state is always set for reproducibility
         if random_state is None:
             self.random_state = np.random.randint(0, 2**31 - 1) # Generate a random seed if none provided
@@ -141,11 +144,6 @@ class Backtester:
         sizer_name = scenario_config.get("position_sizer", "equal_weight")
         sizer_func = get_position_sizer(sizer_name)
         
-        # Start with all strategy_params as potential sizer parameters
-        # This ensures 'target_volatility' and 'target_return' are included if present
-        filtered_sizer_params = scenario_config.get("strategy_params", {}).copy()
-        logger.debug(f"Initial filtered_sizer_params: {filtered_sizer_params}")
-        
         # Define mappings for parameters that need to be renamed for the sizer function
         sizer_param_mapping = {
             "sizer_sharpe_window": "window",
@@ -156,27 +154,33 @@ class Backtester:
             "sizer_target_return": "target_return", # For Sortino sizer, if it's ever mapped
             "sizer_max_leverage": "max_leverage", # Add mapping for max_leverage
         }
-        
-        # Apply remapping: if an old_key exists, rename it to new_key and remove old_key
-        for old_key, new_key in sizer_param_mapping.items():
-            if old_key in filtered_sizer_params:
-                filtered_sizer_params[new_key] = filtered_sizer_params.pop(old_key)
-        logger.debug(f"Filtered_sizer_params after remapping: {filtered_sizer_params}")
 
-        # Extract 'window' if it's present, as it's a required positional argument for some sizers
-        window_param = filtered_sizer_params.pop("window", None)
+        # Initialize filtered_sizer_params with only the sizer-relevant parameters
+        filtered_sizer_params = {}
+        strategy_params = scenario_config.get("strategy_params", {})
+
+        window_param = None
+        target_return_param = None
+        max_leverage_param = None
+
+        for key, value in strategy_params.items():
+            if key in sizer_param_mapping:
+                new_key = sizer_param_mapping[key]
+                if new_key == "window":
+                    window_param = value
+                elif new_key == "target_return":
+                    target_return_param = value
+                elif new_key == "max_leverage":
+                    max_leverage_param = value
+                else:
+                    filtered_sizer_params[new_key] = value
+            # else: # If not in sizer_param_mapping, it's a strategy-specific param, not for sizer
+            #     pass # Do nothing, don't add to filtered_sizer_params
+
+        logger.debug(f"Filtered_sizer_params: {filtered_sizer_params}")
         logger.debug(f"window_param extracted: {window_param}")
-        logger.debug(f"Filtered_sizer_params after window pop: {filtered_sizer_params}")
-
-        # Extract 'target_return' if it's present, as it's a required positional argument for some sizers
-        target_return_param = filtered_sizer_params.pop("target_return", None)
         logger.debug(f"target_return_param extracted: {target_return_param}")
-        logger.debug(f"Filtered_sizer_params after target_return pop: {filtered_sizer_params}")
-
-        # Extract 'max_leverage' if it's present, as it's a keyword argument for some sizers
-        max_leverage_param = filtered_sizer_params.pop("max_leverage", None)
         logger.debug(f"max_leverage_param extracted: {max_leverage_param}")
-        logger.debug(f"Filtered_sizer_params after max_leverage pop: {filtered_sizer_params}")
 
         # Prepare arguments for the sizer function
         sizer_args = [signals, strategy_data_monthly, benchmark_data_monthly]

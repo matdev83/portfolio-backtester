@@ -1,8 +1,9 @@
 import unittest
-from unittest.mock import patch, MagicMock # Added MagicMock
+from unittest.mock import patch, MagicMock
 import pandas as pd
 import numpy as np
 import pytest
+from typing import Optional # Import Optional
 
 from src.portfolio_backtester.backtester import Backtester, _resolve_strategy
 from src.portfolio_backtester.config_loader import GLOBAL_CONFIG, BACKTEST_SCENARIOS
@@ -10,24 +11,27 @@ from src.portfolio_backtester.feature import get_required_features_from_scenario
 from src.portfolio_backtester.feature_engineering import precompute_features
 
 class TestBacktester(unittest.TestCase):
-    class MockArgs: # Define MockArgs as a class attribute
+    class MockArgs:
         def __init__(self):
-            self.optimize_min_positions = 10
-            self.optimize_max_positions = 30
-            self.top_n_params = 3
-            self.n_jobs = 1
-            self.optuna_trials = 10
-            self.optuna_timeout_sec = 60
-            self.study_name = "test_study"
-            self.random_seed = None
-            self.storage_url = None
-            # Add default for early_stop_patience if Backtester relies on it being present
-            self.early_stop_patience = 10
-            self.pruning_enabled = False
-            self.pruning_n_startup_trials = 5
-            self.pruning_n_warmup_steps = 0
-            self.pruning_interval_steps = 1
-            self.optimizer = "optuna" # Add optimizer default
+            self.optimize_min_positions: int = 10
+            self.optimize_max_positions: int = 30
+            self.top_n_params: int = 3
+            self.n_jobs: int = 1
+            self.optuna_trials: int = 10
+            self.optuna_timeout_sec: Optional[int] = 60
+            self.study_name: Optional[str] = "test_study"
+            self.random_seed: Optional[int] = None # Allow int or None
+            self.storage_url: Optional[str] = None
+            self.early_stop_patience: int = 10
+            self.pruning_enabled: bool = False
+            self.pruning_n_startup_trials: int = 5
+            self.pruning_n_warmup_steps: int = 0
+            self.pruning_interval_steps: int = 1
+            self.optimizer: str = "optuna"
+            self.mode: str = "backtest" # Add default mode
+            self.mc_simulations: int = 1000 # Add default for MC
+            self.mc_years: int = 10 # Add default for MC
+            self.interactive: bool = False # Add default for interactive
 
     def setUp(self):
         """Set up a mock backtester and data for testing."""
@@ -255,7 +259,7 @@ class TestBacktester(unittest.TestCase):
             "strategy": "mock_strategy",
             "strategy_params": {"p1": 1, "sizer_dvol_window": 5}, # Include a sizer param
             "rebalance_frequency": "M",
-            "position_sizer": "mock_sizer",
+            "position_sizer": "rolling_downside_volatility", # Change to a real sizer name to trigger window param passing
             "transaction_costs_bps": 10
         }
 
@@ -296,15 +300,19 @@ class TestBacktester(unittest.TestCase):
             mock_get_strat.assert_called_once_with(scenario_config["strategy"], scenario_config["strategy_params"])
             mock_strategy_obj.generate_signals.assert_called_once()
             # Check sizer params (dvol_window should be mapped to window)
-            expected_sizer_params = {"window": 5}
+            expected_sizer_params = {} # window is now passed as a positional argument
             mock_get_pos_sizer.assert_called_once_with(scenario_config["position_sizer"])
             mock_position_sizer_func.assert_called_once()
             args, kwargs = mock_position_sizer_func.call_args
             pd.testing.assert_frame_equal(args[0], mock_signals) # signals
             pd.testing.assert_frame_equal(args[1], price_data_monthly[mock_universe_tickers]) # strategy_data_monthly
-            # benchmark_data_monthly is passed as a Series from backtester
-            pd.testing.assert_series_equal(args[2], price_data_monthly[self.global_config["benchmark"]])
+            pd.testing.assert_series_equal(args[2], price_data_monthly[self.global_config["benchmark"]]) # benchmark_data_monthly is passed as a Series from backtester
             self.assertEqual(kwargs, expected_sizer_params)
+            # Assert that the correct number of arguments are passed to the sizer function.
+            # For "rolling_downside_volatility", it should be 5 positional arguments.
+            self.assertEqual(len(args), 5)
+            # Assert that window=5 is passed as the last positional argument (index 4).
+            self.assertEqual(args[4], 5)
 
 
             mock_rebalance_func.assert_called_once_with(mock_sized_signals, scenario_config["rebalance_frequency"])

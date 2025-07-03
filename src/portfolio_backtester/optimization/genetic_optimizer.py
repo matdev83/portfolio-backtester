@@ -1,6 +1,7 @@
 import pygad
 import numpy as np
 import logging
+import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -204,27 +205,19 @@ class GeneticOptimizer:
                 gene_space.append({"low": int(low), "high": int(high), "step": int(step) if step else 1})
                 gene_type.append(int)
             elif ptype == "float":
-                # PyGAD gene_space for float can be a dict {low: x, high: y}
-                # Precision is handled by gene_type=(float, precision_digits) or float itself
                 gene_space.append({"low": float(low), "high": float(high)})
-                # For float, step is not directly supported in gene_space dict like int.
-                # If step is crucial, one might need to discretize or use custom mutation.
-                # For now, we assume continuous float within low/high.
-                gene_type.append(float) # Or (float, 3) for 3 decimal places
             elif ptype == "categorical":
                 choices = spec.get("values", opt_def.get("values"))
                 if not choices: raise ValueError(f"Categorical parameter {pname} has no choices.")
-                # Gene represents index of the choice
                 gene_space.append({"low": 0, "high": len(choices) - 1, "step": 1})
-                gene_type.append(int) # Gene is an index
             else:
                 raise ValueError(f"Unsupported PTYPE {ptype} for parameter {pname} in genetic optimizer.")
-        return gene_space, gene_type
+        return gene_space, float # Always return float as the gene type for PyGAD
 
     def run(self):
         logger.info("Setting up Genetic Algorithm...")
 
-        gene_space, gene_type = self._get_gene_space_and_types()
+        gene_space, gene_type = self._get_gene_space_and_types() # gene_type will now be 'float'
         num_genes = len(self.optimization_params_spec)
 
         # GA Parameters (these could be configurable)

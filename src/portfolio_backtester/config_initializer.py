@@ -39,6 +39,34 @@ def populate_default_optimizations(scenarios: list, optimizer_parameter_defaults
             scenario_config["strategy_params"] = {}
 
         optimized_parameters_in_scenario = {opt_spec["parameter"] for opt_spec in scenario_config["optimize"]}
+        
+        # Validate existing optimization parameters against strategy tunable parameters
+        strategy_name = scenario_config.get("strategy", "unknown")
+        strategy_tunable_params = _get_strategy_tunable_params(strategy_name)
+        sizer_param = _get_sizer_tunable_param(scenario_config.get("position_sizer"), sizer_param_map)
+        
+        # Add sizer parameter to valid parameters if applicable
+        valid_params = strategy_tunable_params.copy()
+        if sizer_param:
+            valid_params.add(sizer_param)
+        
+        # Add special scenario config keys that are always valid
+        valid_params.add("position_sizer")
+        
+        # Check for invalid parameters in existing optimization specs
+        invalid_params = []
+        for param_name in optimized_parameters_in_scenario:
+            if param_name not in valid_params and param_name not in optimizer_parameter_defaults:
+                invalid_params.append(param_name)
+            elif param_name not in valid_params:
+                # Parameter exists in defaults but not tunable by strategy
+                print(f"Warning: Parameter '{param_name}' in scenario '{scenario_config.get('name', 'unnamed')}' "
+                      f"is not tunable by strategy '{strategy_name}'. It will be skipped during optimization.")
+        
+        if invalid_params:
+            print(f"Warning: Scenario '{scenario_config.get('name', 'unnamed')}' contains invalid parameters "
+                  f"not defined in OPTIMIZER_PARAMETER_DEFAULTS: {invalid_params}")
+        
 
         # Get tunable parameters from the strategy
         strategy_params_to_add = _get_strategy_tunable_params(scenario_config["strategy"])

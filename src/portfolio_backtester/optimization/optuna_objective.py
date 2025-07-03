@@ -3,7 +3,7 @@ import optuna
 import pandas as pd
 import numpy as np
 
-from ..utils import _run_scenario_static
+from ..utils import _run_scenario_static, _resolve_strategy
 from ..reporting.performance_metrics import calculate_metrics
 from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
 from ..constants import ZERO_RET_EPS
@@ -65,8 +65,41 @@ def build_objective(
         # If we optimize "position_sizer", the chosen value should go to scen_cfg["position_sizer"].
         SPECIAL_SCEN_CFG_KEYS = ["position_sizer"] # Add other keys like "signal_generator_class" if needed
 
+        # Get strategy-specific tunable parameters for filtering
+        strategy_name = base_scen_cfg.get("strategy")
+        strategy_tunable_params = set()
+        if strategy_name:
+            strat_cls = _resolve_strategy(strategy_name)
+            if strat_cls:
+                strategy_tunable_params = strat_cls.tunable_parameters()
+            else:
+                print(f"Warning: Could not resolve strategy '{strategy_name}' for parameter filtering. Optimizing all parameters.")
+
+        # Position sizer parameters mapping for filtering
+        sizer_param_map = {
+            "rolling_sharpe": "sizer_sharpe_window",
+            "rolling_sortino": "sizer_sortino_window", 
+            "rolling_beta": "sizer_beta_window",
+            "rolling_benchmark_corr": "sizer_corr_window",
+            "rolling_downside_volatility": "sizer_dvol_window",
+        }
+        
+        # Add sizer-specific parameters if applicable
+        position_sizer = base_scen_cfg.get("position_sizer")
+        if position_sizer and position_sizer in sizer_param_map:
+            strategy_tunable_params.add(sizer_param_map[position_sizer])
+
+        skipped_params = []
         for opt_spec in optimization_specs:
             param_name = opt_spec["parameter"]
+            
+            # Skip parameters that are not tunable by this strategy (unless it's a special config key)
+            if (strategy_tunable_params and 
+                param_name not in strategy_tunable_params and 
+                param_name not in SPECIAL_SCEN_CFG_KEYS):
+                skipped_params.append(param_name)
+                continue
+            
             default_param_config = optimizer_config.get(param_name, {})
 
             # Type: opt_spec takes precedence over default_param_config
@@ -115,6 +148,16 @@ def build_objective(
             else:
                 p[param_name] = suggested_value
 
+        # Log parameter filtering information
+        if skipped_params:
+            trial.set_user_attr("skipped_parameters", skipped_params)
+            print(f"Trial {trial.number}: Skipped {len(skipped_params)} parameters not used by strategy '{strategy_name}': {skipped_params}")
+        
+        if strategy_tunable_params:
+            optimized_params = [opt_spec["parameter"] for opt_spec in optimization_specs 
+                              if opt_spec["parameter"] not in skipped_params]
+            trial.set_user_attr("optimized_parameters", optimized_params)
+            trial.set_user_attr("strategy_tunable_parameters", list(strategy_tunable_params))
 
         # 2 ─ evaluate --------------------------------------------------
         scen_cfg = base_scen_cfg.copy()

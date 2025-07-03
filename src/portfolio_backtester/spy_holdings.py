@@ -80,33 +80,27 @@ URL_PATTERNS = [
 # --------------------------------------------------------------------------- #
 
 # Initialize cache for CUSIP to Ticker mapping
-_CUSIP_TICKER_CACHE = {
-    # Top 10 S&P 500 by market cap (most likely to be in SPY)
-    '037833100': 'AAPL', '594918104': 'MSFT', '67066G104': 'NVDA',
-    '023135106': 'AMZN', '30303M102': 'META', '02079K305': 'GOOGL',
-    '02079K107': 'GOOG', '88160R101': 'TSLA', '084670702': 'BRK.B',
-    '92826C839': 'V',
-    # Major financial services
-    '46625H100': 'JPM', '91324P102': 'UNH', '30231G102': 'XOM',
-    '459200101': 'JNJ', '713448108': 'PEP',
-    # Technology leaders
-    '17275R102': 'CSCO', '00724F101': 'ADBE', '79466L302': 'SBUX',
-    '04621X108': 'AVGO',
-    # Consumer & Industrial
-    '931142103': 'WMT', '742718109': 'PG', '437076102': 'HD',
-    '580135101': 'MCD', '438516106': 'HON',
-    # Healthcare & Pharma
-    '88579Y101': 'TMO', '02376R102': 'ABT', '126650100': 'CVS',
-    # Additional common SPY holdings
-    '191216100': 'KO', '254687106': 'DIS', '149123101': 'CAT',
-    '166756103': 'CVX', '65339F101': 'NEE', '57636Q104': 'MA',
-    # Banking & Finance
-    '060505104': 'BAC', '38141G104': 'GS', '58933Y105': 'MS',
-    '172967424': 'C', '807857108': 'SCHW',
-    # Additional holdings from our testing data
-    '26884L109': 'EQT', '655663102': 'NDSN', '169656105': 'CRL',
-    '012653101': 'AMT', '11135F101': 'BLK', '532457108': 'LLY',
-}
+_CUSIP_TICKER_CACHE = {}
+
+def _load_cusip_mappings() -> None:
+    """Loads CUSIP to Ticker mappings from a CSV file."""
+    script_dir = Path(__file__).parent
+    mappings_path = script_dir.parent.parent / "data" / "cusip_mappings.csv"
+    if mappings_path.exists():
+        try:
+            df = pd.read_csv(mappings_path)
+            for _, row in df.iterrows():
+                if pd.notna(row['cusip']) and pd.notna(row['ticker']):
+                    _CUSIP_TICKER_CACHE[str(row['cusip'])] = str(row['ticker'])
+            logger.info(f"Loaded {len(_CUSIP_TICKER_CACHE)} CUSIP mappings from {mappings_path}")
+        except Exception as e:
+            logger.warning(f"Failed to load CUSIP mappings from {mappings_path}: {e}")
+    else:
+        logger.info(f"CUSIP mappings file not found at {mappings_path}. Using hardcoded mappings only.")
+
+# Load mappings at script initialization
+_load_cusip_mappings()
+
 
 UA = os.getenv("SEC_USER_AGENT", "mateusz@bartczak.me Data Downloader")
 HEADERS_SEC = {"User-Agent": UA, "Accept-Encoding": "gzip, deflate"}
@@ -156,7 +150,7 @@ def _cusip_to_ticker(cusip: str) -> str:
     # Log unmapped CUSIPs for future enhancement
     # Only log if it looks like a valid CUSIP structure (e.g., not already a ticker)
     if cusip.isalnum() and not any(c.islower() for c in cusip): # Basic check
-        logger.info(f"Unmapped CUSIP: {cusip}. Consider adding to static mapping or enhancing dynamic lookup.")
+        logger.warning(f"Unmapped CUSIP: {cusip}. Consider adding to static mapping or enhancing dynamic lookup.")
 
     return cusip  # Return CUSIP as fallback
 
@@ -945,6 +939,10 @@ def _forward_fill_history(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timesta
     # 3. Copying all holdings from that previous date to the missing date.
 
     # Let's try a more explicit approach for filling missing dates with previous day's data.
+    if df.empty:
+        logger.warning("Input DataFrame for forward-fill is empty. No forward-filling performed.")
+        return df
+
     # Get all unique dates from the input DataFrame
     df_dates = df['date'].dt.normalize().unique()
     df_min_date = df_dates.min()
