@@ -32,7 +32,8 @@ from .spy_holdings import (
     get_top_weight_sp500_components,
 )
 from .utils import _resolve_strategy
-from .optimization.optuna_objective import build_objective
+# from .optimization.optuna_objective import build_objective # No longer directly needed here if GA handles its own
+from .optimization.genetic_optimizer import GeneticOptimizer # Import GeneticOptimizer
 from .monte_carlo import run_monte_carlo_simulation, plot_monte_carlo_results
 from .constants import ZERO_RET_EPS
 
@@ -307,11 +308,30 @@ class Backtester:
         logger.info(f"Full backtest with optimized parameters completed for {scenario_config['name']}.")
 
     def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full):
-        """Optimize parameters using walk-forward train/test splits."""
+        """Optimize parameters using the selected optimizer and walk-forward train/test splits."""
+        optimizer_type = getattr(self.args, "optimizer", "optuna") # Default to optuna if not set
         logger.info(
-            f"Running optimization for scenario: {scenario_config['name']} with walk-forward splits."
+            f"Running {optimizer_type} optimization for scenario: {scenario_config['name']} with walk-forward splits."
         )
 
+        if optimizer_type == "genetic":
+            logger.info("Using Genetic Algorithm Optimizer.")
+            ga_optimizer = GeneticOptimizer(
+                scenario_config=scenario_config,
+                backtester_instance=self, # Pass the backtester instance
+                global_config=self.global_config,
+                monthly_data=monthly_data,
+                daily_data=daily_data,
+                rets_full=rets_full,
+                random_state=self.random_state
+            )
+            optimal_params, num_evaluations = ga_optimizer.run()
+            # The number of evaluations from GA is an estimate (generations * pop_size)
+            # It's used for DSR calculation similarly to Optuna's trials.
+            return optimal_params, num_evaluations
+
+        # Optuna optimization (existing logic)
+        logger.info("Using Optuna Optimizer.")
         train_window_m = scenario_config.get("train_window_months", 24)
         test_window_m = scenario_config.get("test_window_months", 12)
         wf_type = scenario_config.get("walk_forward_type", "expanding").lower()
@@ -872,8 +892,12 @@ if __name__ == "__main__":
     parser.add_argument("--optuna-timeout-sec", type=int, default=None,
                         help="Time budget per optimization (seconds).")
 
+    # Optimizer choice
+    parser.add_argument("--optimizer", type=str, default="optuna", choices=["optuna", "genetic"],
+                        help="Optimizer to use ('optuna' or 'genetic'). Default: optuna.")
+
     # Pruning specific arguments
-    parser.add_argument("--pruning-enabled", action="store_true", help="Enable trial pruning with MedianPruner. Default: False.")
+    parser.add_argument("--pruning-enabled", action="store_true", help="Enable trial pruning with MedianPruner (Optuna only). Default: False.")
     parser.add_argument("--pruning-n-startup-trials", type=int, default=5, help="MedianPruner: Number of trials to complete before pruning begins. Default: 5.")
     parser.add_argument("--pruning-n-warmup-steps", type=int, default=0, help="MedianPruner: Number of intermediate steps (walk-forward windows) to observe before pruning a trial. Default: 0.")
     parser.add_argument("--pruning-interval-steps", type=int, default=1, help="MedianPruner: Report intermediate value and check for pruning every X walk-forward windows. Default: 1.")
