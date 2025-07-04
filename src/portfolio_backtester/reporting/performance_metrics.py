@@ -55,47 +55,61 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
     """Calculates performance metrics for a given returns series."""
 
     # Filter out zero returns to get active trading periods
-    active_rets = rets[rets != 0].dropna()
-    active_bench_rets = bench_rets[bench_rets != 0].dropna()
+    # However, first check if the original 'rets' series is effectively all zeros.
+    is_all_zero_returns = rets.abs().max() < EPSILON_FOR_DIVISION if not rets.empty else False
 
-    # If no active returns, return very bad (but finite) values for common optimization targets
-    # and NaN for others. This allows the optimizer to penalize such parameter sets.
+    active_rets = rets[rets != 0].dropna()
+    active_bench_rets = bench_rets[bench_rets != 0].dropna() # Benchmark can still be active
+
+    # If no active returns, or if all returns were effectively zero.
     if active_rets.empty:
         VERY_BAD_METRIC_VALUE = -9999.0 # For metrics that are typically maximized
+        ZERO_EQUIVALENT_METRIC_VALUE = 0.0 # For metrics that should be 0 if returns are all zero
         NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY = 0.0 # For metrics like Beta, Alpha when no activity
 
-        # Metrics that are commonly targets for maximization
-        maximization_targets = [
-            "Total Return", "Ann. Return", "Sharpe", "Sortino", "Calmar", "Deflated Sharpe", "K-Ratio"
-        ]
-        # Metrics that might be near zero or NaN and can be set to a neutral value
-        neutral_metrics = [
-            "Alpha (ann)", "Beta", "R^2"
-        ]
-        # Metrics where NaN is acceptable or interpretation is complex for zero activity
-        # (e.g. Max DD is technically 0 if no returns, but often expected to be negative)
-        # Volatility is 0, Skew/Kurtosis undefined. ADF test also not meaningful.
-
+        # Default values for when active_rets is empty
         metrics_dict = {
-            "Total Return": VERY_BAD_METRIC_VALUE,
-            "Ann. Return": VERY_BAD_METRIC_VALUE,
-            "Ann. Vol": 0.0, # Volatility is indeed 0 if no active returns
-            "Sharpe": VERY_BAD_METRIC_VALUE,
-            "Sortino": VERY_BAD_METRIC_VALUE,
-            "Calmar": VERY_BAD_METRIC_VALUE,
-            "Alpha (ann)": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY,
-            "Beta": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY,
-            "Max DD": 0.0, # Max drawdown is 0 if returns are flat
+            "Total Return": ZERO_EQUIVALENT_METRIC_VALUE if is_all_zero_returns else VERY_BAD_METRIC_VALUE,
+            "Ann. Return": ZERO_EQUIVALENT_METRIC_VALUE if is_all_zero_returns else VERY_BAD_METRIC_VALUE,
+            "Ann. Vol": ZERO_EQUIVALENT_METRIC_VALUE, # Volatility is indeed 0 if no active returns or all zero returns
+            "Sharpe": ZERO_EQUIVALENT_METRIC_VALUE if is_all_zero_returns else VERY_BAD_METRIC_VALUE,
+            "Sortino": ZERO_EQUIVALENT_METRIC_VALUE if is_all_zero_returns else VERY_BAD_METRIC_VALUE,
+            "Calmar": ZERO_EQUIVALENT_METRIC_VALUE if is_all_zero_returns else VERY_BAD_METRIC_VALUE,
+            "Alpha (ann)": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY, # Alpha might be calculable against bench even if strat is flat
+            "Beta": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY,    # Beta might be calculable
+            "Max DD": ZERO_EQUIVALENT_METRIC_VALUE, # Max drawdown is 0 if returns are flat or no active returns
             "Skew": np.nan, # Skew is undefined for constant series
             "Kurtosis": np.nan, # Kurtosis is undefined for constant series
-            "R^2": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY,
-            "K-Ratio": VERY_BAD_METRIC_VALUE,
+            "R^2": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY, # R^2 might be calculable
+            "K-Ratio": ZERO_EQUIVALENT_METRIC_VALUE if is_all_zero_returns else VERY_BAD_METRIC_VALUE,
             "ADF Statistic": np.nan,
             "ADF p-value": np.nan,
-            "Deflated Sharpe": VERY_BAD_METRIC_VALUE
+            "Deflated Sharpe": ZERO_EQUIVALENT_METRIC_VALUE if is_all_zero_returns else VERY_BAD_METRIC_VALUE
         }
-        # Ensure all expected metrics are present, even if some new ones were added to the main calculation
-        # This list should match the one in the main body of the function.
+
+        # Recalculate Alpha, Beta, R^2 if benchmark is active, even if strategy returns are all zero
+        if not active_bench_rets.empty and is_all_zero_returns:
+            # Align original (all-zero) rets with active_bench_rets for CAPM
+            # Ensure rets_for_capm has same length as active_bench_rets and represents zero returns
+            common_idx_for_capm = rets.index.intersection(active_bench_rets.index)
+            if not common_idx_for_capm.empty:
+                rets_for_capm = pd.Series(0.0, index=common_idx_for_capm)
+                bench_for_capm = active_bench_rets.loc[common_idx_for_capm]
+
+                if len(rets_for_capm) >= 2 and len(bench_for_capm) >=2 and bench_for_capm.std() != 0:
+                    steps_per_year_for_capm = _infer_steps_per_year(common_idx_for_capm)
+                    X_capm = sm.add_constant(bench_for_capm)
+                    try:
+                        capm_model = sm.OLS(rets_for_capm, X_capm).fit()
+                        metrics_dict["Alpha (ann)"] = capm_model.params.get("const", np.nan) * steps_per_year_for_capm
+                        metrics_dict["Beta"] = capm_model.params.get(bench_ticker_name, np.nan)
+                        metrics_dict["R^2"] = capm_model.rsquared
+                    except Exception:
+                        # Keep default NaNs or neutral values if CAPM fails
+                        pass
+
+
+        # Ensure all expected metrics are present
         expected_metric_keys = [
             "Total Return", "Ann. Return", "Ann. Vol", "Sharpe", "Sortino", "Calmar",
             "Alpha (ann)", "Beta", "Max DD", "Skew", "Kurtosis", "R^2", "K-Ratio",
@@ -103,11 +117,15 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
         ]
         for key in expected_metric_keys:
             if key not in metrics_dict:
-                # Default to NaN if a new metric was added and not covered here
-                metrics_dict[key] = np.nan
+                metrics_dict[key] = np.nan # Default for any newly added metrics not covered
 
         return pd.Series(metrics_dict, name=name)
 
+    # If active_rets is not empty, proceed with normal calculation.
+    # Note: _infer_steps_per_year should ideally use rets.index if active_rets is empty
+    # but the functions below (sharpe, calmar etc) use active_rets.
+    # The current structure means if active_rets is empty, we don't reach here.
+    # If it's not empty, then active_rets.index is valid.
     steps_per_year = _infer_steps_per_year(active_rets.index)
 
     def sortino_ratio(r, target=0):
@@ -115,11 +133,32 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
             return np.nan
         target_returns = r - target
         downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
-        if downside_risk < EPSILON_FOR_DIVISION:
+
+        annualized_mean_return = r.mean() * steps_per_year
+        if pd.isna(annualized_mean_return) or pd.isna(downside_risk): # If either is NaN, Sortino is NaN
             return np.nan
-        return (r.mean() * steps_per_year) / (
-            downside_risk * np.sqrt(steps_per_year)
-        )
+
+        if downside_risk < EPSILON_FOR_DIVISION:
+            # Downside risk is effectively zero
+            if abs(annualized_mean_return) < EPSILON_FOR_DIVISION:
+                return 0.0  # Mean return is also zero
+            elif annualized_mean_return > 0:
+                return np.inf  # Positive mean return, zero downside risk
+            else:
+                return -np.inf # Negative mean return, zero downside risk (less common, but possible if all returns are 0 or positive but mean is negative due to target)
+
+        # The original formula simplifies to mean_return / downside_risk_per_period, then annualize.
+        # Or, (annualized_mean_return) / (annualized_downside_risk).
+        # Annualized downside risk = downside_risk * np.sqrt(steps_per_year)
+        annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+        if annualized_downside_risk < EPSILON_FOR_DIVISION: # Check again after annualization, though less likely to change category
+             if abs(annualized_mean_return) < EPSILON_FOR_DIVISION:
+                return 0.0
+             elif annualized_mean_return > 0:
+                return np.inf
+             else:
+                return -np.inf
+        return annualized_mean_return / annualized_downside_risk
 
     def total_ret(x): return (1 + x).prod() - 1 if len(x) > 0 else np.nan
     def ann(x):
@@ -136,8 +175,18 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
     def sharpe(x):
         if x.empty or x.isnull().all():
             return np.nan
+        annualized_return = ann(x)
         annualized_vol = ann_vol(x)
-        return (ann(x) / annualized_vol) if annualized_vol > EPSILON_FOR_DIVISION else np.nan
+        if pd.isna(annualized_return) or pd.isna(annualized_vol): # If ann_return or ann_vol is NaN, Sharpe is NaN
+            return np.nan
+        if annualized_vol < EPSILON_FOR_DIVISION:
+            if abs(annualized_return) < EPSILON_FOR_DIVISION:
+                return 0.0 # Both are zero
+            elif annualized_return > 0:
+                return np.inf # Positive return, zero volatility
+            else:
+                return -np.inf # Negative return, zero volatility
+        return annualized_return / annualized_vol
     def mdd(series): 
         if series.empty or series.isnull().all(): return np.nan
         return (series / series.cummax() - 1).min()
@@ -146,8 +195,15 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
             return np.nan
         max_dd = mdd((1 + x).cumprod())
         annualized_return = ann(x)
-        if abs(max_dd) < EPSILON_FOR_DIVISION:
+        if pd.isna(annualized_return) or pd.isna(max_dd): # If ann_return or max_dd is NaN, Calmar is NaN
             return np.nan
+        if abs(max_dd) < EPSILON_FOR_DIVISION:
+            if abs(annualized_return) < EPSILON_FOR_DIVISION:
+                return 0.0  # Both are zero
+            elif annualized_return > 0:
+                return np.inf # Positive return, zero drawdown
+            else:
+                return -np.inf # Negative return, zero drawdown
         return annualized_return / abs(max_dd)
 
     def stationarity_test(series):
