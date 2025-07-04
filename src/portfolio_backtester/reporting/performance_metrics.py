@@ -252,12 +252,34 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
         if var_sr < 0:
             return np.nan
         
-        # The expected value of the maximum Sharpe ratio from N trials
-        expected_max_sr = sr + np.sqrt(var_sr) * max_z
+        # The expected SR of random strategies is often assumed to be 0.
+        # E[max SR_random] = E[SR_random] + StDev[SR_random] * max_z
+        # Assuming E[SR_random] = 0, and StDev[SR_random] for non-autocorrelated returns
+        # with 0 skew and 0 excess kurtosis is approx. sqrt(1/n).
+        # More precisely, for SR estimator, it's sqrt(1/(n-1)) under H0 (true SR=0, sk=0, k_exc=0).
+        if n - 1 <= 0: # Should be caught by len(rets) < 100, but defensive
+            return np.nan
 
-        # Deflated Sharpe Ratio is the probability of the observed SR being lower than the expected max SR
-        dsr = norm.cdf(sr, loc=expected_max_sr, scale=np.sqrt(var_sr))
-        return dsr
+        std_sr_h0 = np.sqrt(1 / (n - 1)) # Standard deviation of SR under H0 (true SR=0, sk=0, k_exc=0)
+        expected_max_sr_h0 = std_sr_h0 * max_z
+
+        # Variance of the observed Sharpe Ratio estimator (var_sr) is already calculated:
+        # var_sr = (1 / (n - 1)) * (1 - sk * sr + (k_excess / 4) * sr**2)
+        if var_sr <= 0: # Variance must be positive for a valid standard deviation
+            return np.nan
+
+        std_dev_sr_observed = np.sqrt(var_sr)
+
+        # Deflated Sharpe Ratio Z-statistic
+        # This measures how many standard deviations the observed SR is from the expected max SR under H0.
+        dsr_z_statistic = (sr - expected_max_sr_h0) / std_dev_sr_observed
+
+        # The Deflated Sharpe Ratio is often presented as a probability (PSR - Probabilistic Sharpe Ratio)
+        # P( SR_true > 0 | taking into account selection bias from num_trials)
+        # Or, more directly, P(observed SR > expected_max_SR_under_H0)
+        dsr_probability = norm.cdf(dsr_z_statistic)
+
+        return dsr_probability
 
     common_index = active_rets.index.intersection(active_bench_rets.index)
     rets_aligned, bench_aligned = active_rets.loc[common_index], active_bench_rets.loc[common_index]
