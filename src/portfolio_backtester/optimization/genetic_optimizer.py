@@ -206,18 +206,20 @@ class GeneticOptimizer:
                 gene_type.append(int)
             elif ptype == "float":
                 gene_space.append({"low": float(low), "high": float(high)})
+                gene_type.append(float)
             elif ptype == "categorical":
                 choices = spec.get("values", opt_def.get("values"))
                 if not choices: raise ValueError(f"Categorical parameter {pname} has no choices.")
                 gene_space.append({"low": 0, "high": len(choices) - 1, "step": 1})
+                gene_type.append(int) # Categorical genes are represented by integer indices
             else:
                 raise ValueError(f"Unsupported PTYPE {ptype} for parameter {pname} in genetic optimizer.")
-        return gene_space, float # Always return float as the gene type for PyGAD
+        return gene_space, gene_type # Return the list of types
 
     def run(self):
         logger.info("Setting up Genetic Algorithm...")
 
-        gene_space, gene_type = self._get_gene_space_and_types() # gene_type will now be 'float'
+        gene_space, gene_types_for_pygad = self._get_gene_space_and_types()
         num_genes = len(self.optimization_params_spec)
 
         # GA Parameters (these could be configurable)
@@ -265,7 +267,6 @@ class GeneticOptimizer:
             sol_per_pop=sol_per_pop,
             num_genes=num_genes,
             gene_space=gene_space,
-            gene_type=gene_type,
             parent_selection_type=parent_selection_type,
             crossover_type=crossover_type,
             mutation_type=mutation_type,
@@ -345,6 +346,7 @@ class GeneticOptimizer:
         optimal_params.update(self._decode_chromosome(solution))
 
         logger.info(f"Best parameters found by GA: {optimal_params}")
+        print(f"Genetic Optimizer - Best parameters found: {optimal_params}")
 
         num_evaluations = self.ga_instance.generations_completed * sol_per_pop
         return optimal_params, num_evaluations

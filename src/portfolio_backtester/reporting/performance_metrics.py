@@ -292,12 +292,11 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
             k_ratio = np.nan
         else:
             idx = np.arange(len(log_equity))
-            # Type hint for linregress result: (slope, intercept, rvalue, pvalue, stderr)
-            reg: Tuple[float, float, float, float, float] = linregress(idx, log_equity)
-            if reg[4] < EPSILON_FOR_DIVISION: # stderr is the 5th element (index 4)
+            slope, intercept, r_value, p_value, std_err = linregress(idx, log_equity)
+            if std_err < EPSILON_FOR_DIVISION:
                 k_ratio = np.nan
             else:
-                k_ratio = (reg[0] / reg[4]) * np.sqrt(len(log_equity)) # slope is index 0, stderr is index 4
+                k_ratio = (slope / std_err) * np.sqrt(len(log_equity))
     else:
         k_ratio = np.nan
 

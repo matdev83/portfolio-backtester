@@ -41,8 +41,11 @@ BACKTEST_SCENARIOS:
         max_value: 30
         step: 1
     strategy_params:
+      lookback_months: 12
+      num_holdings: 10
+      top_decile_fraction: 0.1
       long_only: True
-      smoothing_lambda: 1.0 # Disable EWMA signal smoothing
+      smoothing_lambda: 0.0 # Disable EWMA signal smoothing
       sizer_dvol_window: 12 # Default value for downside volatility sizer window
       target_volatility: 0.10 # Default value for target volatility
     mc_simulations: 1000

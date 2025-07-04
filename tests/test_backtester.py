@@ -460,7 +460,7 @@ class TestBacktester(unittest.TestCase):
 
         # Mock Optuna study and trial process
         mock_study_instance = MagicMock()
-        mock_study_instance.best_params = {"lookback_months": 7}
+        mock_study_instance.best_trial.params = {"lookback_months": 7}
         mock_study_instance.best_trial.number = 42 # Example trial number
         mock_setup_study.return_value = (mock_study_instance, 10) # study, n_trials
 

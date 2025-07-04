@@ -6,6 +6,7 @@ import math # Added for isnan, isinf
 from pathlib import Path
 from PIL import Image # For image validation
 import tempfile
+import sys
 
 # Directory to store plots generated during tests
 PLOTS_DIR = Path("plots")
@@ -16,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 RunResult = tuple[subprocess.CompletedProcess, Path, Path] # process, stdout_file, stderr_file
 
 def run_backtester_process(command_args: list[str], timeout_sec: int = 180) -> RunResult:
-    full_command = ["python", "-m", "src.portfolio_backtester.backtester"] + command_args
+    full_command = [sys.executable, "-m", "src.portfolio_backtester.backtester"] + command_args
     tmp_log_dir = PROJECT_ROOT / "tmp"
     tmp_log_dir.mkdir(exist_ok=True)
     stdout_tf = tempfile.NamedTemporaryFile(mode='w+t', delete=False, suffix='_stdout.log', encoding='utf-8', dir=tmp_log_dir)
@@ -242,7 +243,6 @@ def test_optimize_mode_optuna_minimal():
         if stdout_file: cleanup_temp_files(stdout_file)
         if stderr_file: cleanup_temp_files(stderr_file)
 
-@pytest.mark.xfail(reason="Known issue: PyGAD fails with 'ValueError: 'a' cannot be empty unless no samples are taken'. Needs investigation in GeneticOptimizer or PyGAD interaction.", raises=AssertionError, strict=False)
 def test_optimize_mode_genetic_minimal():
     scenario_name = "Test_Genetic_Minimal"
     command_args = [

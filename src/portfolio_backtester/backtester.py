@@ -87,12 +87,14 @@ class Backtester:
 
     def _get_strategy(self, strategy_name, params):
         # Convert strategy_name (e.g., "vams_momentum") to class name (e.g., "VamsMomentumStrategy")
-        class_name = "".join(word.capitalize() for word in strategy_name.split('_')) + "Strategy"
-        # Special handling for VAMS strategies due to inconsistent naming convention
-        if strategy_name == "vams_momentum":
+        if strategy_name == "momentum":
+            class_name = "MomentumStrategy"
+        elif strategy_name == "vams_momentum":
             class_name = "VAMSMomentumStrategy"
         elif strategy_name == "vams_no_downside":
             class_name = "VAMSNoDownsideStrategy"
+        else:
+            class_name = "".join(word.capitalize() for word in strategy_name.split('_')) + "Strategy"
         
         strategy_class = getattr(strategies, class_name, None)
         
@@ -493,6 +495,7 @@ class Backtester:
             chosen_best_trial = best_trials[0] # Pick the first one
             optimal_params.update(chosen_best_trial.params)
             logger.info(f"Best parameters (from Pareto front, first trial) found on training set: {chosen_best_trial.params}")
+            print(f"Optuna Optimizer - Best parameters found: {chosen_best_trial.params}")
             actual_trial_number_for_dsr = chosen_best_trial.number
         else:
             # Single-objective
@@ -503,6 +506,7 @@ class Backtester:
 
             optimal_params.update(study.best_trial.params)
             logger.info(f"Best parameters found on training set: {study.best_trial.params}")
+            print(f"Optuna Optimizer - Best parameters found: {study.best_trial.params}")
             actual_trial_number_for_dsr = study.best_trial.number
         
         return optimal_params, actual_trial_number_for_dsr # Return optimal_params and number of trials
@@ -600,110 +604,82 @@ class Backtester:
                                      monthly_data: pd.DataFrame, daily_data: pd.DataFrame, rets_full: pd.DataFrame,
                                      metrics_to_optimize: List[str], is_multi_objective: bool) -> Any:
         """Evaluates a set of parameters across walk-forward windows, with intermediate reporting for pruning."""
-        metric_sums = np.zeros(len(metrics_to_optimize))
-        num_valid_windows = 0
-        processed_steps_for_pruning = 0 # Tracks steps for pruning interval
+        metric_values_per_objective = [[] for _ in metrics_to_optimize]
+        processed_steps_for_pruning = 0
 
-        # Get pruning configuration from args (will be properly set in Step 3 of the plan)
-        pruning_enabled = getattr(self.args, "pruning_enabled", False) # Default to False for now
-        pruning_interval_steps = getattr(self.args, "pruning_interval_steps", 1) # Default to 1 for now
+        pruning_enabled = getattr(self.args, "pruning_enabled", False)
+        pruning_interval_steps = getattr(self.args, "pruning_interval_steps", 1)
 
         for window_idx, (tr_start, tr_end, te_start, te_end) in enumerate(windows):
-            # Slice data for the current window
             m_slice = monthly_data.loc[tr_start:te_end]
-            d_slice = daily_data.loc[tr_start:te_end] # daily_data is used for benchmark in calculate_metrics
+            d_slice = daily_data.loc[tr_start:te_end]
             r_slice = rets_full.loc[tr_start:te_end]
 
-            # Slice features to the current combined train+test window (m_slice.index covers this)
-            # Ensure that all feature dataframes in f_slice share the same index as m_slice
-            # and that all required features are present, possibly with NaNs if they don't cover the full window.
             f_slice = {}
             if self.features:
                 for name, feat_df in self.features.items():
-                    # Align feature's index with m_slice.index (which spans tr_start to te_end for monthly)
                     f_slice[name] = feat_df.reindex(m_slice.index)
 
-
-            # Run scenario for the current window's training and testing period combined
-            # The scenario internally might use only training data for signals if designed that way.
-            # For evaluation, we need returns over the test period.
             window_returns = self.run_scenario(scenario_config, m_slice, d_slice, r_slice, f_slice, verbose=False)
 
             if window_returns is None or window_returns.empty:
                 logger.warning(f"No returns generated for window {tr_start}-{te_end}. Skipping.")
+                # Append NaNs for this window to all objectives
+                for i in range(len(metrics_to_optimize)):
+                    metric_values_per_objective[i].append(np.nan)
                 continue
 
-            # Extract test period returns
             test_rets = window_returns.loc[te_start:te_end]
             if test_rets.empty:
                 logger.debug(f"Test returns empty for window {tr_start}-{te_end} with params {scenario_config['strategy_params']}.")
-                # For safety, if test_rets is empty, we might return NaN or a very bad score
-                # For now, let's assume this means the strategy didn't trade or something went wrong.
-                # Returning NaN will likely cause Optuna to prune or ignore this trial.
                 if is_multi_objective:
                     return tuple([float("nan")] * len(metrics_to_optimize))
                 return float("nan")
 
-
-            # Check for near-zero returns to enable early stopping
             if abs(test_rets.mean()) < ZERO_RET_EPS and abs(test_rets.std()) < ZERO_RET_EPS:
-                # trial is passed as an argument to this function
-                if trial: # Should always be true when called from Optuna objective
+                if trial:
                     trial.set_user_attr("zero_returns", True)
                     logger.debug(f"Trial {trial.number}, window {window_idx+1}: Marked with zero_returns.")
 
-
             bench_ser = d_slice[self.global_config["benchmark"]].loc[te_start:te_end]
             bench_period_rets = bench_ser.pct_change(fill_method=None).fillna(0)
-
-            # Calculate metrics for the test period
-            # Pass benchmark_returns to calculate_metrics
             metrics = calculate_metrics(test_rets, bench_period_rets, self.global_config["benchmark"])
-
             current_metrics = np.array([metrics.get(m, np.nan) for m in metrics_to_optimize], dtype=float)
 
             if np.isnan(current_metrics).any():
-                logger.warning(f"NaN metric found for window {tr_start}-{te_end}. Params: {scenario_config['strategy_params']}")
-                # If any metric is NaN, this set of parameters might be problematic for this window.
-                # Depending on strategy, could skip this window or penalize. For now, let's add NaNs.
+                nan_metrics = [metrics_to_optimize[i] for i, is_nan in enumerate(np.isnan(current_metrics)) if is_nan]
+                logger.info(f"NaN metric(s) found for window {tr_start}-{te_end}: {', '.join(nan_metrics)}. This can happen for parameter sets that result in no trades for a period. Params: {scenario_config['strategy_params']}")
 
-            metric_sums += np.nan_to_num(current_metrics) # Convert NaNs to 0 for sum, count separately
-            if not np.isnan(current_metrics).all(): # Count if at least one metric was not NaN
-                num_valid_windows +=1
+            for i, metric_val in enumerate(current_metrics):
+                # Ensure values are standard Python floats or np.nan when appended to the list
+                metric_values_per_objective[i].append(float(metric_val) if np.isfinite(metric_val) else np.nan)
+
+            if not np.isnan(current_metrics).all():
                 processed_steps_for_pruning += 1
 
-            # Intermediate reporting and pruning logic
-            # Pruning with trial.report is only supported for single-objective optimization.
-            if pruning_enabled and not is_multi_objective and num_valid_windows > 0 and processed_steps_for_pruning % pruning_interval_steps == 0:
-                # For MedianPruner, report a single float.
-                # If multi-objective, Optuna's pruners typically use the first objective by default.
-                # We use metric_sums[0] which corresponds to the first metric in metrics_to_optimize.
-                intermediate_value = metric_sums[0] / num_valid_windows
+            if pruning_enabled and not is_multi_objective and processed_steps_for_pruning > 0 and processed_steps_for_pruning % pruning_interval_steps == 0:
+                # Calculate intermediate value based on the mean of non-NaN values so far
+                intermediate_values = metric_values_per_objective[0]
+                # np.nanmean will ignore NaNs. If all are NaNs, it returns NaN.
+                # Convert to numpy array explicitly before calculating mean to satisfy type checker
+                intermediate_value = np.nanmean(np.asarray(intermediate_values, dtype=float))
 
-                # If intermediate_value is NaN or Inf, MedianPruner might handle it,
-                # but providing a very bad value consistent with optimization direction is safer.
                 if not np.isfinite(intermediate_value):
-                    # Access directions from trial.study. Optuna pruners typically work on the first metric.
                     first_metric_direction = trial.study.directions[0]
-                    if first_metric_direction == optuna.study.StudyDirection.MAXIMIZE:
-                        intermediate_value = -1e12 # A very small number for maximization
-                    else: # MINIMIZE
-                        intermediate_value = 1e12  # A very large number for minimization
+                    intermediate_value = -1e12 if first_metric_direction == optuna.study.StudyDirection.MAXIMIZE else 1e12
                     logger.debug(f"Trial {trial.number}, window {window_idx+1}: intermediate metric {metrics_to_optimize[0]} was non-finite. Reporting {intermediate_value}")
 
-                trial.report(intermediate_value, window_idx + 1) # Use window_idx + 1 as step, since steps are 1-indexed
-                current_trial_number_for_logs = trial.number # Store for logging if pruned
-
+                trial.report(float(intermediate_value), window_idx + 1)
                 if trial.should_prune():
-                    logger.info(f"Trial {current_trial_number_for_logs} pruned at window {window_idx + 1} (step {window_idx + 1}) with intermediate value for '{metrics_to_optimize[0]}': {intermediate_value:.4f}")
+                    logger.info(f"Trial {trial.number} pruned at window {window_idx + 1} with intermediate value for '{metrics_to_optimize[0]}': {intermediate_value:.4f}")
                     raise optuna.exceptions.TrialPruned()
 
-        if num_valid_windows == 0:
+        # Calculate final average for each metric, ignoring NaNs
+        metric_avgs = [np.nanmean(values) if not all(np.isnan(values)) else np.nan for values in metric_values_per_objective]
+
+        if all(np.isnan(metric_avgs)):
             logger.warning(f"No valid windows produced results for params: {scenario_config['strategy_params']}. Returning NaN.")
             return tuple([float("nan")] * len(metrics_to_optimize)) if is_multi_objective else float("nan")
-
-        metric_avgs = metric_sums / num_valid_windows
-        metric_avgs = np.where(np.isfinite(metric_avgs), metric_avgs, float("nan")) # Ensure non-finite results are NaN
 
         return tuple(metric_avgs) if is_multi_objective else metric_avgs[0]
 
