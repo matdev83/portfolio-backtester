@@ -58,24 +58,55 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
     active_rets = rets[rets != 0].dropna()
     active_bench_rets = bench_rets[bench_rets != 0].dropna()
 
-    # If no active returns, return NaN for all metrics
+    # If no active returns, return very bad (but finite) values for common optimization targets
+    # and NaN for others. This allows the optimizer to penalize such parameter sets.
     if active_rets.empty:
-        return pd.Series({
-            "Total Return": np.nan,
-            "Ann. Return": np.nan,
-            "Ann. Vol": np.nan,
-            "Sharpe": np.nan,
-            "Sortino": np.nan,
-            "Calmar": np.nan,
-            "Alpha (ann)": np.nan,
-            "Beta": np.nan,
-            "Max DD": np.nan,
-            "Skew": np.nan,
-            "Kurtosis": np.nan,
+        VERY_BAD_METRIC_VALUE = -9999.0 # For metrics that are typically maximized
+        NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY = 0.0 # For metrics like Beta, Alpha when no activity
+
+        # Metrics that are commonly targets for maximization
+        maximization_targets = [
+            "Total Return", "Ann. Return", "Sharpe", "Sortino", "Calmar", "Deflated Sharpe", "K-Ratio"
+        ]
+        # Metrics that might be near zero or NaN and can be set to a neutral value
+        neutral_metrics = [
+            "Alpha (ann)", "Beta", "R^2"
+        ]
+        # Metrics where NaN is acceptable or interpretation is complex for zero activity
+        # (e.g. Max DD is technically 0 if no returns, but often expected to be negative)
+        # Volatility is 0, Skew/Kurtosis undefined. ADF test also not meaningful.
+
+        metrics_dict = {
+            "Total Return": VERY_BAD_METRIC_VALUE,
+            "Ann. Return": VERY_BAD_METRIC_VALUE,
+            "Ann. Vol": 0.0, # Volatility is indeed 0 if no active returns
+            "Sharpe": VERY_BAD_METRIC_VALUE,
+            "Sortino": VERY_BAD_METRIC_VALUE,
+            "Calmar": VERY_BAD_METRIC_VALUE,
+            "Alpha (ann)": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY,
+            "Beta": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY,
+            "Max DD": 0.0, # Max drawdown is 0 if returns are flat
+            "Skew": np.nan, # Skew is undefined for constant series
+            "Kurtosis": np.nan, # Kurtosis is undefined for constant series
+            "R^2": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY,
+            "K-Ratio": VERY_BAD_METRIC_VALUE,
             "ADF Statistic": np.nan,
             "ADF p-value": np.nan,
-            "Deflated Sharpe": np.nan
-        }, name=name)
+            "Deflated Sharpe": VERY_BAD_METRIC_VALUE
+        }
+        # Ensure all expected metrics are present, even if some new ones were added to the main calculation
+        # This list should match the one in the main body of the function.
+        expected_metric_keys = [
+            "Total Return", "Ann. Return", "Ann. Vol", "Sharpe", "Sortino", "Calmar",
+            "Alpha (ann)", "Beta", "Max DD", "Skew", "Kurtosis", "R^2", "K-Ratio",
+            "ADF Statistic", "ADF p-value", "Deflated Sharpe"
+        ]
+        for key in expected_metric_keys:
+            if key not in metrics_dict:
+                # Default to NaN if a new metric was added and not covered here
+                metrics_dict[key] = np.nan
+
+        return pd.Series(metrics_dict, name=name)
 
     steps_per_year = _infer_steps_per_year(active_rets.index)
 

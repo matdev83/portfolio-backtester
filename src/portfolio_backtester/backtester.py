@@ -446,7 +446,7 @@ class Backtester:
             return self._evaluate_params_walk_forward(
                 trial,  # Pass the trial object
                 trial_scenario_config, windows, monthly_data, daily_data, rets_full,
-                metrics_to_optimize, is_multi_objective
+                metrics_to_optimize, is_multi_objective # Pass is_multi_objective
             )
 
         with Progress(
@@ -481,10 +481,31 @@ class Backtester:
             )
         
         optimal_params = scenario_config["strategy_params"].copy()
-        optimal_params.update(study.best_params)
-        logger.info(f"Best parameters found on training set: {study.best_params}")
+        if len(study.directions) > 1:
+            # Multi-objective: pick the first best trial from the Pareto front
+            best_trials = study.best_trials
+            if not best_trials:
+                logger.error("Multi-objective optimization finished without finding any best trials.")
+                # Fallback or raise error - for now, use current params and log error
+                # This case should ideally not happen if optimization ran.
+                return optimal_params, len(study.trials) # Or a more appropriate trial count
+
+            chosen_best_trial = best_trials[0] # Pick the first one
+            optimal_params.update(chosen_best_trial.params)
+            logger.info(f"Best parameters (from Pareto front, first trial) found on training set: {chosen_best_trial.params}")
+            actual_trial_number_for_dsr = chosen_best_trial.number
+        else:
+            # Single-objective
+            if not study.best_trial:
+                 logger.error("Single-objective optimization finished without finding a best trial.")
+                 # Fallback or raise error
+                 return optimal_params, len(study.trials)
+
+            optimal_params.update(study.best_trial.params)
+            logger.info(f"Best parameters found on training set: {study.best_trial.params}")
+            actual_trial_number_for_dsr = study.best_trial.number
         
-        return optimal_params, study.best_trial.number # Return optimal_params and number of trials
+        return optimal_params, actual_trial_number_for_dsr # Return optimal_params and number of trials
 
     def _setup_optuna_study(self, scenario_config, storage, study_name_base: str) -> Tuple[optuna.Study, int]:
         """Sets up and returns an Optuna study object and the number of trials."""
@@ -652,7 +673,8 @@ class Backtester:
                 processed_steps_for_pruning += 1
 
             # Intermediate reporting and pruning logic
-            if pruning_enabled and num_valid_windows > 0 and processed_steps_for_pruning % pruning_interval_steps == 0:
+            # Pruning with trial.report is only supported for single-objective optimization.
+            if pruning_enabled and not is_multi_objective and num_valid_windows > 0 and processed_steps_for_pruning % pruning_interval_steps == 0:
                 # For MedianPruner, report a single float.
                 # If multi-objective, Optuna's pruners typically use the first objective by default.
                 # We use metric_sums[0] which corresponds to the first metric in metrics_to_optimize.
