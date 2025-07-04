@@ -190,12 +190,14 @@ class GeneticOptimizer:
 
     def _get_gene_space_and_types(self):
         gene_space = []
-        gene_type = []
+        # gene_type = [] # This will be a list of types, not a single type
+        gene_types_list = [] # Use a new list to store types for each gene
 
         for spec in self.optimization_params_spec:
             pname = spec["parameter"]
             opt_def = self.global_config.get("optimizer_parameter_defaults", {}).get(pname, {})
-            ptype = opt_def.get("type", spec.get("type"))
+            # Corrected: ptype should prioritize spec (scenario) then opt_def (global defaults)
+            ptype = spec.get("type", opt_def.get("type"))
 
             low = spec.get("min_value", opt_def.get("low"))
             high = spec.get("max_value", opt_def.get("high"))
@@ -203,23 +205,31 @@ class GeneticOptimizer:
 
             if ptype == "int":
                 gene_space.append({"low": int(low), "high": int(high), "step": int(step) if step else 1})
-                gene_type.append(int)
+                gene_types_list.append(int)
             elif ptype == "float":
                 gene_space.append({"low": float(low), "high": float(high)})
-                gene_type.append(float)
+                gene_types_list.append(float)
             elif ptype == "categorical":
                 choices = spec.get("values", opt_def.get("values"))
                 if not choices: raise ValueError(f"Categorical parameter {pname} has no choices.")
                 gene_space.append({"low": 0, "high": len(choices) - 1, "step": 1})
-                gene_type.append(int) # Categorical genes are represented by integer indices
+                gene_types_list.append(int) # Categorical genes are represented by integer indices
             else:
                 raise ValueError(f"Unsupported PTYPE {ptype} for parameter {pname} in genetic optimizer.")
-        return gene_space, gene_type # Return the list of types
+
+        logger.debug(f"Generated gene_space: {gene_space}")
+        logger.debug(f"Generated gene_types_list: {gene_types_list}")
+        return gene_space, gene_types_list
 
     def run(self):
         logger.info("Setting up Genetic Algorithm...")
 
         gene_space, gene_types_for_pygad = self._get_gene_space_and_types()
+        logger.info(f"Gene space for PyGAD: {gene_space}")
+        logger.info(f"Gene types for PyGAD: {gene_types_for_pygad}")
+        # Ensure gene_types_for_pygad is a list of types, not a single type if mixed.
+        # If all types are the same, PyGAD allows a single type. Otherwise, it must be a list.
+        # The current implementation of _get_gene_space_and_types returns a list.
         num_genes = len(self.optimization_params_spec)
 
         # GA Parameters (these could be configurable)
@@ -267,6 +277,7 @@ class GeneticOptimizer:
             sol_per_pop=sol_per_pop,
             num_genes=num_genes,
             gene_space=gene_space,
+            gene_type=gene_types_for_pygad, # Pass the list of gene types
             parent_selection_type=parent_selection_type,
             crossover_type=crossover_type,
             mutation_type=mutation_type,
@@ -274,64 +285,62 @@ class GeneticOptimizer:
             random_seed=pygad_seed,
             on_generation=on_generation_callback,
             parallel_processing=['thread', self.backtester.n_jobs] if self.backtester.n_jobs > 1 else None,
-            # For multi-objective, specify algorithm, e.g., NSGA-II
-            # This requires PyGAD >= 2.18.0
-            # algorithm_type="nsgaii" if self.is_multi_objective else "ga", # Conditional algorithm type
         )
 
-        # Check PyGAD version for algorithm_type if needed, or handle it more gracefully.
-        # For now, let's assume standard GA. If multi-objective is used, fitness_func_wrapper
-        # would need to return a single weighted value or this needs adjustment.
-        # The above `algorithm_type` is commented out as it might need specific PyGAD version.
-        # If using NSGA-II, the fitness function should return a list/tuple of objectives.
-        # The current fitness_func_wrapper attempts to do this if self.is_multi_objective is True.
-
+        # PyGAD 3.4.0's GA class should handle multi-objective if fitness func returns a list/tuple.
+        # No need to switch to a separate NSGAII class explicitly based on further investigation.
         if self.is_multi_objective:
-            # Ensure PyGAD version supports NSGA-II or similar if this path is taken.
-            # This might require setting `self.ga_instance.algorithm_type = "nsgaii"` if not in constructor
-            logger.info("Attempting to use multi-objective optimization with Genetic Algorithm.")
-
+            logger.info("Configuring pygad.GA for multi-objective optimization (fitness function returns multiple values).")
+        else:
+            logger.info("Configuring pygad.GA for single-objective optimization.")
+        # The self.ga_instance is already created above with all parameters.
 
         logger.info("Running Genetic Algorithm...")
         self.ga_instance.run()
 
         if self.is_multi_objective:
-            # For multi-objective, best_solutions_fitness gives Pareto front fitness values
-            # solutions will be a list of solutions on the Pareto front
-            # We need to decide how to pick one "best" or handle multiple.
-            # For now, let's try to find a solution that balances objectives, or pick one.
-            # This is a complex topic. A common approach is to pick the one with highest value for the *first* objective.
-            pareto_solutions = self.ga_instance.best_solutions_fitness # This contains fitness values
+            # For NSGAII, best_solutions_fitness and best_solutions are attributes of the instance
+            # representing the Pareto front.
             pareto_chromosomes = self.ga_instance.best_solutions # This contains chromosomes
+            # For NSGAII, fitness of these solutions needs to be re-calculated or retrieved carefully.
+            # PyGAD's NSGAII stores the pareto front. Let's get their fitness values.
+            # We need to calculate fitness for each solution in pareto_chromosomes if not directly available.
+            # However, the plot_fitness and selection logic might rely on how NSGAII stores them.
+            # Let's assume self.ga_instance.best_solutions_fitness is available or adapt.
+            # For NSGAII, the attribute might be pareto_front_fitness or similar.
+            # According to docs, for NSGAII, best_solutions are the pareto front solutions.
+            # Their fitness values need to be obtained by re-evaluating or checking attributes.
+            # Let's assume the selection logic can use a similar structure.
+            # PyGAD's `plot_fitness` might not work directly with NSGAII in the same way.
+            # `self.ga_instance.best_solutions` gives the Pareto front solutions.
+            # `self.ga_instance.best_solutions_fitness_` (note trailing underscore) might store their fitness.
+            # For pygad.GA handling multi-objectives, best_solutions_fitness should be populated.
+            pareto_solutions_fitness_values = self.ga_instance.best_solutions_fitness
 
-            if not pareto_chromosomes:
-                logger.error("Genetic algorithm did not find any solutions for multi-objective case.")
+            if not pareto_chromosomes or pareto_solutions_fitness_values is None: # Check for None as well
+                logger.error("Genetic algorithm (multi-objective) did not find any solutions on the Pareto front or their fitness values.")
                 return self.scenario_config["strategy_params"].copy(), self.ga_instance.generations_completed * sol_per_pop
 
             # Select the solution that is best for the first objective.
-            # Remember fitness might have been negated for minimization.
             optimization_targets_config = self.scenario_config.get("optimization_targets", [])
             first_obj_direction = optimization_targets_config[0].get("direction", "maximize").lower() if optimization_targets_config else "maximize"
 
             best_idx = 0
             if first_obj_direction == "maximize":
                 best_val = -np.inf
-                for i, fitness_values in enumerate(pareto_solutions):
+                for i, fitness_values in enumerate(pareto_solutions_fitness_values):
                     if fitness_values[0] > best_val:
                         best_val = fitness_values[0]
                         best_idx = i
-            else: # minimize
-                best_val = np.inf
-                # Fitness for minimization was negated (e.g., -value), so we look for max of these negated values (closest to zero from negative side)
-                # Or, if we stored them as positive values for minimization fitness (e.g. by returning 1/value or similar)
-                # Assuming the fitness_func_wrapper returned negated values for minimization.
-                for i, fitness_values in enumerate(pareto_solutions):
-                    if fitness_values[0] > best_val: # Because -value means smaller original value is larger negated value
+            else: # minimize (first objective's direction is "minimize")
+                best_val = -np.inf
+                for i, fitness_values in enumerate(pareto_solutions_fitness_values):
+                    if fitness_values[0] > best_val:
                         best_val = fitness_values[0]
                         best_idx = i
 
             solution = pareto_chromosomes[best_idx]
-            solution_fitness = pareto_solutions[best_idx] # This is a list/tuple of objectives for the chosen solution
+            solution_fitness = pareto_solutions_fitness_values[best_idx]
             log_msg = f"Genetic algorithm multi-objective finished. Selected solution from Pareto front. Fitness: {solution_fitness}."
 
         else: # Single objective
@@ -339,7 +348,16 @@ class GeneticOptimizer:
             log_msg = f"Genetic algorithm finished. Best fitness: {solution_fitness}."
 
         logger.info(log_msg)
-        self.ga_instance.plot_fitness(title="GA Fitness Value vs. Generation", save_dir=f"plots/ga_fitness_{self.scenario_config['name']}.png")
+
+        # plot_fitness might not be suitable for NSGAII directly if it expects a single fitness trend.
+        # NSGAII solutions are a Pareto front.
+        if not self.is_multi_objective:
+            self.ga_instance.plot_fitness(title="GA Fitness Value vs. Generation", save_dir=f"plots/ga_fitness_{self.scenario_config['name']}.png")
+        else:
+            logger.info("Plotting for multi-objective GA is not a single fitness curve. Standard fitness plot will be skipped.")
+            # PyGAD's plot_fitness() called on a multi-objective GA instance might plot the first objective by default,
+            # or it might error if it's not designed for it. For safety, skipping.
+            # Consider: self.ga_instance.plot_objectives() or self.ga_instance.plot_pareto_front() if available and desired.
 
         # Decode the best solution
         optimal_params = self.scenario_config["strategy_params"].copy()

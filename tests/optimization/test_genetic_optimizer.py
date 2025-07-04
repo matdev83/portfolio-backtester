@@ -123,10 +123,12 @@ def test_get_gene_space_and_types(mock_backtester_instance):
         daily_data=MOCK_DAILY_DATA,
         rets_full=MOCK_RETS_FULL
     )
-    gene_space, gene_type = optimizer._get_gene_space_and_types()
+    gene_space, gene_types_list = optimizer._get_gene_space_and_types()
 
     assert len(gene_space) == 3
-    assert gene_type == float # gene_type should now be float
+    # gene_type should now be a list of types: [int, float, int]
+    # param1_int (int), param2_float (float), param3_cat (int for index)
+    assert gene_types_list == [int, float, int]
 
     # param1_int
     assert gene_space[0] == {"low": 2, "high": 5, "step": 1} # From MOCK_SCENARIO_CONFIG

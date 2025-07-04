@@ -3,7 +3,8 @@ import os
 from pathlib import Path
 
 # Define paths to the configuration files
-CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
+# For tests run from project root /app, and for general case if /app is fixed root.
+CONFIG_DIR = Path("/app/config")
 PARAMETERS_FILE = CONFIG_DIR / "parameters.yaml"
 SCENARIOS_FILE = CONFIG_DIR / "scenarios.yaml"
 
