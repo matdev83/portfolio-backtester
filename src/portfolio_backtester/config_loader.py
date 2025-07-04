@@ -13,7 +13,7 @@ OPTIMIZER_PARAMETER_DEFAULTS = {}
 BACKTEST_SCENARIOS = []
 
 # Import GA defaults
-from portfolio_backtester.optimization.genetic_optimizer import get_ga_optimizer_parameter_defaults
+from .optimization.genetic_optimizer import get_ga_optimizer_parameter_defaults
 
 def load_config():
     """Loads configurations from YAML files."""
