@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock # Added MagicMock
 import pandas as pd
 import numpy as np
 import pytest
+import optuna # Import optuna
 
 from src.portfolio_backtester.backtester import Backtester, _resolve_strategy
 from src.portfolio_backtester.config import GLOBAL_CONFIG, BACKTEST_SCENARIOS
@@ -372,6 +373,154 @@ class TestBacktester(unittest.TestCase):
         self.assertIsInstance(result_data["returns"], pd.Series)
         self.assertFalse(result_data["returns"].empty)
 
+    # @patch('src.portfolio_backtester.backtester.optuna.create_study') # Do not mock create_study for true integration
+    @patch('src.portfolio_backtester.backtester.Backtester.run_scenario') # Mock the scenario runner
+    @patch('src.portfolio_backtester.backtester.calculate_metrics') # Mock metrics calculation
+    def test_early_stopping_integration(self, mock_calculate_metrics, mock_run_scenario): # mock_create_study removed
+        """Test that early stopping halts optimization when criteria are met."""
+
+        # Optuna will create a real study (in-memory by default)
+        # We need to ensure that the study object used by the callback to call .stop()
+        # is the actual study object. The callback has access to it via its arguments.
+        # We can check if study.stop() was called by spying on it if possible,
+        # or by checking the number of trials run.
+
+        # Store a reference to the real study object to check its state later if needed,
+        # although for GridSampler, n_trials is deterministic if not stopped.
+        # The most reliable check is that our mock_metrics_side_effect_new's counter
+        # (optuna_trial_idx_for_mock) stops at the expected trial number.
+
+        # --- Setup Scenario Config for Early Stopping ---
+        early_stop_scenario = {
+            "name": "Test_Early_Stop",
+            "strategy": "momentum", # Needs to be a valid strategy for _resolve_strategy
+            "strategy_params": {"leverage": 1.0, "smoothing_lambda": 0.5, "long_only": True, "top_decile_fraction": 0.1},
+            "rebalance_frequency": "M",
+            "position_sizer": "equal_weight",
+            "train_window_months": 12, # Short window for faster test
+            "test_window_months": 3,
+            "optimization_metric": "Sharpe",
+            "optimize": [
+                {"parameter": "lookback_months", "min_value": 3, "max_value": 9, "step": 1}
+            ],
+            # Early stopping config
+            "early_stopping_enabled": True,
+            "early_stopping_metric": "Sharpe", # Explicitly set
+            "early_stopping_patience_trials": 2, # Stop after 2 non-improving trials
+            "early_stopping_min_delta": 0.01,
+            "early_stopping_warmup_trials": 1, # 1 warmup trial (trial 0)
+        }
+
+        args = self.MockArgs()
+        args.optuna_trials = 10 # Total trials if no early stopping
+        args.early_stop_patience = 5 # For zero-return streak, higher than metric patience
+        args.random_seed = 12345 # Ensure a fresh study by providing a seed
+
+        # --- Mock run_scenario and calculate_metrics ---
+        # run_scenario will be called by the objective function for each walk-forward window
+        # We need it to return some dummy pandas Series (portfolio returns)
+        # Ensure the index of these returns is compatible with slicing by te_start, te_end
+        mock_daily_dates_for_run_scenario_index = pd.date_range(start="2020-01-01", periods=24*22, freq="B") # Approx 2 years for 24 months
+        mock_run_scenario.return_value = pd.Series(
+            np.random.randn(len(mock_daily_dates_for_run_scenario_index)),
+            index=mock_daily_dates_for_run_scenario_index
+        )
+
+        # calculate_metrics will be called by the objective function
+        # We want to control the "Sharpe" ratio it returns to simulate stalling
+        # This list now represents the desired AVERAGE metric value for each Optuna trial
+        avg_metric_per_optuna_trial = [
+            0.5,    # Optuna Trial 0 (warmup, callback sees this value)
+            0.6,    # Optuna Trial 1 (warmup done, new best)
+            0.605,  # Optuna Trial 2 (not > 0.6+0.01) -> patience 1
+            0.6,    # Optuna Trial 3 (not > 0.6+0.01) -> patience 2, STOP
+            0.7,    # Optuna Trial 4 (should not be reached if stop works)
+        ]
+
+        optuna_trial_idx_for_mock = 0 # To iterate through avg_metric_per_optuna_trial
+        calls_within_current_optuna_trial_objective = 0
+
+        # Based on early_stop_scenario: train_window_m=12, test_window_m=3.
+        # With mock_monthly_data (24 periods), this yields 4 walk-forward windows.
+        num_windows_per_trial_estimate = 4
+
+        def mock_metrics_side_effect_new(portfolio_rets, benchmark_rets, benchmark_name_str, **kwargs):
+            nonlocal optuna_trial_idx_for_mock
+            nonlocal calls_within_current_optuna_trial_objective
+
+            # This function is called for each window within an Optuna trial's objective.
+            # We make it return the target average value for the current Optuna trial.
+            # This way, when the objective averages these, it gets the desired value.
+            target_avg_for_current_optuna_trial = avg_metric_per_optuna_trial[optuna_trial_idx_for_mock]
+
+            calls_within_current_optuna_trial_objective += 1
+            if calls_within_current_optuna_trial_objective >= num_windows_per_trial_estimate:
+                optuna_trial_idx_for_mock += 1 # Move to next Optuna trial's target metric
+                calls_within_current_optuna_trial_objective = 0
+
+            return pd.Series({"Sharpe": target_avg_for_current_optuna_trial})
+
+        mock_calculate_metrics.side_effect = mock_metrics_side_effect_new
+
+        # --- Instantiate Backtester ---
+        with patch('src.portfolio_backtester.backtester.Backtester._get_data_source') as mock_get_ds:
+            mock_get_ds.return_value = MagicMock()
+            backtester = Backtester(self.global_config, [early_stop_scenario], args, random_state=123)
+
+        # Prepare mock data (minimal, as run_scenario is mocked)
+        # Monthly data is used for walk-forward window generation and feature slicing
+        dates_monthly = pd.date_range(start="2020-01-01", periods=24, freq="ME") # Enough for a few windows
+        mock_monthly_data = pd.DataFrame(index=dates_monthly, columns=self.global_config["universe"] + [self.global_config["benchmark"]])
+        mock_monthly_data = mock_monthly_data.fillna(0.01) # Avoid div by zero if any feature uses pct_change
+
+        # Daily data also needed for the objective function context
+        dates_daily = pd.date_range(start="2020-01-01", periods=len(dates_monthly)*22, freq="B")
+        mock_daily_data = pd.DataFrame(index=dates_daily, columns=self.global_config["universe"] + [self.global_config["benchmark"]])
+        mock_daily_data = mock_daily_data.fillna(0.01)
+
+        mock_rets_full = mock_daily_data.pct_change().fillna(0)
+
+        # Minimal features
+        backtester.features = {"mock_feature": pd.Series(index=mock_monthly_data.index, data=0)}
+
+
+        # --- Run Optimization ---
+        # The objective function inside run_optimization will call mock_run_scenario and mock_calculate_metrics
+        # The callback inside run_optimization should use the values from mock_calculate_metrics
+
+        # We need to count how many times the objective is called.
+        # Optuna calls the objective function for each trial.
+        # The callback is called after each trial.
+        # We can check if study.stop() was called on the mock_study_instance.
+
+        # Patch the progress bar as it can cause issues in non-interactive test environments
+        with patch('src.portfolio_backtester.backtester.Progress'):
+            optimal_params, num_actual_trials = backtester.run_optimization(
+                early_stop_scenario,
+                mock_monthly_data,
+                mock_daily_data, # Pass mock daily data
+                mock_rets_full   # Pass mock full returns
+            )
+
+        # --- Assertions ---
+        # Expected trials:
+        # Trial 0 (warmup, metric 0.5) -> best = 0.5
+        # Trial 1 (warmup done, metric 0.6) -> new best = 0.6, patience_streak = 0
+        # Trial 2 (metric 0.605, not > 0.6+0.01) -> best = 0.6, patience_streak = 1
+        # Trial 3 (metric 0.6, not > 0.6+0.01) -> best = 0.6, patience_streak = 2 -> STOP
+        # So, 4 trials should have run (0, 1, 2, 3). Optuna trials are 0-indexed.
+        # The num_actual_trials returned is study.best_trial.number, which isn't directly the count.
+        # optuna_trial_idx_for_mock tracks how many Optuna trials' worth of metrics were generated.
+        # If trials 0, 1, 2, 3 ran, optuna_trial_idx_for_mock will be 4.
+
+        self.assertEqual(optuna_trial_idx_for_mock, 4, "Optimization should have stopped early after 4 Optuna trials.")
+        # mock_study_instance.stop.assert_called_once() # Removed as study is no longer a MagicMock
+
+        # Check that the best_params are still returned correctly based on what Optuna found before stopping.
+        # In this controlled test, the "best" trial would be trial 1 with Sharpe 0.6.
+        # The `objective` function suggests params, so we can't directly check optimal_params here
+        # without also mocking the `trial.suggest_` methods.
+        # The key is that the study stopped early.
 
 if __name__ == '__main__':
     unittest.main()

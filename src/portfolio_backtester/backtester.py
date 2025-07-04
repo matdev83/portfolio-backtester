@@ -485,17 +485,106 @@ class Backtester:
         ) as progress:
             task = progress.add_task("[cyan]Optimizing...", total=n_trials)
             
+            # Variables for early stopping based on zero returns
             zero_streak = 0
+
+            # Variables for metric-based early stopping
+            # Get early stopping configuration from scenario
+            es_config = {
+                "enabled": scenario_config.get("early_stopping_enabled", False),
+                "metric_to_watch": scenario_config.get("early_stopping_metric"),
+                "patience_trials": scenario_config.get("early_stopping_patience_trials", 20),
+                "min_delta": scenario_config.get("early_stopping_min_delta", 0.001),
+                "warmup_trials": scenario_config.get("early_stopping_warmup_trials", 10),
+            }
+
+            if es_config["enabled"] and not es_config["metric_to_watch"]:
+                # Infer metric to watch if not explicitly set
+                if optimization_targets_config:
+                    es_config["metric_to_watch"] = optimization_targets_config[0]["name"]
+                    logger.info(f"Early stopping metric inferred as: {es_config['metric_to_watch']} (first from optimization_targets)")
+                elif scenario_config.get("optimization_metric"):
+                    es_config["metric_to_watch"] = scenario_config.get("optimization_metric")
+                    logger.info(f"Early stopping metric inferred as: {es_config['metric_to_watch']} (from optimization_metric)")
+                else: # Default to Calmar if still not found (though objective function also defaults this way)
+                    es_config["metric_to_watch"] = "Calmar"
+                    logger.warning(f"Early stopping metric defaulted to: {es_config['metric_to_watch']}")
+
+            # Determine direction for the monitored metric
+            metric_direction = "maximize" # Default
+            if es_config["enabled"] and es_config["metric_to_watch"]:
+                if is_multi_objective:
+                    for i, target_name in enumerate(metrics_to_optimize):
+                        if target_name == es_config["metric_to_watch"]:
+                            metric_direction = study.directions[i].name.lower() # Optuna 3.x uses .name
+                            break
+                else: # Single objective
+                    metric_direction = study.direction.name.lower() # Optuna 3.x uses .name
+                logger.info(f"Early stopping will monitor '{es_config['metric_to_watch']}' with direction '{metric_direction}'.")
+
+            current_best_value = float("-inf") if metric_direction == "maximize" else float("inf")
+            trials_since_last_improvement = 0
 
             def callback(study, trial):
                 nonlocal zero_streak
+                nonlocal current_best_value
+                nonlocal trials_since_last_improvement
+
                 progress.update(task, advance=1)
+
+                # 1. Original zero_returns based early stopping (CLI controlled)
                 if trial.user_attrs.get("zero_returns"):
                     zero_streak += 1
                 else:
                     zero_streak = 0
-                if zero_streak > self.early_stop_patience:
+
+                if zero_streak > self.early_stop_patience: # self.early_stop_patience from CLI args
+                    logger.info(f"Stopping study '{study.study_name}' early due to {self.early_stop_patience} consecutive zero-return trials.")
                     study.stop()
+                    return # Stop further processing in callback if study is stopped
+
+                # 2. New metric-based early stopping (scenario_config controlled)
+                if es_config["enabled"] and es_config["metric_to_watch"] and trial.state == optuna.trial.TrialState.COMPLETE:
+                    if trial.number < es_config["warmup_trials"]:
+                        return # Still in warmup phase for metric-based stopping
+
+                    current_trial_value = None
+                    if is_multi_objective:
+                        try:
+                            metric_idx = metrics_to_optimize.index(es_config["metric_to_watch"])
+                            current_trial_value = trial.values[metric_idx]
+                        except (ValueError, IndexError):
+                            logger.warning(f"Could not find metric '{es_config['metric_to_watch']}' in trial values for early stopping.")
+                            return
+                    else: # Single objective
+                        current_trial_value = trial.value
+
+                    if current_trial_value is None or pd.isna(current_trial_value):
+                        # Treat NaN/None as no improvement or handle as per strategy (e.g. penalize)
+                        # For now, we'll just consider it as not an improvement.
+                        logger.debug(f"Trial {trial.number} resulted in None/NaN for metric '{es_config['metric_to_watch']}'.")
+                        trials_since_last_improvement += 1
+                    else:
+                        improved = False
+                        if metric_direction == "maximize":
+                            if current_trial_value > current_best_value + es_config["min_delta"]:
+                                improved = True
+                        else: # minimize
+                            if current_trial_value < current_best_value - es_config["min_delta"]:
+                                improved = True
+
+                        if improved:
+                            logger.debug(f"Trial {trial.number}: Improvement found for '{es_config['metric_to_watch']}'. Old best: {current_best_value:.4f}, New best: {current_trial_value:.4f}")
+                            current_best_value = current_trial_value
+                            trials_since_last_improvement = 0
+                        else:
+                            trials_since_last_improvement += 1
+                            logger.debug(f"Trial {trial.number}: No significant improvement for '{es_config['metric_to_watch']}'. Trials since last improvement: {trials_since_last_improvement}/{es_config['patience_trials']}")
+
+                    if trials_since_last_improvement >= es_config["patience_trials"]:
+                        logger.info(f"Stopping study '{study.study_name}' early: No improvement in '{es_config['metric_to_watch']}' by at least {es_config['min_delta']} for {es_config['patience_trials']} trials after warmup.")
+                        study.stop()
+                        return
 
             study.optimize(
                 objective,

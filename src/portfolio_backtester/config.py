@@ -35,7 +35,13 @@ BACKTEST_SCENARIOS = [
             # "volatility_targeting": {"name": "none"}
         },
         "mc_simulations": 1000,
-        "mc_years": 10
+        "mc_years": 10,
+        # Example of new early stopping configuration
+        "early_stopping_enabled": True,
+        "early_stopping_metric": "Sortino", # Monitored metric (can be one from optimization_targets)
+        "early_stopping_patience_trials": 30, # Stop after 30 trials with no improvement
+        "early_stopping_min_delta": 0.01,     # Minimum improvement in Sortino to be considered progress
+        "early_stopping_warmup_trials": 15     # Wait for 15 trials before applying early stopping
     },
     {
         "name": "Momentum_Vol_Targeted_10pct",

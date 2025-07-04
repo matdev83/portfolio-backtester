@@ -69,6 +69,44 @@ python src/portfolio_backtester/backtester.py
 * `--optuna-timeout-sec`: Time budget per WFA slice (seconds).
   * **Default:** `None` (no timeout)
 
+### Early Stopping in Optimization
+
+The optimizer supports two types of early stopping to prevent lengthy computations when progress stalls:
+
+1.  **Zero-Return Streak Stopping (CLI Controlled):**
+    *   This is controlled by the existing CLI parameter:
+        *   `--early-stop-patience`: Stop optimization after N successive trials that result in near-zero returns. (Default: `10`)
+    *   This helps quickly terminate optimizations for parameter combinations that are fundamentally flawed and produce no meaningful backtest results.
+
+2.  **Metric-Based Stalling (Scenario Controlled):**
+    *   This more nuanced early stopping is configured per scenario within `src/portfolio_backtester/config.py` in the `BACKTEST_SCENARIOS` list.
+    *   Add the following optional keys to a scenario's dictionary to enable and configure it:
+        *   `"early_stopping_enabled": True` (boolean, defaults to `False`): Set to `True` to enable this type of early stopping for the scenario.
+        *   `"early_stopping_metric": "MetricName"` (string, e.g., `"Sharpe"`, `"Sortino"`): The metric to monitor for improvement.
+            *   If not provided, the system will attempt to infer it from the scenario's `optimization_metric` (for single-objective) or the first metric listed in `optimization_targets` (for multi-objective). It defaults to `"Calmar"` if no other metric can be inferred.
+        *   `"early_stopping_patience_trials": N` (integer, e.g., `20`): The number of Optuna trials to wait for an improvement (greater than `min_delta`) after the warmup period before stopping.
+        *   `"early_stopping_min_delta": X` (float, e.g., `0.001`): The minimum absolute change in the `early_stopping_metric` required to be considered an improvement.
+        *   `"early_stopping_warmup_trials": M` (integer, e.g., `10`): The number of initial Optuna trials to complete before the metric-based early stopping logic becomes active. This allows the optimizer some initial exploration time.
+    *   **Example Configuration within a Scenario:**
+        ```python
+        {
+            "name": "Momentum_Unfiltered_With_Early_Stop",
+            "strategy": "momentum",
+            # ... other strategy parameters ...
+            "optimization_metric": "Sortino",
+            "optimize": [
+                # ... parameters to optimize ...
+            ],
+            # Early Stopping Configuration
+            "early_stopping_enabled": True,
+            "early_stopping_metric": "Sortino",
+            "early_stopping_patience_trials": 25,
+            "early_stopping_min_delta": 0.005,
+            "early_stopping_warmup_trials": 15
+        }
+        ```
+    *   This mechanism stops the Optuna study for a scenario if the chosen metric does not improve significantly over a specified number of trials, saving computational resources on unpromising optimization paths.
+
 ### Examples
 
 **1. Run an optimization for a scenario:**
