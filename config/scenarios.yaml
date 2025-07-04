@@ -227,6 +227,65 @@ BACKTEST_SCENARIOS:
     mc_simulations: 1000
     mc_years: 10
 
+  - name: "Test_Optuna_Minimal" # For Optuna integration testing
+    strategy: "momentum"
+    rebalance_frequency: "ME"
+    position_sizer: "equal_weight"
+    transaction_costs_bps: 5
+    # Use very short train/test windows to speed up data processing within optimization loop
+    train_window_months: 12 # Minimal realistic training window
+    test_window_months: 3  # Minimal realistic test window
+    walk_forward_type: "expanding" # Or rolling, ensure data is sufficient
+    optimization_metric: "Sharpe" # Single metric for simplicity
+    optimize:
+      - parameter: "lookback_months"
+        min_value: 2 # Small range
+        max_value: 3 # Small range
+        step: 1
+      - parameter: "num_holdings"
+        min_value: 3 # Small number of holdings
+        max_value: 5 # Small number of holdings
+        step: 1
+    strategy_params:
+      long_only: True
+      # Other essential momentum params, keep them fixed or very tight range if optimized
+      top_decile_fraction: 0.2 # Fixed
+      smoothing_lambda: 0.5    # Fixed
+      leverage: 1.0            # Fixed
+      sma_filter_window: null  # Keep it simple
+    # No mc_simulations for this test scenario to save time
+
+  - name: "Test_Genetic_Minimal" # For Genetic Algorithm integration testing
+    strategy: "momentum"
+    rebalance_frequency: "ME"
+    position_sizer: "equal_weight"
+    transaction_costs_bps: 5
+    train_window_months: 12
+    test_window_months: 3
+    walk_forward_type: "expanding"
+    optimization_metric: "Sharpe"
+    genetic_algorithm_params: # Ensure fast execution for tests
+      ga_num_generations: 2
+      ga_sol_per_pop: 3
+      ga_num_parents_mating: 2
+    optimize:
+      # - parameter: "lookback_months" # Temporarily disable for GA debugging
+      #   min_value: 2
+      #   max_value: 3
+      #   step: 1
+      - parameter: "num_holdings"
+        min_value: 3
+        max_value: 5
+        step: 1
+    strategy_params:
+      long_only: True
+      lookback_months: 6 # Fixed value for lookback_months
+      top_decile_fraction: 0.2
+      smoothing_lambda: 0.5
+      leverage: 1.0
+      sma_filter_window: null
+    # No mc_simulations
+
   - name: "Momentum_Optimize_Sizer" # New scenario for testing sizer optimization
     strategy: "momentum"
     rebalance_frequency: "ME"

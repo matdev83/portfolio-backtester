@@ -45,7 +45,8 @@ dev = [
     "pytest",
     "coverage",
     "radon",
-    "xenon"
+    "xenon",
+    "Pillow"
 ]
 
 [project.urls]
