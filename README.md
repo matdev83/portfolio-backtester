@@ -31,10 +31,10 @@ This project is a Python-based tool for backtesting portfolio strategies.
 
 ## Usage
 
-The main backtesting script can be run directly:
+The main backtesting script can be run directly as a Python module:
 
 ```bash
-python src/portfolio_backtester/backtester.py
+python -m src.portfolio_backtester.backtester
 ```
 
 ### CLI Parameters for `backtester.py`
@@ -91,8 +91,9 @@ Trial pruning can significantly speed up optimization by stopping unpromising tr
   * **Description:** For example, if set to `2`, a trial reports its performance and is eligible for pruning after its 2nd, 4th, 6th, etc., walk-forward window evaluation (subject to `pruning-n-warmup-steps`).
 
 **Note on Early Stopping Mechanisms:**
-*   **Trial Pruning** (configured above): Stops *individual unpromising trials* early during the optimization process based on intermediate performance across walk-forward windows. This helps focus computational resources on more promising parameter sets.
-*   `--early-stop-patience`: Stops the *entire optimization study* if a specified number of *consecutive trials* result in near-zero returns in any of their test windows. This acts as a global failsafe for the overall optimization process.
+
+* **Trial Pruning** (configured above): Stops *individual unpromising trials* early during the optimization process based on intermediate performance across walk-forward windows. This helps focus computational resources on more promising parameter sets.
+* `--early-stop-patience`: Stops the *entire optimization study* if a specified number of *consecutive trials* result in near-zero returns in any of their test windows. This acts as a global failsafe for the overall optimization process.
 
 These two mechanisms are complementary.
 
@@ -101,20 +102,27 @@ These two mechanisms are complementary.
 **1. Run an optimization for a scenario:**
 
 ```bash
-python src/portfolio_backtester/backtester.py --mode optimize --scenario-name "Sharpe_Momentum" --study-name "sharpe_momentum_opt_run_1" --optuna-trials 100 --optuna-timeout-sec 3600
+python -m src.portfolio_backtester.backtester --mode optimize --scenario-name "Sharpe_Momentum" --study-name "sharpe_momentum_opt_run_1" --optuna-trials 100 --optuna-timeout-sec 3600
 ```
 
 **2. Run a backtest using optimized parameters from a study:**
 
 ```bash
-python src/portfolio_backtester/backtester.py --mode backtest --scenario-name "Sharpe_Momentum" --study-name "sharpe_momentum_opt_run_1"
+python -m src.portfolio_backtester.backtester --mode backtest --scenario-name "Sharpe_Momentum" --study-name "sharpe_momentum_opt_run_1"
 ```
 
 **3. Run a backtest using default parameters for a scenario:**
 
 ```bash
-python src/portfolio_backtester/backtester.py --mode backtest --scenario-name "Momentum_Unfiltered"
+python -m src.portfolio_backtester.backtester --mode backtest --scenario-name "Momentum_Unfiltered"
 ```
+
+**4. Run backtests on all defined scenarios:**
+
+```bash
+python -m src.portfolio_backtester.backtester --mode backtest
+```
+*   This command will iterate through all scenarios defined in `src/portfolio_backtester/config.py` (or `config/scenarios.yaml`) and run a backtest for each.
 
 The tool for downloading SPY holdings can be run with:
 
@@ -193,6 +201,157 @@ The project supports pluggable position sizing methods, defined in `src/portfoli
 
 ### Optimizer Configuration
 
+## Strategy Optimization
+
+This section details how to configure and run strategy parameter optimization to find the best-performing parameters based on your objectives.
+
+### Supported Performance Metrics
+
+The optimizer can target any of the following performance metrics, which are calculated by the backtester.
+
+| Metric | Description | Goal |
+| --- | --- | --- |
+| **Total Return** | The total return of the strategy over the entire backtest period. | `maximize` |
+| **Ann. Return** | The annualized geometric mean return. | `maximize` |
+| **Ann. Vol** | The annualized volatility (standard deviation of returns). | `minimize` |
+| **Sharpe** | The annualized Sharpe ratio (risk-adjusted return). | `maximize` |
+| **Sortino** | The annualized Sortino ratio (risk-adjusted return focusing on downside volatility). | `maximize` |
+| **Calmar** | The Calmar ratio (annualized return divided by the maximum drawdown). | `maximize` |
+| **Max DD** | The maximum drawdown of the strategy. | `minimize` |
+| **Alpha (ann)** | The annualized alpha of the strategy against the benchmark. | `maximize` |
+| **Beta** | The beta of the strategy against the benchmark. | `minimize` or `maximize` |
+| **R^2** | The R-squared value of the strategy against the benchmark. | `maximize` |
+| **K-Ratio** | The K-Ratio, a measure of return consistency. | `maximize` |
+| **ADF Statistic** | The Augmented Dickey-Fuller test statistic for stationarity of the equity curve. | `minimize` |
+| **ADF p-value** | The p-value from the ADF test. | `minimize` |
+| **Deflated Sharpe** | The Deflated Sharpe Ratio (DSR), which accounts for the probability of "backtest overfitting". | `maximize` |
+
+### Optimization Goals
+
+For each metric, you can specify an optimization goal. The supported goals are:
+
+*   `maximize`: Find parameters that result in the highest possible value for the metric.
+*   `minimize`: Find parameters that result in the lowest possible value for the metric.
+*   `less_than`: Find parameters where the metric is less than a specified value.
+*   `greater_than`: Find parameters where the metric is greater than a specified value.
+
+### YAML Configuration for Optimization
+
+Optimization parameters are configured in the `config/scenarios.yaml` file. Here are some examples of how to set up your optimization scenarios.
+
+#### Single-Objective Optimization
+
+This example shows how to optimize for a single metric (Calmar ratio).
+
+```yaml
+# In config/scenarios.yaml
+- name: "Calmar_Momentum_Optimization"
+  strategy: "MomentumStrategy"
+  strategy_params:
+    lookback: 12
+    num_assets: 20
+  optimization_metric: "Calmar"
+  optimize:
+    - parameter: "lookback"
+      type: "int"
+      min_value: 3
+      max_value: 24
+    - parameter: "num_assets"
+      type: "int"
+      min_value: 5
+      max_value: 50
+```
+
+#### Multi-Objective Optimization
+
+This example shows how to optimize for multiple metrics simultaneously (Sharpe ratio and Max DD).
+
+```yaml
+# In config/scenarios.yaml
+- name: "Multi_Objective_Sharpe_MaxDD"
+  strategy: "MomentumStrategy"
+  strategy_params:
+    lookback: 12
+    num_assets: 20
+  optimization_targets:
+    - name: "Sharpe"
+      direction: "maximize"
+    - name: "Max DD"
+      direction: "minimize"
+  optimize:
+    - parameter: "lookback"
+      type: "int"
+      min_value: 3
+      max_value: 24
+    - parameter: "num_assets"
+      type: "int"
+      min_value: 5
+      max_value: 50
+```
+
+#### Optimization with Constraints
+
+This example shows how to optimize for the Sharpe ratio while ensuring the Beta remains below a certain value.
+
+```yaml
+# In config/scenarios.yaml
+- name: "Sharpe_With_Beta_Constraint"
+  strategy: "MomentumStrategy"
+  strategy_params:
+    lookback: 12
+    num_assets: 20
+  optimization_targets:
+    - name: "Sharpe"
+      direction: "maximize"
+  optimization_constraints:
+    - name: "Beta"
+      max_value: 0.8
+  optimize:
+    - parameter: "lookback"
+      type: "int"
+      min_value: 3
+      max_value: 24
+    - parameter: "num_assets"
+      type: "int"
+      min_value: 5
+      max_value: 50
+```
+
+### Optuna vs. Genetic Algorithm
+
+The backtester supports two optimization algorithms: Optuna and a genetic algorithm. You can choose between them using the `--optimizer` command-line argument.
+
+| Feature | Optuna | Genetic Algorithm |
+| --- | --- | --- |
+| **Algorithm** | Bayesian optimization (TPE sampler) | Evolutionary algorithm (NSGA-II for multi-objective) |
+| **Search Strategy** | Builds a probabilistic model of the objective function and uses it to select the most promising parameters to try next. | Evolves a population of solutions over several generations, using selection, crossover, and mutation to find optimal solutions. |
+| **Configuration** | Fewer hyperparameters to tune. The main parameters are the number of trials and the timeout. | More hyperparameters to tune (population size, mutation rate, crossover rate, etc.). |
+| **Use Cases** | Good for a wide range of problems, especially when the objective function is expensive to evaluate. | Can be effective for problems with a large number of parameters or complex, non-smooth objective functions. |
+| **Multi-Objective** | Supported directly. | Supported via NSGA-II, which finds a set of non-dominated solutions (the Pareto front). |
+
+#### When to Choose Optuna
+
+*   You have a relatively small number of parameters to optimize.
+*   The objective function is expensive to evaluate (e.g., long backtests).
+*   You want a good solution quickly.
+
+#### When to Choose the Genetic Algorithm
+
+*   You have a large number of parameters or a very complex search space.
+*   You are looking for a globally optimal solution and are willing to spend more time searching.
+*   You want to explore a diverse set of solutions (the Pareto front in multi-objective optimization).
+
+### Multi-Objective Optimization in Detail
+
+When you run a multi-objective optimization, the optimizer tries to find a set of solutions that represent the best possible trade-offs between the different objectives.
+
+*   **With Optuna**, the result is a set of "best" trials, each representing a different trade-off. The study will report the best trial based on a weighted combination of the objectives.
+*   **With the Genetic Algorithm**, the result is the Pareto front, which is a set of solutions where you cannot improve one objective without making another objective worse. The optimizer will then select one solution from the Pareto front as the "best" (typically the one that is most balanced or best for the first objective specified).
+
+To run a multi-objective optimization, simply define multiple `optimization_targets` in your `scenarios.yaml` file, as shown in the example above.
+
+
+
 The default search space for optimizable parameters is now defined in `src/portfolio_backtester/config.py` within the `OPTIMIZER_PARAMETER_DEFAULTS` dictionary. This centralizes the configuration and makes it easier to manage.
 
 Individual scenarios in `BACKTEST_SCENARIOS` can still override these defaults by specifying `min_value`, `max_value`, and `step` within their `optimize` section.
@@ -203,31 +362,32 @@ When using the Genetic Algorithm (`--optimizer genetic`), its behavior can be tu
 
 Key GA parameters include:
 
-*   **`ga_num_generations`**:
-    *   **Description**: The number of generations the GA will run.
-    *   **Default**: `100`
-*   **`ga_sol_per_pop`**:
-    *   **Description**: The number of solutions (individuals) in each population.
-    *   **Default**: `50`
-*   **`ga_num_parents_mating`**:
-    *   **Description**: The number of solutions to be selected as parents for the next generation.
-    *   **Default**: `10`
-*   **`ga_parent_selection_type`**:
-    *   **Description**: Method for selecting parents (e.g., `sss` for steady-state selection, `rws` for roulette wheel, `tournament`).
-    *   **Default**: `sss`
-*   **`ga_crossover_type`**:
-    *   **Description**: Method for crossover (e.g., `single_point`, `two_points`, `uniform`).
-    *   **Default**: `single_point`
-*   **`ga_mutation_type`**:
-    *   **Description**: Method for mutation (e.g., `random`, `swap`, `adaptive`).
-    *   **Default**: `random`
-*   **`ga_mutation_percent_genes`**:
-    *   **Description**: The percentage of genes to mutate in each chromosome. Can be "default" for PyGAD's internal default, or a specific percentage (e.g., 10 for 10%).
-    *   **Default**: `"default"`
+* **`ga_num_generations`**:
+  * **Description**: The number of generations the GA will run.
+  * **Default**: `100`
+* **`ga_sol_per_pop`**:
+  * **Description**: The number of solutions (individuals) in each population.
+  * **Default**: `50`
+* **`ga_num_parents_mating`**:
+  * **Description**: The number of solutions to be selected as parents for the next generation.
+  * **Default**: `10`
+* **`ga_parent_selection_type`**:
+  * **Description**: Method for selecting parents (e.g., `sss` for steady-state selection, `rws` for roulette wheel, `tournament`).
+  * **Default**: `sss`
+* **`ga_crossover_type`**:
+  * **Description**: Method for crossover (e.g., `single_point`, `two_points`, `uniform`).
+  * **Default**: `single_point`
+* **`ga_mutation_type`**:
+  * **Description**: Method for mutation (e.g., `random`, `swap`, `adaptive`).
+  * **Default**: `random`
+* **`ga_mutation_percent_genes`**:
+  * **Description**: The percentage of genes to mutate in each chromosome. Can be "default" for PyGAD's internal default, or a specific percentage (e.g., 10 for 10%).
+  * **Default**: `"default"`
 
 These parameters are defined with their defaults in `src/portfolio_backtester/optimization/genetic_optimizer.py` via `get_ga_optimizer_parameter_defaults()` and are loaded into the global `OPTIMIZER_PARAMETER_DEFAULTS`. You can override them in `config/parameters.yaml` under the `OPTIMIZER_PARAMETER_DEFAULTS` section, or for a specific scenario by adding a `genetic_algorithm_params` dictionary to its configuration in `config/scenarios.yaml`.
 
 **Example Scenario Override for GA:**
+
 ```yaml
 # In config/scenarios.yaml
 - name: "My_GA_Optimized_Strategy"

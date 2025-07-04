@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from scipy.stats import skew, kurtosis, norm, linregress
+from typing import Tuple # Import Tuple for type hinting
 import scipy._lib._util as sp_util
 
 if not hasattr(sp_util, "_lazywhere"):
@@ -96,7 +97,8 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
                 rets_for_capm = pd.Series(0.0, index=common_idx_for_capm)
                 bench_for_capm = active_bench_rets.loc[common_idx_for_capm]
 
-                if len(rets_for_capm) >= 2 and len(bench_for_capm) >=2 and bench_for_capm.std() != 0:
+                # Add check for rets_for_capm.std() == 0
+                if len(rets_for_capm) >= 2 and len(bench_for_capm) >=2 and bench_for_capm.std() != 0 and rets_for_capm.std() != 0:
                     steps_per_year_for_capm = _infer_steps_per_year(common_idx_for_capm)
                     X_capm = sm.add_constant(bench_for_capm)
                     try:
@@ -260,8 +262,8 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
     common_index = active_rets.index.intersection(active_bench_rets.index)
     rets_aligned, bench_aligned = active_rets.loc[common_index], active_bench_rets.loc[common_index]
 
-    # Ensure enough data for CAPM regression
-    if len(rets_aligned) < 2 or len(bench_aligned) < 2 or bench_aligned.std() == 0:
+    # Ensure enough data for CAPM regression and that strategy returns have variance
+    if len(rets_aligned) < 2 or len(bench_aligned) < 2 or bench_aligned.std() == 0 or rets_aligned.std() == 0:
         alpha = np.nan
         beta = np.nan
         r_squared = np.nan
@@ -285,12 +287,17 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
     # K-Ratio: slope of log equity curve scaled by its standard error
     if len(active_rets) >= 2:
         log_equity = np.log((1 + active_rets).cumprod())
-        idx = np.arange(len(log_equity))
-        reg = linregress(idx, log_equity)
-        if reg.stderr < EPSILON_FOR_DIVISION:
+        # Ensure log_equity has variance before regression
+        if log_equity.std() < EPSILON_FOR_DIVISION:
             k_ratio = np.nan
         else:
-            k_ratio = (reg.slope / reg.stderr) * np.sqrt(len(log_equity))
+            idx = np.arange(len(log_equity))
+            # Type hint for linregress result: (slope, intercept, rvalue, pvalue, stderr)
+            reg: Tuple[float, float, float, float, float] = linregress(idx, log_equity)
+            if reg[4] < EPSILON_FOR_DIVISION: # stderr is the 5th element (index 4)
+                k_ratio = np.nan
+            else:
+                k_ratio = (reg[0] / reg[4]) * np.sqrt(len(log_equity)) # slope is index 0, stderr is index 4
     else:
         k_ratio = np.nan
 

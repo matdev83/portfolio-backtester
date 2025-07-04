@@ -214,6 +214,7 @@ BACKTEST_SCENARIOS:
         max_value: 30
         step: 1
       - parameter: "rolling_window"
+        type: "int"
         min_value: 1
         max_value: 6
         step: 1

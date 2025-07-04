@@ -11,6 +11,4 @@ class SharpeMomentumStrategy(BaseStrategy):
 
     @classmethod
     def tunable_parameters(cls) -> set[str]:
-        return {"num_holdings", "rolling_window", "sma_filter_window"}
-
-
+        return {"num_holdings", "rolling_window"}

@@ -89,11 +89,6 @@ OPTIMIZER_PARAMETER_DEFAULTS:
     low: 1
     high: 50
     step: 1
-  rolling_window:
-    type: "int"
-    low: 20
-    high: 252
-    step: 10
   sma_filter_window:
     type: "int"
     low: 20
