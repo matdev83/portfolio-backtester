@@ -1,7 +1,10 @@
 import pygad
 import numpy as np
-import logging
+import logging # Import logging
 import optuna
+
+# Setup logger for this module
+logger = logging.getLogger(__name__)
 
 # Assuming utils.py is in the parent directory relative to optimization directory
 # For example, if utils.py is in src/portfolio_backtester/ and this is src/portfolio_backtester/optimization/
@@ -16,8 +19,6 @@ except ImportError:
     logger.warning("Could not import CENTRAL_INTERRUPTED_FLAG from ..utils. Using a local dummy flag for GeneticOptimizer.")
     CENTRAL_INTERRUPTED_FLAG = False
 
-
-logger = logging.getLogger(__name__)
 
 class GeneticOptimizer:
     def __init__(self, scenario_config, backtester_instance, global_config, monthly_data, daily_data, rets_full, random_state=None):
