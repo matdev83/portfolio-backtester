@@ -220,103 +220,156 @@ class DPVAMS(Feature):
 
 
 from .config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+from typing import Any # For type hinting
 
+# Helper function to extract a list of values for an optimizable parameter
+def _get_opt_values_for_param(
+    param_name: str,
+    scen_optimize_specs: list,
+    static_params: dict,
+    default_val: Any,
+    param_type_override: str | None = None
+) -> list:
+    opt_spec = next((s for s in scen_optimize_specs if s["parameter"] == param_name), None)
+
+    if opt_spec:
+        min_v = opt_spec.get("min_value")
+        max_v = opt_spec.get("max_value")
+        step = opt_spec.get("step")
+        values_categorical = opt_spec.get("values")
+
+        # Determine type: opt_spec -> default_param_config -> type of default_val -> param_type_override
+        default_param_config = OPTIMIZER_PARAMETER_DEFAULTS.get(param_name, {})
+        param_type = param_type_override or opt_spec.get("type", default_param_config.get("type"))
+
+        if param_type is None: # Infer from default_val if still None
+            if isinstance(default_val, bool): param_type = "categorical" # Treat bools as categorical [True, False]
+            elif isinstance(default_val, int): param_type = "int"
+            elif isinstance(default_val, float): param_type = "float"
+            else: param_type = "categorical" # Fallback for other types
+
+        if param_type == "categorical":
+            return values_categorical if values_categorical is not None else [static_params.get(param_name, default_val)]
+
+        # For numerical types, ensure min_v, max_v are present
+        if min_v is None: min_v = default_param_config.get("low", default_val)
+        if max_v is None: max_v = default_param_config.get("high", default_val)
+        if step is None: step = default_param_config.get("step", 1 if param_type == "int" else 0.1)
+
+
+        if param_type == "int":
+            return list(range(int(min_v), int(max_v) + int(step), int(step)))
+        elif param_type == "float":
+            # Use np.arange for float steps, ensuring endpoint is handled correctly
+            # Add a small epsilon to max_v to include it if max_v is a multiple of step
+            return [round(v, 4) for v in np.arange(float(min_v), float(max_v) + float(step) * 0.5, float(step))]
+        else: # Should not happen if type is inferred or specified
+            return [static_params.get(param_name, default_val)]
+
+    else: # Parameter not being optimized, return its static or default value
+        return [static_params.get(param_name, default_val)]
 
 def get_required_features_from_scenarios(strategy_configs: list, strategy_registry: dict) -> Set[Feature]:
     """
     Gathers all unique feature requirements from a list of strategy configurations.
     It considers both static strategy parameters and optimized parameters.
     """
-    required_features = set()
+    required_features: Set[Feature] = set()
     for scen in strategy_configs:
         strategy_name = scen.get("strategy")
         strategy_class = strategy_registry.get(strategy_name)
+
+        # Static features from strategy_params
         if strategy_class:
             required_features.update(strategy_class.get_required_features(scen))
 
-        # Also check for features needed for optimization
-        if "optimize" in scen:
-            for opt_spec in scen["optimize"]: # Renamed opt_param to opt_spec for clarity
-                param_name = opt_spec["parameter"]
-                default_param_config = OPTIMIZER_PARAMETER_DEFAULTS.get(param_name, {})
+        scen_optimize_specs = scen.get("optimize", [])
+        static_params = scen.get("strategy_params", scen) # Fallback to scen itself
 
-                # Determine type: opt_spec takes precedence over default_param_config
-                param_type = opt_spec.get("type", default_param_config.get("type"))
+        # Handle specific parameter combinations for FilteredLaggedMomentumStrategy if optimized
+        if strategy_name == "filtered_lagged_momentum":
+            # Check if any of its core momentum parameters are being optimized
+            is_flm_mom_params_opt = any(s["parameter"] in [
+                "momentum_lookback_standard", "momentum_skip_standard",
+                "momentum_lookback_predictive", "momentum_skip_predictive"
+            ] for s in scen_optimize_specs)
 
-                if param_name == "sma_filter_window":
-                    if param_type == "categorical":
-                        values = opt_spec.get("values", default_param_config.get("values", []))
-                        for window in values:
-                            if isinstance(window, int):
-                                required_features.add(BenchmarkSMA(sma_filter_window=window))
-                    elif param_type == "int":
-                        min_val = int(opt_spec.get("min_value", default_param_config.get("low", 2)))
-                        max_val = int(opt_spec.get("max_value", default_param_config.get("high", 24)))
-                        step = int(opt_spec.get("step", default_param_config.get("step", 1)))
-                        for window in range(min_val, max_val + 1, step):
-                            required_features.add(BenchmarkSMA(sma_filter_window=window))
+            if is_flm_mom_params_opt:
+                look_std_vals = _get_opt_values_for_param("momentum_lookback_standard", scen_optimize_specs, static_params, 11, "int")
+                skip_std_vals = _get_opt_values_for_param("momentum_skip_standard", scen_optimize_specs, static_params, 1, "int")
+                look_pred_vals = _get_opt_values_for_param("momentum_lookback_predictive", scen_optimize_specs, static_params, 11, "int")
+                skip_pred_vals = _get_opt_values_for_param("momentum_skip_predictive", scen_optimize_specs, static_params, 0, "int")
 
-                elif param_name == "lookback_months":
-                    lookback_values_to_add = set()
-                    if param_type == "categorical":
-                        values = opt_spec.get("values", default_param_config.get("values", []))
-                        for val in values:
-                            if isinstance(val, int):
-                                lookback_values_to_add.add(val)
-                    elif param_type == "int":
-                        min_val = int(opt_spec.get("min_value", default_param_config.get("low", 1)))
-                        max_val = int(opt_spec.get("max_value", default_param_config.get("high", 12)))
-                        step = int(opt_spec.get("step", default_param_config.get("step", 1)))
-                        for lookback in range(min_val, max_val + 1, step):
-                            lookback_values_to_add.add(lookback)
+                for l_std in look_std_vals:
+                    for s_std in skip_std_vals:
+                        required_features.add(Momentum(lookback_months=int(l_std), skip_months=int(s_std), name_suffix="std"))
+                for l_pred in look_pred_vals:
+                    for s_pred in skip_pred_vals:
+                        required_features.add(Momentum(lookback_months=int(l_pred), skip_months=int(s_pred), name_suffix="pred"))
 
-                    for lookback in lookback_values_to_add:
-                        required_features.add(Momentum(lookback_months=lookback))
-                        required_features.add(VAMS(lookback_months=lookback))
-                        # For DPVAMS, alpha is also needed. If alpha is optimized, this gets more complex.
-                        # Assuming a default or common alpha if not explicitly handled.
-                        # This part might need further refinement if alpha optimization is deeply tied here.
-                        # For now, using a common placeholder or relying on strategy_class.get_required_features
-                        # to handle DPVAMS based on static/optimized alpha.
-                        # Let's assume alpha is handled by the strategy's get_required_features or is static for this feature collection.
-                        # If 'alpha' is also in opt_spec, we might need to create combinations.
-                        # For simplicity, we'll stick to the original DPVAMS addition or assume strategy handles it.
-                        # A fixed common alpha for DPVAMS feature precomputation:
-                        fixed_alpha_for_dpvams_precomp = 0.5 # Or fetch from strategy_params if available
-                        alpha_param_config = OPTIMIZER_PARAMETER_DEFAULTS.get("alpha", {})
-                        alpha_values = scen.get("strategy_params",{}).get("alpha") # static alpha
+        # General loop for other optimizable parameters
+        for opt_spec in scen_optimize_specs:
+            param_name = opt_spec["parameter"]
 
-                        if isinstance(alpha_values, (int,float)): # static alpha
-                             required_features.add(DPVAMS(lookback_months=lookback, alpha=alpha_values))
-                        else: # alpha is optimized or not set, use placeholder or default
-                            # Check if alpha is optimized
-                            alpha_is_optimized = any(p["parameter"] == "alpha" for p in scen.get("optimize", []))
-                            if alpha_is_optimized:
-                                # If alpha is optimized, we'd ideally iterate its possible values too.
-                                # This creates a cartesian product of features, which can be large.
-                                # For now, let's add DPVAMS with a common alpha or skip if too complex here.
-                                # Sticking to simpler: add with a default alpha if alpha is optimized.
-                                # The strategy will ultimately pick the right one at runtime.
-                                alpha_opt_spec = next((s for s in scen["optimize"] if s["parameter"] == "alpha"), None)
-                                default_alpha_config = OPTIMIZER_PARAMETER_DEFAULTS.get("alpha", {})
-                                alpha_type = alpha_opt_spec.get("type", default_alpha_config.get("type")) if alpha_opt_spec else default_alpha_config.get("type")
+            # Skip if handled by the filtered_lagged_momentum block above
+            if strategy_name == "filtered_lagged_momentum" and param_name in [
+                "momentum_lookback_standard", "momentum_skip_standard",
+                "momentum_lookback_predictive", "momentum_skip_predictive"
+            ]:
+                continue
 
-                                if alpha_type == "categorical":
-                                    alpha_choices = alpha_opt_spec.get("values", default_alpha_config.get("values", [fixed_alpha_for_dpvams_precomp])) if alpha_opt_spec else default_alpha_config.get("values", [fixed_alpha_for_dpvams_precomp])
-                                    for a_val in alpha_choices: required_features.add(DPVAMS(lookback_months=lookback, alpha=float(a_val)))
-                                elif alpha_type == "float": # iterate through range
-                                    a_min = float(alpha_opt_spec.get("min_value", default_alpha_config.get("low", 0.1))) if alpha_opt_spec else float(default_alpha_config.get("low", 0.1))
-                                    a_max = float(alpha_opt_spec.get("max_value", default_alpha_config.get("high", 0.9))) if alpha_opt_spec else float(default_alpha_config.get("high", 0.9))
-                                    a_step = float(alpha_opt_spec.get("step", default_alpha_config.get("step", 0.1))) if alpha_opt_spec else float(default_alpha_config.get("step", 0.1))
-                                    current_a = a_min
-                                    while current_a <= a_max:
-                                        required_features.add(DPVAMS(lookback_months=lookback, alpha=round(current_a,4))) # round to avoid float issues
-                                        current_a += a_step
-                                else: # Default if alpha type is unknown or not optimized
-                                     required_features.add(DPVAMS(lookback_months=lookback, alpha=fixed_alpha_for_dpvams_precomp))
-                            else: # Alpha not optimized, use static from strategy_params or default
-                                static_alpha = scen.get("strategy_params",{}).get("alpha", fixed_alpha_for_dpvams_precomp)
-                                required_features.add(DPVAMS(lookback_months=lookback, alpha=float(static_alpha)))
+            default_param_config = OPTIMIZER_PARAMETER_DEFAULTS.get(param_name, {})
+            param_type = opt_spec.get("type", default_param_config.get("type"))
 
+            if param_name == "sma_filter_window":
+                default_val = static_params.get(param_name, 20) # Example default
+                sma_values = _get_opt_values_for_param(param_name, [opt_spec], static_params, default_val, param_type or "int")
+                for window in sma_values:
+                    required_features.add(BenchmarkSMA(sma_filter_window=int(window)))
 
+            elif param_name == "lookback_months": # For old MomentumStrategy, VAMS etc.
+                default_val = static_params.get(param_name, 6)
+                lookback_values = _get_opt_values_for_param(param_name, [opt_spec], static_params, default_val, param_type or "int")
+
+                for lookback in lookback_values:
+                    # Default Momentum (skip=0, no_suffix) for compatibility with MomentumSignalGenerator
+                    required_features.add(Momentum(lookback_months=int(lookback)))
+                    required_features.add(VAMS(lookback_months=int(lookback)))
+
+                    # DPVAMS: Needs alpha. Alpha can be static or optimized itself.
+                    alpha_default = 0.5
+                    alpha_values = _get_opt_values_for_param("alpha", scen_optimize_specs, static_params, alpha_default, "float")
+                    for alpha_val in alpha_values:
+                        required_features.add(DPVAMS(lookback_months=int(lookback), alpha=float(alpha_val)))
+
+            elif param_name == "alpha": # For DPVAMS, when alpha is optimized directly
+                # This is coupled with lookback_months. If lookback_months is also optimized,
+                # this block will correctly iterate alphas for each static/optimized lookback.
+                default_val = static_params.get(param_name, 0.5)
+                alpha_values = _get_opt_values_for_param(param_name, [opt_spec], static_params, default_val, param_type or "float")
+
+                # Get lookback_months values (optimized or static)
+                lookback_default = static_params.get("lookback_months",6) # Default if not optimizing lookback
+                lookback_values_for_alpha_opt = _get_opt_values_for_param("lookback_months", scen_optimize_specs, static_params, lookback_default, "int")
+
+                for lookback in lookback_values_for_alpha_opt:
+                    for alpha_val in alpha_values:
+                        required_features.add(DPVAMS(lookback_months=int(lookback), alpha=float(alpha_val)))
+
+            # Other optimizable params like 'rolling_window' for Sharpe, Sortino, Calmar
+            elif param_name == "rolling_window":
+                default_val = static_params.get(param_name, 6)
+                rw_values = _get_opt_values_for_param(param_name, [opt_spec], static_params, default_val, param_type or "int")
+                # Need to know which strategy this rolling_window is for to create the right feature
+                if strategy_class: # Check if strategy_class is resolved
+                    if hasattr(strategy_class, 'signal_generator_class'):
+                        gen_class_name = strategy_class.signal_generator_class.__name__
+                        for rw in rw_values:
+                            if gen_class_name == "SharpeSignalGenerator":
+                                required_features.add(SharpeRatio(rolling_window=int(rw)))
+                            elif gen_class_name == "SortinoSignalGenerator":
+                                target_ret = static_params.get("target_return", 0.0) # Get static target_return
+                                required_features.add(SortinoRatio(rolling_window=int(rw), target_return=float(target_ret)))
+                            elif gen_class_name == "CalmarSignalGenerator":
+                                required_features.add(CalmarRatio(rolling_window=int(rw)))
     return required_features
