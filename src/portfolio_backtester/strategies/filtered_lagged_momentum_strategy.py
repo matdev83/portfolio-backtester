@@ -70,8 +70,8 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
         benchmark_data: pd.Series,
     ) -> pd.DataFrame:
         """
-        Generates trading signals using the FilteredBlendedMomentum logic
-        and applies a one-month trading lag to the weights.
+        Generates trading signals using the FilteredBlendedMomentum logic.
+        The Backtester will handle the appropriate shifting of weights.
         """
         weights = super().generate_signals(prices, features, benchmark_data)
-        return weights.shift(1)
+        return weights
