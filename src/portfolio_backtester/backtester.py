@@ -288,7 +288,8 @@ class Backtester:
             "sharpe_momentum": strategies.SharpeMomentumStrategy,
             "sortino_momentum": strategies.SortinoMomentumStrategy,
             "vams_momentum": strategies.VAMSMomentumStrategy,
-            "momentum_dvol_sizer": strategies.MomentumDvolSizerStrategy, # Added this line
+            "momentum_dvol_sizer": strategies.MomentumDvolSizerStrategy,
+            "filtered_lagged_momentum": strategies.FilteredLaggedMomentumStrategy, # Added
         }
         
         required_features = get_required_features_from_scenarios(self.scenarios, strategy_registry)

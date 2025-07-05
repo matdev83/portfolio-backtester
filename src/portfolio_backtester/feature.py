@@ -88,20 +88,40 @@ class VAMS(Feature):
 
 
 class Momentum(Feature):
-    """Computes momentum for each asset."""
+    """Computes momentum for each asset: P(t-skip_months)/P(t-skip_months-lookback_months) - 1."""
 
-    def __init__(self, lookback_months: int):
-        super().__init__(lookback_months=lookback_months)
+    def __init__(self, lookback_months: int, skip_months: int = 0, name_suffix: str = ""):
+        super().__init__(lookback_months=lookback_months, skip_months=skip_months, name_suffix=name_suffix)
         self.lookback_months = lookback_months
+        self.skip_months = skip_months
+        self.name_suffix = name_suffix # e.g. "std" or "pred"
 
     @property
     def name(self) -> str:
-        return f"momentum_{self.lookback_months}m"
+        if self.skip_months == 0 and not self.name_suffix:
+            # Backward compatibility for simple momentum feature name
+            return f"momentum_{self.lookback_months}m"
+
+        base_name = f"momentum_{self.lookback_months}m_skip{self.skip_months}m"
+        if self.name_suffix: # Add underscore if suffix exists and suffix is not empty
+            return f"{base_name}_{self.name_suffix}"
+        return base_name
 
     def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame:
-        rets = data.pct_change(fill_method=None).fillna(0)
-        momentum = (1 + rets).rolling(self.lookback_months).apply(np.prod, raw=True) - 1
-        return momentum
+        # Assuming data is monthly prices for feature computation.
+        monthly_rets = data.pct_change().fillna(0) # Use default pct_change, then fillna
+
+        # Rolling product of (1+monthly_return) to get P(t)/P(t-L) - 1
+        momentum_lookback_period = (1 + monthly_rets).rolling(
+            window=self.lookback_months,
+            min_periods=int(self.lookback_months * 0.9) # Ensure most of the window has data
+        ).apply(np.prod, raw=True) - 1
+
+        # Shift the result by skip_months.
+        # So, value at row 't' becomes P(t-skip_months)/P(t-skip_months-lookback_months) - 1
+        final_momentum = momentum_lookback_period.shift(self.skip_months)
+
+        return final_momentum
 
 
 class BenchmarkSMA(Feature):
