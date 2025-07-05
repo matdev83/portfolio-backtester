@@ -1,4 +1,32 @@
 from . import strategies
+import signal
+import logging # Assuming logger might be useful here or for other utils
+
+# Get a logger for this module (or use a more general one if available)
+logger = logging.getLogger(__name__)
+
+# Global flag to indicate if an interrupt signal (Ctrl+C) has been received.
+INTERRUPTED = False
+
+def handle_interrupt(signum, frame):
+    """
+    Signal handler for SIGINT (Ctrl+C).
+    Sets the global INTERRUPTED flag and logs a message.
+    """
+    global INTERRUPTED
+    INTERRUPTED = True
+    # Using print as logger might not be configured when signal occurs early
+    print("Interrupt signal received. Attempting to terminate gracefully...")
+    logger.warning("Interrupt signal received. Attempting to terminate gracefully...")
+
+def register_signal_handler():
+    """Registers the interrupt handler for SIGINT."""
+    try:
+        signal.signal(signal.SIGINT, handle_interrupt)
+        logger.debug("SIGINT handler registered successfully.")
+    except Exception as e:
+        # This might happen in environments where signal handling is restricted
+        logger.error(f"Failed to register SIGINT handler: {e}")
 
 def _resolve_strategy(name: str):
     class_name = "".join(w.capitalize() for w in name.split('_')) + "Strategy"
