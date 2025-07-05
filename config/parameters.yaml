@@ -68,12 +68,12 @@ OPTIMIZER_PARAMETER_DEFAULTS:
   max_lookback:
     type: "int"
     low: 20
-    high: 252
+    high: 250
     step: 10
   calmar_lookback:
     type: "int"
     low: 20
-    high: 252
+    high: 250
     step: 10
   leverage:
     type: "float"
@@ -92,7 +92,7 @@ OPTIMIZER_PARAMETER_DEFAULTS:
   sma_filter_window:
     type: "int"
     low: 20
-    high: 252
+    high: 250
     step: 10
   target_return:
     type: "float"
