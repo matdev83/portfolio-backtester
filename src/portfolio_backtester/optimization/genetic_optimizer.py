@@ -3,6 +3,20 @@ import numpy as np
 import logging
 import optuna
 
+# Assuming utils.py is in the parent directory relative to optimization directory
+# For example, if utils.py is in src/portfolio_backtester/ and this is src/portfolio_backtester/optimization/
+# Adjust the import path as necessary based on your project structure and how it's run.
+# If this file is run as part of the package, `from ..utils import INTERRUPTED` should work.
+try:
+    from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
+except ImportError:
+    # Fallback if running standalone or structure is different
+    # This is not ideal for production, implies a structure issue or direct script execution
+    # For robustness in development, we can define a local flag.
+    logger.warning("Could not import CENTRAL_INTERRUPTED_FLAG from ..utils. Using a local dummy flag for GeneticOptimizer.")
+    CENTRAL_INTERRUPTED_FLAG = False
+
+
 logger = logging.getLogger(__name__)
 
 class GeneticOptimizer:
@@ -257,6 +271,10 @@ class GeneticOptimizer:
                 if self.zero_fitness_streak >= self.backtester.args.early_stop_patience:
                     logger.info(f"Early stopping GA due to {self.zero_fitness_streak} generations with no improvement.")
                     return "stop"
+
+                if CENTRAL_INTERRUPTED_FLAG:
+                    logger.warning("Genetic Algorithm optimization interrupted by user via central flag.")
+                    return "stop" # PyGAD expects "stop" to terminate
             on_generation_callback = on_gen
 
 
@@ -295,61 +313,56 @@ class GeneticOptimizer:
         logger.info("Running Genetic Algorithm...")
         self.ga_instance.run()
 
-        if self.is_multi_objective:
-            # For multi-objective, best_solutions_fitness gives Pareto front fitness values
-            # solutions will be a list of solutions on the Pareto front
-            # We need to decide how to pick one "best" or handle multiple.
-            # For now, let's try to find a solution that balances objectives, or pick one.
-            # This is a complex topic. A common approach is to pick the one with highest value for the *first* objective.
-            pareto_solutions = self.ga_instance.best_solutions_fitness # This contains fitness values
-            pareto_chromosomes = self.ga_instance.best_solutions # This contains chromosomes
+        try:
+            if CENTRAL_INTERRUPTED_FLAG:
+                logger.warning("Genetic Algorithm was interrupted. Attempting to retrieve best solution so far.")
+                # No specific action needed here, the code below will try to get the best solution.
+                # If it fails due to severe interruption, the except block will catch it.
 
-            if not pareto_chromosomes:
-                logger.error("Genetic algorithm did not find any solutions for multi-objective case.")
-                return self.scenario_config["strategy_params"].copy(), self.ga_instance.generations_completed * sol_per_pop
+            num_evaluations = self.ga_instance.generations_completed * sol_per_pop
 
-            # Select the solution that is best for the first objective.
-            # Remember fitness might have been negated for minimization.
-            optimization_targets_config = self.scenario_config.get("optimization_targets", [])
-            first_obj_direction = optimization_targets_config[0].get("direction", "maximize").lower() if optimization_targets_config else "maximize"
+            if self.is_multi_objective:
+                pareto_solutions_fitness = self.ga_instance.best_solutions_fitness
+                pareto_chromosomes = self.ga_instance.best_solutions
 
-            best_idx = 0
-            if first_obj_direction == "maximize":
-                best_val = -np.inf
-                for i, fitness_values in enumerate(pareto_solutions):
-                    if fitness_values[0] > best_val:
-                        best_val = fitness_values[0]
-                        best_idx = i
-            else: # minimize
-                best_val = np.inf
-                # Fitness for minimization was negated (e.g., -value), so we look for max of these negated values (closest to zero from negative side)
-                # Or, if we stored them as positive values for minimization fitness (e.g. by returning 1/value or similar)
-                # Assuming the fitness_func_wrapper returned negated values for minimization.
-                for i, fitness_values in enumerate(pareto_solutions):
-                    if fitness_values[0] > best_val: # Because -value means smaller original value is larger negated value
-                        best_val = fitness_values[0]
-                        best_idx = i
+                if not pareto_chromosomes: # Check if any solutions are available
+                    logger.error("GA (multi-objective): No solutions found on Pareto front (possibly due to interruption or poor performance).")
+                    return self.scenario_config["strategy_params"].copy(), num_evaluations # Return default params
 
-            solution = pareto_chromosomes[best_idx]
-            solution_fitness = pareto_solutions[best_idx] # This is a list/tuple of objectives for the chosen solution
-            log_msg = f"Genetic algorithm multi-objective finished. Selected solution from Pareto front. Fitness: {solution_fitness}."
+                # Simplified: pick the first solution from the Pareto front if available
+                solution = pareto_chromosomes[0]
+                solution_fitness = pareto_solutions_fitness[0]
+                log_msg = f"GA multi-objective: Selected first solution from Pareto front. Fitness: {solution_fitness}."
+            else: # Single objective
+                # Check if a best solution exists
+                if self.ga_instance.best_solution_generation == -1 and not CENTRAL_INTERRUPTED_FLAG: # No solution found and not interrupted
+                     logger.error("GA (single-objective): No best solution found and not due to interruption.")
+                     return self.scenario_config["strategy_params"].copy(), num_evaluations
 
-        else: # Single objective
-            solution, solution_fitness, _ = self.ga_instance.best_solution(pop_fitness=self.ga_instance.last_generation_fitness)
-            log_msg = f"Genetic algorithm finished. Best fitness: {solution_fitness}."
+                # If interrupted, best_solution might raise error if no solutions were ever found.
+                # However, PyGAD's best_solution() is designed to return the best one found so far.
+                # If ga_instance.run() was stopped very early, generations_completed could be 0.
+                # We rely on the try-except to catch issues if PyGAD cannot provide a best_solution.
+                solution, solution_fitness, _ = self.ga_instance.best_solution(pop_fitness=self.ga_instance.last_generation_fitness)
+                log_msg = f"GA single-objective: Best fitness: {solution_fitness}."
 
-        logger.info(log_msg)
-        self.ga_instance.plot_fitness(title="GA Fitness Value vs. Generation", save_dir=f"plots/ga_fitness_{self.scenario_config['name']}.png")
+            logger.info(log_msg)
+            if self.ga_instance.generations_completed > 0 and solution is not None:
+                 self.ga_instance.plot_fitness(title="GA Fitness Value vs. Generation", save_dir=f"plots/ga_fitness_{self.scenario_config['name']}.png")
+                 optimal_params = self.scenario_config["strategy_params"].copy()
+                 optimal_params.update(self._decode_chromosome(solution))
+                 logger.info(f"Best parameters found by GA: {optimal_params}")
+                 print(f"Genetic Optimizer - Best parameters found: {optimal_params}")
+                 return optimal_params, num_evaluations
+            else: # Interrupted very early or no solution found
+                logger.warning("GA: No valid solution to decode, returning default parameters.")
+                return self.scenario_config["strategy_params"].copy(), num_evaluations
 
-        # Decode the best solution
-        optimal_params = self.scenario_config["strategy_params"].copy()
-        optimal_params.update(self._decode_chromosome(solution))
-
-        logger.info(f"Best parameters found by GA: {optimal_params}")
-        print(f"Genetic Optimizer - Best parameters found: {optimal_params}")
-
-        num_evaluations = self.ga_instance.generations_completed * sol_per_pop
-        return optimal_params, num_evaluations
+        except Exception as e:
+            logger.error(f"Error during GA solution processing (possibly due to interruption or no solution found): {e}")
+            # Return original base parameters and calculated evaluations up to interruption (or 0 if error before run)
+            num_evals_on_error = self.ga_instance.generations_completed * sol_per_pop if hasattr(self.ga_instance, 'generations_completed') else 0
+            return self.scenario_config["strategy_params"].copy(), num_evals_on_error
 
 def get_ga_optimizer_parameter_defaults():
     """Returns default parameters for GA specific settings."""

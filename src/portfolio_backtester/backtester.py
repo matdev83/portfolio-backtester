@@ -14,6 +14,7 @@ import os
 import optuna
 from optuna.storages import JournalStorage
 from optuna.storages.journal import JournalFileBackend, JournalFileOpenLock
+import sys # Import sys for sys.exit
 from typing import Any, Dict, Tuple, List
 from functools import reduce
 from operator import mul
@@ -31,7 +32,7 @@ from .spy_holdings import (
     reset_history_cache,
     get_top_weight_sp500_components,
 )
-from .utils import _resolve_strategy
+from .utils import _resolve_strategy, INTERRUPTED as CENTRAL_INTERRUPTED_FLAG # Import the flag
 # from .optimization.optuna_objective import build_objective # No longer directly needed here if GA handles its own
 from .optimization.genetic_optimizer import GeneticOptimizer # Import GeneticOptimizer
 from .monte_carlo import run_monte_carlo_simulation, plot_monte_carlo_results
@@ -314,8 +315,11 @@ class Backtester:
             self._run_monte_carlo_mode(self.scenarios[0], monthly_data, daily_data, rets_full)
 
         if self.args.mode != "monte_carlo":
-            logger.info("All scenarios completed. Displaying results.")
-            self.display_results(daily_data)
+            if CENTRAL_INTERRUPTED_FLAG:
+                logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
+            else:
+                logger.info("All scenarios completed. Displaying results.")
+                self.display_results(daily_data)
 
     def _run_backtest_mode(self, scenario_config, monthly_data, daily_data, rets_full):
         logger.info(f"Running backtest for scenario: {scenario_config['name']}")
@@ -342,6 +346,23 @@ class Backtester:
         # Step 1: Find optimal parameters on the training set
         optimal_params, actual_num_trials = self.run_optimization(scenario_config, monthly_data, daily_data, rets_full)
         
+        if CENTRAL_INTERRUPTED_FLAG:
+            logger.warning(f"Optimization for {scenario_config['name']} was interrupted. Skipping full backtest with potentially incomplete optimal parameters.")
+            # Store a placeholder or minimal result indicating interruption
+            interrupted_name = f'{scenario_config["name"]} (Optimization Interrupted)'
+            self.results[interrupted_name] = {
+                "returns": pd.Series(dtype=float), # Empty series
+                "display_name": interrupted_name,
+                "num_trials_for_dsr": actual_num_trials if actual_num_trials is not None else 0,
+                "train_end_date": pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31")),
+                "notes": "Optimization process was interrupted by the user."
+            }
+            return # Exit early
+
+        if optimal_params is None: # Should be handled if run_optimization returns None on failure/full interruption
+            logger.error(f"Optimization for {scenario_config['name']} did not yield optimal parameters. Skipping full backtest.")
+            return
+
         # Step 2: Run a full backtest with the optimal parameters
         optimized_scenario = scenario_config.copy()
         optimized_scenario["strategy_params"] = optimal_params
@@ -352,9 +373,9 @@ class Backtester:
         # Step 3: Store results for display, including actual number of trials for DSR
         optimized_name = f'{scenario_config["name"]} (Optimized)'
         self.results[optimized_name] = {
-            "returns": full_rets, 
+            "returns": full_rets if full_rets is not None else pd.Series(dtype=float),
             "display_name": optimized_name,
-            "num_trials_for_dsr": actual_num_trials,
+            "num_trials_for_dsr": actual_num_trials if actual_num_trials is not None else 0,
             "train_end_date": pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
         }
         logger.info(f"Full backtest with optimized parameters completed for {scenario_config['name']}.")
@@ -472,7 +493,14 @@ class Backtester:
                     zero_streak += 1
                 else:
                     zero_streak = 0
+
+                if CENTRAL_INTERRUPTED_FLAG:
+                    logger.warning("Optuna optimization interrupted by user via central flag.")
+                    study.stop()
+                    return
+
                 if zero_streak > self.early_stop_patience:
+                    logger.info(f"Early stopping Optuna study due to {self.early_stop_patience} consecutive zero-return trials.")
                     study.stop()
 
             study.optimize(
@@ -920,7 +948,12 @@ class Backtester:
             plt.close(fig)
             logger.info("Performance plots generated and saved.")
 
+from .utils import register_signal_handler as register_central_signal_handler # Renamed to avoid conflict if other signal handlers exist
+
 if __name__ == "__main__":
+    # Register the central signal handler as early as possible
+    register_central_signal_handler()
+
     parser = argparse.ArgumentParser(description="Run portfolio backtester.")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Set the logging level.")
     parser.add_argument("--mode", type=str, required=True, choices=["backtest", "optimize", "monte_carlo"], help="Mode to run the backtester in.")
@@ -981,4 +1014,17 @@ if __name__ == "__main__":
         selected_scenarios = BACKTEST_SCENARIOS_RELOADED
 
     backtester = Backtester(GLOBAL_CONFIG_RELOADED, selected_scenarios, args, random_state=args.random_seed)
-    backtester.run()
+    try:
+        backtester.run()
+    except Exception as e:
+        logger.error(f"An unhandled exception occurred during backtester run: {e}", exc_info=True)
+        if CENTRAL_INTERRUPTED_FLAG:
+            logger.info("The error occurred after an interruption signal was received.")
+            sys.exit(130) # Exit code for SIGINT
+        sys.exit(1) # General error
+    finally:
+        if CENTRAL_INTERRUPTED_FLAG:
+            logger.info("Backtester run finished or was terminated due to user interruption.")
+            sys.exit(130) # Ensure exit code 130 if interrupted
+        else:
+            logger.info("Backtester run completed.")

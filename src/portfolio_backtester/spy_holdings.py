@@ -250,6 +250,9 @@ def _fetch_from_wayback(orig_url: str, date: pd.Timestamp) -> bytes | None:
     )
 
     for attempt in range(5):  # 5 retries
+        if INTERRUPTED:
+            logger.warning(f"Wayback fetch for {orig_url} interrupted during retry wait.")
+            return None
         try:
             meta_resp = requests.get(api, timeout=30)
             meta_resp.raise_for_status()
@@ -266,7 +269,12 @@ def _fetch_from_wayback(orig_url: str, date: pd.Timestamp) -> bytes | None:
             if attempt < 4:
                 wait = 2 ** attempt  # Exponential backoff
                 logger.warning(f"Wayback fetch failed for {orig_url} (attempt {attempt + 1}/5), retrying in {wait}s: {exc}")
-                time.sleep(wait)
+                # Interruptible sleep
+                for _ in range(wait): # Sleep in 1-second intervals
+                    if INTERRUPTED:
+                        logger.warning(f"Wayback fetch for {orig_url} interrupted during sleep.")
+                        return None
+                    time.sleep(1)
             else:
                 logger.error(f"Wayback fetch failed for {orig_url} after 5 attempts: {exc}")
         except Exception as exc:  # noqa: BLE001 – we want a broad net here
@@ -403,6 +411,9 @@ def _filing_obj_with_retry(filing, max_retries: int = 5, initial_delay: float = 
         Seconds to wait before the first retry (doubles every attempt).
     """
     for attempt in range(max_retries):
+        if INTERRUPTED:
+            logger.warning(f"Filing object retrieval for {filing.accession_no} interrupted during retry wait.")
+            return None
         try:
             return filing.obj()
         except HTTPStatusError as exc:
@@ -410,7 +421,15 @@ def _filing_obj_with_retry(filing, max_retries: int = 5, initial_delay: float = 
                 wait = initial_delay * (2 ** attempt)
                 logger.warning(
                     f"HTTP 429 for {filing.accession_no} – waiting {wait:.1f}s before retry {attempt+1}/{max_retries}.")
-                time.sleep(wait)
+                # Interruptible sleep
+                for _ in range(int(wait)): # Sleep in 1-second intervals
+                    if INTERRUPTED:
+                        logger.warning(f"Filing object retrieval for {filing.accession_no} interrupted during sleep.")
+                        return None
+                    time.sleep(1)
+                # Handle fractional part of wait
+                if wait - int(wait) > 0:
+                    time.sleep(wait - int(wait))
                 continue
             raise
     logger.error(
@@ -562,14 +581,23 @@ def sec_holdings(start, end):
     all_filings = _get_sec_filings(company, start)
 
     filing_frames = []
-    for filing in tqdm(all_filings, desc="SEC filings"):
-        df = _process_sec_filing(filing, start, end)
+    filing_iterator = tqdm(all_filings, desc="SEC filings")
+    for filing in filing_iterator:
+        if INTERRUPTED:
+            logger.warning("SEC filings download interrupted by user.")
+            break
+        df = _process_sec_filing(filing, start, end) # This function also needs to check INTERRUPTED
         if df is not None:
             filing_frames.append(df)
+        # filing_iterator.set_description(f"SEC filing {filing.accession_no}")
+
 
     if not filing_frames:
-        logger.warning("No SEC data downloaded.")
-        return pd.DataFrame()
+        if INTERRUPTED:
+            logger.warning("SEC data download interrupted before any filings could be processed.")
+        else:
+            logger.warning("No SEC data downloaded (no filings processed or all were empty).")
+        return pd.DataFrame() # Return empty if no data or interrupted
 
     result_df = pd.concat(filing_frames, ignore_index=True)
     result_df.to_parquet(cache_file)
@@ -602,19 +630,38 @@ def build_history(start: pd.Timestamp, end: pd.Timestamp, *, ignore_cache: bool 
     ssga_start = max(start, EARLIEST_SSGA_DATE)
     if ssga_start > end:
         logger.info("SSGA daily basket unavailable for requested window – skipping stage.")
-    for d in tqdm(list(daterange(ssga_start, end))):
+
+    # Wrap the daterange iterator with tqdm for progress bar
+    date_iterator = tqdm(list(daterange(ssga_start, end)), desc="SSGA daily download")
+    for d in date_iterator:
+        if INTERRUPTED:
+            logger.warning("SSGA download loop interrupted by user.")
+            break
         if d.weekday() >= 5:   # skip Saturday/Sunday – no files published
             continue
-        df = ssga_daily(d)
+        df = ssga_daily(d) # This function also needs to check INTERRUPTED
         if df is not None:
             frames.append(df)
+        # Update tqdm description if needed, or rely on its own iteration count
+        # date_iterator.set_description(f"SSGA daily {d:%Y-%m-%d}")
 
-    sec_df = sec_holdings(start, end)
-    if not sec_df.empty:
-        frames.append(sec_df)
 
-    if not frames:
+    if not INTERRUPTED: # Only proceed if not interrupted
+        sec_df = sec_holdings(start, end) # This function also needs to check INTERRUPTED
+        if sec_df is not None and not sec_df.empty:
+            frames.append(sec_df)
+    else: # if interrupted during SSGA, sec_df will be None or not assigned
+        sec_df = None
+
+    if INTERRUPTED and not frames: # If interrupted early and no frames collected
+        logger.warning("Operation interrupted before any data could be collected.")
+        return pd.DataFrame() # Return empty DataFrame if interrupted with no data
+
+    if not frames and not INTERRUPTED: # Only raise error if not interrupted
         raise RuntimeError("No data downloaded! Check connectivity and headers.")
+
+    if not frames: # If frames is still empty (e.g. interrupted very early)
+        return pd.DataFrame()
 
     hist = (
         pd.concat(frames, ignore_index=True)
@@ -632,9 +679,14 @@ def build_history(start: pd.Timestamp, end: pd.Timestamp, *, ignore_cache: bool 
     return hist
 
 # --------------------------------------------------------------------------- #
+from .utils import register_signal_handler, INTERRUPTED # Import centralized handler and flag
+
 # CLI
 # --------------------------------------------------------------------------- #
 def main():
+    # Register the signal handler as early as possible
+    register_signal_handler()
+
     parser = argparse.ArgumentParser(description="Download SPY holdings history")
     parser.add_argument("--start", default="2004-01-01",
                         help="YYYY-MM-DD (default 2004-01-01, earliest SEC N-Q)")
@@ -657,20 +709,35 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / args.out
 
+    hist = None # Initialize hist
     if args.rebuild:
         # Remove aggregated spy_history cache file as well
         agg_cache = _history_cache_file(start, end)
-        agg_cache.unlink(missing_ok=True)
-        update_full_history(out_path, start, end, rebuild=True)
+        if agg_cache: # Ensure agg_cache is not None
+            agg_cache.unlink(missing_ok=True)
+        hist = update_full_history(out_path, start, end, rebuild=True)
     elif args.update:
-        update_full_history(out_path, start, end)
+        hist = update_full_history(out_path, start, end)
     else:
         hist = build_history(start, end)
+
+    if INTERRUPTED:
+        logger.warning("Operation was interrupted. Output file will not be written or will be incomplete if saved by underlying functions.")
+        # Potentially clean up partially written out_path if update_full_history wrote it before interruption
+        # However, update_full_history itself should handle not writing if INTERRUPTED.
+        # For safety, we can check and delete if it exists and we know it's partial.
+        # This depends on whether update_full_history is atomic or not regarding INTERRUPTED.
+        # The current implementation of update_full_history saves at the end, so if hist is empty or None due to interruption, it's fine.
+    elif hist is not None and not hist.empty:
         if out_path.suffix == ".csv":
             hist.to_csv(out_path, index=False)
         else:
             hist.to_parquet(out_path, index=False)
         logger.info(f"✓ Done. {len(hist):,} rows written to {out_path}")
+    elif hist is not None and hist.empty:
+        logger.info("No data to write (history is empty). Output file not created.")
+    else: # hist is None, likely due to an issue not covered by INTERRUPTED or empty DataFrame
+        logger.error("History generation failed or was interrupted, and no data was returned. Output file not written.")
 
 def _history_cache_file(start: pd.Timestamp, end: pd.Timestamp) -> Path:
     """Return the path of the aggregate history cache parquet file for the given date range."""
@@ -866,11 +933,28 @@ def update_full_history(
             combined = build_history(start_date, end_date, ignore_cache=rebuild)
     else:
         logger.info(f"Creating new holdings history {out_path}")
-        combined = build_history(start_date, end_date, ignore_cache=rebuild)
+        combined = build_history(start_date, end_date, ignore_cache=rebuild) # build_history itself checks INTERRUPTED
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    combined.to_parquet(out_path, index=False)
-    logger.info(f"✓ Saved {len(combined):,} rows → {out_path}")
+    if INTERRUPTED:
+        logger.warning(f"Update/build of {out_path} interrupted. Parquet file will not be saved or may be based on partial data if interruption happened mid-process.")
+        # If 'combined' exists and is partial, we might not want to save it.
+        # build_history now returns empty DF if interrupted early.
+        # If combined is from an earlier stage (e.g. loaded existing, then interrupted during new_df build),
+        # it might be better to return the existing data or nothing new.
+        if 'existing' in locals() and existing is not None and not existing.empty:
+            return existing # Return original data if update was interrupted
+        return pd.DataFrame() # Return empty if fresh build was interrupted
+
+    if combined is not None and not combined.empty:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        combined.to_parquet(out_path, index=False)
+        logger.info(f"✓ Saved {len(combined):,} rows → {out_path}")
+    elif combined is not None and combined.empty:
+        logger.info(f"No data to save for {out_path} (combined history is empty).")
+    else: # combined is None
+        logger.error(f"Failed to generate combined history for {out_path}. File not saved.")
+        return pd.DataFrame() # Ensure a DataFrame is returned
+
     return combined
 
 
