@@ -173,7 +173,7 @@ class DPVAMSSignalGenerator(BaseSignalGenerator):
             features.add(
                 DPVAMS(
                     lookback_months=params["lookback_months"],
-                    alpha=f"{params.get('alpha', 0.5):.2f}",
+                    alpha=params.get("alpha", 0.5),
                 )
             )
 
@@ -187,7 +187,7 @@ class DPVAMSSignalGenerator(BaseSignalGenerator):
                         features.add(
                             DPVAMS(
                                 lookback_months=int(val),
-                                alpha=f"{params.get('alpha', 0.5):.2f}",
+                                alpha=params.get("alpha", 0.5),
                             )
                         )
                 elif spec["parameter"] == "alpha":
@@ -198,7 +198,7 @@ class DPVAMSSignalGenerator(BaseSignalGenerator):
                         features.add(
                             DPVAMS(
                                 lookback_months=params.get("lookback_months", 6),
-                                alpha=f"{val:.2f}",
+                                alpha=val,
                             )
                         )
         return features
@@ -242,14 +242,50 @@ class FilteredBlendedMomentumSignalGenerator(BaseSignalGenerator):
     def required_features(self) -> Set[Feature]:
         features: Set[Feature] = set()
         params = self._params()
+        
+        # Default values
+        default_std_lookback = params.get("momentum_lookback_standard", 11)
+        default_std_skip = params.get("momentum_skip_standard", 1)
+        default_pred_lookback = params.get("momentum_lookback_predictive", 11)
+        default_pred_skip = params.get("momentum_skip_predictive", 0)
 
-        std_lookback = params.get("momentum_lookback_standard", 11)
-        std_skip = params.get("momentum_skip_standard", 1)
-        pred_lookback = params.get("momentum_lookback_predictive", 11)
-        pred_skip = params.get("momentum_skip_predictive", 0)
+        # Add features for default parameters
+        features.add(Momentum(lookback_months=default_std_lookback, skip_months=default_std_skip, name_suffix=self.std_mom_suffix))
+        features.add(Momentum(lookback_months=default_pred_lookback, skip_months=default_pred_skip, name_suffix=self.pred_mom_suffix))
 
-        features.add(Momentum(lookback_months=std_lookback, skip_months=std_skip, name_suffix=self.std_mom_suffix))
-        features.add(Momentum(lookback_months=pred_lookback, skip_months=pred_skip, name_suffix=self.pred_mom_suffix))
+        # Add features for optimization parameters
+        if "optimize" in self.config:
+            # Extract all optimization ranges for momentum parameters
+            std_lookbacks = [default_std_lookback]
+            std_skips = [default_std_skip]
+            pred_lookbacks = [default_pred_lookback]
+            pred_skips = [default_pred_skip]
+
+            for spec in self.config["optimize"]:
+                param_name = spec["parameter"]
+                if "min_value" in spec and "max_value" in spec:
+                    min_v, max_v, step = spec["min_value"], spec["max_value"], spec.get("step", 1)
+                    values = list(np.arange(min_v, max_v + step, step))
+                else:
+                    continue # Skip if not a range-based parameter
+
+                if param_name == "momentum_lookback_standard":
+                    std_lookbacks.extend(map(int, values))
+                elif param_name == "momentum_skip_standard":
+                    std_skips.extend(map(int, values))
+                elif param_name == "momentum_lookback_predictive":
+                    pred_lookbacks.extend(map(int, values))
+                elif param_name == "momentum_skip_predictive":
+                    pred_skips.extend(map(int, values))
+
+            # Generate all combinations of features
+            for std_lookback in set(std_lookbacks):
+                for std_skip in set(std_skips):
+                    features.add(Momentum(lookback_months=std_lookback, skip_months=std_skip, name_suffix=self.std_mom_suffix))
+            
+            for pred_lookback in set(pred_lookbacks):
+                for pred_skip in set(pred_skips):
+                    features.add(Momentum(lookback_months=pred_lookback, skip_months=pred_skip, name_suffix=self.pred_mom_suffix))
 
         return features
 
