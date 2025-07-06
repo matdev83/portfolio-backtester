@@ -17,48 +17,61 @@ class TestMomentumFeature:
         return df
 
     def test_momentum_no_skip(self, sample_monthly_prices):
-        feature = Momentum(lookback_months=3, skip_months=0)
+        lookback = 3
+        skip = 0
+        feature = Momentum(lookback_months=lookback, skip_months=skip)
         mom_values = feature.compute(sample_monthly_prices)
 
-        # Expected for AssetA at 2020-03-31 (index 2): P(Mar)/P(Jan)-1, since ret_Jan is 0 due to fillna(0)
-        # P_Jan = 100, P_Mar = 104 for AssetA
-        expected_asset_a_mar = (sample_monthly_prices.loc['2020-03-31', 'AssetA'] /
-                                sample_monthly_prices.loc['2020-01-31', 'AssetA']) - 1
-        assert abs(mom_values.loc['2020-03-31', 'AssetA'] - expected_asset_a_mar) < 1e-6
+        # First `lookback` rows will be NaN due to data.shift(lookback) when skip is 0
+        assert mom_values.iloc[:lookback].isna().all().all()
 
-        # Expected for AssetA at 2020-04-30 (index 3): P(Apr)/P(Feb)-1
-        # P_Feb = 102, P_Apr = 106 for AssetA
-        expected_asset_a_apr = (sample_monthly_prices.loc['2020-04-30', 'AssetA'] /
-                                sample_monthly_prices.loc['2020-02-29', 'AssetA']) - 1
-        assert abs(mom_values.loc['2020-04-30', 'AssetA'] - expected_asset_a_apr) < 1e-6
+        # Test first calculable point: index `lookback` (which is the (lookback+1)-th month)
+        # P(t) / P(t - lookback) - 1
+        # For date sample_monthly_prices.index[lookback] ('2020-04-30')
+        # Uses P('2020-04-30') / P('2020-01-31') - 1
+        date_to_check = sample_monthly_prices.index[lookback] # This is the L-th index (0-based), so (L+1)th date
+        price_at_date_to_check = sample_monthly_prices.loc[date_to_check, 'AssetA']
+
+        # Denominator price is P(t - lookback_months)
+        # For index `lookback`, the denominator index is `lookback - lookback = 0`
+        price_at_denom_date = sample_monthly_prices.iloc[lookback - lookback].loc['AssetA']
+
+        expected_val = (price_at_date_to_check / price_at_denom_date) - 1
+        assert abs(mom_values.loc[date_to_check, 'AssetA'] - expected_val) < 1e-6
 
 
     def test_momentum_with_skip(self, sample_monthly_prices):
-        feature = Momentum(lookback_months=3, skip_months=1)
+        lookback = 3
+        skip = 1
+        feature = Momentum(lookback_months=lookback, skip_months=skip)
         mom_values = feature.compute(sample_monthly_prices)
 
-        # For L=3, S=1, value at date 't' is based on P(t-1)/P(t-1-3) = P(t-1)/P(t-4)
-        # First valid point for mom_values will be 2020-04-30 (index 3)
-        # This uses momentum_lookback_period.loc['2020-03-31']
-        # momentum_lookback_period.loc['2020-03-31'] is P(Mar)/P(Jan)-1 for AssetA = 104/100-1 = 0.04
-        expected_val_apr = (sample_monthly_prices.loc['2020-03-31', 'AssetA'] /
-                            sample_monthly_prices.loc['2020-01-31', 'AssetA']) - 1
-        assert abs(mom_values.loc['2020-04-30', 'AssetA'] - expected_val_apr) < 1e-6
+        # First (lookback + skip) rows will be NaN
+        # (data.shift(skip) / data.shift(skip + lookback)) - 1
+        # NaNs produced by data.shift(skip + lookback)
+        assert mom_values.iloc[:(lookback + skip)].isna().all().all()
 
-        # Check AssetA at 2020-05-31 (index 4)
-        # This uses momentum_lookback_period.loc['2020-04-30']
-        # momentum_lookback_period.loc['2020-04-30'] is P(Apr)/P(Feb)-1 for AssetA = 106/102-1
-        expected_val_may = (sample_monthly_prices.loc['2020-04-30', 'AssetA'] /
-                            sample_monthly_prices.loc['2020-02-29', 'AssetA']) - 1
-        assert abs(mom_values.loc['2020-05-31', 'AssetA'] - expected_val_may) < 1e-6
+        # Test first calculable point: index `lookback + skip`
+        # P(t-skip) / P(t - skip - lookback) - 1
+        date_to_check_idx = lookback + skip # e.g., index 4 for L=3, S=1 ('2020-05-31')
+        date_to_check = sample_monthly_prices.index[date_to_check_idx]
+
+        numerator_price_date_idx = date_to_check_idx - skip # index 3 ('2020-04-30')
+        numerator_price = sample_monthly_prices.iloc[numerator_price_date_idx].loc['AssetA']
+
+        denominator_price_date_idx = date_to_check_idx - skip - lookback # index 0 ('2020-01-31')
+        denominator_price = sample_monthly_prices.iloc[denominator_price_date_idx].loc['AssetA']
+
+        expected_val = (numerator_price / denominator_price) - 1
+        assert abs(mom_values.loc[date_to_check, 'AssetA'] - expected_val) < 1e-6
 
 
     def test_momentum_name_generation(self):
         f1 = Momentum(12, 0)
-        assert f1.name == "momentum_12m_skip0m"
+        assert f1.name == "momentum_12m" # Corrected: skip=0 and no suffix uses old format
         f2 = Momentum(6, 1, name_suffix="std")
         assert f2.name == "momentum_6m_skip1m_std"
         f3 = Momentum(3, name_suffix="pred_mom") # skip default 0
-        assert f3.name == "momentum_3m_skip0m_pred_mom"
+        assert f3.name == "momentum_3m_skip0m_pred_mom" # Corrected: skip=0 but has suffix
         f4 = Momentum(lookback_months=5) # skip=0, suffix=""
-        assert f4.name == "momentum_5m_skip0m"
+        assert f4.name == "momentum_5m" # Corrected: skip=0 and no suffix

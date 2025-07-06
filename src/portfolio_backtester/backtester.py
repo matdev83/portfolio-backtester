@@ -274,13 +274,108 @@ class Backtester:
         )
 
         # Ensure we drop any rows that are completely NaN (e.g. market holidays)
+        if daily_data is None or daily_data.empty:
+            logger.critical("No data fetched from data source. Aborting backtest run.")
+            # Potentially raise an error or handle this state appropriately
+            # For now, let critical log and subsequent errors indicate the issue.
+            # If we want to exit gracefully, sys.exit(1) or raise could be used.
+            # However, tests expect specific error messages or success.
+            # Let's ensure downstream code can handle an empty or None daily_data if we don't raise here.
+            # Given the CLI tests fail with exit code 1, an unhandled error is likely.
+            # For now, the dropna will fail if daily_data is None.
+            if daily_data is None:
+                 logger.error("daily_data is None before dropna. Exiting.")
+                 # This will likely cause a crash, which is what we see (exit code 1)
+                 # To make it more explicit for debugging:
+                 raise ValueError("daily_data is None after data source fetch. Cannot proceed.")
+
         daily_data.dropna(how="all", inplace=True)
 
-        # Business-month-end prices for signal calculations (use 'BME' –
-        # 'BM' alias is deprecated)
-        monthly_data = daily_data.resample("BME").last()
 
-        logger.info("Backtest data retrieved (daily) and business-month-end snapshot generated.")
+        # daily_data is now assumed to be daily OHLCV data.
+        # For yfinance, columns are MultiIndex: Level 0 ('Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume'), Level 1 (Ticker)
+        # For Stooq, it might be direct columns per ticker if not processed into MultiIndex yet by the source.
+        # We need a consistent format: MultiIndex columns (Ticker, Field)
+        # This transformation should ideally happen in the data source's get_data() method.
+        # For now, let's assume daily_data might need restructuring if it's from yfinance default.
+        if isinstance(daily_data.columns, pd.MultiIndex) and daily_data.columns.names[0] != 'Ticker':
+            # Assuming yfinance format ('Adj Close', 'AAPL'), ('High', 'AAPL'), ...
+            # Convert to (Ticker, Field) format: ('AAPL', 'Adj Close'), ('AAPL', 'High'), ...
+            daily_data_std_format = daily_data.stack(level=1).unstack(level=0) # Tickers on level 0, Fields on level 1
+        else:
+            # Assumes already (Ticker, Field) or single field per ticker (older format)
+            # If single field (e.g. just Close), ATR feature will fail later.
+            # This part highlights the need for data sources to be consistent.
+            daily_data_std_format = daily_data
+
+        # Store the standardized daily OHLC data
+        self.daily_data_ohlc = daily_data_std_format.copy()
+
+
+        # --- Prepare data for feature computation ---
+        monthly_data_for_features = pd.DataFrame(index=self.daily_data_ohlc.index.unique())
+
+        if isinstance(self.daily_data_ohlc.columns, pd.MultiIndex) and \
+           self.daily_data_ohlc.columns.nlevels == 2 and \
+           self.daily_data_ohlc.columns.names[0] == 'Ticker' and \
+           self.daily_data_ohlc.columns.names[1] == 'Field':
+
+            logger.info("Daily OHLC data has (Ticker, Field) MultiIndex. Preparing monthly OHLC for features.")
+            monthly_ohlc_for_features_list = []
+            for ticker in self.daily_data_ohlc.columns.get_level_values('Ticker').unique():
+                try:
+                    ticker_ohlc_df = self.daily_data_ohlc[ticker] # This is a DataFrame with Field columns
+                    required_cols = ['Open', 'High', 'Low', 'Close']
+                    if all(col in ticker_ohlc_df.columns for col in required_cols):
+                        resampled_ohlc = ticker_ohlc_df.resample("BME").agg(
+                            {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last'}
+                        )
+                        if 'Volume' in ticker_ohlc_df.columns:
+                            resampled_ohlc['Volume'] = ticker_ohlc_df['Volume'].resample("BME").sum()
+
+                        resampled_ohlc.columns = pd.MultiIndex.from_product([[ticker], resampled_ohlc.columns], names=['Ticker', 'Field'])
+                        monthly_ohlc_for_features_list.append(resampled_ohlc)
+                    else:
+                        logger.warning(f"Ticker {ticker} missing one or more required OHLC columns (Open, High, Low, Close) when processing (Ticker, Field) data. Skipping for monthly OHLC features.")
+                except Exception as e:
+                    logger.error(f"Error resampling OHLC for ticker {ticker} from (Ticker,Field) data: {e}")
+
+            if monthly_ohlc_for_features_list:
+                monthly_data_for_features = pd.concat(monthly_ohlc_for_features_list, axis=1)
+            # else: (Covered by initialization of monthly_data_for_features)
+            #    logger.warning("No monthly OHLC data generated from (Ticker,Field) data.")
+
+        elif not isinstance(self.daily_data_ohlc.columns, pd.MultiIndex) and isinstance(self.daily_data_ohlc, pd.DataFrame):
+            # This is the old format: daily_data_ohlc has single-level columns (tickers), values are Close prices.
+            # ATRFeature cannot be computed from this. We will pass an empty shell for OHLC features.
+            logger.warning("Daily data is in old format (close prices only). ATRFeature requires OHLC and will not compute meaningful values.")
+            empty_cols = pd.MultiIndex.from_tuples([], names=['Ticker', 'Field'])
+            idx_for_empty_df = self.daily_data_ohlc.index.unique() if not self.daily_data_ohlc.empty else pd.Index([])
+            monthly_data_for_features = pd.DataFrame(index=idx_for_empty_df, columns=empty_cols)
+        else:
+            # Unhandled or unexpected format for self.daily_data_ohlc
+            logger.error(f"Daily OHLC data is in an unrecognized format. Columns: {self.daily_data_ohlc.columns}. ATRFeature may fail.")
+            empty_cols = pd.MultiIndex.from_tuples([], names=['Ticker', 'Field'])
+            idx_for_empty_df = self.daily_data_ohlc.index.unique() if hasattr(self.daily_data_ohlc, 'index') and not self.daily_data_ohlc.empty else pd.Index([])
+            monthly_data_for_features = pd.DataFrame(index=idx_for_empty_df, columns=empty_cols)
+
+
+        # 2. Monthly Close prices for existing features and signal generation logic
+        # Extract 'Close' prices from the standardized daily OHLC data
+        if isinstance(self.daily_data_ohlc.columns, pd.MultiIndex) and 'Close' in self.daily_data_ohlc.columns.get_level_values(1):
+            daily_closes = self.daily_data_ohlc.xs('Close', level=1, axis=1)
+        else: # Fallback if daily_data_ohlc is not in (Ticker, Field) format or 'Close' is missing
+              # This indicates an issue with data source output or standardization step.
+            logger.warning("Could not extract daily 'Close' prices in (Ticker, Field) format. Using original daily_data if it's closes.")
+            # If daily_data was old format (just closes), use that. Otherwise, this is problematic.
+            if not isinstance(daily_data.columns, pd.MultiIndex): # Old format: columns are tickers, values are closes
+                daily_closes = daily_data
+            else: # Unhandled format
+                raise ValueError("Daily data format for extracting close prices is not recognized.")
+
+        monthly_closes = daily_closes.resample("BME").last()
+
+        logger.info("Backtest data retrieved and prepared (daily OHLC, monthly OHLC for features, monthly closes).")
 
         strategy_registry = {
             "calmar_momentum": strategies.CalmarMomentumStrategy,
@@ -295,24 +390,34 @@ class Backtester:
         
         required_features = get_required_features_from_scenarios(self.scenarios, strategy_registry)
         
-        # Pre-compute features on *monthly* data so that a lookback of "11 months"
-        # really means 11 month-end observations and not 11 trading days.
+        # Pre-compute features.
+        # `monthly_data_for_features` (monthly OHLC) is the primary data for features like ATR.
+        # `monthly_closes` is passed as `legacy_monthly_closes` for older features expecting only close prices.
+        # Benchmark data for features should also be from monthly closes.
+        benchmark_monthly_closes = monthly_closes[self.global_config["benchmark"]]
+
         self.features = precompute_features(
-            monthly_data,
-            required_features,
-            monthly_data[self.global_config["benchmark"]]
+            data=monthly_data_for_features, # Main data (e.g., monthly OHLC for ATRFeature)
+            required_features=required_features,
+            benchmark_data=benchmark_monthly_closes, # Benchmark (monthly closes)
+            legacy_monthly_closes=monthly_closes # For features expecting only month-end closes
         )
         logger.info("All features pre-computed.")
 
-        # Daily return series used for portfolio P&L
-        rets_full = daily_data.pct_change(fill_method=None).fillna(0)
+        # Daily return series used for portfolio P&L, calculated from daily closes
+        rets_full = daily_closes.pct_change(fill_method=None).fillna(0)
+        self.rets_full = rets_full # Store for use in optimization/monte_carlo if needed
 
+        # Pass appropriate data to run/optimize modes:
+        # - monthly_closes: for strategy signal generation (expects month-end closes)
+        # - daily_closes: for P&L calculation if strategy needs daily price context (e.g. some sizers)
+        # - rets_full: daily returns for P&L
         if self.args.mode == "optimize":
-            self._run_optimize_mode(self.scenarios[0], monthly_data, daily_data, rets_full)  # pass both data sets
+            self._run_optimize_mode(self.scenarios[0], monthly_closes, daily_closes, rets_full)
         elif self.args.mode == "backtest":
-            self._run_backtest_mode(self.scenarios[0], monthly_data, daily_data, rets_full)
+            self._run_backtest_mode(self.scenarios[0], monthly_closes, daily_closes, rets_full)
         elif self.args.mode == "monte_carlo":
-            self._run_monte_carlo_mode(self.scenarios[0], monthly_data, daily_data, rets_full)
+            self._run_monte_carlo_mode(self.scenarios[0], monthly_closes, daily_closes, rets_full)
 
         if self.args.mode != "monte_carlo":
             if CENTRAL_INTERRUPTED_FLAG:
@@ -767,10 +872,48 @@ class Backtester:
         )
         logger.info("Monte Carlo simulation finished.")
 
-    def display_results(self, data):
+    def display_results(self, daily_data_for_display):
+        # daily_data_for_display is the original daily_data fetched from source.
+        # It might be simple close prices (old format) or multi-indexed OHLC (new format).
         logger.info("Generating performance report.")
         console = Console()
-        bench_rets_full = data[self.global_config["benchmark"]].pct_change(fill_method=None).fillna(0)
+
+        # Extract benchmark close prices for returns calculation
+        benchmark_ticker = self.global_config["benchmark"]
+        if isinstance(daily_data_for_display.columns, pd.MultiIndex):
+            # New format: columns are (Ticker, Field) or (Field, Ticker)
+            # We need to find the 'Close' (or 'Adj Close') for the benchmark.
+            # Assuming standardized (Ticker, Field) format from self.daily_data_ohlc logic:
+            if benchmark_ticker in daily_data_for_display.columns.get_level_values(0):
+                if ('Close' in daily_data_for_display[benchmark_ticker].columns):
+                    bench_prices = daily_data_for_display[(benchmark_ticker, 'Close')]
+                elif ('Adj Close' in daily_data_for_display[benchmark_ticker].columns):
+                     bench_prices = daily_data_for_display[(benchmark_ticker, 'Adj Close')]
+                else:
+                    logger.error(f"Could not find 'Close' or 'Adj Close' for benchmark {benchmark_ticker} in multi-indexed data.")
+                    bench_prices = pd.Series(dtype=float) # Empty series to avoid crash, metrics will be NaN
+            # Handling yfinance direct output format (Field, Ticker)
+            elif benchmark_ticker in daily_data_for_display.columns.get_level_values(1):
+                if ('Close', benchmark_ticker) in daily_data_for_display.columns:
+                    bench_prices = daily_data_for_display[('Close', benchmark_ticker)]
+                elif ('Adj Close', benchmark_ticker) in daily_data_for_display.columns:
+                    bench_prices = daily_data_for_display[('Adj Close', benchmark_ticker)]
+                else:
+                    logger.error(f"Could not find ('Close'/'Adj Close', {benchmark_ticker}) in multi-indexed data.")
+                    bench_prices = pd.Series(dtype=float)
+            else:
+                logger.error(f"Benchmark ticker {benchmark_ticker} not found in multi-indexed columns.")
+                bench_prices = pd.Series(dtype=float)
+        else:
+            # Old format: columns are tickers, values are close prices
+            if benchmark_ticker in daily_data_for_display.columns:
+                bench_prices = daily_data_for_display[benchmark_ticker]
+            else:
+                logger.error(f"Benchmark ticker {benchmark_ticker} not found in single-level column data.")
+                bench_prices = pd.Series(dtype=float)
+
+        bench_rets_full = bench_prices.pct_change(fill_method=None).fillna(0)
+
 
         # Determine if train/test split is applicable
         first_result_key = list(self.results.keys())[0]

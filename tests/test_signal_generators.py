@@ -178,7 +178,7 @@ def test_dpvams_signal_generator_required_features_no_optimize():
     config = {"strategy_params": {"lookback_months": 6, "alpha": 0.5}}
     generator = DPVAMSSignalGenerator(config)
     features = generator.required_features()
-    assert DPVAMS(lookback_months=6, alpha="0.50") in features
+    assert DPVAMS(lookback_months=6, alpha=0.5) in features
     assert len(features) == 1
 
 def test_dpvams_signal_generator_required_features_with_optimize_lookback():
@@ -191,9 +191,9 @@ def test_dpvams_signal_generator_required_features_with_optimize_lookback():
     generator = DPVAMSSignalGenerator(config)
     features = generator.required_features()
     expected = {
-        DPVAMS(lookback_months=6, alpha="0.50"),
-        DPVAMS(lookback_months=3, alpha="0.50"),
-        DPVAMS(lookback_months=9, alpha="0.50"),
+            DPVAMS(lookback_months=6, alpha=0.5),
+            DPVAMS(lookback_months=3, alpha=0.5),
+            DPVAMS(lookback_months=9, alpha=0.5),
     } # Note: 6 is added twice if not careful, set handles it.
     assert features == expected
 
@@ -207,11 +207,16 @@ def test_dpvams_signal_generator_required_features_with_optimize_alpha():
     generator = DPVAMSSignalGenerator(config)
     features = generator.required_features()
     expected_alpha_set = {
-        DPVAMS(lookback_months=6, alpha="0.50"), # from strategy_params
-        DPVAMS(lookback_months=6, alpha="0.30"),
-        # DPVAMS(lookback_months=6, alpha="0.50"), # already there
-        DPVAMS(lookback_months=6, alpha="0.70"),
+            DPVAMS(lookback_months=6, alpha=0.5), # from strategy_params
+            DPVAMS(lookback_months=6, alpha=0.3),
+            DPVAMS(lookback_months=6, alpha=0.7),
     }
+        # Rounding issues with floats might occur if step is not precise like 0.2 for 0.3, 0.5, 0.7
+        # For 0.3, 0.5, 0.7 with step 0.2, this should be fine.
+        # Let's ensure the DPVAMSSignalGenerator._get_opt_values_for_param handles float steps accurately.
+        # The expected values are based on min_value, max_value, step from OPTIMIZER_PARAMETER_DEFAULTS if not in spec.
+        # Here, step 0.2. Values: 0.3, 0.5 (0.3 + 0.2), 0.7 (0.5 + 0.2).
+        # And the original static param 0.5. So {0.3, 0.5, 0.7}
     assert features == expected_alpha_set
 
 
@@ -225,12 +230,17 @@ def test_dpvams_signal_generator_required_features_with_optimize_both():
     }
     generator = DPVAMSSignalGenerator(config)
     features = generator.required_features()
+        # Based on DPVAMSSignalGenerator logic:
+        # 1. Static params feature: DPVAMS(6, 0.5)
+        # 2. Opt lookback_months ([3,4]) with static alpha (0.5): DPVAMS(3, 0.5), DPVAMS(4, 0.5)
+        # 3. Opt alpha ([0.6,0.7]) with static lookback_months (6): DPVAMS(6, 0.6), DPVAMS(6, 0.7)
+        # No Cartesian product if both are listed in "optimize" block by current generator code.
     expected = {
-        DPVAMS(lookback_months=6, alpha="0.50"),
-        DPVAMS(lookback_months=3, alpha="0.50"),
-        DPVAMS(lookback_months=4, alpha="0.50"),
-        DPVAMS(lookback_months=6, alpha="0.60"),
-        DPVAMS(lookback_months=6, alpha="0.70"),
+            DPVAMS(lookback_months=6, alpha=0.5),
+            DPVAMS(lookback_months=3, alpha=0.5),
+            DPVAMS(lookback_months=4, alpha=0.5),
+            DPVAMS(lookback_months=6, alpha=0.6),
+            DPVAMS(lookback_months=6, alpha=0.7),
     }
     assert features == expected
 
@@ -297,10 +307,15 @@ def test_dpvams_required_features_optimize_no_step():
     }
     generator = DPVAMSSignalGenerator(config_lookback_no_step)
     features = generator.required_features()
+        # Step for lookback_months defaults to 1 if not specified.
+            # Optimized lookback: 3, 4 (step defaults to 1 for lookback)
+            # Optimized alpha: 0.6, 0.7 (step 0.1 for alpha)
     expected = {
-        DPVAMS(lookback_months=6, alpha="0.50"),
-        DPVAMS(lookback_months=3, alpha="0.50"), DPVAMS(lookback_months=4, alpha="0.50"),
-        DPVAMS(lookback_months=6, alpha="0.60"), DPVAMS(lookback_months=6, alpha="0.70"),
+            DPVAMS(lookback_months=6, alpha=0.5),  # Static params
+            DPVAMS(lookback_months=3, alpha=0.5),  # Opt lookback, static alpha
+            DPVAMS(lookback_months=4, alpha=0.5),  # Opt lookback, static alpha
+            DPVAMS(lookback_months=6, alpha=0.6),  # Static lookback, opt alpha
+            DPVAMS(lookback_months=6, alpha=0.7),  # Static lookback, opt alpha
     }
     assert features == expected
 
@@ -334,7 +349,14 @@ def test_dpvams_required_features_optimize_no_step():
     # so it will be np.arange(0.6, 0.7 + 1, 1) which is np.arange(0.6, 1.7, 1) -> [0.6].
     # So, only DPVAMS(..., alpha="0.60") from the optimize block.
     # The original test's expectation of alpha="1.60" was due to a misinterpretation of arange.
-    assert features_alpha_no_step == expected_alpha_no_step
+    # Corrected expected set:
+    expected_alpha_no_step_corrected = {
+            DPVAMS(lookback_months=6, alpha=0.5),
+            DPVAMS(lookback_months=3, alpha=0.5),
+            DPVAMS(lookback_months=4, alpha=0.5),
+            DPVAMS(lookback_months=6, alpha=0.6),
+    }
+    assert features_alpha_no_step == expected_alpha_no_step_corrected
 
 
 # --- Tests for FilteredBlendedMomentumSignalGenerator ---

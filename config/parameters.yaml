@@ -189,3 +189,16 @@ OPTIMIZER_PARAMETER_DEFAULTS:
   position_sizer: # For optimizing the choice of position sizer
     type: "categorical"
     values: ["equal_weight", "rolling_sharpe", "rolling_sortino", "rolling_beta", "rolling_benchmark_corr", "rolling_downside_volatility"]
+  stop_loss_type:
+    type: "categorical"
+    values: ["NoStopLoss", "AtrBasedStopLoss"]
+  atr_length: # For AtrBasedStopLoss
+    type: "int"
+    low: 5
+    high: 30 # Adjusted from 50 to 30 for typical ATR usage
+    step: 1
+  atr_multiple: # For AtrBasedStopLoss
+    type: "float"
+    low: 1.0
+    high: 5.0
+    step: 0.5
