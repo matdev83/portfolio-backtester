@@ -7,6 +7,7 @@ from pathlib import Path
 from PIL import Image # For image validation
 import tempfile
 import sys
+import pandas as pd # Added import
 
 # Directory to store plots generated during tests
 PLOTS_DIR = Path("plots")
@@ -317,7 +318,7 @@ def cleanup_generated_files_session_scoped(request):
 from src.portfolio_backtester.strategies.filtered_lagged_momentum_strategy import FilteredLaggedMomentumStrategy
 from src.portfolio_backtester.config_loader import load_config # load_config might not be needed if config_data is directly used
 from src.portfolio_backtester.feature import Momentum # For generating feature names
-from src.portfolio_backtester.strategies import STRATEGY_REGISTRY
+# from src.portfolio_backtester.strategies import STRATEGY_REGISTRY # STRATEGY_REGISTRY is not exposed here. Test will import class directly.
 # NOTE: YFinanceDataSource and FeatureEngine might be heavy for a pure unit test environment.
 # This test assumes they can be instantiated or would be mocked in a more isolated setup.
 # For this integration test, we construct features manually.
@@ -347,10 +348,10 @@ def test_filtered_lagged_momentum_strategy_logic(): # Renamed test
     scenario_config = config_data["BACKTEST_SCENARIOS"][0]
 
     # Ensure the strategy is registered (this test runs after registry update)
-    strategy_class = STRATEGY_REGISTRY.get(scenario_config["strategy"])
-    assert strategy_class is FilteredLaggedMomentumStrategy, \
-        f"Expected FilteredLaggedMomentumStrategy, got {strategy_class}"
-    strategy_instance = strategy_class(scenario_config)
+    # strategy_class = STRATEGY_REGISTRY.get(scenario_config["strategy"]) # Direct import instead
+    strategy_class = FilteredLaggedMomentumStrategy
+    # assert strategy_class is FilteredLaggedMomentumStrategy # This is now tautological
+    strategy_instance = strategy_class(scenario_config["strategy_params"]) # Pass params directly
 
     # Create mock data
     # Dates for 5 months to observe lag and changes

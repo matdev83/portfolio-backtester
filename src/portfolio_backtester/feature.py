@@ -372,3 +372,91 @@ def get_required_features_from_scenarios(strategy_configs: list, strategy_regist
                             elif gen_class_name == "CalmarSignalGenerator":
                                 required_features.add(CalmarRatio(rolling_window=int(rw)))
     return required_features
+
+
+class ATRFeature(Feature):
+    """Computes Average True Range (ATR) for each asset."""
+
+    def __init__(self, atr_period: int):
+        super().__init__(atr_period=atr_period)
+        self.atr_period = atr_period
+
+    @property
+    def name(self) -> str:
+        return f"atr_{self.atr_period}"
+
+    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame:
+        """
+        Computes ATR for each asset.
+
+        Args:
+            data: A pandas DataFrame with a MultiIndex for columns.
+                  The first level of the column index should be the asset ticker.
+                  The second level should be 'High', 'Low', 'Close'.
+                  Example: columns=[('AAPL', 'High'), ('AAPL', 'Low'), ..., ('MSFT', 'Close')]
+                  The index should be a DatetimeIndex.
+            benchmark_data: Not used for this feature.
+
+        Returns:
+            A pandas DataFrame with DatetimeIndex and asset tickers as columns,
+            containing ATR values.
+        """
+        import pandas_ta as ta
+
+        if not isinstance(data.columns, pd.MultiIndex):
+            raise ValueError(
+                "ATRFeature expects data with MultiIndex columns (ticker, field). "
+                "E.g., ('AAPL', 'High'). Please ensure the input data is formatted correctly. "
+                "This typically means daily OHLC data aggregated appropriately if using monthly features."
+            )
+
+        all_atr_series = {}
+        # Get unique asset tickers from the first level of the column MultiIndex
+        asset_tickers = data.columns.get_level_values(0).unique()
+
+        for ticker in asset_tickers:
+            try:
+                high_prices = data[(ticker, "High")]
+                low_prices = data[(ticker, "Low")]
+                close_prices = data[(ticker, "Close")]
+
+                # Ensure no NaNs in critical period for ATR calculation if possible, or let pandas_ta handle it
+                # pandas_ta typically handles NaNs by returning NaNs in the ATR series initially.
+                atr_series = ta.atr(
+                    high=high_prices,
+                    low=low_prices,
+                    close=close_prices,
+                    length=self.atr_period,
+                )
+                if atr_series is not None:
+                    all_atr_series[ticker] = atr_series.rename(ticker) # Ensure series name is ticker
+                else:
+                    # This case should ideally not happen if HLC data is valid
+                    all_atr_series[ticker] = pd.Series(np.nan, index=data.index, name=ticker)
+
+            except KeyError as e:
+                # This happens if a ticker doesn't have High, Low, or Close columns
+                # print(f"Warning: Missing HLC data for {ticker} in ATRFeature.compute. Error: {e}")
+                all_atr_series[ticker] = pd.Series(np.nan, index=data.index, name=ticker)
+            except Exception as e:
+                # Catch any other unexpected errors during ATR calculation for a specific ticker
+                # print(f"Error computing ATR for {ticker}: {e}")
+                all_atr_series[ticker] = pd.Series(np.nan, index=data.index, name=ticker)
+
+
+        if not all_atr_series:
+            # Return an empty DataFrame with the correct index if no assets were processed or data was empty
+            return pd.DataFrame(index=data.index)
+
+        # Concatenate all ATR series into a single DataFrame
+        atr_df = pd.concat(all_atr_series, axis=1)
+        return atr_df
+
+    # __hash__ and __eq__ are inherited from Feature and should work correctly
+    # if self.params (i.e. {"atr_period": self.atr_period}) are used for hashing and equality.
+    # Explicitly defining them can be done for clarity if needed but relies on super() behavior.
+    def __hash__(self):
+        return super().__hash__()
+
+    def __eq__(self, other):
+        return super().__eq__(other)
