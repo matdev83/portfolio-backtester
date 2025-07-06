@@ -108,20 +108,19 @@ class Momentum(Feature):
         return base_name
 
     def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame:
-        # Assuming data is monthly prices for feature computation.
-        monthly_rets = data.pct_change().fillna(0) # Use default pct_change, then fillna
-
-        # Rolling product of (1+monthly_return) to get P(t)/P(t-L) - 1
-        momentum_lookback_period = (1 + monthly_rets).rolling(
-            window=self.lookback_months,
-            min_periods=int(self.lookback_months * 0.9) # Ensure most of the window has data
-        ).apply(np.prod, raw=True) - 1
-
-        # Shift the result by skip_months.
-        # So, value at row 't' becomes P(t-skip_months)/P(t-skip_months-lookback_months) - 1
-        final_momentum = momentum_lookback_period.shift(self.skip_months)
-
-        return final_momentum
+        """
+        Computes momentum for each asset: P(t-skip_months)/P(t-skip_months-lookback_months) - 1
+        
+        This ensures no look-ahead bias by using only historical prices.
+        """
+        # Shift prices to avoid look-ahead bias
+        # At time t, we use prices from t-skip_months and t-skip_months-lookback_months
+        shifted_prices = data.shift(self.skip_months)
+        
+        # Calculate momentum using shifted prices
+        momentum = (shifted_prices / shifted_prices.shift(self.lookback_months)) - 1
+        
+        return momentum
 
 
 class BenchmarkSMA(Feature):

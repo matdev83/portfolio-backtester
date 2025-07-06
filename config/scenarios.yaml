@@ -93,6 +93,48 @@ BACKTEST_SCENARIOS:
     mc_simulations: 500
     mc_years: 10
 
+  - name: "FilteredLaggedMomentum_Test"
+    strategy: "filtered_lagged_momentum"
+    rebalance_frequency: "ME"
+    position_sizer: "equal_weight"
+    transaction_costs_bps: 10
+    train_window_months: 24
+    test_window_months: 12
+    optimization_metric: "Sortino"
+    optimize:
+      - parameter: "num_holdings"
+        min_value: 15
+        max_value: 25
+        step: 5
+      - parameter: "momentum_lookback_standard"
+        min_value: 6
+        max_value: 12
+        step: 3
+      - parameter: "momentum_lookback_predictive"
+        min_value: 6
+        max_value: 12
+        step: 3
+      - parameter: "blending_lambda"
+        min_value: 0.2
+        max_value: 0.8
+        step: 0.3
+      - parameter: "momentum_skip_standard"
+        min_value: 1
+        max_value: 2
+        step: 1
+      - parameter: "momentum_skip_predictive"
+        min_value: 0
+        max_value: 1
+        step: 1
+      - parameter: "sma_filter_window"
+        min_value: 20
+        max_value: 30
+        step: 10
+    strategy_params:
+      long_only: True
+    mc_simulations: 100
+    mc_years: 5
+
   - name: "Momentum_Vol_Targeted_10pct"
     strategy: "momentum"
     rebalance_frequency: "ME"
@@ -554,3 +596,75 @@ BACKTEST_SCENARIOS:
       sma_filter_window: null
     mc_simulations: 1000
     mc_years: 10
+
+  - name: "FilteredLaggedMomentum_Simple"
+    strategy: "filtered_lagged_momentum"
+    rebalance_frequency: "ME"
+    position_sizer: "equal_weight"
+    transaction_costs_bps: 10
+    train_window_months: 24
+    test_window_months: 12
+    optimization_metric: "Sortino"
+    optimize:
+      - parameter: "num_holdings"
+        min_value: 10
+        max_value: 20
+        step: 5
+      - parameter: "momentum_lookback_standard"
+        min_value: 6
+        max_value: 12
+        step: 3
+      - parameter: "momentum_lookback_predictive"
+        min_value: 6
+        max_value: 12
+        step: 3
+      - parameter: "leverage"
+        min_value: 0.5
+        max_value: 1.0
+        step: 0.25
+    strategy_params:
+      momentum_skip_standard: 0  # Fixed - not optimized
+      momentum_skip_predictive: 0  # Fixed - not optimized
+      blending_lambda: 0.5  # Fixed - simple blending
+      top_decile_fraction: 0.1
+      smoothing_lambda: 0.0  # No smoothing like basic momentum
+      long_only: True
+      apply_trading_lag: False  # No trading lag
+    mc_simulations: 100
+    mc_years: 5
+
+  - name: "FilteredLaggedMomentum_NoOpt"
+    strategy: "filtered_lagged_momentum"
+    rebalance_frequency: "ME"
+    position_sizer: "equal_weight"
+    transaction_costs_bps: 10
+    strategy_params:
+      momentum_lookback_standard: 6
+      momentum_lookback_predictive: 6
+      momentum_skip_standard: 0  # Fixed - not optimized
+      momentum_skip_predictive: 0  # Fixed - not optimized
+      blending_lambda: 0.5  # Fixed - simple blending
+      num_holdings: 15
+      top_decile_fraction: 0.1
+      smoothing_lambda: 0.0  # No smoothing like basic momentum
+      leverage: 1.0
+      long_only: True
+      apply_trading_lag: False  # No trading lag
+    mc_simulations: 100
+    mc_years: 5
+
+  - name: "Momentum_Simple"
+    strategy: "momentum"
+    rebalance_frequency: "ME"
+    position_sizer: "equal_weight"
+    transaction_costs_bps: 10
+    strategy_params:
+      lookback_months: 6
+      num_holdings: 15
+      top_decile_fraction: 0.1
+      smoothing_lambda: 0.0
+      leverage: 1.0
+      long_only: True
+      apply_trading_lag: False
+    mc_simulations: 100
+    mc_years: 5

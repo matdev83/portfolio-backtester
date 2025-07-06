@@ -298,7 +298,7 @@ class FilteredBlendedMomentumSignalGenerator(BaseSignalGenerator):
         pred_skip = params.get("momentum_skip_predictive", 0)
 
         blending_lambda = params.get("blending_lambda", 0.5)
-        top_decile_fraction = params.get("top_decile_fraction", 0.1) # Changed from decile_fraction
+        top_decile_fraction = params.get("top_decile_fraction", 0.1)
 
         std_mom_name = f"momentum_{std_lookback}m_skip{std_skip}m_{self.std_mom_suffix}"
         pred_mom_name = f"momentum_{pred_lookback}m_skip{pred_skip}m_{self.pred_mom_suffix}"
@@ -328,7 +328,15 @@ class FilteredBlendedMomentumSignalGenerator(BaseSignalGenerator):
             pred_mom_values = pred_series_at_date[common_assets]
 
             num_assets = len(common_assets)
-            n_decile = max(1, int(np.floor(num_assets * top_decile_fraction))) # Changed from decile_fraction
+            
+            # Make the filtering more flexible for smaller universes
+            # Use a minimum of 2 assets per decile, and scale with universe size
+            min_decile_size = 2
+            n_decile = max(min_decile_size, int(np.floor(num_assets * top_decile_fraction)))
+            
+            # For very small universes, be even more flexible
+            if num_assets <= 10:
+                n_decile = max(1, int(np.ceil(num_assets * top_decile_fraction)))
 
             current_winners_idx = std_mom_values.nlargest(n_decile).index
             current_losers_idx = std_mom_values.nsmallest(n_decile).index
@@ -336,10 +344,35 @@ class FilteredBlendedMomentumSignalGenerator(BaseSignalGenerator):
             predicted_winners_next_month_idx = pred_mom_values.nlargest(n_decile).index
             predicted_losers_next_month_idx = pred_mom_values.nsmallest(n_decile).index
 
+            # Original strict filtering: only assets that are both current and predicted winners/losers
             surviving_winners = current_winners_idx.intersection(predicted_winners_next_month_idx)
             surviving_losers = current_losers_idx.intersection(predicted_losers_next_month_idx)
+            strict_survivors = surviving_winners.union(surviving_losers)
 
-            survivors_idx = surviving_winners.union(surviving_losers)
+            # If strict filtering produces too few survivors, use relaxed filtering
+            min_survivors = max(2, int(num_assets * 0.1))  # At least 10% of universe or 2 assets
+            
+            if len(strict_survivors) < min_survivors:
+                # Relaxed filtering: include assets that are winners/losers in either standard OR predictive
+                all_winners = current_winners_idx.union(predicted_winners_next_month_idx)
+                all_losers = current_losers_idx.union(predicted_losers_next_month_idx)
+                
+                # Take top performers from the combined set
+                combined_candidates = all_winners.union(all_losers)
+                
+                # If still not enough, just take the top and bottom performers from standard momentum
+                if len(combined_candidates) < min_survivors:
+                    # Take top half and bottom half of assets based on standard momentum
+                    top_half_size = max(1, num_assets // 2)
+                    bottom_half_size = max(1, num_assets - top_half_size)
+                    
+                    top_performers = std_mom_values.nlargest(top_half_size).index
+                    bottom_performers = std_mom_values.nsmallest(bottom_half_size).index
+                    survivors_idx = top_performers.union(bottom_performers)
+                else:
+                    survivors_idx = combined_candidates
+            else:
+                survivors_idx = strict_survivors
 
             if survivors_idx.empty:
                 continue

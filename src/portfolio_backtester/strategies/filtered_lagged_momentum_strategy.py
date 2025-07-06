@@ -25,6 +25,7 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
             "num_holdings", "top_decile_fraction", # top_decile_fraction used by generator
             "smoothing_lambda", "leverage", "long_only",
             "sma_filter_window", "derisk_days_under_sma",
+            "apply_trading_lag",
         }
 
     @classmethod
@@ -49,6 +50,7 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
             "long_only": True,
             "sma_filter_window": None,
             "derisk_days_under_sma": 10,
+            "apply_trading_lag": False,  # Set to False by default to avoid signal loss
         }
 
         params_dict_to_update = strategy_config
@@ -74,4 +76,24 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
         and applies a one-month trading lag to the weights.
         """
         weights = super().generate_signals(prices, features, benchmark_data)
-        return weights.shift(1)
+        
+        # Check if we should apply trading lag
+        apply_lag = self.strategy_config.get("strategy_params", {}).get("apply_trading_lag", True)
+        
+        # Count non-zero signals before lag
+        non_zero_before = (weights != 0).sum().sum()
+        non_nan_before = weights.notna().sum().sum()
+        
+        if apply_lag:
+            weights_lagged = weights.shift(1)
+            # Count non-zero signals after lag
+            non_zero_after = (weights_lagged != 0).sum().sum()
+            non_nan_after = weights_lagged.notna().sum().sum()
+            
+            # If applying lag results in too few signals, don't apply it
+            if non_zero_after < non_zero_before * 0.5:  # If we lose more than 50% of signals
+                print(f"Warning: Trading lag would reduce signals from {non_zero_before} to {non_zero_after}. Skipping lag.")
+                return weights
+            return weights_lagged
+        else:
+            return weights
