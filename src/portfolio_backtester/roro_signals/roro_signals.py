@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Set
+from typing import Dict, Any # Replaced Set with Dict, Any for config typing
 
 import pandas as pd
 
-from ..features.base import Feature
+# Removed Feature import as it's no longer used by BaseRoRoSignal
+# from ..features.base import Feature
 
 
 class BaseRoRoSignal(ABC):
@@ -13,51 +14,62 @@ class BaseRoRoSignal(ABC):
     Abstract base class for Risk-on/Risk-off (RoRo) signals.
     """
 
-    def __init__(self, roro_config: dict | None = None):
+    def __init__(self, roro_config: Dict[str, Any] | None = None): # Changed type hint for config
         self.roro_config = roro_config if roro_config is not None else {}
 
     @abstractmethod
-    def generate_signal(self, dates: pd.DatetimeIndex) -> pd.Series:
+    def generate_signal(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        current_date: pd.Timestamp
+    ) -> bool:
         """
-        Generates the RoRo signal.
+        Generates the RoRo signal for the current_date.
 
         Parameters:
-        - dates (pd.DatetimeIndex): The dates for which to generate the signal.
+        - all_historical_data (pd.DataFrame): Historical data for all universe assets up to current_date.
+        - benchmark_historical_data (pd.DataFrame): Historical data for the benchmark up to current_date.
+        - current_date (pd.Timestamp): The date for which to generate the signal.
 
         Returns:
-        - pd.Series: A series with the RoRo signal (typically 1 for risk-on, 0 for risk-off),
-                     indexed by date.
+        - bool: True for risk-on, False for risk-off.
         """
         pass
 
-    def get_required_features(self) -> Set[Feature]:
-        """
-        Returns a set of features required by the RoRo signal.
-        By default, RoRo signals do not require any features.
-        Subclasses can override this method if they need features.
-        """
-        return set()
+    # Removed get_required_features as it's no longer needed
+    # def get_required_features(self) -> Set[Feature]:
+    #     """
+    #     Returns a set of features required by the RoRo signal.
+    #     By default, RoRo signals do not require any features.
+    #     Subclasses can override this method if they need features.
+    #     """
+    #     return set()
 
 
 class DummyRoRoSignal(BaseRoRoSignal):
     """
-    A dummy RoRo signal that returns 1 for specific hardcoded date windows
-    and 0 for all other periods.
+    A dummy RoRo signal that returns True (risk-on) for specific hardcoded date windows
+    and False (risk-off) for all other periods for the given current_date.
     """
 
-    def generate_signal(self, dates: pd.DatetimeIndex) -> pd.Series:
+    def generate_signal(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        current_date: pd.Timestamp
+    ) -> bool:
         """
-        Generates the dummy RoRo signal.
+        Generates the dummy RoRo signal for the current_date.
 
-        Returns 1 for:
+        Returns True (risk-on) for:
         - 2006-01-01 to 2009-12-31
         - 2020-01-01 to 2020-04-01
         - 2022-01-01 to 2022-11-05
-        And 0 for all other periods.
+        And False (risk-off) for all other periods.
         """
-        signal = pd.Series(0, index=dates, dtype=int)
 
-        # Define date windows for risk-on (signal = 1)
+        # Define date windows for risk-on (signal = True)
         risk_on_windows = [
             (pd.Timestamp("2006-01-01"), pd.Timestamp("2009-12-31")),
             (pd.Timestamp("2020-01-01"), pd.Timestamp("2020-04-01")),
@@ -65,6 +77,7 @@ class DummyRoRoSignal(BaseRoRoSignal):
         ]
 
         for start_date, end_date in risk_on_windows:
-            signal.loc[(dates >= start_date) & (dates <= end_date)] = 1
+            if start_date <= current_date <= end_date:
+                return True  # Risk-on
 
-        return signal
+        return False  # Risk-off

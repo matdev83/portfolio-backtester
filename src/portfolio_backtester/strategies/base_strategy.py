@@ -1,24 +1,27 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Set, Callable
+from typing import Callable, Optional # Added Optional
 
 import numpy as np
 import pandas as pd
 
-from ..features.base import Feature
-from ..features.benchmark_sma import BenchmarkSMA
+# Removed Feature and BenchmarkSMA imports as features are now internal
+# from ..features.base import Feature
+# from ..features.benchmark_sma import BenchmarkSMA
 from ..portfolio.position_sizer import get_position_sizer
-from ..signal_generators import BaseSignalGenerator
-from ..roro_signals import BaseRoRoSignal # Import BaseRoRoSignal
-from .stop_loss import BaseStopLoss, NoStopLoss, AtrBasedStopLoss # Stop Loss imports
+# Removed BaseSignalGenerator as it's being phased out
+# from ..signal_generators import BaseSignalGenerator
+from ..roro_signals import BaseRoRoSignal
+from .stop_loss import BaseStopLoss, NoStopLoss, AtrBasedStopLoss
 
 
 class BaseStrategy(ABC):
-    """Base class for trading strategies using pluggable signal generators."""
+    """Base class for trading strategies."""
 
-    #: class attribute specifying which signal generator to use
-    signal_generator_class: type[BaseSignalGenerator] | None = None
+    # Removed signal_generator_class as signal generation is now internal
+    # signal_generator_class: type[BaseSignalGenerator] | None = None
+
     #: class attribute specifying which RoRo signal generator to use
     roro_signal_class: type[BaseRoRoSignal] | None = None
     #: class attribute specifying which Stop Loss handler to use by default
@@ -29,12 +32,6 @@ class BaseStrategy(ABC):
         self.strategy_config = strategy_config
         self._roro_signal_instance: BaseRoRoSignal | None = None
         self._stop_loss_handler_instance: BaseStopLoss | None = None
-        # Initialize entry_prices Series, to be populated during generate_signals
-        # It will store the entry price for the current holding period of an asset.
-        # Needs to be persistent across calls to generate_signals if strategy is stateful,
-        # but for backtesting, it's typically re-evaluated or carried over per time step.
-        # For simplicity in this loop, it's re-initialized per call to generate_signals
-        # and updated based on w_prev.
         self.entry_prices: pd.Series | None = None
 
 
@@ -42,16 +39,16 @@ class BaseStrategy(ABC):
     # Hooks to override in subclasses
     # ------------------------------------------------------------------ #
 
-    def get_signal_generator(self) -> BaseSignalGenerator:
-        if self.signal_generator_class is None:
-            raise NotImplementedError("signal_generator_class must be set")
-        return self.signal_generator_class(self.strategy_config)
+    # Removed get_signal_generator as it's no longer needed
+    # def get_signal_generator(self) -> BaseSignalGenerator:
+    #     if self.signal_generator_class is None:
+    #         raise NotImplementedError("signal_generator_class must be set")
+    #     return self.signal_generator_class(self.strategy_config)
 
     def get_roro_signal(self) -> BaseRoRoSignal | None:
         if self.roro_signal_class is None:
             return None
         if self._roro_signal_instance is None:
-            # Assuming RoRo signal might have its own config under "roro_signal_params"
             roro_config = self.strategy_config.get("roro_signal_params", self.strategy_config)
             self._roro_signal_instance = self.roro_signal_class(roro_config)
         return self._roro_signal_instance
@@ -59,14 +56,12 @@ class BaseStrategy(ABC):
     def get_stop_loss_handler(self) -> BaseStopLoss:
         if self._stop_loss_handler_instance is None:
             sl_config = self.strategy_config.get("stop_loss_config", {})
-            sl_type_name = sl_config.get("type", "NoStopLoss") # Default to NoStopLoss
+            sl_type_name = sl_config.get("type", "NoStopLoss")
 
-            handler_class = NoStopLoss # Default
+            handler_class = NoStopLoss
             if sl_type_name == "AtrBasedStopLoss":
                 handler_class = AtrBasedStopLoss
-            # Can add more else-if for other stop-loss types here
 
-            # Pass both general strategy_config and specific sl_config to the handler
             self._stop_loss_handler_instance = handler_class(self.strategy_config, sl_config)
         return self._stop_loss_handler_instance
 
@@ -74,49 +69,12 @@ class BaseStrategy(ABC):
         name = self.strategy_config.get("position_sizer", "equal_weight")
         return get_position_sizer(name)
 
-    # ------------------------------------------------------------------ #
-    # Required features
-    # ------------------------------------------------------------------ #
-    @classmethod
-    def get_required_features(cls, strategy_config: dict) -> Set[Feature]:
-        features: Set[Feature] = set()
-
-        # Features from signal generator
-        signal_gen_cls = getattr(cls, "signal_generator_class", None)
-        if signal_gen_cls is not None:
-            generator = signal_gen_cls(strategy_config)
-            features.update(generator.required_features())
-
-        # Features from RoRo signal generator
-        roro_gen_cls = getattr(cls, "roro_signal_class", None)
-        if roro_gen_cls is not None:
-            # Assuming RoRo signal might have its own config under "roro_signal_params"
-            roro_config = strategy_config.get("roro_signal_params", strategy_config)
-            roro_generator = roro_gen_cls(roro_config)
-            features.update(roro_generator.get_required_features())
-
-        params = strategy_config.get("strategy_params", strategy_config)
-        sma_window = params.get("sma_filter_window")
-        if sma_window is not None:
-            features.add(BenchmarkSMA(sma_filter_window=sma_window))
-
-        # Features from stop loss handler
-        # To get the handler class, we need to temporarily instantiate one or access class attribute
-        # This logic assumes stop_loss_handler_class is appropriately set or configured.
-        sl_conf = strategy_config.get("stop_loss_config", {})
-        sl_type_name = sl_conf.get("type", "NoStopLoss")
-
-        sl_handler_cls = NoStopLoss # Default
-        if sl_type_name == "AtrBasedStopLoss":
-            sl_handler_cls = AtrBasedStopLoss
-        # Add more handlers here if needed
-
-        # Instantiate with potentially minimal config just for feature extraction
-        # Some handlers might not need full config for get_required_features if it's static
-        temp_sl_handler = sl_handler_cls(strategy_config, sl_conf)
-        features.update(temp_sl_handler.get_required_features())
-
-        return features
+    # Removed get_required_features as features are now internal to strategies
+    # @classmethod
+    # def get_required_features(cls, strategy_config: dict) -> Set[Feature]:
+    #     features: Set[Feature] = set()
+    #     # ... (old logic removed) ...
+    #     return features
 
     # ------------------------------------------------------------------ #
     # Universe helper
@@ -182,199 +140,134 @@ class BaseStrategy(ABC):
         return w_new
 
     # ------------------------------------------------------------------ #
-    # Default signal generation pipeline
+    # Default signal generation pipeline (Abstract method to be implemented by subclasses)
     # ------------------------------------------------------------------ #
+    @abstractmethod
     def generate_signals(
         self,
-        prices: pd.DataFrame,
-        features: dict,
-        benchmark_data: pd.Series,
-    ) -> pd.DataFrame:
-        generator = self.get_signal_generator()
-        scores = generator.scores(features)
-
-        weights = pd.DataFrame(index=prices.index, columns=prices.columns, dtype=float)
-        w_prev = pd.Series(index=prices.columns, dtype=float).fillna(0.0) # Previous period's weights
-
-        # Initialize or clear entry_prices for this run of generate_signals
-        # It's a Series: index=asset_tickers, values=entry_price
-        # Needs to be managed carefully if generate_signals is called multiple times for a stateful strategy object.
-        # For typical backtesting loop, this initialization per call is fine.
-        if self.entry_prices is None or not isinstance(self.entry_prices, pd.Series):
-             self.entry_prices = pd.Series(np.nan, index=prices.columns)
-        else:
-            # If it exists, ensure it covers all current columns, fill new ones with NaN
-            self.entry_prices = self.entry_prices.reindex(prices.columns).fillna(np.nan)
-
-
-        # --- Stop Loss Handler ---
-        sl_handler = self.get_stop_loss_handler()
-
-        # --- SMA-based risk filter ---
-        sma_window = self.strategy_config.get("sma_filter_window")
-        derisk_days = self.strategy_config.get("derisk_days_under_sma", 10)
-        use_sma_derisk = sma_window and derisk_days > 0
-
-        if sma_window is not None:
-            sma_name = f"benchmark_sma_{sma_window}m"
-            # Ensure sma_risk_on_series has a boolean dtype after reindexing and filling
-            sma_risk_on_series = features[sma_name].reindex(prices.index, fill_value=True).astype(bool)
-        else:
-            sma_risk_on_series = pd.Series(True, index=prices.index, name="sma_risk_on")
-
-        derisk_flags = self._calculate_derisk_flags(sma_risk_on_series, derisk_days) if use_sma_derisk else pd.Series(False, index=prices.index)
-
-        # --- RoRo signal based risk filter ---
-        roro_signal_instance = self.get_roro_signal()
-        if roro_signal_instance:
-            # Generate RoRo signal for the prices.index (typically monthly dates)
-            roro_signal_values = roro_signal_instance.generate_signal(prices.index)
-            # Ensure it's boolean: 1 (risk-on) -> True, 0 (risk-off) -> False
-            roro_risk_on_series = roro_signal_values.astype(bool)
-        else:
-            roro_risk_on_series = pd.Series(True, index=prices.index, name="roro_risk_on")
-
-
-        for date in prices.index:
-            # Handle case where scores doesn't have data for this date
-            if date not in scores.index:
-                weights.loc[date] = w_prev
-                continue
-                
-            look = scores.loc[date]
-
-            if look.isna().any():
-                if generator.zero_if_nan:
-                    # Process only valid assets, zero out NaN assets
-                    look_clean = look.dropna()
-                    if look_clean.count() == 0:
-                        # All assets have NaN, zero out everything
-                        weights.loc[date] = pd.Series(0.0, index=prices.columns)
-                        continue
-                    # Continue processing with valid assets only
-                    look = look_clean
-                else:
-                    # Maintain previous weights when there are NaN values
-                    weights.loc[date] = w_prev
-                    continue
-
-            if look.count() == 0:
-                weights.loc[date] = w_prev
-                continue
-
-            # Filter scores to only include universe assets (exclude benchmark)
-            look_universe = look.reindex(prices.columns, fill_value=0.0)
-            cand = self._calculate_candidate_weights(look_universe)
-            # Ensure candidate weights cover all assets (zero for NaN assets)
-            cand_full = pd.Series(0.0, index=prices.columns)
-            cand_full.loc[cand.index] = cand
-            # These are the preliminary target weights for the period, *before* stop loss or risk filters
-            w_target_pre_filter = self._apply_leverage_and_smoothing(cand_full, w_prev)
-
-            # --- Update Entry Prices ---
-            # If a position is newly initiated (w_prev was 0, w_target_pre_filter is not)
-            # or direction flips (sign changes), update entry price.
-            # `prices` DataFrame here is typically monthly close prices.
-            current_period_prices = prices.loc[date] # Series of prices for the current date
-
-            # Only iterate over universe assets (prices.columns), not all assets that might be in w_target_pre_filter
-            for asset in prices.columns:
-                if asset not in w_target_pre_filter.index:
-                    continue
-                # New position or flip in direction
-                if (w_prev[asset] == 0 and w_target_pre_filter[asset] != 0) or \
-                   (np.sign(w_prev[asset]) != np.sign(w_target_pre_filter[asset]) and w_target_pre_filter[asset] != 0):
-                    self.entry_prices[asset] = current_period_prices[asset]
-                # If position is closed, reset entry price
-                elif w_target_pre_filter[asset] == 0:
-                    self.entry_prices[asset] = np.nan
-                # If position maintained (w_prev !=0 and w_target_pre_filter has same sign), entry price remains.
-
-            # --- Apply Stop Loss ---
-            # Stop loss is applied to w_target_pre_filter based on w_prev (active positions at start of period)
-            # and their respective entry prices.
-            stop_levels = sl_handler.calculate_stop_levels(
-                date, prices, features, w_prev, self.entry_prices
-            )
-            # The `apply_stop_loss` will use `current_period_prices` (which are month-end closes here)
-            # to check against the calculated stop_levels.
-            w_after_sl = sl_handler.apply_stop_loss(
-                date, current_period_prices, w_target_pre_filter, self.entry_prices, stop_levels
-            )
-
-            # If stop loss zeros out a position, update entry price to NaN
-            for asset in prices.columns:
-                if asset not in w_target_pre_filter.index or asset not in w_after_sl.index:
-                    continue
-                if w_target_pre_filter[asset] != 0 and w_after_sl[asset] == 0: # Position was closed by SL
-                    self.entry_prices[asset] = np.nan
-
-
-            # --- Apply Risk Filters (SMA, RoRo) to weights *after* stop loss ---
-            w_final = w_after_sl.copy()
-            if use_sma_derisk and derisk_flags.loc[date]:
-                w_final[:] = 0.0
-            if sma_window is not None and not sma_risk_on_series.loc[date]: # General SMA filter
-                w_final[:] = 0.0
-            if not roro_risk_on_series.loc[date]: # RoRo filter
-                w_final[:] = 0.0
-
-            # If risk filters zero out positions that SL didn't, also update entry prices
-            for asset in prices.columns:
-                if asset not in w_after_sl.index or asset not in w_final.index:
-                    continue
-                if w_after_sl[asset] != 0 and w_final[asset] == 0:
-                    self.entry_prices[asset] = np.nan
-
-            weights.loc[date] = w_final
-            w_prev = w_final # Update w_prev for the next iteration
-
-        # Check for 'apply_trading_lag' potentially nested in 'strategy_params' or at top level of config
-        strategy_params = self.strategy_config.get("strategy_params", self.strategy_config)
-        apply_lag = strategy_params.get("apply_trading_lag", False)
-        if not apply_lag and "apply_trading_lag" in self.strategy_config : # Check top level if not in strategy_params
-             apply_lag = self.strategy_config.get("apply_trading_lag", False)
-
-
-        if apply_lag:
-            # If trading lag is applied, the weights for the first period will be NaN after shift.
-            # The backtester itself also applies a shift when converting monthly to daily weights.
-            # This ensures that signals generated on day D are acted upon on D+1.
-            # Applying it here makes the strategy's direct output reflect the lag.
-            weights = weights.shift(1)
-
-        return weights
-
-    def _calculate_derisk_flags(self, sma_risk_on_series: pd.Series, derisk_days: int) -> pd.Series:
+        all_historical_data: pd.DataFrame, # Full historical data for universe assets
+        benchmark_historical_data: pd.DataFrame, # Full historical data for benchmark
+        current_date: pd.Timestamp, # The current date for signal generation
+        start_date: Optional[pd.Timestamp] = None, # Optional start date for WFO window
+        end_date: Optional[pd.Timestamp] = None, # Optional end date for WFO window
+    ) -> pd.DataFrame: # Returns a DataFrame of weights
         """
-        Calculates flags indicating when to derisk based on consecutive days under SMA.
+        Generates trading signals based on historical data and current date.
+        Subclasses must implement this method.
 
-        Parameters:
-        - sma_risk_on_series (pd.Series): Boolean series indicating if risk is on (True, price >= SMA)
-                                          or off (False, price < SMA). Index must match prices.index.
-        - derisk_days (int): Number of consecutive days asset must be under SMA to trigger derisking.
+        Args:
+            all_historical_data: DataFrame with historical OHLCV data for all assets
+                                 in the strategy's universe, up to and including current_date.
+            benchmark_historical_data: DataFrame with historical OHLCV data for the benchmark,
+                                       up to and including current_date.
+            current_date: The specific date for which signals are to be generated.
+                          Calculations should not use data beyond this date.
+            start_date: If provided, signals should only be generated on or after this date.
+            end_date: If provided, signals should only be generated on or before this date.
 
         Returns:
-        - pd.Series: Boolean series with True where derisking should occur.
+            A DataFrame indexed by date, with columns for each asset, containing
+            the target weights. Should typically contain a single row for current_date
+            if generating signals for one date at a time, or multiple rows if the
+            strategy generates signals for a range and then filters.
+            The weights should adhere to the start_date and end_date if provided.
         """
-        if not isinstance(sma_risk_on_series, pd.Series) or not isinstance(derisk_days, int) or derisk_days <= 0:
-            # This case should ideally be handled by the caller (use_sma_derisk check)
-            # but as a safeguard, return an all-false series.
-            return pd.Series(False, index=sma_risk_on_series.index)
+        pass
 
-        derisk_flags = pd.Series(False, index=sma_risk_on_series.index)
-        consecutive_days_risk_off = 0
+    # --- Helper methods that might be used by subclasses ---
 
-        for date in sma_risk_on_series.index:
-            if sma_risk_on_series.loc[date]:  # Price is >= SMA (Risk is ON based on SMA)
-                consecutive_days_risk_off = 0
-            else:  # Price is < SMA (Risk is OFF based on SMA)
-                consecutive_days_risk_off += 1
+    # _calculate_candidate_weights and _apply_leverage_and_smoothing remain as they are useful general helpers.
+    # The SMA-based risk filter and RoRo signal logic will be moved into concrete strategies
+    # or handled by updated RoRo/StopLoss handlers that take full historical data.
 
-            if consecutive_days_risk_off > derisk_days: # Note: strictly greater
-                derisk_flags.loc[date] = True
-            # else: # If it's not > derisk_days, the flag remains False (or becomes False if it was True and now sma_risk_on_series is True)
-            #    if derisk_flags.loc[date]: # This logic is not needed as we reset consecutive_days_risk_off
-            #        pass
+    # _calculate_derisk_flags might still be useful if strategies reimplement SMA logic.
+    # It will need access to benchmark_historical_data passed to generate_signals.
+    def _calculate_benchmark_sma(self, benchmark_historical_data: pd.DataFrame, window: int, price_column: str = 'Close') -> pd.Series:
+        """Calculates SMA for the benchmark."""
+        if benchmark_historical_data.empty or price_column not in benchmark_historical_data.columns:
+            # Ensure benchmark_historical_data.index is valid even if empty for pd.Series constructor
+            index = benchmark_historical_data.index if benchmark_historical_data.index is not None else pd.Index([])
+            return pd.Series(dtype=float, index=index)
 
-        return derisk_flags
+        # Ensure we only use data up to current_date if current_date is within the index
+        # This is more of a safeguard, as input data should already be sliced.
+        # However, rolling calculations might inadvertently see future data if not careful with slicing *before* this call.
+        # For now, assume benchmark_historical_data is correctly pre-sliced.
+        return benchmark_historical_data[price_column].rolling(window=window, min_periods=max(1, window // 2)).mean()
+
+
+    def _calculate_derisk_flags(self, benchmark_prices_at_current_date: pd.Series, benchmark_sma_at_current_date: pd.Series, derisk_periods: int, previous_derisk_flag: bool, consecutive_periods_under_sma: int) -> tuple[bool, int]:
+        """
+        Calculates a derisk flag for the current period based on benchmark price vs. SMA.
+        This is a stateful calculation for a single point in time.
+
+        Args:
+            benchmark_prices_at_current_date: Series of benchmark prices for the current_date (should be one value).
+            benchmark_sma_at_current_date: Series of benchmark SMA for the current_date (should be one value).
+            derisk_periods: Number of consecutive periods benchmark must be under SMA to trigger derisking.
+            previous_derisk_flag: Boolean indicating if derisking was active in the previous period.
+            consecutive_periods_under_sma: Count of consecutive periods benchmark was under SMA leading up to current.
+
+        Returns:
+            A tuple: (current_derisk_flag: bool, updated_consecutive_periods_under_sma: int)
+        """
+        current_derisk_flag = previous_derisk_flag # Start with previous state
+
+        if benchmark_prices_at_current_date.empty or benchmark_sma_at_current_date.empty or \
+           benchmark_prices_at_current_date.iloc[0] is pd.NA or benchmark_sma_at_current_date.iloc[0] is pd.NA:
+            # Not enough data, maintain previous state or default to not derisked if no previous state
+            return previous_derisk_flag, consecutive_periods_under_sma
+
+        price = benchmark_prices_at_current_date.iloc[0]
+        sma = benchmark_sma_at_current_date.iloc[0]
+
+        if price < sma:
+            consecutive_periods_under_sma += 1
+        else: # Price is >= SMA
+            consecutive_periods_under_sma = 0
+            current_derisk_flag = False # If above SMA, always turn off derisk flag
+
+        if consecutive_periods_under_sma > derisk_periods:
+            current_derisk_flag = True
+
+        # If it was derisked and now price is above SMA, it's handled by consecutive_periods_under_sma = 0 and current_derisk_flag = False
+
+        return current_derisk_flag, consecutive_periods_under_sma
+
+    # The old _calculate_derisk_flags was designed to work on a whole series.
+    # The new one above is for point-in-time calculation within a loop.
+    # If a series-based calculation is still needed by a strategy, it can implement it locally.
+    # For now, I'll comment out the old one to avoid confusion.
+
+    # def _calculate_derisk_flags(self, sma_risk_on_series: pd.Series, derisk_days: int) -> pd.Series:
+    #     """
+    #     Calculates flags indicating when to derisk based on consecutive days under SMA.
+
+    #     Parameters:
+    #     - sma_risk_on_series (pd.Series): Boolean series indicating if risk is on (True, price >= SMA)
+    #                                       or off (False, price < SMA). Index must match prices.index.
+    #     - derisk_days (int): Number of consecutive days asset must be under SMA to trigger derisking.
+
+    #     Returns:
+    #     - pd.Series: Boolean series with True where derisking should occur.
+    #     """
+    #     if not isinstance(sma_risk_on_series, pd.Series) or not isinstance(derisk_days, int) or derisk_days <= 0:
+    #         # This case should ideally be handled by the caller (use_sma_derisk check)
+    #         # but as a safeguard, return an all-false series.
+    #         return pd.Series(False, index=sma_risk_on_series.index)
+
+    #     derisk_flags = pd.Series(False, index=sma_risk_on_series.index)
+    #     consecutive_days_risk_off = 0
+
+    #     for date_val in sma_risk_on_series.index: # Renamed 'date' to 'date_val' to avoid conflict
+    #         if sma_risk_on_series.loc[date_val]:  # Price is >= SMA (Risk is ON based on SMA)
+    #             consecutive_days_risk_off = 0
+    #         else:  # Price is < SMA (Risk is OFF based on SMA)
+    #             consecutive_days_risk_off += 1
+
+    #         if consecutive_days_risk_off > derisk_days: # Note: strictly greater
+    #             derisk_flags.loc[date_val] = True
+    #         # else: # If it's not > derisk_days, the flag remains False (or becomes False if it was True and now sma_risk_on_series is True)
+    #         #    if derisk_flags.loc[date_val]: # This logic is not needed as we reset consecutive_days_risk_off
+    #         #        pass
+    #     return derisk_flags

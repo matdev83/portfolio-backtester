@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Set, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Any # Removed Set, added Dict, Any
 import pandas as pd
 import numpy as np
 
 if TYPE_CHECKING:
-    from ..features.base import Feature
-    from ..features.atr import ATRFeature # Forward reference for ATRFeature
+    # from ..features.base import Feature # No longer needed
+    # from ..features.atr import ATRFeature # No longer needed
     from ..strategies.base_strategy import BaseStrategy # For type hinting if needed
 
 class BaseStopLoss(ABC):
     """
     Abstract base class for stop-loss handlers.
     """
-    def __init__(self, strategy_config: dict, stop_loss_specific_config: dict):
+    def __init__(self, strategy_config: Dict[str, Any], stop_loss_specific_config: Dict[str, Any]): # Updated type hints
         """
         Initializes the stop-loss handler.
 
@@ -26,19 +26,19 @@ class BaseStopLoss(ABC):
         self.strategy_config = strategy_config
         self.stop_loss_specific_config = stop_loss_specific_config
 
-    @abstractmethod
-    def get_required_features(self) -> Set[Feature]:
-        """
-        Returns a set of features required by this stop-loss handler.
-        """
-        pass
+    # Removed get_required_features
+    # @abstractmethod
+    # def get_required_features(self) -> Set[Feature]:
+    #     """
+    #     Returns a set of features required by this stop-loss handler.
+    #     """
+    #     pass
 
     @abstractmethod
     def calculate_stop_levels(
         self,
         current_date: pd.Timestamp,
-        prices_history: pd.DataFrame, # Historical prices up to current_date for context
-        features: dict,
+        asset_ohlc_history: pd.DataFrame, # Changed from prices_history, removed features
         current_weights: pd.Series,
         entry_prices: pd.Series
     ) -> pd.Series:
@@ -47,9 +47,7 @@ class BaseStopLoss(ABC):
 
         Args:
             current_date: The current date for which to calculate stop levels.
-            prices_history: DataFrame of historical prices (OHLC) for all assets.
-                            The stop_loss module might use this for its calculations (e.g. ATR).
-            features: Dictionary of pre-calculated feature data.
+            asset_ohlc_history: DataFrame of historical OHLCV data for all assets up to current_date.
             current_weights: Series of current weights of assets in the portfolio.
                              Positive for long, negative for short, zero if no position.
             entry_prices: Series of entry prices for the current positions. NaN if no position
@@ -64,9 +62,9 @@ class BaseStopLoss(ABC):
     @abstractmethod
     def apply_stop_loss(
         self,
-        current_date: pd.Timestamp, # The date for which signals are being generated / stops checked
-        prices_for_current_date: pd.DataFrame, # Daily OHLC data for the current_date
-        target_weights: pd.Series, # The proposed target weights by the strategy before stop loss
+        current_date: pd.Timestamp,
+        current_asset_prices: pd.Series, # Changed from prices_for_current_date (DataFrame) to Series
+        target_weights: pd.Series,
         entry_prices: pd.Series,
         stop_levels: pd.Series
     ) -> pd.Series:
@@ -75,11 +73,7 @@ class BaseStopLoss(ABC):
 
         Args:
             current_date: The specific date for which the stop loss is being checked.
-            prices_for_current_date: DataFrame containing at least 'Low' and 'High' columns
-                                     for the `current_date` for all relevant assets.
-                                     This is used to check if stop levels were breached.
-                                     For strategies generating signals on e.g. month-end,
-                                     this might be the month-end prices.
+            current_asset_prices: Series of current prices (e.g., 'Close') for assets, for current_date.
             target_weights: The target weights proposed by the main strategy logic.
             entry_prices: Series of entry prices for current positions.
             stop_levels: Series of stop-loss price levels calculated by `calculate_stop_levels`.
@@ -95,23 +89,23 @@ class NoStopLoss(BaseStopLoss):
     """
     A stop-loss handler that does not implement any stop-loss logic.
     """
-    def get_required_features(self) -> Set[Feature]:
-        return set()
+    # Removed get_required_features
+    # def get_required_features(self) -> Set[Feature]:
+    #     return set()
 
     def calculate_stop_levels(
         self,
         current_date: pd.Timestamp,
-        prices_history: pd.DataFrame,
-        features: dict,
+        asset_ohlc_history: pd.DataFrame, # Updated signature
         current_weights: pd.Series,
         entry_prices: pd.Series
     ) -> pd.Series:
-        return pd.Series(np.nan, index=current_weights.index)
+        return pd.Series(np.nan, index=current_weights.index) # No features dict needed
 
     def apply_stop_loss(
         self,
         current_date: pd.Timestamp,
-        prices_for_current_date: pd.DataFrame,
+        current_asset_prices: pd.Series, # Updated signature
         target_weights: pd.Series,
         entry_prices: pd.Series,
         stop_levels: pd.Series

@@ -13,8 +13,8 @@ from .config_initializer import populate_default_optimizations
 from . import strategies
 from .portfolio.position_sizer import get_position_sizer
 from .portfolio.rebalancing import rebalance
-from .features.feature_helpers import get_required_features_from_scenarios
-from .feature_engineering import precompute_features
+# from .features.feature_helpers import get_required_features_from_scenarios # Removed
+# from .feature_engineering import precompute_features # Removed
 from .spy_holdings import reset_history_cache, get_top_weight_sp500_components
 from .utils import _resolve_strategy, INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
 from .backtester_logic.reporting import display_results
@@ -36,9 +36,9 @@ class Backtester:
         self.args = args
         self.data_source = self._get_data_source()
         self.results = {}
-        self.features: Dict[str, pd.DataFrame | pd.Series] | None = None
-        self.monthly_data: pd.DataFrame | None = None
-        self.daily_data: pd.DataFrame | None = None
+        # self.features: Dict[str, pd.DataFrame | pd.Series] | None = None # Removed
+        self.monthly_data: pd.DataFrame | None = None # This is monthly closing prices
+        self.daily_data_ohlc: pd.DataFrame | None = None # This will store daily OHLC data
         self.rets_full: pd.DataFrame | pd.Series | None = None
         if random_state is None:
             self.random_state = np.random.randint(0, 2**31 - 1)
@@ -95,37 +95,100 @@ class Backtester:
     def run_scenario(
         self,
         scenario_config,
-        price_data_monthly: pd.DataFrame,
-        price_data_daily: pd.DataFrame,
+        price_data_monthly_closes: pd.DataFrame, # Monthly close prices, used for rebalance dates and sizers
+        price_data_daily_ohlc: pd.DataFrame,   # Daily OHLCV data for strategies
         rets_daily: pd.DataFrame | None = None,
-        features: dict | None = None,
+        # features: dict | None = None, # Removed features argument
         verbose: bool = True,
     ):
         if verbose:
             logger.info(f"Running scenario: {scenario_config['name']}")
 
+        # Ensure rets_daily is calculated based on daily close prices if not provided
+        # This requires extracting daily closes from price_data_daily_ohlc
         if rets_daily is None:
-            rets_daily = price_data_daily.pct_change(fill_method=None).fillna(0)
-        
+            if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and \
+               'Close' in price_data_daily_ohlc.columns.get_level_values(1):
+                daily_closes_for_rets = price_data_daily_ohlc.xs('Close', level='Field', axis=1)
+            elif not isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
+                daily_closes_for_rets = price_data_daily_ohlc # Assume it's already close prices
+            else:
+                # Attempt to find 'Close' prices in a less structured MultiIndex
+                try:
+                    if 'Close' in price_data_daily_ohlc.columns.get_level_values(-1):
+                        daily_closes_for_rets = price_data_daily_ohlc.xs('Close', level=-1, axis=1)
+                    else:
+                        raise ValueError("run_scenario: Could not reliably extract 'Close' prices for daily returns.")
+                except Exception as e:
+                    raise ValueError(f"run_scenario: Error extracting 'Close' prices for daily returns: {e}. Columns: {price_data_daily_ohlc.columns}")
+
+            if daily_closes_for_rets.empty:
+                 raise ValueError("run_scenario: Daily close prices for return calculation are empty.")
+            rets_daily = daily_closes_for_rets.pct_change(fill_method=None).fillna(0)
+
         strategy = self._get_strategy(
             scenario_config["strategy"], scenario_config["strategy_params"]
         )
         
         universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
-        
-        strategy_data_monthly = price_data_monthly[universe_tickers]
-        benchmark_data_monthly = price_data_monthly[self.global_config["benchmark"]]
-        
-        signals = strategy.generate_signals(
-            strategy_data_monthly,
-            features,
-            benchmark_data_monthly,
-        )
+        benchmark_ticker = self.global_config["benchmark"]
+
+        # --- Iterative Signal Generation ---
+        all_monthly_weights = []
+        rebalance_dates = price_data_monthly_closes.index # Dates for generating signals (typically month-end)
+
+        # WFO dates from scenario_config (optional)
+        wfo_start_date = pd.to_datetime(scenario_config.get("wfo_start_date", None))
+        wfo_end_date = pd.to_datetime(scenario_config.get("wfo_end_date", None))
+
+        for current_rebalance_date in rebalance_dates:
+            if verbose:
+                logger.debug(f"Generating signals for date: {current_rebalance_date}")
+
+            # Prepare historical data up to the current_rebalance_date
+            # For assets in universe
+            if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and 'Ticker' in price_data_daily_ohlc.columns.names:
+                asset_hist_data_cols = pd.MultiIndex.from_product([universe_tickers, price_data_daily_ohlc.columns.get_level_values('Field').unique()], names=['Ticker', 'Field'])
+                asset_hist_data_cols = [col for col in asset_hist_data_cols if col in price_data_daily_ohlc.columns] # Ensure columns exist
+                all_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, asset_hist_data_cols]
+
+                # For benchmark
+                benchmark_hist_data_cols = pd.MultiIndex.from_product([[benchmark_ticker], price_data_daily_ohlc.columns.get_level_values('Field').unique()], names=['Ticker', 'Field'])
+                benchmark_hist_data_cols = [col for col in benchmark_hist_data_cols if col in price_data_daily_ohlc.columns]
+                benchmark_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, benchmark_hist_data_cols]
+            else: # Assuming flat columns, tickers are column names
+                all_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, universe_tickers]
+                benchmark_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, [benchmark_ticker]]
+
+
+            # Call strategy's generate_signals
+            # The strategy itself will handle WFO start/end date filtering if current_rebalance_date is outside.
+            current_weights_df = strategy.generate_signals(
+                all_historical_data=all_historical_data_for_strat,
+                benchmark_historical_data=benchmark_historical_data_for_strat,
+                current_date=current_rebalance_date,
+                start_date=wfo_start_date,
+                end_date=wfo_end_date
+            )
+            # current_weights_df should be a DataFrame with 1 row (current_rebalance_date) and asset columns
+            all_monthly_weights.append(current_weights_df)
+
+        if not all_monthly_weights:
+            logger.warning(f"No signals generated for scenario {scenario_config['name']}. This might be due to WFO window or other issues.")
+            # Create an empty DataFrame with expected structure for downstream processing
+            signals = pd.DataFrame(columns=universe_tickers, index=rebalance_dates)
+        else:
+            signals = pd.concat(all_monthly_weights)
+            signals = signals.reindex(rebalance_dates).fillna(0.0) # Ensure all rebalance dates are present
+
         if verbose:
-            logger.debug("Signals generated.")
+            logger.debug(f"All signals generated for scenario: {scenario_config['name']}")
             logger.info(f"Signals head:\n{signals.head()}")
             logger.info(f"Signals tail:\n{signals.tail()}")
+            if signals.empty:
+                 logger.warning("Generated signals DataFrame is empty.")
 
+        # --- Sizing and Rebalancing (largely unchanged, uses the 'signals' DataFrame) ---
         sizer_name = scenario_config.get("position_sizer", "equal_weight")
         sizer_func = get_position_sizer(sizer_name)
         
@@ -163,11 +226,22 @@ class Backtester:
         logger.debug(f"target_return_param extracted: {target_return_param}")
         logger.debug(f"max_leverage_param extracted: {max_leverage_param}")
 
-        sizer_args = [signals, strategy_data_monthly, benchmark_data_monthly]
+        # Prepare data for sizers: they typically need monthly close prices
+        strategy_monthly_closes = price_data_monthly_closes[universe_tickers]
+        benchmark_monthly_closes = price_data_monthly_closes[benchmark_ticker]
+
+        sizer_args = [signals, strategy_monthly_closes, benchmark_monthly_closes]
         
         if sizer_name == "rolling_downside_volatility":
-            daily_prices_for_vol = price_data_daily[universe_tickers]
-            sizer_args.append(daily_prices_for_vol)
+            # This sizer needs daily prices, specifically closes for return calculation within sizer.
+            if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and \
+               'Close' in price_data_daily_ohlc.columns.get_level_values(1):
+                daily_closes_for_sizer = price_data_daily_ohlc.xs('Close', level='Field', axis=1)[universe_tickers]
+            elif not isinstance(price_data_daily_ohlc.columns, pd.MultiIndex): # Assume it's already daily closes
+                daily_closes_for_sizer = price_data_daily_ohlc[universe_tickers]
+            else:
+                raise ValueError("rolling_downside_volatility sizer: Could not extract daily close prices from price_data_daily_ohlc.")
+            sizer_args.append(daily_closes_for_sizer)
 
         if sizer_name in ["rolling_sharpe", "rolling_sortino", "rolling_beta", "rolling_benchmark_corr", "rolling_downside_volatility"]:
             if window_param is None:
@@ -201,12 +275,25 @@ class Backtester:
 
         weights_monthly = weights_monthly.reindex(columns=universe_tickers).fillna(0.0)
 
-        weights_daily = weights_monthly.reindex(price_data_daily.index, method="ffill")
-        weights_daily = weights_daily.shift(1).fillna(0.0)
+        # Use the index from daily OHLC data for reindexing monthly weights to daily
+        weights_daily = weights_monthly.reindex(price_data_daily_ohlc.index, method="ffill")
+        weights_daily = weights_daily.shift(1).fillna(0.0) # Apply execution lag
 
-        aligned_rets_daily = rets_daily.reindex(price_data_daily.index).fillna(0.0)
+        # Ensure daily returns are aligned with the daily OHLC data index
+        aligned_rets_daily = rets_daily.reindex(price_data_daily_ohlc.index).fillna(0.0)
 
-        daily_portfolio_returns_gross = (weights_daily * aligned_rets_daily[universe_tickers]).sum(axis=1)
+        # Ensure universe_tickers used for indexing aligned_rets_daily are present in its columns
+        valid_universe_tickers_in_rets = [ticker for ticker in universe_tickers if ticker in aligned_rets_daily.columns]
+        if len(valid_universe_tickers_in_rets) < len(universe_tickers):
+            missing_tickers = set(universe_tickers) - set(valid_universe_tickers_in_rets)
+            logger.warning(f"Tickers {missing_tickers} not found in aligned_rets_daily columns. Portfolio calculations might be affected.")
+
+        # Calculate gross returns using only valid tickers present in returns data
+        if not valid_universe_tickers_in_rets:
+            logger.warning("No valid universe tickers found in daily returns. Gross portfolio returns will be zero.")
+            daily_portfolio_returns_gross = pd.Series(0.0, index=weights_daily.index)
+        else:
+            daily_portfolio_returns_gross = (weights_daily[valid_universe_tickers_in_rets] * aligned_rets_daily[valid_universe_tickers_in_rets]).sum(axis=1)
 
         turnover = (weights_daily - weights_daily.shift(1)).abs().sum(axis=1).fillna(0.0)
         transaction_costs = turnover * (scenario_config.get("transaction_costs_bps", 0) / 10000.0)
@@ -238,98 +325,71 @@ class Backtester:
         else:
             daily_data_std_format = daily_data
 
+        # Ensure self.daily_data_ohlc is set up correctly.
+        # It should contain daily OHLCV data for all universe tickers and the benchmark.
+        # The existing logic for daily_data_std_format seems to prepare this.
         self.daily_data_ohlc = daily_data_std_format.copy()
+        logger.info(f"Shape of self.daily_data_ohlc: {self.daily_data_ohlc.shape}")
+        logger.debug(f"Columns of self.daily_data_ohlc: {self.daily_data_ohlc.columns}")
 
-        monthly_data_for_features = pd.DataFrame(index=self.daily_data_ohlc.index.unique())
 
+        # The section for preparing 'monthly_data_for_features' is no longer needed
+        # as features are computed within strategies using daily_data_ohlc.
+        logger.info("Feature pre-computation step removed. Features will be calculated within strategies.")
+
+        # Extract daily closes for return calculations and for monthly resampling if needed by other parts
         if isinstance(self.daily_data_ohlc.columns, pd.MultiIndex) and \
-           self.daily_data_ohlc.columns.nlevels == 2 and \
-           self.daily_data_ohlc.columns.names[0] == 'Ticker' and \
-           self.daily_data_ohlc.columns.names[1] == 'Field':
-
-            logger.info("Daily OHLC data has (Ticker, Field) MultiIndex. Preparing monthly OHLC for features.")
-            monthly_ohlc_for_features_list = []
-            for ticker in self.daily_data_ohlc.columns.get_level_values('Ticker').unique():
-                try:
-                    ticker_ohlc_df = self.daily_data_ohlc[ticker]
-                    required_cols = ['Open', 'High', 'Low', 'Close']
-                    if all(col in ticker_ohlc_df.columns for col in required_cols):
-                        resampled_ohlc = ticker_ohlc_df.resample("BME").agg(
-                            {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last'}
-                        )
-                        if 'Volume' in ticker_ohlc_df.columns:
-                            resampled_ohlc['Volume'] = ticker_ohlc_df['Volume'].resample("BME").sum()
-
-                        resampled_ohlc.columns = pd.MultiIndex.from_product([[ticker], list(resampled_ohlc.columns)], names=['Ticker', 'Field'])
-                        monthly_ohlc_for_features_list.append(resampled_ohlc)
-                    else:
-                        logger.warning(f"Ticker {ticker} missing one or more required OHLC columns (Open, High, Low, Close) when processing (Ticker, Field) data. Skipping for monthly OHLC features.")
-                except Exception as e:
-                    logger.error(f"Error resampling OHLC for ticker {ticker} from (Ticker,Field) data: {e}")
-
-            if monthly_ohlc_for_features_list:
-                monthly_data_for_features = pd.concat(monthly_ohlc_for_features_list, axis=1)
-
-        elif not isinstance(self.daily_data_ohlc.columns, pd.MultiIndex) and isinstance(self.daily_data_ohlc, pd.DataFrame):
-            logger.warning("Daily data is in old format (close prices only). ATRFeature requires OHLC and will not compute meaningful values.")
-            empty_cols = pd.MultiIndex.from_tuples([], names=['Ticker', 'Field'])
-            idx_for_empty_df = self.daily_data_ohlc.index.unique() if not self.daily_data_ohlc.empty else pd.Index([])
-            monthly_data_for_features = pd.DataFrame(index=idx_for_empty_df, columns=empty_cols)
+           'Close' in self.daily_data_ohlc.columns.get_level_values(1):
+            # Assuming 'Ticker' is level 0 and 'Field' is level 1
+            daily_closes = self.daily_data_ohlc.xs('Close', level='Field', axis=1)
+        elif not isinstance(self.daily_data_ohlc.columns, pd.MultiIndex):
+            # If daily_data_ohlc is just close prices (older format or specific data source output)
+            daily_closes = self.daily_data_ohlc
         else:
-            logger.error(f"Daily OHLC data is in an unrecognized format. Columns: {self.daily_data_ohlc.columns}. ATRFeature may fail.")
-            empty_cols = pd.MultiIndex.from_tuples([], names=['Ticker', 'Field'])
-            idx_for_empty_df = self.daily_data_ohlc.index.unique() if hasattr(self.daily_data_ohlc, 'index') and not self.daily_data_ohlc.empty else pd.Index([])
-            monthly_data_for_features = pd.DataFrame(index=idx_for_empty_df, columns=empty_cols)
+            # Attempt to find 'Close' prices in a less structured MultiIndex or raise error
+            # This part might need adjustment based on actual data structures if not (Ticker, Field)
+            try:
+                if 'Close' in self.daily_data_ohlc.columns.get_level_values(-1): # Check last level for 'Close'
+                    daily_closes = self.daily_data_ohlc.xs('Close', level=-1, axis=1)
+                else:
+                    raise ValueError("Could not reliably extract 'Close' prices from self.daily_data_ohlc due to unrecognized column structure.")
+            except Exception as e:
+                 raise ValueError(f"Error extracting 'Close' prices from self.daily_data_ohlc: {e}. Columns: {self.daily_data_ohlc.columns}")
 
-        if isinstance(self.daily_data_ohlc.columns, pd.MultiIndex) and 'Close' in self.daily_data_ohlc.columns.get_level_values(1):
-            daily_closes = self.daily_data_ohlc.loc[:, self.daily_data_ohlc.columns.get_level_values(1) == 'Close']
-        else:
-            if not isinstance(daily_data.columns, pd.MultiIndex):
-                daily_closes = daily_data
-            else:
-                raise ValueError("Daily data format for extracting close prices is not recognized.")
+        if daily_closes.empty:
+            raise ValueError("Daily close prices could not be extracted or are empty.")
 
+        # monthly_closes will be used for determining rebalance dates and for sizers if they need monthly frequency.
         monthly_closes = daily_closes.resample("BME").last()
+        self.monthly_data = monthly_closes # Store monthly closing prices
 
-        logger.info("Backtest data retrieved and prepared (daily OHLC, monthly OHLC for features, monthly closes).")
+        logger.info("Backtest data retrieved and prepared (daily OHLC, monthly closes).")
 
-        strategy_registry = {
-            "calmar_momentum": strategies.CalmarMomentumStrategy,
-            "vams_no_downside": strategies.VAMSNoDownsideStrategy,
-            "momentum": strategies.MomentumStrategy,
-            "sharpe_momentum": strategies.SharpeMomentumStrategy,
-            "sortino_momentum": strategies.SortinoMomentumStrategy,
-            "vams_momentum": strategies.VAMSMomentumStrategy,
-            "momentum_dvol_sizer": strategies.MomentumDvolSizerStrategy,
-            "filtered_lagged_momentum": strategies.FilteredLaggedMomentumStrategy,
-        }
-        
-        required_features = get_required_features_from_scenarios(self.scenarios, strategy_registry)
-        
-        benchmark_monthly_closes = monthly_closes[self.global_config["benchmark"]]
-
-        if isinstance(monthly_closes, pd.Series):
-            monthly_closes_df = monthly_closes.to_frame()
-        else:
-            monthly_closes_df = monthly_closes
-
-        self.features = precompute_features(
-            data=monthly_data_for_features,
-            required_features=required_features,
-            benchmark_data=benchmark_monthly_closes,
-            legacy_monthly_closes=monthly_closes_df
-        )
-        logger.info("All features pre-computed.")
+        # Removed strategy_registry and get_required_features_from_scenarios
+        # Removed benchmark_monthly_closes (strategies will use benchmark_historical_data from daily_data_ohlc)
+        # Removed precompute_features call and self.features initialization
 
         rets_full = daily_closes.pct_change(fill_method=None).fillna(0)
-        self.rets_full = rets_full
+        self.rets_full = rets_full # These are daily returns based on daily_closes
+
+        # The arguments to run_optimize_mode, run_backtest_mode, run_monte_carlo_mode
+        # might need adjustment if they directly used self.features or specific monthly data forms
+        # that are no longer created.
+        # `monthly_closes` is still available as self.monthly_data.
+        # `daily_closes` is available.
+        # `rets_full` (daily returns) is available.
+        # `self.daily_data_ohlc` (full daily OHLCV) is the primary data source for strategies now.
 
         if self.args.mode == "optimize":
-            self.run_optimize_mode(self.scenarios[0], monthly_closes, daily_closes, rets_full)
+            # Pass self.daily_data_ohlc for strategies, monthly_closes for other potential uses by optimizer/scenario runner
+            self.run_optimize_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         elif self.args.mode == "backtest":
-            self.run_backtest_mode(self.scenarios[0], monthly_closes, daily_closes, rets_full)
+            self.run_backtest_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         elif self.args.mode == "monte_carlo":
-            self.run_monte_carlo_mode(self.scenarios[0], monthly_closes, daily_closes, rets_full)
+            # Monte Carlo might need different data inputs or just portfolio returns.
+            # Assuming it primarily works off portfolio returns generated by run_backtest_mode.
+            # For now, keeping its inputs similar, but this might need review based on its internal logic.
+            self.run_monte_carlo_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
 
         if self.args.mode != "monte_carlo":
             if CENTRAL_INTERRUPTED_FLAG:
