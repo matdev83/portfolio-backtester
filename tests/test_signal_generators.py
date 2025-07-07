@@ -342,7 +342,7 @@ def test_dpvams_required_features_optimize_no_step():
 # --- Tests for FilteredBlendedMomentumSignalGenerator ---
 @pytest.fixture
 def sample_features_for_blended_mom() -> dict:
-    dates = pd.date_range(start='2023-01-31', periods=3, freq='M')
+    dates = pd.date_range(start='2023-01-31', periods=3, freq='ME')
     # assets = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'] # 12 assets
 
     data_std = { # Standard Momentum (12-2 style)

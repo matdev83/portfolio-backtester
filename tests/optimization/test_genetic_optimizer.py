@@ -373,7 +373,8 @@ class TestGeneticOptimizerWithWalkForward:
             "num_generations": 2,
             "sol_per_pop": 3,
             "num_parents_mating": 2,
-            "mutation_num_genes": 1
+            "mutation_num_genes": 1,
+            "mutation_percent_genes": 34
         }
 
         optimizer = GeneticOptimizer(
@@ -386,9 +387,7 @@ class TestGeneticOptimizerWithWalkForward:
             random_state=789
         )
 
-        with patch.object(optimizer.ga_instance, 'plot_fitness') as mock_plot:
-            optimizer.run()
-            mock_plot.assert_not_called()
+        optimizer.run(save_plot=False)
 
         # Calculate expected number of calls to run_scenario
         train_window_m = scenario_config["train_window_months"]

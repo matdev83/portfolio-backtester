@@ -240,7 +240,7 @@ class GeneticOptimizer:
                 raise ValueError(f"Unsupported PTYPE {ptype} for parameter {pname} in genetic optimizer.")
         return gene_space, gene_type # Return the list of types
 
-    def run(self):
+    def run(self, save_plot=True):
         logger.info("Setting up Genetic Algorithm...")
 
         gene_space, gene_types_for_pygad = self._get_gene_space_and_types()
@@ -363,7 +363,8 @@ class GeneticOptimizer:
 
             logger.info(log_msg)
             if self.ga_instance.generations_completed > 0 and solution is not None:
-                 self.ga_instance.plot_fitness(title="GA Fitness Value vs. Generation", save_dir=f"plots/ga_fitness_{self.scenario_config['name']}.png")
+                 if save_plot:
+                    self.ga_instance.plot_fitness(title="GA Fitness Value vs. Generation", save_dir=f"plots/ga_fitness_{self.scenario_config['name']}.png")
                  optimal_params = self.scenario_config["strategy_params"].copy()
                  optimal_params.update(self._decode_chromosome(solution))
                  logger.info(f"Best parameters found by GA: {optimal_params}")

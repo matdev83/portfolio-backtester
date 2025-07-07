@@ -6,7 +6,7 @@ from src.portfolio_backtester.features.momentum import Momentum
 class TestMomentumFeature:
     @pytest.fixture
     def sample_monthly_prices(self) -> pd.DataFrame:
-        dates = pd.date_range(start='2020-01-31', periods=24, freq='M') # Use month-end dates
+        dates = pd.date_range(start='2020-01-31', periods=24, freq='ME') # Use month-end dates
         data = {
             'AssetA': np.linspace(100, 100 + 23 * 2, 24),
             'AssetB': np.concatenate([np.linspace(100, 120, 12), np.linspace(119, 100, 12)]),
