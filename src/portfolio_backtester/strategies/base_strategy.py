@@ -6,7 +6,8 @@ from typing import Set, Callable
 import numpy as np
 import pandas as pd
 
-from ..feature import Feature, BenchmarkSMA
+from ..features.base import Feature
+from ..features.benchmark_sma import BenchmarkSMA
 from ..portfolio.position_sizer import get_position_sizer
 from ..signal_generators import BaseSignalGenerator
 from ..roro_signals import BaseRoRoSignal # Import BaseRoRoSignal

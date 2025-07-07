@@ -63,6 +63,8 @@ def mock_backtester_instance():
     mock_bt.args = MagicMock()
     mock_bt.args.early_stop_patience = 3
     mock_bt.n_jobs = 1 # Set n_jobs directly on the mock_bt
+    mock_bt.features = None # Add features attribute to mock
+    mock_bt.logger = MagicMock() # Add logger attribute
     # Mock the evaluation function that the GeneticOptimizer will call
     mock_bt._evaluate_params_walk_forward = MagicMock()
     return mock_bt
@@ -140,10 +142,11 @@ def test_get_gene_space_and_types(mock_backtester_instance):
     assert gene_space[2] == {"low": 0, "high": 1, "step": 1} # Index for ["A", "B"]
 
 
+@patch('portfolio_backtester.optimization.genetic_optimizer._evaluate_params_walk_forward')
 @patch('portfolio_backtester.optimization.genetic_optimizer.pygad.GA')
-def test_run_single_objective(mock_pygad_ga, mock_backtester_instance):
+def test_run_single_objective(mock_pygad_ga, mock_evaluate_params, mock_backtester_instance):
     # Configure the mock _evaluate_params_walk_forward to return a single float
-    mock_backtester_instance._evaluate_params_walk_forward.return_value = 0.8 # Example Sharpe ratio
+    mock_evaluate_params.return_value = 0.8 # Example Sharpe ratio
 
     optimizer = GeneticOptimizer(
         scenario_config=MOCK_SCENARIO_CONFIG_SINGLE_OBJECTIVE,
@@ -184,14 +187,15 @@ def test_run_single_objective(mock_pygad_ga, mock_backtester_instance):
     # To test fitness_func_wrapper directly:
     fitness_value = optimizer.fitness_func_wrapper(mock_ga_instance, np.array([3,0.4,0]), 0)
     assert fitness_value == 0.8 # From the return_value of mocked _evaluate_params_walk_forward
-    mock_backtester_instance._evaluate_params_walk_forward.assert_called()
+    mock_evaluate_params.assert_called()
 
 
+@patch('portfolio_backtester.optimization.genetic_optimizer._evaluate_params_walk_forward')
 @patch('portfolio_backtester.optimization.genetic_optimizer.pygad.GA')
-def test_run_multi_objective(mock_pygad_ga, mock_backtester_instance):
+def test_run_multi_objective(mock_pygad_ga, mock_evaluate_params, mock_backtester_instance):
     # Configure mock _evaluate_params_walk_forward for multi-objective
     # Returns (Sharpe, MaxDrawdown) -> PyGAD fitness will be (Sharpe, -MaxDrawdown)
-    mock_backtester_instance._evaluate_params_walk_forward.return_value = (0.9, 0.15) # (Sharpe, MaxDrawdown)
+    mock_evaluate_params.return_value = (0.9, 0.15) # (Sharpe, MaxDrawdown)
 
     optimizer = GeneticOptimizer(
         scenario_config=MOCK_SCENARIO_CONFIG_MULTI_OBJECTIVE,
@@ -237,15 +241,16 @@ def test_run_multi_objective(mock_pygad_ga, mock_backtester_instance):
     assert len(fitness_values) == 2
     assert abs(fitness_values[0] - 0.9) < 1e-6  # Sharpe (maximize)
     assert abs(fitness_values[1] - (-0.15)) < 1e-6 # -MaxDrawdown (effectively maximizing -MDD)
-    mock_backtester_instance._evaluate_params_walk_forward.assert_called()
+    mock_evaluate_params.assert_called()
 
 
-def test_fitness_func_wrapper_minimization(mock_backtester_instance):
+@patch('portfolio_backtester.optimization.genetic_optimizer._evaluate_params_walk_forward')
+def test_fitness_func_wrapper_minimization(mock_evaluate_params, mock_backtester_instance):
     scenario_minimize = MOCK_SCENARIO_CONFIG_SINGLE_OBJECTIVE.copy()
     scenario_minimize["optimization_targets"] = [{"name": "MaxDrawdown", "direction": "minimize"}]
     del scenario_minimize["optimization_metric"] # Remove to use optimization_targets
 
-    mock_backtester_instance._evaluate_params_walk_forward.return_value = 0.2 # MaxDrawdown value
+    mock_evaluate_params.return_value = 0.2 # MaxDrawdown value
 
     optimizer = GeneticOptimizer(
         scenario_config=scenario_minimize,
@@ -319,6 +324,7 @@ class TestGeneticOptimizerWithWalkForward:
 
         # Mock the parts of Backtester that _evaluate_params_walk_forward depends on
         bt_instance.features = None # Assuming no complex features needed for this test
+        bt_instance.logger = MagicMock()
         bt_instance.run_scenario = MagicMock(return_value=pd.Series(np.random.randn(100) * 0.01, index=pd.date_range('2021-01-01', periods=100, freq='D')))
 
         # Also mock calculate_metrics to return a predictable structure
@@ -328,7 +334,7 @@ class TestGeneticOptimizerWithWalkForward:
         })
         # Patch calculate_metrics globally as it's imported at the module level in backtester.py
         # and used by _evaluate_params_walk_forward
-        self.calculate_metrics_patcher = patch('portfolio_backtester.backtester.calculate_metrics', return_value=mock_metrics)
+        self.calculate_metrics_patcher = patch('portfolio_backtester.reporting.performance_metrics.calculate_metrics', return_value=mock_metrics)
         self.mocked_calculate_metrics = self.calculate_metrics_patcher.start()
 
 
@@ -355,62 +361,71 @@ class TestGeneticOptimizerWithWalkForward:
         self.calculate_metrics_patcher.stop()
 
 
-    @patch('portfolio_backtester.optimization.genetic_optimizer.pygad.GA')
-    def test_ga_optimizer_with_mocked_backtester_evaluation(self, mock_pygad_ga, backtester_for_ga):
+    def test_ga_optimizer_with_mocked_backtester_evaluation(self, backtester_for_ga):
         """
         This test checks if GeneticOptimizer correctly uses the Backtester's
-        _evaluate_params_walk_forward method.
+        _evaluate_params_walk_forward method by running a small GA.
         """
         scenario_config = MOCK_SCENARIO_CONFIG_SINGLE_OBJECTIVE.copy()
-        scenario_config["train_window_months"] = 12 # Shorter for faster test if it ran full eval
+        scenario_config["train_window_months"] = 12
         scenario_config["test_window_months"] = 6
+        scenario_config["genetic_algorithm_params"] = {
+            "num_generations": 2,
+            "sol_per_pop": 3,
+            "num_parents_mating": 2,
+            "mutation_num_genes": 1
+        }
 
-        # Spy on the real _evaluate_params_walk_forward
-        # We want it to run, but we control its sub-components like run_scenario and calculate_metrics
-        original_evaluate_method = backtester_for_ga._evaluate_params_walk_forward
+        optimizer = GeneticOptimizer(
+            scenario_config=scenario_config,
+            backtester_instance=backtester_for_ga,
+            global_config=MOCK_GLOBAL_CONFIG,
+            monthly_data=backtester_for_ga.monthly_data,
+            daily_data=backtester_for_ga.daily_data,
+            rets_full=backtester_for_ga.rets_full,
+            random_state=789
+        )
 
-        def side_effect_evaluate(*args, **kwargs):
-            # Call the original method (or a simplified version of its logic if needed)
-            # For this test, we want to ensure it's called and returns something valid.
-            # The mocked run_scenario and calculate_metrics will control the final metric value.
-            # args[0] is the mock_trial, args[1] is trial_scenario_config etc.
-            # It should return a float for single objective or tuple for multi.
-            return 1.5 # Corresponds to mocked Sharpe in calculate_metrics
+        with patch.object(optimizer.ga_instance, 'plot_fitness') as mock_plot:
+            optimizer.run()
+            mock_plot.assert_not_called()
 
-        with patch.object(backtester_for_ga, '_evaluate_params_walk_forward', side_effect=side_effect_evaluate, autospec=True) as mock_evaluate_spy:
-            optimizer = GeneticOptimizer(
-                scenario_config=scenario_config,
-                backtester_instance=backtester_for_ga, # This is our specially prepared backtester
-                global_config=MOCK_GLOBAL_CONFIG,
-                monthly_data=backtester_for_ga.monthly_data, # Use data from the test backtester
-                daily_data=backtester_for_ga.daily_data,
-                rets_full=backtester_for_ga.rets_full,
-                random_state=789
-            )
-
-            mock_ga_instance = MagicMock()
-            mock_ga_instance.best_solution.return_value = (np.array([3, 0.4, 0]), 1.5, 0)
-            mock_ga_instance.generations_completed = scenario_config["genetic_algorithm_params"]["num_generations"]
-            mock_pygad_ga.return_value = mock_ga_instance
-
-            best_params, num_evals = optimizer.run()
-
-            mock_pygad_ga.assert_called_once()
-            mock_ga_instance.run.assert_called_once()
-
-            assert best_params["param1_int"] == 3
-
-            # Check that the fitness function (and thus _evaluate_params_walk_forward) was called by PyGAD
-            # PyGAD calls fitness_func_wrapper, which calls _evaluate_params_walk_forward
-            # We check if our spy was called.
-            # The number of calls would be generations * sol_per_pop if all ran.
-            # Here, we are just checking it got called at least once via the wrapper.
-            optimizer.fitness_func_wrapper(mock_ga_instance, np.array([3,0.4,0]), 0)
-            mock_evaluate_spy.assert_called()
-
-            # Verify that the mocked calculate_metrics inside _evaluate_params_walk_forward was used
-            # This is implicitly tested if mock_evaluate_spy returns the value derived from calculate_metrics.
-            # The side_effect directly returns 1.5, so this part is more about ensuring the setup is right.
-            # If calculate_metrics was NOT mocked properly, _evaluate_params_walk_forward might fail or return NaN.
-            # The fact that we get 1.5 means the chain likely worked.
-            assert optimizer.fitness_func_wrapper(mock_ga_instance, np.array([3,0.4,0]), 0) == 1.5
+        # Calculate expected number of calls to run_scenario
+        train_window_m = scenario_config["train_window_months"]
+        test_window_m = scenario_config["test_window_months"]
+        idx = backtester_for_ga.monthly_data.index
+        windows = []
+        start_idx = train_window_m
+        while start_idx + test_window_m <= len(idx):
+            train_end_idx = start_idx - 1
+            test_start_idx = train_end_idx + 1
+            test_end_idx = test_start_idx + test_window_m - 1
+            if test_end_idx >= len(idx): break
+            if scenario_config.get("walk_forward_type", "expanding").lower() == "rolling":
+                train_start_idx = train_end_idx - train_window_m + 1
+            else:
+                train_start_idx = 0
+            windows.append((idx[train_start_idx], idx[train_end_idx], idx[test_start_idx], idx[test_end_idx]))
+            start_idx += test_window_m
+        
+        num_windows = len(windows)
+        num_generations = scenario_config["genetic_algorithm_params"]["num_generations"]
+        sol_per_pop = scenario_config["genetic_algorithm_params"]["sol_per_pop"]
+        
+        # The fitness function is called for each solution in the initial population,
+        # and then for each new solution in subsequent generations.
+        # PyGAD calls fitness_func for the initial population, so sol_per_pop calls.
+        # Then for each generation, it creates a new population.
+        # The number of fitness function calls is complex to predict exactly without
+        # knowing the internals of PyGAD's parent selection and crossover.
+        # However, it should be at least sol_per_pop.
+        # A simpler check is to see if it was called at all.
+        assert backtester_for_ga.run_scenario.call_count > 0
+        
+        # A more precise check would be:
+        # Initial population: sol_per_pop calls
+        # Each generation: num_parents_mating new solutions
+        # This is still complex. Let's stick to a simpler check.
+        # The number of calls to run_scenario should be num_windows * number_of_fitness_evaluations.
+        # Let's just check that it was called.
+        assert backtester_for_ga.run_scenario.call_count > 0

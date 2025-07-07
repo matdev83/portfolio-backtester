@@ -11,7 +11,7 @@ import sys
 # Now import the module to be tested
 from src.portfolio_backtester import config_loader
 from src.portfolio_backtester import config_initializer
-from src.portfolio_backtester.strategies.base_strategy import BaseStrategy # For mocking
+from src.portfolio_backtester.strategies.base_strategy import BaseStrategy
 
 # Define mock content for YAML files
 MOCK_PARAMS_YAML_CONTENT = """
@@ -80,13 +80,13 @@ BACKTEST_SCENARIOS:
 
 class MockStrategy(BaseStrategy):
     @classmethod
-    def tunable_parameters(cls) -> list[str]:
-        return ["mock_strategy_param1", "num_holdings"] # num_holdings is often a strategy param
+    def tunable_parameters(cls) -> set[str]:
+        return {"mock_strategy_param1", "num_holdings"} # num_holdings is often a strategy param
 
 class AnotherMockStrategy(BaseStrategy):
      @classmethod
-     def tunable_parameters(cls) -> list[str]:
-        return ["leverage"] # leverage is often a strategy param
+     def tunable_parameters(cls) -> set[str]:
+        return {"leverage"} # leverage is often a strategy param
 
 class TestConfigLoader(unittest.TestCase):
 
@@ -114,8 +114,8 @@ class TestConfigLoader(unittest.TestCase):
             if strategy_name == "mock_strategy_non_default":
                 class MockStrategyWithNonDefaultParam(BaseStrategy):
                     @classmethod
-                    def tunable_parameters(cls) -> list[str]:
-                        return ["param_not_in_defaults", "num_holdings"]
+                    def tunable_parameters(cls) -> set[str]:
+                        return {"param_not_in_defaults", "num_holdings"}
                 return MockStrategyWithNonDefaultParam
             return None
         self.mock_resolve.side_effect = resolve_side_effect

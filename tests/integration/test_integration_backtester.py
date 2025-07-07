@@ -8,6 +8,7 @@ from PIL import Image # For image validation
 import tempfile
 import sys
 import pandas as pd # Added import
+import numpy as np # Added import
 
 # Directory to store plots generated during tests
 PLOTS_DIR = Path("plots")
@@ -317,7 +318,7 @@ def cleanup_generated_files_session_scoped(request):
 # Programmatic Integration Test for FilteredLaggedMomentumStrategy
 from src.portfolio_backtester.strategies.filtered_lagged_momentum_strategy import FilteredLaggedMomentumStrategy
 from src.portfolio_backtester.config_loader import load_config # load_config might not be needed if config_data is directly used
-from src.portfolio_backtester.feature import Momentum # For generating feature names
+from src.portfolio_backtester.features.momentum import Momentum # For generating feature names
 # from src.portfolio_backtester.strategies import STRATEGY_REGISTRY # STRATEGY_REGISTRY is not exposed here. Test will import class directly.
 # NOTE: YFinanceDataSource and FeatureEngine might be heavy for a pure unit test environment.
 # This test assumes they can be instantiated or would be mocked in a more isolated setup.
@@ -405,20 +406,20 @@ def test_filtered_lagged_momentum_strategy_logic(): # Renamed test
 
     # For Jan scores (AAPL=0.10, MSFT=0.05): AAPL is winner. Expected blended score for AAPL is 1.0.
     # This applies to generated_weights_df.loc[dates_monthly[1]] (Feb end)
-    assert abs(generated_weights_df.loc[dates_monthly[1], 'AAPL'] - 1.0) < 1e-6
-    assert abs(generated_weights_df.loc[dates_monthly[1], 'MSFT'] - 0.0) < 1e-6
+    assert np.isclose(pd.to_numeric(generated_weights_df.loc[dates_monthly[1], 'AAPL']), 1.0, atol=1e-6)
+    assert np.isclose(pd.to_numeric(generated_weights_df.loc[dates_monthly[1], 'MSFT']), 0.0, atol=1e-6)
 
     # For Feb scores (AAPL=0.12, MSFT=0.06): AAPL is winner.
     # This applies to generated_weights_df.loc[dates_monthly[2]] (Mar end)
-    assert abs(generated_weights_df.loc[dates_monthly[2], 'AAPL'] - 1.0) < 1e-6
-    assert abs(generated_weights_df.loc[dates_monthly[2], 'MSFT'] - 0.0) < 1e-6
+    assert np.isclose(pd.to_numeric(generated_weights_df.loc[dates_monthly[2], 'AAPL']), 1.0, atol=1e-6)
+    assert np.isclose(pd.to_numeric(generated_weights_df.loc[dates_monthly[2], 'MSFT']), 0.0, atol=1e-6)
 
     # For Mar scores (AAPL=0.08, MSFT=0.10): MSFT is winner.
     # This applies to generated_weights_df.loc[dates_monthly[3]] (Apr end)
-    assert abs(generated_weights_df.loc[dates_monthly[3], 'MSFT'] - 1.0) < 1e-6
-    assert abs(generated_weights_df.loc[dates_monthly[3], 'AAPL'] - 0.0) < 1e-6
+    assert np.isclose(pd.to_numeric(generated_weights_df.loc[dates_monthly[3], 'MSFT']), 1.0, atol=1e-6)
+    assert np.isclose(pd.to_numeric(generated_weights_df.loc[dates_monthly[3], 'AAPL']), 0.0, atol=1e-6)
 
     # For Apr scores (AAPL=0.11, MSFT=0.07): AAPL is winner
     # This applies to generated_weights_df.loc[dates_monthly[4]] (May end)
-    assert abs(generated_weights_df.loc[dates_monthly[4], 'AAPL'] - 1.0) < 1e-6
-    assert abs(generated_weights_df.loc[dates_monthly[4], 'MSFT'] - 0.0) < 1e-6
+    assert np.isclose(pd.to_numeric(generated_weights_df.loc[dates_monthly[4], 'AAPL']), 1.0, atol=1e-6)
+    assert np.isclose(pd.to_numeric(generated_weights_df.loc[dates_monthly[4], 'MSFT']), 0.0, atol=1e-6)

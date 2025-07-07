@@ -3,7 +3,7 @@ import pandas as pd
 
 from .base_strategy import BaseStrategy
 from ..signal_generators import FilteredBlendedMomentumSignalGenerator
-from ..feature import Feature # For type hinting in get_required_features
+from ..features.base import Feature # For type hinting in get_required_features
 
 class FilteredLaggedMomentumStrategy(BaseStrategy):
     """

@@ -5,12 +5,15 @@ import numpy as np
 from src.portfolio_backtester.strategies.base_strategy import BaseStrategy
 from src.portfolio_backtester.signal_generators import MomentumSignalGenerator
 from src.portfolio_backtester.roro_signals import DummyRoRoSignal
-from src.portfolio_backtester.feature import Momentum
+from src.portfolio_backtester.features.momentum import Momentum
 
 # --- Mock Components ---
-class TestSignalGenerator(MomentumSignalGenerator):
+from typing import Set # Added for Set type hint
+from src.portfolio_backtester.features.base import Feature # Added for type hinting
+
+class MockSignalGenerator(MomentumSignalGenerator):
     """A simple signal generator for testing."""
-    def required_features(self):
+    def required_features(self) -> Set[Feature]:
         return {Momentum(lookback_months=1)}
 
     def scores(self, features: dict) -> pd.DataFrame:
@@ -31,7 +34,7 @@ class TestSignalGenerator(MomentumSignalGenerator):
 
 class StrategyWithDummyRoRo(BaseStrategy):
     """A test strategy that uses the DummyRoRoSignal."""
-    signal_generator_class = TestSignalGenerator
+    signal_generator_class = MockSignalGenerator
     roro_signal_class = DummyRoRoSignal
 
     def __init__(self, strategy_config: dict):
@@ -129,7 +132,7 @@ class TestBaseStrategyWithRoRo(unittest.TestCase):
             else:
                 # Weights should be zero
                 self.assertTrue(np.allclose(weights_at_date, 0), f"Weights should be zero on {date} (RoRo OFF)")
-                self.assertAlmostEqual(weights_at_date.sum(), 0.0, places=5, msg=f"Total weight should be zero on {date} (RoRo OFF)")
+                self.assertAlmostEqual(float(weights_at_date.sum().item()), 0.0, places=5, msg=f"Total weight should be zero on {date} (RoRo OFF)")
 
 if __name__ == '__main__':
     unittest.main()

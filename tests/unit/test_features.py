@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from src.portfolio_backtester.feature import Momentum
+from src.portfolio_backtester.features.momentum import Momentum
 
 class TestMomentumFeature:
     @pytest.fixture

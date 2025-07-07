@@ -5,7 +5,7 @@ from typing import Set
 
 import pandas as pd
 
-from ..feature import Feature
+from ..features.base import Feature
 
 
 class BaseRoRoSignal(ABC):

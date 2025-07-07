@@ -7,7 +7,7 @@ from typing import Optional # Import Optional
 
 from src.portfolio_backtester.backtester import Backtester, _resolve_strategy
 from src.portfolio_backtester.config_loader import GLOBAL_CONFIG, BACKTEST_SCENARIOS
-from src.portfolio_backtester.feature import get_required_features_from_scenarios
+from src.portfolio_backtester.features.feature_helpers import get_required_features_from_scenarios
 from src.portfolio_backtester.feature_engineering import precompute_features
 
 class TestBacktester(unittest.TestCase):
@@ -78,7 +78,7 @@ class TestBacktester(unittest.TestCase):
         # Pre-compute features for the mock data
         strategy_registry = {"momentum": _resolve_strategy("momentum")}
         # Manually add all possible lookback months to required features for testing
-        from src.portfolio_backtester.feature import Momentum
+        from src.portfolio_backtester.features.momentum import Momentum
         required_features = get_required_features_from_scenarios(self.scenarios, strategy_registry)
         for i in range(1, 13):
             required_features.add(Momentum(lookback_months=i))
@@ -358,7 +358,7 @@ class TestBacktester(unittest.TestCase):
 
         # Pre-compute features for the mock data for this specific backtester instance
         strategy_registry = {"momentum": _resolve_strategy("momentum")}
-        from src.portfolio_backtester.feature import Momentum
+        from src.portfolio_backtester.features.momentum import Momentum
         required_features = get_required_features_from_scenarios(self.scenarios, strategy_registry)
         for i in range(1, 13): # Using a smaller, more relevant range
             required_features.add(Momentum(lookback_months=i))
@@ -371,21 +371,21 @@ class TestBacktester(unittest.TestCase):
         rets_full = self.mock_data.pct_change().fillna(0)
         
         # Patch Optuna related calls if they are external or too heavy
-        with patch('src.portfolio_backtester.backtester.optuna.create_study'), \
-             patch('src.portfolio_backtester.backtester.Progress'), \
+        with patch('src.portfolio_backtester.backtester_logic.optimization.optuna.create_study'), \
+             patch('src.portfolio_backtester.backtester_logic.optimization.Progress'), \
              patch('src.portfolio_backtester.backtester.Backtester.run_scenario') as mock_run_scenario:
 
             # Mock run_scenario to return some dummy returns
             mock_run_scenario.return_value = pd.Series(np.random.randn(100), index=pd.date_range(start="2020-01-01", periods=100))
 
-            backtester_for_wfo._run_optimize_mode(self.scenarios[0], self.mock_data, self.mock_data, rets_full)
+            backtester_for_wfo.run_optimize_mode(self.scenarios[0], self.mock_data, self.mock_data, rets_full)
         
         self.assertIn("Test_Momentum_WFO (Optimized)", backtester_for_wfo.results)
         result_data = backtester_for_wfo.results["Test_Momentum_WFO (Optimized)"]
         self.assertIsInstance(result_data["returns"], pd.Series)
         self.assertFalse(result_data["returns"].empty)
 
-    @patch('src.portfolio_backtester.backtester.GeneticOptimizer')
+    @patch('src.portfolio_backtester.backtester_logic.optimization.GeneticOptimizer')
     @patch('src.portfolio_backtester.backtester.Backtester._get_data_source') # Mock data source loading
     @patch('src.portfolio_backtester.backtester.precompute_features') # Mock feature precomputation
     def test_run_optimization_with_genetic_optimizer(self, mock_precompute, mock_get_ds, mock_genetic_optimizer_class):
@@ -441,9 +441,9 @@ class TestBacktester(unittest.TestCase):
         self.assertEqual(optimal_params, {"param1": 10})
         self.assertEqual(num_trials, 50)
 
-    @patch('src.portfolio_backtester.backtester.Backtester._setup_optuna_study')
-    @patch('src.portfolio_backtester.backtester.Backtester._evaluate_params_walk_forward')
-    @patch('src.portfolio_backtester.backtester.Progress') # Mock Progress bar
+    @patch('src.portfolio_backtester.backtester_logic.optimization._setup_optuna_study')
+    @patch('src.portfolio_backtester.backtester_logic.optimization._evaluate_params_walk_forward')
+    @patch('src.portfolio_backtester.backtester_logic.optimization.Progress') # Mock Progress bar
     @patch('src.portfolio_backtester.backtester.Backtester._get_data_source')
     @patch('src.portfolio_backtester.backtester.precompute_features')
     def test_run_optimization_with_optuna_optimizer(self, mock_precompute, mock_get_ds, mock_progress, mock_evaluate, mock_setup_study):

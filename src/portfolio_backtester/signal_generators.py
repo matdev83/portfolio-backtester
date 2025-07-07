@@ -6,15 +6,13 @@ from typing import Set
 import numpy as np
 import pandas as pd
 
-from .feature import (
-    Feature,
-    Momentum,
-    SharpeRatio,
-    SortinoRatio,
-    CalmarRatio,
-    VAMS,
-    DPVAMS,
-)
+from .features.base import Feature
+from .features.momentum import Momentum
+from .features.sharpe_ratio import SharpeRatio
+from .features.sortino_ratio import SortinoRatio
+from .features.calmar_ratio import CalmarRatio
+from .features.vams import VAMS
+from .features.dp_vams import DPVAMS
 
 
 class BaseSignalGenerator(ABC):
@@ -201,7 +199,7 @@ class DPVAMSSignalGenerator(BaseSignalGenerator):
                         features.add(
                             DPVAMS(
                                 lookback_months=params.get("lookback_months", 6),
-                                alpha=val,
+                                alpha=float(val),
                             )
                         )
         return features

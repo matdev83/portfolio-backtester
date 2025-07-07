@@ -6,7 +6,8 @@ import pandas as pd
 import numpy as np
 
 if TYPE_CHECKING:
-    from ..feature import Feature, ATRFeature # Forward reference for ATRFeature
+    from ..features.base import Feature
+    from ..features.atr import ATRFeature # Forward reference for ATRFeature
     from ..strategies.base_strategy import BaseStrategy # For type hinting if needed
 
 class BaseStopLoss(ABC):
@@ -128,7 +129,7 @@ class AtrBasedStopLoss(BaseStopLoss):
         self.atr_multiple = self.stop_loss_specific_config.get("atr_multiple", 2.5)
 
     def get_required_features(self) -> Set[Feature]:
-        from ..feature import ATRFeature # Import here to avoid circular dependency at module load time
+        from ..features.atr import ATRFeature # Import here to avoid circular dependency at module load time
         return {ATRFeature(atr_period=self.atr_length)}
 
     def calculate_stop_levels(
@@ -269,7 +270,7 @@ class AtrBasedStopLoss(BaseStopLoss):
         return adjusted_weights
 
 # Example of how ATRFeature might be defined (will be in feature.py)
-# from ..feature import Feature
+# from ..features.base import Feature
 # class ATRFeature(Feature):
 #     def __init__(self, atr_period: int):
 #         super().__init__(params={"atr_period": atr_period})

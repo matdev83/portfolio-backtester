@@ -2,6 +2,7 @@ import pygad
 import numpy as np
 import logging # Import logging
 import optuna
+from ..evaluation_logic import _evaluate_params_walk_forward
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -150,7 +151,8 @@ class GeneticOptimizer:
         # It needs access to `self.backtester.run_scenario`, `calculate_metrics`, etc.
         # This is a significant dependency.
         # For now, we'll use the passed `backtester_instance`
-        objectives_values = self.backtester._evaluate_params_walk_forward(
+        objectives_values = _evaluate_params_walk_forward(
+            self.backtester, # Pass the backtester instance as 'self'
             mock_trial, # This mock trial might not be fully compatible
             trial_scenario_config,
             windows,
@@ -176,6 +178,10 @@ class GeneticOptimizer:
                  directions = ["maximize"] * len(self.metrics_to_optimize)
 
 
+            # Ensure objectives_values is iterable
+            if not isinstance(objectives_values, (list, tuple)):
+                objectives_values = [objectives_values] # Wrap in list if single value
+
             for i, val in enumerate(objectives_values):
                 if directions[i] == "minimize":
                     processed_objectives.append(-val if np.isfinite(val) else np.inf) # PyGAD maximizes, so negate for minimization
@@ -185,7 +191,9 @@ class GeneticOptimizer:
             return processed_objectives
         else:
             # Single objective
-            fitness_value = objectives_values
+            # Ensure fitness_value is a single float, not a tuple
+            fitness_value = objectives_values[0] if isinstance(objectives_values, (list, tuple)) else objectives_values
+            
             # PyGAD maximizes. If original objective was minimize, negate it.
             opt_target_config = self.scenario_config.get("optimization_targets")
             direction = "maximize" # Default
@@ -263,8 +271,13 @@ class GeneticOptimizer:
 
                 # Check for zero returns equivalent (stagnation or very poor performance)
                 # This is a simplified check. A more robust one would look at the variance of fitness values.
-                if abs(current_best_fitness - self.best_fitness_so_far) < 1e-6 : # Could be configurable tolerance
-                    self.zero_fitness_streak +=1
+                if np.isfinite(current_best_fitness) and np.isfinite(self.best_fitness_so_far):
+                    if abs(current_best_fitness - self.best_fitness_so_far) < 1e-6: # Could be configurable tolerance
+                        self.zero_fitness_streak += 1
+                    else:
+                        self.zero_fitness_streak = 0
+                elif current_best_fitness == self.best_fitness_so_far: # Both are -inf or +inf
+                    self.zero_fitness_streak += 1
                 else:
                     self.zero_fitness_streak = 0
 

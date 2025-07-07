@@ -1,12 +1,12 @@
 from typing import Set
 import pandas as pd
-from .feature import Feature
+from .features.base import Feature
 
 def precompute_features(
     data: pd.DataFrame,
     required_features: Set[Feature],
-    benchmark_data: pd.Series = None,
-    legacy_monthly_closes: pd.DataFrame = None
+    benchmark_data: pd.Series | None = None,
+    legacy_monthly_closes: pd.DataFrame | None = None
 ) -> dict[str, pd.DataFrame | pd.Series]:
     """
     Pre-computes all necessary features and indicators for all strategies.

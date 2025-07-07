@@ -11,7 +11,7 @@ from src.portfolio_backtester.strategies import (
     VAMSNoDownsideStrategy,
     MomentumDvolSizerStrategy
 )
-from src.portfolio_backtester.feature import Momentum # For feature name generation
+from src.portfolio_backtester.features.momentum import Momentum # For feature name generation
 
 strategies_to_test_lag = [
     (MomentumStrategy, {"lookback_months": 6}),

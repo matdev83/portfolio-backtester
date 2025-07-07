@@ -2,7 +2,7 @@ import unittest
 import pandas as pd
 import numpy as np
 from src.portfolio_backtester.strategies.calmar_momentum_strategy import CalmarMomentumStrategy
-from src.portfolio_backtester.feature import CalmarRatio
+from src.portfolio_backtester.features.calmar_ratio import CalmarRatio
 from src.portfolio_backtester.feature_engineering import precompute_features
 
 

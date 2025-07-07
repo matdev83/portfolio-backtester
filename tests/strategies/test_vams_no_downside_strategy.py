@@ -2,7 +2,7 @@ import unittest
 import pandas as pd
 import numpy as np
 from src.portfolio_backtester.strategies.vams_no_downside_strategy import VAMSNoDownsideStrategy
-from src.portfolio_backtester.feature import VAMS
+from src.portfolio_backtester.features.vams import VAMS
 from src.portfolio_backtester.feature_engineering import precompute_features
 
 

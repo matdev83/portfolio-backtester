@@ -10,7 +10,7 @@ import os
 # Add src to path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from portfolio_backtester.utils import _resolve_strategy
+from src.portfolio_backtester.utils import _resolve_strategy
 from portfolio_backtester.config_initializer import _get_strategy_tunable_params, populate_default_optimizations
 from portfolio_backtester.config_loader import OPTIMIZER_PARAMETER_DEFAULTS
 
@@ -64,7 +64,10 @@ class TestParameterFiltering:
         
         # Get strategy tunable parameters
         strat_cls = _resolve_strategy(base_scen_cfg["strategy"])
-        strategy_tunable_params = strat_cls.tunable_parameters()
+        if strat_cls:
+            strategy_tunable_params = strat_cls.tunable_parameters()
+        else:
+            strategy_tunable_params = set() # Default to empty set if strategy not found
         
         # Apply filtering logic (from optuna_objective.py)
         SPECIAL_SCEN_CFG_KEYS = ["position_sizer"]
@@ -107,7 +110,10 @@ class TestParameterFiltering:
         
         # Get strategy tunable parameters
         strat_cls = _resolve_strategy(base_scen_cfg["strategy"])
-        strategy_tunable_params = strat_cls.tunable_parameters()
+        if strat_cls:
+            strategy_tunable_params = strat_cls.tunable_parameters()
+        else:
+            strategy_tunable_params = set() # Default to empty set if strategy not found
         
         # Add sizer parameters (from optuna_objective.py logic)
         sizer_param_map = {
@@ -187,6 +193,8 @@ class TestParameterFiltering:
             if strat_cls:
                 params = strat_cls.tunable_parameters()
                 strategy_params[strategy_name] = params
+            else:
+                strategy_params[strategy_name] = set() # Handle case where strategy not found
         
         # Verify we have different parameter sets
         param_sets = list(strategy_params.values())

@@ -10,15 +10,12 @@ from src.portfolio_backtester.signal_generators import (
     DPVAMSSignalGenerator,
     FilteredBlendedMomentumSignalGenerator, # Added
 )
-from src.portfolio_backtester.feature import (
-    Momentum,
-    SharpeRatio,
-    SortinoRatio,
-    CalmarRatio,
-    VAMS,
-    DPVAMS,
-    Feature, # Added for type hint consistency
-)
+from src.portfolio_backtester.features.momentum import Momentum
+from src.portfolio_backtester.features.sharpe_ratio import SharpeRatio
+from src.portfolio_backtester.features.sortino_ratio import SortinoRatio
+from src.portfolio_backtester.features.calmar_ratio import CalmarRatio
+from src.portfolio_backtester.features.vams import VAMS
+from src.portfolio_backtester.features.dp_vams import DPVAMS
 
 # Test data
 mock_features_dict = {
@@ -400,6 +397,10 @@ def test_fbm_generator_scores_filtering_and_blending(sample_features_for_blended
 
     test_date = pd.to_datetime('2023-01-31')
     scores_at_date = all_scores.loc[test_date].dropna()
+    if scores_at_date.empty:
+        scores_at_date = pd.Series(dtype='float64')
+    elif isinstance(scores_at_date, pd.DataFrame):
+        scores_at_date = scores_at_date.iloc[:, 0] # Convert single-column DataFrame to Series
 
     # Current winners (std mom): A (0.15), B (0.14)
     # Current losers (std mom): L (-0.15), K (-0.14)
@@ -415,7 +416,7 @@ def test_fbm_generator_scores_filtering_and_blending(sample_features_for_blended
     # Blended (lambda=0.5): A=1.0, B=0.75, K=0.5, L=0.25
 
     # Sorting by index for consistent comparison with expected_scores
-    scores_at_date_sorted = scores_at_date.sort_index()
+    scores_at_date_sorted = scores_at_date.sort_index() if isinstance(scores_at_date, (pd.Series, pd.DataFrame)) else scores_at_date # Handle scalar case
     expected_scores_data = {'A': 1.0, 'B': 0.75, 'K': 0.50, 'L': 0.25}
     expected_scores_series = pd.Series(expected_scores_data, name=test_date).sort_index()
 
@@ -423,7 +424,12 @@ def test_fbm_generator_scores_filtering_and_blending(sample_features_for_blended
 
     # Test another date to ensure loop consistency
     test_date_2 = pd.to_datetime('2023-02-28')
-    scores_at_date_2 = all_scores.loc[test_date_2].dropna().sort_index()
+    scores_at_date_2 = all_scores.loc[test_date_2].dropna()
+    if scores_at_date_2.empty:
+        scores_at_date_2 = pd.Series(dtype='float64')
+    elif isinstance(scores_at_date_2, pd.DataFrame):
+        scores_at_date_2 = scores_at_date_2.iloc[:, 0] # Convert single-column DataFrame to Series
+    scores_at_date_2 = scores_at_date_2.sort_index()
     # Using data from Feb, expected scores should be the same due to parallel data pattern
     expected_scores_data_2 = {'A': 1.0, 'B': 0.75, 'K': 0.50, 'L': 0.25}
     expected_scores_series_2 = pd.Series(expected_scores_data_2, name=test_date_2).sort_index()

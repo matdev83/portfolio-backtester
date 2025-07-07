@@ -3,7 +3,9 @@ import pandas as pd # Keep for general pd use, though not strictly needed by thi
 
 from .base_strategy import BaseStrategy
 from ..signal_generators import MomentumSignalGenerator # Original generator
-from ..feature import Momentum, BenchmarkSMA, Feature
+from ..features.momentum import Momentum
+from ..features.benchmark_sma import BenchmarkSMA
+from ..features.base import Feature
 
 
 class MomentumStrategy(BaseStrategy):

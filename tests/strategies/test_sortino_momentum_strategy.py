@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from src.portfolio_backtester.strategies.sortino_momentum_strategy import SortinoMomentumStrategy
 
-from src.portfolio_backtester.feature import SortinoRatio
+from src.portfolio_backtester.features.sortino_ratio import SortinoRatio
 from src.portfolio_backtester.feature_engineering import precompute_features
 
 class TestSortinoMomentumStrategy(unittest.TestCase):
