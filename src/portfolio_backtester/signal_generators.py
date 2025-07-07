@@ -38,6 +38,7 @@ class BaseSignalGenerator(ABC):
 
 
 class MomentumSignalGenerator(BaseSignalGenerator):
+    zero_if_nan = True  # Generate signals with available assets, zero out NaN assets
     def required_features(self) -> Set[Feature]:
         features: Set[Feature] = set()
         params = self._params()

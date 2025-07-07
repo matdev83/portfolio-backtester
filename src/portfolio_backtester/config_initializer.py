@@ -68,29 +68,45 @@ def populate_default_optimizations(scenarios: list, optimizer_parameter_defaults
                   f"not defined in OPTIMIZER_PARAMETER_DEFAULTS: {invalid_params}")
         
 
-        # Get tunable parameters from the strategy
-        strategy_params_to_add = _get_strategy_tunable_params(scenario_config["strategy"])
+        # Only add missing parameters if the scenario has no optimize list defined originally
+        # This preserves scenarios that intentionally want to optimize only a subset of parameters
+        original_optimize_list = scenario_config.get("optimize", [])
+        
+        # Check if this scenario originally had an optimize list defined
+        # If it did, don't add any missing parameters - respect the explicit choice
+        if len(original_optimize_list) > 0:
+            # Scenario has explicit optimization parameters - don't add any missing ones
+            # Just populate strategy_params with defaults for existing optimization parameters
+            for param_name in optimized_parameters_in_scenario:
+                if param_name not in scenario_config["strategy_params"] and param_name in optimizer_parameter_defaults:
+                    param_config = optimizer_parameter_defaults[param_name]
+                    default_value = _get_default_value_for_parameter(param_config)
+                    scenario_config["strategy_params"][param_name] = default_value
+        else:
+            # Scenario has no optimize list - add all tunable parameters
+            # Get tunable parameters from the strategy
+            strategy_params_to_add = _get_strategy_tunable_params(scenario_config["strategy"])
 
-        # Get tunable parameter from the sizer, if any
-        sizer_param_to_add = _get_sizer_tunable_param(scenario_config.get("position_sizer"), sizer_param_map)
+            # Get tunable parameter from the sizer, if any
+            sizer_param_to_add = _get_sizer_tunable_param(scenario_config.get("position_sizer"), sizer_param_map)
 
-        # Combine all potential parameters to be added
-        all_potential_params = strategy_params_to_add
-        if sizer_param_to_add:
-            all_potential_params.add(sizer_param_to_add)
+            # Combine all potential parameters to be added
+            all_potential_params = strategy_params_to_add
+            if sizer_param_to_add:
+                all_potential_params.add(sizer_param_to_add)
 
-        # Add missing parameters to the scenario's "optimize" list and populate strategy_params with defaults
-        for param_name in all_potential_params:
-            if param_name not in optimized_parameters_in_scenario:
-                # Ensure the parameter exists in OPTIMIZER_PARAMETER_DEFAULTS before adding
-                if param_name in optimizer_parameter_defaults:
-                    scenario_config["optimize"].append({"parameter": param_name})
-            
-            # Also populate strategy_params with default values if not already present
-            if param_name not in scenario_config["strategy_params"] and param_name in optimizer_parameter_defaults:
-                param_config = optimizer_parameter_defaults[param_name]
-                default_value = _get_default_value_for_parameter(param_config)
-                scenario_config["strategy_params"][param_name] = default_value
+            # Add missing parameters to the scenario's "optimize" list and populate strategy_params with defaults
+            for param_name in all_potential_params:
+                if param_name not in optimized_parameters_in_scenario:
+                    # Ensure the parameter exists in OPTIMIZER_PARAMETER_DEFAULTS before adding
+                    if param_name in optimizer_parameter_defaults:
+                        scenario_config["optimize"].append({"parameter": param_name})
+                
+                # Also populate strategy_params with default values if not already present
+                if param_name not in scenario_config["strategy_params"] and param_name in optimizer_parameter_defaults:
+                    param_config = optimizer_parameter_defaults[param_name]
+                    default_value = _get_default_value_for_parameter(param_config)
+                    scenario_config["strategy_params"][param_name] = default_value
 
 
 def _get_default_value_for_parameter(param_config: dict):

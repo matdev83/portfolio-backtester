@@ -87,10 +87,11 @@ class GeneticOptimizer:
 
         # Mock Optuna trial object for _evaluate_params_walk_forward
         class MockTrial:
-            def __init__(self, params, study=None):
+            def __init__(self, params, study=None, number=0):
                 self.params = params
                 self.user_attrs = {}
                 self.study = study # PyGAD doesn't have a direct equivalent of Optuna's study direction here in fitness_func
+                self.number = number # Add trial number attribute for compatibility
 
             def suggest_int(self, name, low, high, step=1): return self.params.get(name)
             def suggest_float(self, name, low, high, step=None, log=False): return self.params.get(name)
@@ -105,7 +106,7 @@ class GeneticOptimizer:
         # For multi-objective, PyGAD's NSGA-II handles this.
 
         mock_study = type('MockStudy', (), {'directions': [optuna.study.StudyDirection.MAXIMIZE for _ in self.metrics_to_optimize]})()
-        mock_trial = MockTrial(current_params, mock_study)
+        mock_trial = MockTrial(current_params, mock_study, solution_idx)
 
 
         # Extract walk-forward windows logic from Backtester or duplicate here

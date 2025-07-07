@@ -242,20 +242,33 @@ class BaseStrategy(ABC):
                 
             look = scores.loc[date]
 
-            if generator.zero_if_nan and look.isna().any():
-                weights.loc[date] = 0.0
-                w_prev = weights.loc[date]
-                continue
+            if look.isna().any():
+                if generator.zero_if_nan:
+                    # Process only valid assets, zero out NaN assets
+                    look_clean = look.dropna()
+                    if look_clean.count() == 0:
+                        # All assets have NaN, zero out everything
+                        weights.loc[date] = pd.Series(0.0, index=prices.columns)
+                        continue
+                    # Continue processing with valid assets only
+                    look = look_clean
+                else:
+                    # Maintain previous weights when there are NaN values
+                    weights.loc[date] = w_prev
+                    continue
 
             if look.count() == 0:
                 weights.loc[date] = w_prev
                 continue
 
-            look = look.dropna()
-
-            cand = self._calculate_candidate_weights(look)
+            # Filter scores to only include universe assets (exclude benchmark)
+            look_universe = look.reindex(prices.columns, fill_value=0.0)
+            cand = self._calculate_candidate_weights(look_universe)
+            # Ensure candidate weights cover all assets (zero for NaN assets)
+            cand_full = pd.Series(0.0, index=prices.columns)
+            cand_full.loc[cand.index] = cand
             # These are the preliminary target weights for the period, *before* stop loss or risk filters
-            w_target_pre_filter = self._apply_leverage_and_smoothing(cand, w_prev)
+            w_target_pre_filter = self._apply_leverage_and_smoothing(cand_full, w_prev)
 
             # --- Update Entry Prices ---
             # If a position is newly initiated (w_prev was 0, w_target_pre_filter is not)
@@ -263,7 +276,10 @@ class BaseStrategy(ABC):
             # `prices` DataFrame here is typically monthly close prices.
             current_period_prices = prices.loc[date] # Series of prices for the current date
 
-            for asset in w_target_pre_filter.index:
+            # Only iterate over universe assets (prices.columns), not all assets that might be in w_target_pre_filter
+            for asset in prices.columns:
+                if asset not in w_target_pre_filter.index:
+                    continue
                 # New position or flip in direction
                 if (w_prev[asset] == 0 and w_target_pre_filter[asset] != 0) or \
                    (np.sign(w_prev[asset]) != np.sign(w_target_pre_filter[asset]) and w_target_pre_filter[asset] != 0):
@@ -286,7 +302,9 @@ class BaseStrategy(ABC):
             )
 
             # If stop loss zeros out a position, update entry price to NaN
-            for asset in w_after_sl.index:
+            for asset in prices.columns:
+                if asset not in w_target_pre_filter.index or asset not in w_after_sl.index:
+                    continue
                 if w_target_pre_filter[asset] != 0 and w_after_sl[asset] == 0: # Position was closed by SL
                     self.entry_prices[asset] = np.nan
 
@@ -301,7 +319,9 @@ class BaseStrategy(ABC):
                 w_final[:] = 0.0
 
             # If risk filters zero out positions that SL didn't, also update entry prices
-            for asset in w_final.index:
+            for asset in prices.columns:
+                if asset not in w_after_sl.index or asset not in w_final.index:
+                    continue
                 if w_after_sl[asset] != 0 and w_final[asset] == 0:
                     self.entry_prices[asset] = np.nan
 

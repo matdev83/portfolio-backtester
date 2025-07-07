@@ -40,6 +40,7 @@ class CalmarRatio(Feature):
     def __init__(self, rolling_window: int):
         super().__init__(rolling_window=rolling_window)
         self.rolling_window = rolling_window
+        self.needs_close_prices_only = True  # This feature only needs close prices
 
     @property
     def name(self) -> str:
@@ -76,6 +77,7 @@ class VAMS(Feature):
     def __init__(self, lookback_months: int):
         super().__init__(lookback_months=lookback_months)
         self.lookback_months = lookback_months
+        self.needs_close_prices_only = True  # This feature only needs close prices
 
     @property
     def name(self) -> str:
@@ -98,6 +100,7 @@ class Momentum(Feature):
         self.lookback_months = lookback_months
         self.skip_months = skip_months
         self.name_suffix = name_suffix # e.g. "std" or "pred"
+        self.needs_close_prices_only = True  # This feature only needs close prices
 
     @property
     def name(self) -> str:
@@ -149,6 +152,7 @@ class SharpeRatio(Feature):
     def __init__(self, rolling_window: int):
         super().__init__(rolling_window=rolling_window)
         self.rolling_window = rolling_window
+        self.needs_close_prices_only = True  # This feature only needs close prices
 
     @property
     def name(self) -> str:
@@ -170,6 +174,7 @@ class SortinoRatio(Feature):
         super().__init__(rolling_window=rolling_window, target_return=target_return)
         self.rolling_window = rolling_window
         self.target_return = target_return
+        self.needs_close_prices_only = True  # This feature only needs close prices
 
     @property
     def name(self) -> str:
@@ -201,6 +206,7 @@ class DPVAMS(Feature):
         super().__init__(lookback_months=lookback_months, alpha=alpha)
         self.lookback_months = lookback_months
         self.alpha = alpha
+        self.needs_close_prices_only = True  # This feature only needs close prices
 
     @property
     def name(self) -> str:
