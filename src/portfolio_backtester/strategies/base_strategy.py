@@ -235,6 +235,11 @@ class BaseStrategy(ABC):
 
 
         for date in prices.index:
+            # Handle case where scores doesn't have data for this date
+            if date not in scores.index:
+                weights.loc[date] = w_prev
+                continue
+                
             look = scores.loc[date]
 
             if generator.zero_if_nan and look.isna().any():

@@ -319,14 +319,10 @@ def test_dpvams_required_features_optimize_no_step():
     }
     assert features == expected
 
-    # This part of the original test seems to have an issue with float step defaulting.
-    # np.arange(0.6, 0.7 + 1, 1) -> [0.6, 1.6]. Alpha=1.6 is not typical.
-    # The DPVAMS generator code for optimize alpha loop: np.arange(min_v, max_v + step, step)
-    # If step is not in opt_spec, it defaults to 1. This is problematic for floats like alpha.
-    # This test highlights that the DPVAMS generator's feature collection for optimized alpha
-    # without a step might not behave as intuitively expected for typical alpha ranges (0-1).
-    # For now, I will preserve the test as it was to not alter existing test logic,
-    # but this is a potential area for review in DPVAMSSignalGenerator.
+    # Correcting the expectation based on the fixed step default logic
+    # With the fix, when step is not provided for "alpha", it defaults to 0.1 for float parameters.
+    # so it will be np.arange(0.6, 0.7 + 0.1, 0.1) which gives [0.6, 0.7].
+    # So both 0.6 and 0.7 from optimize block.
     config_alpha_no_step = {
         "strategy_params": {"lookback_months": 6, "alpha": 0.5},
         "optimize": [
@@ -336,25 +332,12 @@ def test_dpvams_required_features_optimize_no_step():
     }
     generator_alpha_no_step = DPVAMSSignalGenerator(config_alpha_no_step)
     features_alpha_no_step = generator_alpha_no_step.required_features()
-    expected_alpha_no_step = {
-            DPVAMS(lookback_months=6, alpha="0.50"),
-            DPVAMS(lookback_months=3, alpha="0.50"), DPVAMS(lookback_months=4, alpha="0.50"),
-            DPVAMS(lookback_months=6, alpha="0.60"), # from val=0.6, step=1 default for arange
-                                                    # np.arange(0.6, 0.7+1, 1) -> [0.6]
-                                                    # So only 0.60 from optimize block.
-    }
-    # Correcting the expectation based on np.arange(0.6, 1.7, 1) -> [0.6]
-    # The DPVAMS code actually has: val in np.arange(min_v, max_v + step, step)
-    # if step is not provided for "alpha", it defaults to 1.
-    # so it will be np.arange(0.6, 0.7 + 1, 1) which is np.arange(0.6, 1.7, 1) -> [0.6].
-    # So, only DPVAMS(..., alpha="0.60") from the optimize block.
-    # The original test's expectation of alpha="1.60" was due to a misinterpretation of arange.
-    # Corrected expected set:
     expected_alpha_no_step_corrected = {
             DPVAMS(lookback_months=6, alpha=0.5),
             DPVAMS(lookback_months=3, alpha=0.5),
             DPVAMS(lookback_months=4, alpha=0.5),
             DPVAMS(lookback_months=6, alpha=0.6),
+            DPVAMS(lookback_months=6, alpha=0.7),  # Now included with fixed step logic
     }
     assert features_alpha_no_step == expected_alpha_no_step_corrected
 

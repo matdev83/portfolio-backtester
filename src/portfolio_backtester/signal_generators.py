@@ -193,7 +193,9 @@ class DPVAMSSignalGenerator(BaseSignalGenerator):
                 elif spec["parameter"] == "alpha":
                     min_v = spec["min_value"]
                     max_v = spec["max_value"]
-                    step = spec.get("step", 1)
+                    # Use appropriate default step for alpha (float parameter)
+                    # Alpha typically ranges 0-1, so default step should be smaller
+                    step = spec.get("step", 0.1 if isinstance(min_v, float) or isinstance(max_v, float) else 1)
                     for val in np.arange(min_v, max_v + step, step):
                         features.add(
                             DPVAMS(
