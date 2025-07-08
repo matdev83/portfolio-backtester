@@ -220,8 +220,8 @@ class VAMSNoDownsideStrategy(BaseStrategy):
             if current_date in benchmark_price_series_for_sma.index and current_date in benchmark_sma.index:
                 current_benchmark_price_raw = benchmark_price_series_for_sma.loc[current_date]
                 current_benchmark_sma_raw = benchmark_sma.loc[current_date]
-                current_benchmark_price: pd.Series = pd.Series([current_benchmark_price_raw], index=[current_date])
-                current_benchmark_sma: pd.Series = pd.Series([current_benchmark_sma_raw], index=[current_date])
+                current_benchmark_price = pd.Series([current_benchmark_price_raw], index=[current_date])
+                current_benchmark_sma = pd.Series([current_benchmark_sma_raw], index=[current_date])
 
                 derisk_periods = params.get("derisk_days_under_sma", 10)
 
@@ -237,7 +237,7 @@ class VAMSNoDownsideStrategy(BaseStrategy):
                 if self.current_derisk_flag:
                     final_weights[:] = 0.0
                 elif not current_benchmark_price.empty and not current_benchmark_sma.empty and \
-                     current_benchmark_price.iloc[0] < current_benchmark_sma.iloc[0]:
+                     current_benchmark_price_raw.item() < current_benchmark_sma_raw.item():
                     final_weights[:] = 0.0
 
         roro_signal_instance = self.get_roro_signal()

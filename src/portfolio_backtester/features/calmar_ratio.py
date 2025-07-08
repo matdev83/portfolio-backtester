@@ -15,7 +15,7 @@ class CalmarRatio(Feature):
         return f"calmar_{self.rolling_window}m"
 
     def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame:
-        rets = data.pct_change().fillna(0)
+        rets = data.pct_change(fill_method=None).fillna(0)
         cal_factor = 12
         rolling_mean = rets.rolling(self.rolling_window).mean() * cal_factor
 

@@ -266,7 +266,7 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
                 if self.current_derisk_flag:
                     final_weights[:] = 0.0
                 elif not current_benchmark_price.empty and not current_benchmark_sma.empty and \
-                     current_benchmark_price.iloc[0] < current_benchmark_sma.iloc[0]:
+                     current_benchmark_price_raw.item() < current_benchmark_sma_raw.item():
                     final_weights[:] = 0.0
 
         roro_signal_instance = self.get_roro_signal()

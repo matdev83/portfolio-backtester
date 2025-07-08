@@ -57,13 +57,22 @@ EPSILON_FOR_DIVISION = 1e-9  # Small epsilon to prevent division by zero or near
 
 def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_trials=1):
     """Calculates performance metrics for a given returns series."""
+    
+    logger.info(f"calculate_metrics called for {name}")
+    logger.info(f"rets length: {len(rets)}, first few: {rets.head().tolist() if not rets.empty else 'empty'}")
+    logger.info(f"rets has any NaN: {rets.isnull().any() if not rets.empty else 'empty'}")
+    logger.info(f"rets all zero: {(rets == 0).all() if not rets.empty else 'empty'}")
 
     # Filter out zero returns to get active trading periods
     # However, first check if the original 'rets' series is effectively all zeros.
     is_all_zero_returns = rets.abs().max() < EPSILON_FOR_DIVISION if not rets.empty else False
+    
+    logger.info(f"is_all_zero_returns: {is_all_zero_returns}")
 
     active_rets = rets[rets != 0].dropna()
     active_bench_rets = bench_rets[bench_rets != 0].dropna() # Benchmark can still be active
+    
+    logger.info(f"active_rets length: {len(active_rets)}")
 
     # If no active returns, or if all returns were effectively zero.
     if active_rets.empty:
@@ -103,10 +112,10 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
                 # Add check for rets_for_capm.std() == 0
                 rets_std = rets_for_capm.std()
                 bench_std = bench_for_capm.std()
-                # Ensure stds are scalars (not Series)
-                if hasattr(rets_std, 'item'):
+                # Ensure stds are scalars (not Series, int, or numpy types)
+                if hasattr(rets_std, 'item') and not isinstance(rets_std, (float, int)) and hasattr(rets_std, '__len__'):
                     rets_std = rets_std.item()
-                if hasattr(bench_std, 'item'):
+                if hasattr(bench_std, 'item') and not isinstance(bench_std, (float, int)) and hasattr(bench_std, '__len__'):
                     bench_std = bench_std.item()
                 if len(rets_for_capm) >= 2 and len(bench_for_capm) >= 2 and bench_std != 0 and rets_std != 0:
                     steps_per_year_for_capm = _infer_steps_per_year(common_idx_for_capm)
@@ -200,12 +209,28 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
                 return -np.inf # Negative return, zero volatility
         return annualized_return / annualized_vol
     def mdd(series): 
-        if series.empty or series.isnull().all(): return np.nan
-        return (series / series.cummax() - 1).min()
+        if series.empty or series.isnull().all(): 
+            logger.info(f"mdd: series is empty or all null. Length: {len(series)}, all null: {series.isnull().all() if not series.empty else 'N/A'}")
+            return np.nan
+        
+        logger.info(f"mdd: series length: {len(series)}, first few values: {series.head().tolist()}")
+        logger.info(f"mdd: series has any NaN: {series.isnull().any()}, series min: {series.min()}, series max: {series.max()}")
+        
+        cummax_series = series.cummax()
+        logger.info(f"mdd: cummax min: {cummax_series.min()}, cummax max: {cummax_series.max()}")
+        
+        drawdown_series = (series / cummax_series - 1)
+        logger.info(f"mdd: drawdown min: {drawdown_series.min()}, drawdown max: {drawdown_series.max()}")
+        logger.info(f"mdd: drawdown has any NaN: {drawdown_series.isnull().any()}")
+        
+        result = drawdown_series.min()
+        logger.info(f"mdd: final result: {result}")
+        return result
     def calmar(x):
         if x.empty or x.isnull().all():
             return np.nan
-        max_dd = mdd((1 + x).cumprod())
+        # Use original rets for max drawdown calculation, not active_rets
+        max_dd = mdd((1 + rets).cumprod())  # Zero returns are valid for drawdown calculation
         annualized_return = ann(x)
         if pd.isna(annualized_return) or pd.isna(max_dd): # If ann_return or max_dd is NaN, Calmar is NaN
             return np.nan
@@ -349,10 +374,20 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
         else:
             idx = np.arange(len(log_equity))
             slope, intercept, r_value, p_value, std_err = linregress(idx, log_equity)
-            if std_err < EPSILON_FOR_DIVISION:
+            # Ensure std_err and slope are floats (not tuple or object)
+            def safe_float(val):
+                try:
+                    if isinstance(val, (tuple, list, np.ndarray)):
+                        val = val[0]
+                    return float(val)
+                except Exception:
+                    return np.nan
+            std_err_val = safe_float(std_err)
+            slope_val = safe_float(slope)
+            if std_err_val < EPSILON_FOR_DIVISION:
                 k_ratio = np.nan
             else:
-                k_ratio = (slope / std_err) * np.sqrt(len(log_equity))
+                k_ratio = (slope_val / std_err_val) * np.sqrt(len(log_equity))
     else:
         k_ratio = np.nan
 
@@ -365,7 +400,7 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
         "Calmar": calmar(active_rets),
         "Alpha (ann)": alpha,
         "Beta": beta,
-        "Max DD": mdd((1 + active_rets).cumprod()),
+        "Max DD": mdd((1 + rets).cumprod()),  # Use original rets, not active_rets - zero returns are valid for drawdown
         "Skew": skew(active_rets),
         "Kurtosis": kurtosis(active_rets),
         "R^2": r_squared,

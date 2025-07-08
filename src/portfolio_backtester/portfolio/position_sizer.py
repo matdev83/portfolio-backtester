@@ -7,7 +7,11 @@ logger = logging.getLogger(__name__)
 
 def equal_weight_sizer(signals: pd.DataFrame, *_, **__) -> pd.DataFrame:
     """Apply equal weighting to the signals."""
-    return signals.div(signals.abs().sum(axis=1), axis=0)
+    signal_sums = signals.abs().sum(axis=1)
+    # Handle case where signal sum is zero to avoid NaN from division by zero
+    result = signals.div(signal_sums, axis=0)
+    # Replace NaN values (from zero division) with 0
+    return result.fillna(0.0)
 
 
 def rolling_sharpe_sizer(
@@ -20,8 +24,10 @@ def rolling_sharpe_sizer(
     mean = rets.rolling(window).mean()
     std = rets.rolling(window).std()
     sharpe = mean / std.replace(0, np.nan)
-    sized = signals.mul(sharpe)
-    return sized.div(sized.abs().sum(axis=1), axis=0)
+    sized = signals.mul(sharpe).fillna(0.0)  # Handle NaN from sharpe calculation
+    sized_sums = sized.abs().sum(axis=1)
+    result = sized.div(sized_sums, axis=0)
+    return result.fillna(0.0)  # Handle division by zero
 
 
 def rolling_sortino_sizer(
@@ -42,8 +48,10 @@ def rolling_sortino_sizer(
 
     downside_dev = rets.rolling(window).apply(downside, raw=False)
     sortino = mean / downside_dev.replace(0, np.nan)
-    sized = signals.mul(sortino)
-    return sized.div(sized.abs().sum(axis=1), axis=0)
+    sized = signals.mul(sortino).fillna(0.0)  # Handle NaN from sortino calculation
+    sized_sums = sized.abs().sum(axis=1)
+    result = sized.div(sized_sums, axis=0)
+    return result.fillna(0.0)  # Handle division by zero
 
 
 def rolling_beta_sizer(
@@ -61,8 +69,10 @@ def rolling_beta_sizer(
         var = bench_rets.rolling(window).var()
         beta[col] = cov / var
     factor = 1 / beta.abs().replace(0, np.nan)
-    sized = signals.mul(factor)
-    return sized.div(sized.abs().sum(axis=1), axis=0)
+    sized = signals.mul(factor).fillna(0.0)  # Handle NaN from factor calculation
+    sized_sums = sized.abs().sum(axis=1)
+    result = sized.div(sized_sums, axis=0)
+    return result.fillna(0.0)  # Handle division by zero
 
 
 def rolling_benchmark_corr_sizer(
@@ -78,8 +88,10 @@ def rolling_benchmark_corr_sizer(
     for col in rets.columns:
         corr[col] = rets[col].rolling(window).corr(bench_rets)
     factor = 1 / (corr.abs() + 1e-9)
-    sized = signals.mul(factor)
-    return sized.div(sized.abs().sum(axis=1), axis=0)
+    sized = signals.mul(factor).fillna(0.0)  # Handle NaN from factor calculation
+    sized_sums = sized.abs().sum(axis=1)
+    result = sized.div(sized_sums, axis=0)
+    return result.fillna(0.0)  # Handle division by zero
 
 
 def rolling_downside_volatility_sizer(

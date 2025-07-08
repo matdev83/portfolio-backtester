@@ -56,7 +56,7 @@ MOCK_SCENARIO_CONFIG_MULTI_OBJECTIVE = {
 date_rng = pd.date_range(start='2020-01-01', end='2023-01-01', freq='BME')
 MOCK_MONTHLY_DATA = pd.DataFrame(index=date_rng, data={'PRICE_A': np.random.rand(len(date_rng)) * 100})
 MOCK_DAILY_DATA = pd.DataFrame(index=pd.date_range(start='2020-01-01', end='2023-01-01', freq='B'), data={'PRICE_A': np.random.rand(pd.date_range(start='2020-01-01', end='2023-01-01', freq='B').size) * 100})
-MOCK_RETS_FULL = MOCK_DAILY_DATA.pct_change().fillna(0)
+MOCK_RETS_FULL = MOCK_DAILY_DATA.pct_change(fill_method=None).fillna(0)
 
 
 @pytest.fixture

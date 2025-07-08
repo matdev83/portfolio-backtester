@@ -102,7 +102,7 @@ class VAMSMomentumStrategy(BaseStrategy):
 
             # Calculate downside deviation (simplified for monthly data)
             # Using monthly returns over the lookback period
-            monthly_returns = relevant_prices.pct_change().dropna()
+            monthly_returns = relevant_prices.pct_change(fill_method=None).dropna()
             downside_returns = monthly_returns[monthly_returns < 0].fillna(0) # Only negative returns
             
             # Ensure we have enough data for downside deviation (at least lookback_months)
@@ -276,7 +276,7 @@ class VAMSMomentumStrategy(BaseStrategy):
                 if self.current_derisk_flag:
                     final_weights[:] = 0.0
                 elif not current_benchmark_price.empty and not current_benchmark_sma.empty and \
-                     current_benchmark_price.iloc[0] < current_benchmark_sma.iloc[0]:
+                     current_benchmark_price_raw.item() < current_benchmark_sma_raw.item():
                     final_weights[:] = 0.0
 
         roro_signal_instance = self.get_roro_signal()

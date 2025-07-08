@@ -236,7 +236,7 @@ class AtrBasedStopLoss(BaseStopLoss):
                         continue
                     
                     # Calculate returns and rolling std more efficiently
-                    returns = close_prices.pct_change().dropna()
+                    returns = close_prices.pct_change(fill_method=None).dropna()
                     if len(returns) < self.atr_length:
                         atr_values[asset] = np.nan
                         continue

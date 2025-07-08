@@ -322,7 +322,7 @@ class TestBacktester(unittest.TestCase):
             # Check transaction costs effect (very simplified)
             # If there were returns and turnover, net should be less than gross.
             # This requires calculating gross returns separately.
-            daily_returns_for_calc = price_data_daily[mock_universe_tickers].pct_change().fillna(0)
+            daily_returns_for_calc = price_data_daily[mock_universe_tickers].pct_change(fill_method=None).fillna(0)
             weights_daily_manual = mock_weights_monthly.reindex(price_data_daily.index, method="ffill").shift(1).fillna(0.0)
 
             # Ensure weights_daily_manual has the same columns as mock_universe_tickers, filling missing with 0
@@ -349,7 +349,7 @@ class TestBacktester(unittest.TestCase):
         # Pre-computation of features is now handled within strategies
 
         # Pre-calculate returns for the mock data
-        rets_full = self.mock_data.pct_change().fillna(0)
+        rets_full = self.mock_data.pct_change(fill_method=None).fillna(0)
         
         # Patch Optuna related calls if they are external or too heavy
         with patch('src.portfolio_backtester.backtester_logic.optimization.optuna.create_study'), \

@@ -102,7 +102,7 @@ class SharpeMomentumStrategy(BaseStrategy):
 
         # Resample to monthly, calculate monthly returns
         monthly_closes = daily_closes.resample('ME').last()
-        monthly_rets = monthly_closes.pct_change().fillna(0)
+        monthly_rets = monthly_closes.pct_change(fill_method=None).fillna(0)
 
         # Ensure we have enough data for rolling calculation up to current_date's month-end
         # The monthly_rets will be indexed by month-ends.
