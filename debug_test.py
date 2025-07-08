@@ -28,6 +28,13 @@ class MockArgs:
         self.output_path = None
         self.storage_url = None
         self.study_name = None
+        self.random_seed = None
+        self.optuna_trials = 2
+        self.optuna_timeout_sec = None
+        self.pruning_enabled = False
+        self.pruning_n_startup_trials = 5
+        self.pruning_n_warmup_steps = 10
+        self.pruning_interval_steps = 1
 
 args = MockArgs()
 

@@ -10,7 +10,12 @@ from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
 from ..optimization.genetic_optimizer import GeneticOptimizer
 from ..evaluation_logic import _evaluate_params_walk_forward
 
+# Global progress tracker for window-level updates
+_global_progress_tracker = None
+
 def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full):
+    global _global_progress_tracker
+    
     optimizer_type = getattr(self.args, "optimizer", "optuna")
     self.logger.info(
         f"Running {optimizer_type} optimization for scenario: {scenario_config['name']} with walk-forward splits."
@@ -92,6 +97,9 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
             metrics_to_optimize, is_multi_objective
         )
 
+    # Calculate total work units: trials × windows per trial
+    total_work_units = n_trials * len(windows)
+    
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -101,13 +109,34 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         TimeRemainingColumn(),
         console=Console()
     ) as progress:
-        task = progress.add_task("[cyan]Optimizing...", total=n_trials)
+        # Track progress at the window level, not trial level
+        task = progress.add_task(f"[cyan]Optimizing ({len(windows)} windows/trial)...", total=total_work_units)
+        
+        # Set global progress tracker for use in evaluation_logic
+        _global_progress_tracker = {
+            'progress': progress,
+            'task': task,
+            'windows_per_trial': len(windows),
+            'current_trial': 0,
+            'total_trials': n_trials
+        }
         
         zero_streak = 0
+        completed_trials = 0
 
         def callback(study, trial):
-            nonlocal zero_streak
-            progress.update(task, advance=1)
+            nonlocal zero_streak, completed_trials
+            
+            completed_trials += 1
+            
+            # Update progress description to show current trial
+            if _global_progress_tracker:
+                _global_progress_tracker['current_trial'] = completed_trials
+                progress.update(
+                    task, 
+                    description=f"[cyan]Trial {completed_trials}/{n_trials} complete ({len(windows)} windows/trial)..."
+                )
+            
             if trial.user_attrs.get("zero_returns"):
                 zero_streak += 1
             else:
@@ -129,6 +158,9 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
             n_jobs=self.n_jobs,
             callbacks=[callback]
         )
+        
+        # Clear global progress tracker
+        _global_progress_tracker = None
     
     optimal_params = scenario_config["strategy_params"].copy()
     if len(study.directions) > 1:

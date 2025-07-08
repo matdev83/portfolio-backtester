@@ -11,11 +11,23 @@ logger = logging.getLogger(__name__)
 def _evaluate_params_walk_forward(self, trial: Any, scenario_config: dict, windows: list,
                                   monthly_data, daily_data, rets_full,
                                   metrics_to_optimize: list, is_multi_objective: bool) -> float | tuple[float, ...]:
+    # Import here to avoid circular imports
+    from .backtester_logic.optimization import _global_progress_tracker
+    
     metric_values_per_objective = [[] for _ in metrics_to_optimize]
     processed_steps_for_pruning = 0
 
     pruning_enabled = getattr(self.args, "pruning_enabled", False)
     pruning_interval_steps = getattr(self.args, "pruning_interval_steps", 1)
+
+    # Update progress description to show current trial
+    if _global_progress_tracker and trial and hasattr(trial, 'number'):
+        trial_num = trial.number + 1  # Optuna uses 0-based indexing
+        total_trials = _global_progress_tracker['total_trials']
+        _global_progress_tracker['progress'].update(
+            _global_progress_tracker['task'], 
+            description=f"[cyan]Trial {trial_num}/{total_trials} running ({len(windows)} windows/trial)..."
+        )
 
     for window_idx, (tr_start, tr_end, te_start, te_end) in enumerate(windows):
         m_slice = monthly_data.loc[tr_start:te_end]
@@ -28,11 +40,17 @@ def _evaluate_params_walk_forward(self, trial: Any, scenario_config: dict, windo
             self.logger.warning(f"No returns generated for window {tr_start}-{te_end}. Skipping.")
             for i in range(len(metrics_to_optimize)):
                 metric_values_per_objective[i].append(np.nan)
+            # Update progress bar after processing this window
+            if _global_progress_tracker:
+                _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
             continue
 
         test_rets = window_returns.loc[te_start:te_end]
         if test_rets.empty:
             self.logger.debug(f"Test returns empty for window {tr_start}-{te_end} with params {scenario_config['strategy_params']}.")
+            # Update progress bar before returning
+            if _global_progress_tracker:
+                _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
             if is_multi_objective:
                 return tuple([float("nan")] * len(metrics_to_optimize))
             return float("nan")
@@ -71,7 +89,16 @@ def _evaluate_params_walk_forward(self, trial: Any, scenario_config: dict, windo
                 trial.report(float(intermediate_value), window_idx + 1)
                 if trial.should_prune():
                     self.logger.info(f"Trial {trial.number} pruned at window {window_idx + 1} with intermediate value for '{metrics_to_optimize[0]}': {intermediate_value:.4f}")
+                    # Update progress for remaining windows in this trial before pruning
+                    if _global_progress_tracker:
+                        remaining_windows = len(windows) - window_idx - 1
+                        if remaining_windows > 0:
+                            _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=remaining_windows)
                     raise optuna.exceptions.TrialPruned()
+
+        # Update progress bar after successfully processing this window
+        if _global_progress_tracker:
+            _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
 
     metric_avgs = [np.nanmean(values) if not all(np.isnan(values)) else np.nan for values in metric_values_per_objective]
 
