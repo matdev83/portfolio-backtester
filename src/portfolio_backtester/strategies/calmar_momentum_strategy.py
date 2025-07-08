@@ -40,6 +40,26 @@ class CalmarMomentumStrategy(BaseStrategy):
     def tunable_parameters(cls) -> set[str]:
         return {"num_holdings", "rolling_window", "sma_filter_window", "apply_trading_lag"}
 
+    def get_minimum_required_periods(self) -> int:
+        """
+        Calculate minimum required periods for CalmarMomentumStrategy.
+        Requires: rolling_window for Calmar ratio calculation + SMA filter window
+        """
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        
+        # Calmar ratio rolling window requirement
+        rolling_window = params.get("rolling_window", 6)
+        
+        # SMA filter requirement (if enabled)
+        sma_filter_window = params.get("sma_filter_window")
+        sma_requirement = sma_filter_window if sma_filter_window and sma_filter_window > 0 else 0
+        
+        # Take the maximum of all requirements plus buffer
+        total_requirement = max(rolling_window, sma_requirement)
+        
+        # Add 2-month buffer for reliable calculations
+        return total_requirement + 2
+
     def generate_signals(
         self,
         all_historical_data: pd.DataFrame,
@@ -51,6 +71,18 @@ class CalmarMomentumStrategy(BaseStrategy):
         """
         Generates trading signals based on historical data and current date.
         """
+        
+        # --- Data Sufficiency Validation ---
+        is_sufficient, reason = self.validate_data_sufficiency(
+            all_historical_data, benchmark_historical_data, current_date
+        )
+        if not is_sufficient:
+            # Return zero weights if insufficient data
+            columns = (all_historical_data.columns.get_level_values(0).unique() 
+                      if isinstance(all_historical_data.columns, pd.MultiIndex) 
+                      else all_historical_data.columns)
+            return pd.DataFrame(0.0, index=[current_date], columns=columns)
+        
         params = self.strategy_config.get("strategy_params", self.strategy_config)
         price_col_asset = params["price_column_asset"]
         price_col_benchmark = params["price_column_benchmark"]

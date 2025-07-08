@@ -234,6 +234,82 @@ class BaseStrategy(ABC):
 
         return current_derisk_flag, consecutive_periods_under_sma
 
+    def get_minimum_required_periods(self) -> int:
+        """
+        Calculate the minimum number of periods (months) of historical data required
+        for this strategy to function properly. This should be overridden by subclasses
+        to provide strategy-specific requirements.
+        
+        Returns:
+            int: Minimum number of months of historical data required
+        """
+        # Base implementation returns a conservative default
+        return 12
+
+    def validate_data_sufficiency(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        current_date: pd.Timestamp
+    ) -> tuple[bool, str]:
+        """
+        Validates that there is sufficient historical data available for the strategy
+        to perform reliable calculations as of the current_date.
+        
+        Args:
+            all_historical_data: DataFrame with historical data for universe assets
+            benchmark_historical_data: DataFrame with historical data for benchmark
+            current_date: The date for which we're checking data sufficiency
+            
+        Returns:
+            tuple[bool, str]: (is_sufficient, reason_if_not)
+        """
+        min_periods_required = self.get_minimum_required_periods()
+        
+        # Check universe data
+        if all_historical_data.empty:
+            return False, "No historical data available for universe assets"
+            
+        # Check if current_date is beyond available data
+        latest_available_date = all_historical_data.index.max()
+        if current_date > latest_available_date:
+            return False, f"Current date {current_date} is beyond available data (latest: {latest_available_date})"
+            
+        # Filter data up to current_date
+        available_data = all_historical_data[all_historical_data.index <= current_date]
+        if available_data.empty:
+            return False, f"No historical data available up to {current_date}"
+            
+        # Calculate available periods (assuming monthly frequency)
+        earliest_date = available_data.index.min()
+        available_months = (current_date.year - earliest_date.year) * 12 + (current_date.month - earliest_date.month)
+        
+        if available_months < min_periods_required:
+            return False, f"Insufficient historical data: {available_months} months available, {min_periods_required} months required"
+            
+        # Check benchmark data if strategy uses SMA filtering
+        sma_filter_window = self.strategy_config.get("strategy_params", {}).get("sma_filter_window")
+        if sma_filter_window and sma_filter_window > 0:
+            if benchmark_historical_data.empty:
+                return False, "No benchmark data available but SMA filtering is enabled"
+                
+            # Check if current_date is beyond benchmark data
+            benchmark_latest_date = benchmark_historical_data.index.max()
+            if current_date > benchmark_latest_date:
+                return False, f"Current date {current_date} is beyond available benchmark data (latest: {benchmark_latest_date})"
+                
+            benchmark_available = benchmark_historical_data[benchmark_historical_data.index <= current_date]
+            if benchmark_available.empty:
+                return False, f"No benchmark data available up to {current_date}"
+                
+            benchmark_earliest = benchmark_available.index.min()
+            benchmark_months = (current_date.year - benchmark_earliest.year) * 12 + (current_date.month - benchmark_earliest.month)
+            
+            if benchmark_months < sma_filter_window:
+                return False, f"Insufficient benchmark data for SMA filter: {benchmark_months} months available, {sma_filter_window} months required"
+        
+        return True, ""
+
     # The old _calculate_derisk_flags was designed to work on a whole series.
     # The new one above is for point-in-time calculation within a loop.
     # If a series-based calculation is still needed by a strategy, it can implement it locally.

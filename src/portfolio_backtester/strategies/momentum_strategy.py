@@ -60,6 +60,43 @@ class MomentumStrategy(BaseStrategy):
             "derisk_days_under_sma", "apply_trading_lag",
         }
 
+    def get_minimum_required_periods(self) -> int:
+        """
+        Calculate minimum required periods for MomentumStrategy.
+        Requires: lookback_months + skip_months + buffer for calculations
+        """
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        
+        # Base momentum calculation requirement
+        lookback_months = params.get("lookback_months", 6)
+        skip_months = params.get("skip_months", 0)
+        momentum_requirement = lookback_months + skip_months
+        
+        # SMA filter requirement (if enabled)
+        sma_filter_window = params.get("sma_filter_window")
+        sma_requirement = sma_filter_window if sma_filter_window and sma_filter_window > 0 else 0
+        
+        # ATR requirement for stop loss (if enabled)
+        atr_requirement = 0
+        stop_loss_config = self.strategy_config.get("stop_loss_config", {})
+        if stop_loss_config.get("type") == "AtrBasedStopLoss":
+            # ATR needs daily data, but we approximate with monthly + buffer
+            atr_length = stop_loss_config.get("atr_length", 14)
+            # Convert daily periods to months (roughly) and add buffer
+            atr_requirement = max(1, atr_length // 20)  # ~20 trading days per month
+        
+        # Downside volatility sizer requirement (if used)
+        dvol_requirement = 0
+        if self.strategy_config.get("position_sizer") == "rolling_downside_volatility":
+            dvol_window = params.get("sizer_dvol_window", 12)
+            dvol_requirement = dvol_window
+        
+        # Take the maximum of all requirements plus a buffer
+        total_requirement = max(momentum_requirement, sma_requirement, atr_requirement, dvol_requirement)
+        
+        # Add 2-month buffer for reliable calculations
+        return total_requirement + 2
+
     # Removed get_required_features
 
     def _calculate_momentum_scores(
@@ -123,6 +160,17 @@ class MomentumStrategy(BaseStrategy):
         """
         Generates trading signals for the MomentumStrategy.
         """
+
+        # --- Data Sufficiency Validation ---
+        is_sufficient, reason = self.validate_data_sufficiency(
+            all_historical_data, benchmark_historical_data, current_date
+        )
+        if not is_sufficient:
+            # Return zero weights if insufficient data
+            columns = (all_historical_data.columns.get_level_values(0).unique() 
+                      if isinstance(all_historical_data.columns, pd.MultiIndex) 
+                      else all_historical_data.columns)
+            return pd.DataFrame(0.0, index=[current_date], columns=columns)
 
         params = self.strategy_config.get("strategy_params", self.strategy_config)
         price_col_asset = params["price_column_asset"]

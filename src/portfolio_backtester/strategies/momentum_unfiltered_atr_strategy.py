@@ -76,6 +76,30 @@ class MomentumUnfilteredAtrStrategy(MomentumStrategy):
         atr_params = {"atr_length", "atr_multiple"}
         return base_params | atr_params
 
+    def get_minimum_required_periods(self) -> int:
+        """
+        Calculate minimum required periods for MomentumUnfilteredAtrStrategy.
+        Requires: lookback_months + skip_months + ATR requirements
+        """
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        
+        # Base momentum calculation requirement
+        lookback_months = params.get("lookback_months", 12)
+        skip_months = params.get("skip_months", 0)
+        momentum_requirement = lookback_months + skip_months
+        
+        # ATR requirement for stop loss
+        atr_length = params.get("atr_length", 14)
+        # Convert daily ATR periods to months (roughly) and add buffer
+        # ATR typically needs daily OHLC data, so we need more historical data
+        atr_requirement = max(2, atr_length // 20)  # ~20 trading days per month
+        
+        # Take the maximum of all requirements plus buffer
+        total_requirement = max(momentum_requirement, atr_requirement)
+        
+        # Add 3-month buffer for reliable ATR calculations (needs more data than basic momentum)
+        return total_requirement + 3
+
     def get_roro_signal(self):
         """Override to disable RoRo filtering for unfiltered strategy."""
         return None 

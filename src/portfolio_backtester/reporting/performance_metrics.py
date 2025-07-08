@@ -101,7 +101,14 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
                 bench_for_capm = active_bench_rets.loc[common_idx_for_capm]
 
                 # Add check for rets_for_capm.std() == 0
-                if len(rets_for_capm) >= 2 and len(bench_for_capm) >=2 and bench_for_capm.std() != 0 and rets_for_capm.std() != 0:
+                rets_std = rets_for_capm.std()
+                bench_std = bench_for_capm.std()
+                # Ensure stds are scalars (not Series)
+                if hasattr(rets_std, 'item'):
+                    rets_std = rets_std.item()
+                if hasattr(bench_std, 'item'):
+                    bench_std = bench_std.item()
+                if len(rets_for_capm) >= 2 and len(bench_for_capm) >= 2 and bench_std != 0 and rets_std != 0:
                     steps_per_year_for_capm = _infer_steps_per_year(common_idx_for_capm)
                     X_capm = sm.add_constant(bench_for_capm)
                     try:

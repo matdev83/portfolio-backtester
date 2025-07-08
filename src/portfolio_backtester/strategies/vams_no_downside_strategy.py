@@ -45,6 +45,26 @@ class VAMSNoDownsideStrategy(BaseStrategy):
         return {"num_holdings", "lookback_months", "top_decile_fraction", "smoothing_lambda", "leverage",
                 "sma_filter_window", "derisk_days_under_sma", "apply_trading_lag"}
 
+    def get_minimum_required_periods(self) -> int:
+        """
+        Calculate minimum required periods for VAMSNoDownsideStrategy.
+        Requires: lookback_months for VAMS calculation + SMA filter window
+        """
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        
+        # VAMS lookback requirement
+        lookback_months = params.get("lookback_months", 6)
+        
+        # SMA filter requirement (if enabled)
+        sma_filter_window = params.get("sma_filter_window")
+        sma_requirement = sma_filter_window if sma_filter_window and sma_filter_window > 0 else 0
+        
+        # Take the maximum of all requirements plus buffer
+        total_requirement = max(lookback_months, sma_requirement)
+        
+        # Add 2-month buffer for reliable calculations
+        return total_requirement + 2
+
     def _calculate_vams_scores_no_downside(
         self,
         asset_prices: pd.DataFrame,
@@ -90,6 +110,18 @@ class VAMSNoDownsideStrategy(BaseStrategy):
         """
         Generates trading signals for the VAMSNoDownsideStrategy.
         """
+        
+        # --- Data Sufficiency Validation ---
+        is_sufficient, reason = self.validate_data_sufficiency(
+            all_historical_data, benchmark_historical_data, current_date
+        )
+        if not is_sufficient:
+            # Return zero weights if insufficient data
+            columns = (all_historical_data.columns.get_level_values(0).unique() 
+                      if isinstance(all_historical_data.columns, pd.MultiIndex) 
+                      else all_historical_data.columns)
+            return pd.DataFrame(0.0, index=[current_date], columns=columns)
+        
         params = self.strategy_config.get("strategy_params", self.strategy_config)
         price_col_asset = params["price_column_asset"]
         price_col_benchmark = params["price_column_benchmark"]
