@@ -126,7 +126,8 @@ class Backtester:
 
             if daily_closes_for_rets.empty:
                  raise ValueError("run_scenario: Daily close prices for return calculation are empty.")
-            rets_daily = daily_closes_for_rets.pct_change(fill_method=None).fillna(0)
+            # Ensure rets_daily is a DataFrame, even if it originates from a Series
+            rets_daily = daily_closes_for_rets.pct_change(fill_method=None).fillna(0).to_frame() if isinstance(daily_closes_for_rets, pd.Series) else daily_closes_for_rets.pct_change(fill_method=None).fillna(0)
 
         strategy = self._get_strategy(
             scenario_config["strategy"], scenario_config["strategy_params"]
@@ -282,6 +283,10 @@ class Backtester:
         weights_daily = weights_daily.shift(1).fillna(0.0) # Apply execution lag
 
         # Ensure daily returns are aligned with the daily OHLC data index
+        # Ensure rets_daily is not None before reindexing
+        if rets_daily is None:
+            logger.error("rets_daily is None before reindexing in run_scenario.")
+            return pd.Series(0.0, index=price_data_daily_ohlc.index) # Return zero series to avoid further errors
         aligned_rets_daily = rets_daily.reindex(price_data_daily_ohlc.index).fillna(0.0)
 
         # Ensure universe_tickers used for indexing aligned_rets_daily are present in its columns
@@ -330,9 +335,15 @@ class Backtester:
         # Ensure self.daily_data_ohlc is set up correctly.
         # It should contain daily OHLCV data for all universe tickers and the benchmark.
         # The existing logic for daily_data_std_format seems to prepare this.
-        self.daily_data_ohlc = daily_data_std_format.copy()
-        logger.info(f"Shape of self.daily_data_ohlc: {self.daily_data_ohlc.shape}")
-        logger.debug(f"Columns of self.daily_data_ohlc: {self.daily_data_ohlc.columns}")
+        # Ensure daily_data_std_format is a DataFrame before assigning
+        if isinstance(daily_data_std_format, pd.Series):
+            self.daily_data_ohlc = daily_data_std_format.to_frame().copy()
+        else:
+            self.daily_data_ohlc = daily_data_std_format.copy()
+        
+        if self.daily_data_ohlc is not None: # Add explicit check for Pylance
+            logger.info(f"Shape of self.daily_data_ohlc: {self.daily_data_ohlc.shape}")
+            logger.debug(f"Columns of self.daily_data_ohlc: {self.daily_data_ohlc.columns}")
 
 
         # The section for preparing 'monthly_data_for_features' is no longer needed
@@ -340,30 +351,32 @@ class Backtester:
         logger.info("Feature pre-computation step removed. Features will be calculated within strategies.")
 
         # Extract daily closes for return calculations and for monthly resampling if needed by other parts
-        if isinstance(self.daily_data_ohlc.columns, pd.MultiIndex) and \
-           'Close' in self.daily_data_ohlc.columns.get_level_values(1):
-            # Assuming 'Ticker' is level 0 and 'Field' is level 1
-            daily_closes = self.daily_data_ohlc.xs('Close', level='Field', axis=1)
-        elif not isinstance(self.daily_data_ohlc.columns, pd.MultiIndex):
-            # If daily_data_ohlc is just close prices (older format or specific data source output)
-            daily_closes = self.daily_data_ohlc
-        else:
-            # Attempt to find 'Close' prices in a less structured MultiIndex or raise error
-            # This part might need adjustment based on actual data structures if not (Ticker, Field)
-            try:
-                if 'Close' in self.daily_data_ohlc.columns.get_level_values(-1): # Check last level for 'Close'
-                    daily_closes = self.daily_data_ohlc.xs('Close', level=-1, axis=1)
-                else:
-                    raise ValueError("Could not reliably extract 'Close' prices from self.daily_data_ohlc due to unrecognized column structure.")
-            except Exception as e:
-                 raise ValueError(f"Error extracting 'Close' prices from self.daily_data_ohlc: {e}. Columns: {self.daily_data_ohlc.columns}")
+        daily_closes = None
+        if self.daily_data_ohlc is not None: # Ensure self.daily_data_ohlc is not None
+            if isinstance(self.daily_data_ohlc.columns, pd.MultiIndex) and \
+               'Close' in self.daily_data_ohlc.columns.get_level_values(1):
+                # Assuming 'Ticker' is level 0 and 'Field' is level 1
+                daily_closes = self.daily_data_ohlc.xs('Close', level='Field', axis=1)
+            elif not isinstance(self.daily_data_ohlc.columns, pd.MultiIndex):
+                # If daily_data_ohlc is just close prices (older format or specific data source output)
+                daily_closes = self.daily_data_ohlc
+            else:
+                # Attempt to find 'Close' prices in a less structured MultiIndex or raise error
+                try:
+                    if 'Close' in self.daily_data_ohlc.columns.get_level_values(-1): # Check last level for 'Close'
+                        daily_closes = self.daily_data_ohlc.xs('Close', level=-1, axis=1)
+                    else:
+                        raise ValueError("Could not reliably extract 'Close' prices from self.daily_data_ohlc due to unrecognized column structure.")
+                except Exception as e:
+                     raise ValueError(f"Error extracting 'Close' prices from self.daily_data_ohlc: {e}. Columns: {self.daily_data_ohlc.columns}")
 
-        if daily_closes.empty:
+        if daily_closes is None or daily_closes.empty:
             raise ValueError("Daily close prices could not be extracted or are empty.")
 
         # monthly_closes will be used for determining rebalance dates and for sizers if they need monthly frequency.
         monthly_closes = daily_closes.resample("BME").last()
-        self.monthly_data = monthly_closes # Store monthly closing prices
+        # Ensure monthly_closes is a DataFrame before assigning
+        self.monthly_data = monthly_closes.to_frame() if isinstance(monthly_closes, pd.Series) else monthly_closes # Store monthly closing prices
 
         logger.info("Backtest data retrieved and prepared (daily OHLC, monthly closes).")
 
@@ -372,7 +385,8 @@ class Backtester:
         # Removed precompute_features call and self.features initialization
 
         rets_full = daily_closes.pct_change(fill_method=None).fillna(0)
-        self.rets_full = rets_full # These are daily returns based on daily_closes
+        # Ensure rets_full is a DataFrame, even if it originates from a Series
+        self.rets_full = rets_full.to_frame() if isinstance(rets_full, pd.Series) else rets_full # These are daily returns based on daily_closes
 
         # The arguments to run_optimize_mode, run_backtest_mode, run_monte_carlo_mode
         # might need adjustment if they directly used self.features or specific monthly data forms

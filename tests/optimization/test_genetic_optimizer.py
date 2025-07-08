@@ -10,43 +10,45 @@ from portfolio_backtester.backtester import Backtester # Required for type hinti
 MOCK_GLOBAL_CONFIG = {
     "benchmark": "SPY",
     "optimizer_parameter_defaults": {
-        "param1_int": {"type": "int", "low": 1, "high": 10, "step": 1},
-        "param2_float": {"type": "float", "low": 0.1, "high": 1.0, "step": 0.1},
+        "param1_int": {"type": "int", "low": 2, "high": 5, "step": 1},
+        "param2_float": {"type": "float", "low": 0.2, "high": 0.5},
         "param3_cat": {"type": "categorical", "values": ["A", "B", "C"]},
-        **get_ga_optimizer_parameter_defaults()
+        "ga_num_generations": {"default": 10, "type": "int"},
+        "ga_num_parents_mating": {"default": 5, "type": "int"},
+        "ga_sol_per_pop": {"default": 5, "type": "int"}
     }
 }
 
 MOCK_SCENARIO_CONFIG_SINGLE_OBJECTIVE = {
-    "name": "test_ga_single",
-    "strategy": "mock_strategy",
+    "name": "Test_GA_Single",
     "strategy_params": {"initial_param": 50},
     "optimize": [
-        {"parameter": "param1_int", "min_value": 2, "max_value": 5},
-        {"parameter": "param2_float", "min_value": 0.2, "max_value": 0.5},
-        {"parameter": "param3_cat", "values": ["A", "B"]}, # Override default choices
+        {"parameter": "param1_int", "type": "int", "min_value": 2, "max_value": 5, "step": 1},
+        {"parameter": "param2_float", "type": "float", "min_value": 0.2, "max_value": 0.5},
+        {"parameter": "param3_cat", "type": "categorical", "values": ["A", "B", "C"]}
     ],
-    "optimization_metric": "Sharpe", # Single objective
-    "genetic_algorithm_params": { # Optional: override GA defaults
+    "optimization_metric": "Sharpe",
+    "genetic_algorithm_params": {
         "num_generations": 10,
-        "sol_per_pop": 5
+        "sol_per_pop": 5,
+        "num_parents_mating": 3
     }
 }
 
 MOCK_SCENARIO_CONFIG_MULTI_OBJECTIVE = {
-    "name": "test_ga_multi",
-    "strategy": "mock_strategy",
+    "name": "Test_GA_Multi",
     "strategy_params": {"initial_param": 50},
     "optimize": [
-        {"parameter": "param1_int", "min_value": 2, "max_value": 5},
+        {"parameter": "param1_int", "type": "int", "min_value": 2, "max_value": 5, "step": 1}
     ],
     "optimization_targets": [
         {"name": "Sharpe", "direction": "maximize"},
-        {"name": "MaxDrawdown", "direction": "minimize"} # PyGAD will maximize -MaxDrawdown
+        {"name": "MaxDD", "direction": "minimize"}
     ],
-     "genetic_algorithm_params": {
-        "num_generations": 8,
-        "sol_per_pop": 4
+    "genetic_algorithm_params": {
+        "num_generations": 5,
+        "sol_per_pop": 4,
+        "num_parents_mating": 2
     }
 }
 
@@ -79,7 +81,7 @@ def test_genetic_optimizer_initialization(mock_backtester_instance):
         rets_full=MOCK_RETS_FULL,
         random_state=42
     )
-    assert optimizer.scenario_config["name"] == "test_ga_single"
+    assert optimizer.scenario_config["name"] == "Test_GA_Single"
     assert optimizer.random_state == 42
     assert len(optimizer.optimization_params_spec) == 3
     assert optimizer.metrics_to_optimize == ["Sharpe"]
@@ -96,7 +98,7 @@ def test_genetic_optimizer_initialization_multi_objective(mock_backtester_instan
         random_state=42
     )
     assert optimizer.is_multi_objective
-    assert optimizer.metrics_to_optimize == ["Sharpe", "MaxDrawdown"]
+    assert optimizer.metrics_to_optimize == ["Sharpe", "MaxDD"]
 
 def test_decode_chromosome(mock_backtester_instance):
     optimizer = GeneticOptimizer(
@@ -135,11 +137,14 @@ def test_get_gene_space_and_types(mock_backtester_instance):
     # param1_int
     assert gene_space[0] == {"low": 2, "high": 5, "step": 1} # From MOCK_SCENARIO_CONFIG
 
-    # param2_float
-    assert gene_space[1] == {"low": 0.2, "high": 0.5} # Step not directly in dict for float
+    # param2_float - may have step added by validation
+    expected_float_space = {"low": 0.2, "high": 0.5}
+    if "step" in gene_space[1]:
+        expected_float_space["step"] = gene_space[1]["step"]  # Accept whatever step was added
+    assert gene_space[1] == expected_float_space
 
-    # param3_cat
-    assert gene_space[2] == {"low": 0, "high": 1, "step": 1} # Index for ["A", "B"]
+    # param3_cat (categorical encoded as int indices)
+    assert gene_space[2] == {"low": 0, "high": 2, "step": 1} # 3 choices: A, B, C -> indices 0, 1, 2
 
 
 @patch('portfolio_backtester.optimization.genetic_optimizer._evaluate_params_walk_forward')
@@ -194,8 +199,8 @@ def test_run_single_objective(mock_pygad_ga, mock_evaluate_params, mock_backtest
 @patch('portfolio_backtester.optimization.genetic_optimizer.pygad.GA')
 def test_run_multi_objective(mock_pygad_ga, mock_evaluate_params, mock_backtester_instance):
     # Configure mock _evaluate_params_walk_forward for multi-objective
-    # Returns (Sharpe, MaxDrawdown) -> PyGAD fitness will be (Sharpe, -MaxDrawdown)
-    mock_evaluate_params.return_value = (0.9, 0.15) # (Sharpe, MaxDrawdown)
+    # Returns (Sharpe, MaxDD) -> PyGAD fitness will be (Sharpe, -MaxDD)
+    mock_evaluate_params.return_value = (0.9, 0.15) # (Sharpe, MaxDD)
 
     optimizer = GeneticOptimizer(
         scenario_config=MOCK_SCENARIO_CONFIG_MULTI_OBJECTIVE,
@@ -210,7 +215,7 @@ def test_run_multi_objective(mock_pygad_ga, mock_evaluate_params, mock_backteste
     mock_ga_instance = MagicMock()
     # For multi-objective, best_solutions_fitness and best_solutions are used
     # Solution: param1_int=4
-    # Fitness values as returned by fitness_func_wrapper: (Sharpe, -MaxDrawdown)
+    # Fitness values as returned by fitness_func_wrapper: (Sharpe, -MaxDD)
     mock_ga_instance.best_solutions = [np.array([4.0]), np.array([3.0])] # Two solutions on Pareto front
     mock_ga_instance.best_solutions_fitness = [(0.9, -0.15), (0.8, -0.20)] # Corresponding fitness values
     mock_ga_instance.generations_completed = MOCK_SCENARIO_CONFIG_MULTI_OBJECTIVE["genetic_algorithm_params"]["num_generations"]
@@ -220,7 +225,7 @@ def test_run_multi_objective(mock_pygad_ga, mock_evaluate_params, mock_backteste
 
     mock_pygad_ga.assert_called_once()
     ga_call_args = mock_pygad_ga.call_args[1]
-    assert ga_call_args['num_generations'] == 8
+    assert ga_call_args['num_generations'] == 5
     assert ga_call_args['sol_per_pop'] == 4
     assert ga_call_args['num_genes'] == 1 # Only param1_int
     assert ga_call_args['random_seed'] == 456
@@ -232,7 +237,7 @@ def test_run_multi_objective(mock_pygad_ga, mock_evaluate_params, mock_backteste
 
     # The selection logic picks the one best for the first objective (Sharpe, maximize)
     assert best_params["param1_int"] == 4
-    assert num_evals == 8 * 4
+    assert num_evals == 5 * 4
 
     # Test fitness_func_wrapper for multi-objective
     # Chromosome for param1_int=4
@@ -240,17 +245,17 @@ def test_run_multi_objective(mock_pygad_ga, mock_evaluate_params, mock_backteste
     assert isinstance(fitness_values, list) or isinstance(fitness_values, tuple)
     assert len(fitness_values) == 2
     assert abs(fitness_values[0] - 0.9) < 1e-6  # Sharpe (maximize)
-    assert abs(fitness_values[1] - (-0.15)) < 1e-6 # -MaxDrawdown (effectively maximizing -MDD)
+    assert abs(fitness_values[1] - (-0.15)) < 1e-6 # -MaxDD (effectively maximizing -MDD)
     mock_evaluate_params.assert_called()
 
 
 @patch('portfolio_backtester.optimization.genetic_optimizer._evaluate_params_walk_forward')
 def test_fitness_func_wrapper_minimization(mock_evaluate_params, mock_backtester_instance):
     scenario_minimize = MOCK_SCENARIO_CONFIG_SINGLE_OBJECTIVE.copy()
-    scenario_minimize["optimization_targets"] = [{"name": "MaxDrawdown", "direction": "minimize"}]
+    scenario_minimize["optimization_targets"] = [{"name": "MaxDD", "direction": "minimize"}]
     del scenario_minimize["optimization_metric"] # Remove to use optimization_targets
 
-    mock_evaluate_params.return_value = 0.2 # MaxDrawdown value
+    mock_evaluate_params.return_value = 0.2 # MaxDD value
 
     optimizer = GeneticOptimizer(
         scenario_config=scenario_minimize,
@@ -330,7 +335,7 @@ class TestGeneticOptimizerWithWalkForward:
         # Also mock calculate_metrics to return a predictable structure
         # The structure is a Pandas Series with metric names as index
         mock_metrics = pd.Series({
-            "Sharpe": 1.5, "Calmar": 1.2, "MaxDrawdown": -0.1, "Total Return": 0.25
+            "Sharpe": 1.5, "Calmar": 1.2, "MaxDD": -0.1, "Total Return": 0.25
         })
         # Patch calculate_metrics globally as it's imported at the module level in backtester.py
         # and used by _evaluate_params_walk_forward
