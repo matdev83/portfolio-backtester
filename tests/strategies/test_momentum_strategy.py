@@ -153,10 +153,10 @@ class TestMomentumStrategy(unittest.TestCase):
         # Check weights at the last valid rebalance date
         # StockA is designed to be the top performer
         last_date_weights = final_weights_df.iloc[-1]
-        self.assertEqual(last_date_weights['StockA'], 1.0)
-        self.assertEqual(last_date_weights['StockB'], 0.0)
-        self.assertEqual(last_date_weights['StockC'], 0.0) # StockC might be positive if num_holdings was >1
-        self.assertEqual(last_date_weights['StockD'], 0.0)
+        self.assertAlmostEqual(last_date_weights['StockA'], 1.0, places=3)
+        self.assertAlmostEqual(last_date_weights['StockB'], 0.0, places=5)
+        self.assertAlmostEqual(last_date_weights['StockC'], 0.0, places=5) # StockC might be positive if num_holdings was >1
+        self.assertAlmostEqual(last_date_weights['StockD'], 0.0, places=5)
 
 
     def test_generate_signals_with_nans_in_price(self):

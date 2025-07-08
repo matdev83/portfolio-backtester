@@ -1,4 +1,4 @@
-from .base import Feature
+from ..feature import Feature
 import numpy as np
 import pandas as pd
 

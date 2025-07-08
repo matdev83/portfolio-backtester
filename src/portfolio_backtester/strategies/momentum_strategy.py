@@ -215,12 +215,9 @@ class MomentumStrategy(BaseStrategy):
         # stop_levels = sl_handler.calculate_stop_levels(current_date, asset_ohlc_hist, self.w_prev, self.entry_prices)
         # weights_after_sl = sl_handler.apply_stop_loss(current_date, current_prices_for_sl, weights_at_current_date, self.entry_prices, stop_levels)
 
-        # Using old interface for now, this will break until SL is refactored or we pass dummy features
-        # This part highlights the dependency on Step 3. For now, let's assume SL might not have all it needs.
-        # A more robust temporary solution would be to pass None for features if SL handler expects it.
-        mock_features_for_sl = {} # SL handlers will need refactoring in Step 3
+        # Updated interface - no features needed
         stop_levels = sl_handler.calculate_stop_levels(
-             current_date, asset_prices_hist, mock_features_for_sl, self.w_prev, self.entry_prices
+             current_date, asset_ohlc_hist, self.w_prev, self.entry_prices
         )
         weights_after_sl = sl_handler.apply_stop_loss(
              current_date, current_prices_for_sl, weights_at_current_date, self.entry_prices, stop_levels

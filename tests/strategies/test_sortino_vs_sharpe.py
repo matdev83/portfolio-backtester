@@ -1,9 +1,8 @@
-
 import pandas as pd
 import numpy as np
 from portfolio_backtester.strategies.sharpe_momentum_strategy import SharpeMomentumStrategy
 from portfolio_backtester.strategies.sortino_momentum_strategy import SortinoMomentumStrategy
-from portfolio_backtester.feature_engineering import precompute_features
+# from portfolio_backtester.feature_engineering import precompute_features # Removed
 
 def create_sample_data():
     dates = pd.date_range('2020-01-01', periods=60, freq='ME')
@@ -32,14 +31,9 @@ def test_sortino_vs_sharpe_weights():
     sharpe_strategy = SharpeMomentumStrategy(strategy_config)
     sortino_strategy = SortinoMomentumStrategy(strategy_config)
 
-    sharpe_required_features = sharpe_strategy.get_required_features({'strategy_params': strategy_config})
-    sortino_required_features = sortino_strategy.get_required_features({'strategy_params': strategy_config})
-
-    sharpe_features = precompute_features(data, sharpe_required_features, benchmark_data)
-    sortino_features = precompute_features(data, sortino_required_features, benchmark_data)
-
-    sharpe_weights = sharpe_strategy.generate_signals(data, sharpe_features, benchmark_data)
-    sortino_weights = sortino_strategy.generate_signals(data, sortino_features, benchmark_data)
+    # Features are now computed internally by the strategies
+    sharpe_weights = sharpe_strategy.generate_signals(data, benchmark_data.to_frame(), data.index[-1])
+    sortino_weights = sortino_strategy.generate_signals(data, benchmark_data.to_frame(), data.index[-1])
 
     diff = (sharpe_weights - sortino_weights).abs().sum().sum()
     assert diff < 10.0 # Relaxed threshold for expected differences

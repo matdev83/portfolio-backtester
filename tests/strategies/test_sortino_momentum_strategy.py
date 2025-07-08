@@ -4,7 +4,6 @@ import numpy as np
 from src.portfolio_backtester.strategies.sortino_momentum_strategy import SortinoMomentumStrategy
 
 from src.portfolio_backtester.features.sortino_ratio import SortinoRatio
-from src.portfolio_backtester.feature_engineering import precompute_features
 
 class TestSortinoMomentumStrategy(unittest.TestCase):
 
@@ -49,9 +48,10 @@ class TestSortinoMomentumStrategy(unittest.TestCase):
         }
         strategy = SortinoMomentumStrategy(strategy_config)
         try:
-            required_features = strategy.get_required_features({'strategy_params': strategy_config})
-            features = precompute_features(self.data, required_features, self.benchmark_data)
-            weights = strategy.generate_signals(self.data, features, self.benchmark_data)
+            # Create proper benchmark DataFrame with 'Close' column
+            benchmark_df = self.benchmark_data.to_frame()
+            benchmark_df.columns = ['Close']  # Rename to match expected column name
+            weights = strategy.generate_signals(self.data, benchmark_df, self.data.index[-1])
             self.assertIsInstance(weights, pd.DataFrame)
             self.assertEqual(weights.shape[1], len(self.data.columns))
         except Exception as e:
@@ -161,9 +161,10 @@ class TestSortinoMomentumStrategy(unittest.TestCase):
         benchmark_declining = pd.Series([100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50, 45], 
                                       index=self.data.index)
         
-        required_features = strategy.get_required_features({'strategy_params': strategy_config})
-        features = precompute_features(self.data, required_features, benchmark_declining)
-        weights = strategy.generate_signals(self.data, features, benchmark_declining)
+        # Create proper benchmark DataFrame with 'Close' column
+        benchmark_df = benchmark_declining.to_frame()
+        benchmark_df.columns = ['Close']  # Rename to match expected column name
+        weights = strategy.generate_signals(self.data, benchmark_df, self.data.index[-1])
         
         # In periods where benchmark is below SMA, weights should be zero
         # Check the last few periods where this condition should be true

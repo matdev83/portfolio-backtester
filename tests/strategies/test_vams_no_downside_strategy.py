@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from src.portfolio_backtester.strategies.vams_no_downside_strategy import VAMSNoDownsideStrategy
 from src.portfolio_backtester.features.vams import VAMS
-from src.portfolio_backtester.feature_engineering import precompute_features
+# from src.portfolio_backtester.feature_engineering import precompute_features # Removed
 
 
 class TestVAMSNoDownsideStrategy(unittest.TestCase):
@@ -88,38 +88,37 @@ class TestVAMSNoDownsideStrategy(unittest.TestCase):
 
     def test_generate_signals(self):
         """Test signal generation."""
-        required_features = self.strategy.get_required_features({'strategy_params': self.strategy_config})
-        features = precompute_features(self.data, required_features, self.benchmark_data)
-        signals = self.strategy.generate_signals(self.data, features, self.benchmark_data)
+        # Create proper benchmark data with 'Close' column
+        benchmark_df = self.benchmark_data.to_frame()
+        benchmark_df.columns = ['Close']  # Rename to match expected column name
+        signals = self.strategy.generate_signals(self.data, benchmark_df, self.data.index[-1])
         
         # Check that signals have the correct shape
-        self.assertEqual(signals.shape, self.data.shape)
+        self.assertEqual(signals.shape, (1, len(self.data.columns)))
         
         # Check that all values are finite
-
+        self.assertTrue(np.isfinite(signals).all().all())
         
         # Check that weights are non-negative for long-only strategy
         self.assertTrue((signals >= 0).all().all())
         
-        # Check that early periods have zero weights (due to rolling window)
-        lookback_months = self.strategy_config['lookback_months']
-        early_weights = signals.iloc[:lookback_months-1]
-        self.assertTrue((early_weights == 0).all().all())
-
     def test_generate_signals_with_sma_filter(self):
         """Test signal generation with SMA filter."""
         # Create strategy with SMA filter
         config_with_sma = self.strategy_config.copy()
         config_with_sma['sma_filter_window'] = 3
         strategy_with_sma = VAMSNoDownsideStrategy(config_with_sma)
-        required_features = strategy_with_sma.get_required_features({'strategy_params': config_with_sma})
-        features = precompute_features(self.data, required_features, self.benchmark_data)
-        signals = strategy_with_sma.generate_signals(self.data, features, self.benchmark_data)
+        
+        # Create proper benchmark data with 'Close' column
+        benchmark_df = self.benchmark_data.to_frame()
+        benchmark_df.columns = ['Close']  # Rename to match expected column name
+        signals = strategy_with_sma.generate_signals(self.data, benchmark_df, self.data.index[-1])
         
         # Check that signals have the correct shape
-        self.assertEqual(signals.shape, self.data.shape)
+        self.assertEqual(signals.shape, (1, len(self.data.columns)))
         
         # Check that all values are finite
+        self.assertTrue(np.isfinite(signals).all().all())
 
 
     def test_edge_cases(self):
@@ -127,17 +126,17 @@ class TestVAMSNoDownsideStrategy(unittest.TestCase):
         # Test with very small dataset
         small_data = self.data.iloc[:3]
         small_benchmark = self.benchmark_data.iloc[:3]
-        required_features = self.strategy.get_required_features({'strategy_params': self.strategy_config})
-        features = precompute_features(small_data, required_features, small_benchmark)
-        signals = self.strategy.generate_signals(small_data, features, small_benchmark)
-        self.assertEqual(signals.shape, small_data.shape)
+        small_benchmark_df = small_benchmark.to_frame()
+        small_benchmark_df.columns = ['Close']  # Rename to match expected column name
+        signals = self.strategy.generate_signals(small_data, small_benchmark_df, small_data.index[-1])
+        self.assertEqual(signals.shape, (1, len(small_data.columns)))
 
         # Test with all zero returns
         zero_data = pd.DataFrame(100, index=self.data.index, columns=self.data.columns)
-        required_features = self.strategy.get_required_features({'strategy_params': self.strategy_config})
-        features = precompute_features(zero_data, required_features, self.benchmark_data)
-        signals = self.strategy.generate_signals(zero_data, features, self.benchmark_data)
-        self.assertEqual(signals.shape, zero_data.shape)
+        zero_benchmark_df = self.benchmark_data.to_frame()
+        zero_benchmark_df.columns = ['Close']  # Rename to match expected column name
+        signals = self.strategy.generate_signals(zero_data, zero_benchmark_df, zero_data.index[-1])
+        self.assertEqual(signals.shape, (1, len(zero_data.columns)))
 
 
 if __name__ == '__main__':

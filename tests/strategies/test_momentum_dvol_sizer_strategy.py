@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 
 from src.portfolio_backtester.strategies.momentum_dvol_sizer_strategy import MomentumDvolSizerStrategy
-from src.portfolio_backtester.feature_engineering import precompute_features
 
 
 class TestMomentumDvolSizerStrategy(unittest.TestCase):
@@ -22,10 +21,14 @@ class TestMomentumDvolSizerStrategy(unittest.TestCase):
     def test_generate_signals_smoke(self):
         strategy_config = {'lookback_months': 3}
         strategy = MomentumDvolSizerStrategy(strategy_config)
-        required = strategy.get_required_features({'strategy_params': strategy_config})
-        features = precompute_features(self.data, required, self.benchmark)
-        signals = strategy.generate_signals(self.data, features, self.benchmark)
-        self.assertEqual(signals.shape, self.data.shape)
+        # Create proper benchmark DataFrame with 'Close' column
+        benchmark_df = self.benchmark.to_frame()
+        benchmark_df.columns = ['Close']  # Rename to match expected column name
+        current_date = self.data.index[-1]
+        signals = strategy.generate_signals(self.data, benchmark_df, current_date)
+        # Check that signals have the correct shape (1 row for current_date, columns for each asset)
+        expected_shape = (1, len(self.data.columns))
+        self.assertEqual(signals.shape, expected_shape)
 
 
 if __name__ == '__main__':

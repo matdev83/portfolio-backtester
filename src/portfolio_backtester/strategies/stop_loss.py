@@ -129,47 +129,14 @@ class AtrBasedStopLoss(BaseStopLoss):
     def calculate_stop_levels(
         self,
         current_date: pd.Timestamp,
-        prices_history: pd.DataFrame, # Unused in this version, ATR comes from features
-        features: dict,
+        asset_ohlc_history: pd.DataFrame, # Updated to match base class signature
         current_weights: pd.Series,
         entry_prices: pd.Series
     ) -> pd.Series:
         stop_levels = pd.Series(np.nan, index=current_weights.index)
-        atr_feature_name = f"atr_{self.atr_length}" # Matches default ATRFeature naming
-
-        if atr_feature_name not in features:
-            # Log or raise error if ATR feature is missing
-            # For now, return NaNs, effectively disabling stops
-            print(f"Warning: ATR feature '{atr_feature_name}' not found for date {current_date}. ATR Stop Loss disabled for this period.")
-            return stop_levels
-
-        atr_values_all_assets = features[atr_feature_name]
-
-        # Ensure atr_values_for_date is a Series
-        if isinstance(atr_values_all_assets, pd.DataFrame):
-            if current_date in atr_values_all_assets.index:
-                atr_values_for_date = atr_values_all_assets.loc[current_date]
-            else:
-                # If current_date is not in features (e.g., features are on month ends, current_date is intraday)
-                # try to get the latest available ATR. This might need adjustment based on how features are indexed.
-                # For now, we assume current_date will be in features index.
-                print(f"Warning: ATR values for date {current_date} not found. ATR Stop Loss might be impacted.")
-                return stop_levels # Or use ffill, but that implies stale data
-        elif isinstance(atr_values_all_assets, pd.Series): # Should ideally be a DataFrame (features over time)
-             # This case implies features[atr_feature_name] is a single series for one date, which is unusual
-             # Or it's a multi-indexed series. For now, let's assume it's NOT what we expect for time-series features.
-             # This part of the logic might need refinement based on actual `features` structure.
-             # For now, if it's a series, we assume it's for the current_date, which is unlikely.
-             # A robust solution would be to ensure features are DataFrames [date, asset_ticker].
-             # Given the current plan, features are computed on monthly data, so atr_values_all_assets
-             # will be a DataFrame indexed by month-end dates, with columns for each asset.
-            print(f"Warning: ATR feature '{atr_feature_name}' is a Series, expected DataFrame. Processing may be incorrect.")
-            # This path is less likely if features are correctly structured as DataFrame[date, ticker]
-            # If it's a series, it must be indexed by asset for the current_date.
-            atr_values_for_date = atr_values_all_assets
-        else:
-            print(f"Warning: ATR feature '{atr_feature_name}' has unexpected type: {type(atr_values_all_assets)}. ATR Stop Loss disabled.")
-            return stop_levels
+        
+        # Calculate ATR directly from OHLC data
+        atr_values_for_date = self._calculate_atr(asset_ohlc_history, current_date)
 
 
         for asset in current_weights.index:
@@ -199,6 +166,55 @@ class AtrBasedStopLoss(BaseStopLoss):
                 stop_levels.loc[asset] = entry_price + (atr_value * self.atr_multiple)
 
         return stop_levels
+
+    def _calculate_atr(self, asset_ohlc_history: pd.DataFrame, current_date: pd.Timestamp) -> pd.Series:
+        """Calculate Average True Range for all assets as of current_date."""
+        if asset_ohlc_history.empty:
+            return pd.Series(dtype=float)
+        
+        # Filter data up to current_date
+        ohlc_data = asset_ohlc_history[asset_ohlc_history.index <= current_date]
+        
+        if len(ohlc_data) < self.atr_length:
+            # Not enough data for ATR calculation
+            return pd.Series(np.nan, index=asset_ohlc_history.columns.get_level_values(0).unique() if isinstance(asset_ohlc_history.columns, pd.MultiIndex) else asset_ohlc_history.columns)
+        
+        # Extract OHLC data for each asset
+        if isinstance(ohlc_data.columns, pd.MultiIndex) and 'Field' in ohlc_data.columns.names:
+            # MultiIndex columns: (Ticker, Field)
+            assets = ohlc_data.columns.get_level_values('Ticker').unique()
+            atr_values = {}
+            
+            for asset in assets:
+                try:
+                    high = ohlc_data[(asset, 'High')]
+                    low = ohlc_data[(asset, 'Low')]
+                    close = ohlc_data[(asset, 'Close')]
+                    
+                    # Calculate True Range
+                    tr1 = high - low
+                    tr2 = abs(high - close.shift(1))
+                    tr3 = abs(low - close.shift(1))
+                    true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+                    
+                    # Calculate ATR as rolling mean of True Range
+                    atr = true_range.rolling(window=self.atr_length, min_periods=self.atr_length).mean()
+                    
+                    # Get ATR value for current_date
+                    if current_date in atr.index:
+                        atr_values[asset] = atr.loc[current_date]
+                    else:
+                        atr_values[asset] = np.nan
+                        
+                except KeyError:
+                    # Missing OHLC data for this asset
+                    atr_values[asset] = np.nan
+            
+            return pd.Series(atr_values)
+        else:
+            # Assume flat columns are close prices only - cannot calculate ATR
+            print(f"Warning: Cannot calculate ATR from non-OHLC data. ATR Stop Loss disabled.")
+            return pd.Series(np.nan, index=ohlc_data.columns)
 
     def apply_stop_loss(
         self,

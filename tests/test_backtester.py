@@ -7,8 +7,8 @@ from typing import Optional # Import Optional
 
 from src.portfolio_backtester.backtester import Backtester, _resolve_strategy
 from src.portfolio_backtester.config_loader import GLOBAL_CONFIG, BACKTEST_SCENARIOS
-from src.portfolio_backtester.features.feature_helpers import get_required_features_from_scenarios
-from src.portfolio_backtester.feature_engineering import precompute_features
+# from src.portfolio_backtester.features.feature_helpers import get_required_features_from_scenarios # Removed
+# from src.portfolio_backtester.feature_engineering import precompute_features # Removed
 
 class TestBacktester(unittest.TestCase):
     class MockArgs:
@@ -75,16 +75,7 @@ class TestBacktester(unittest.TestCase):
             index=dates,
             columns=tickers
         )
-        # Pre-compute features for the mock data
-        strategy_registry = {"momentum": _resolve_strategy("momentum")}
-        # Manually add all possible lookback months to required features for testing
-        from src.portfolio_backtester.features.momentum import Momentum
-        required_features = get_required_features_from_scenarios(self.scenarios, strategy_registry)
-        for i in range(1, 13):
-            required_features.add(Momentum(lookback_months=i))
-        # self.backtester.features = precompute_features(self.mock_data, required_features, self.mock_data[self.global_config["benchmark"]])
-        # The above line is problematic for __init__ tests as self.backtester might not be initialized yet or in a controlled way.
-        # It's better to set up features specifically for tests that need them.
+        # Pre-computation of features is now handled within strategies
         pass
 
 
@@ -101,7 +92,6 @@ class TestBacktester(unittest.TestCase):
         self.assertEqual(backtester.args, args)
         self.assertEqual(backtester.data_source, "mock_data_source_instance")
         self.assertEqual(backtester.results, {})
-        self.assertIsNone(backtester.features)
         self.assertEqual(backtester.n_jobs, args.n_jobs)
         self.assertEqual(backtester.early_stop_patience, 10) # Default from MockArgs or Backtester default
         mock_np_seed.assert_called_with(123)
@@ -294,7 +284,7 @@ class TestBacktester(unittest.TestCase):
              patch('src.portfolio_backtester.backtester.get_position_sizer', return_value=mock_position_sizer_func) as mock_get_pos_sizer, \
              patch('src.portfolio_backtester.backtester.rebalance', return_value=mock_weights_monthly) as mock_rebalance_func:
 
-            portfolio_rets = backtester.run_scenario(scenario_config, price_data_monthly, price_data_daily, features={})
+            portfolio_rets = backtester.run_scenario(scenario_config, price_data_monthly, price_data_daily)
 
             # Assertions
             mock_get_strat.assert_called_once_with(scenario_config["strategy"], scenario_config["strategy_params"])
@@ -356,16 +346,7 @@ class TestBacktester(unittest.TestCase):
             mock_get_ds.return_value = MagicMock() # Mock the data source
             backtester_for_wfo = Backtester(self.global_config, self.scenarios, self.mock_args)
 
-        # Pre-compute features for the mock data for this specific backtester instance
-        strategy_registry = {"momentum": _resolve_strategy("momentum")}
-        from src.portfolio_backtester.features.momentum import Momentum
-        required_features = get_required_features_from_scenarios(self.scenarios, strategy_registry)
-        for i in range(1, 13): # Using a smaller, more relevant range
-            required_features.add(Momentum(lookback_months=i))
-
-        # Mock precompute_features if it's complex or involves external things for this unit-like test
-        # For now, assuming it works with mock_data if mock_data is appropriate
-        backtester_for_wfo.features = precompute_features(self.mock_data, required_features, self.mock_data[self.global_config["benchmark"]])
+        # Pre-computation of features is now handled within strategies
 
         # Pre-calculate returns for the mock data
         rets_full = self.mock_data.pct_change().fillna(0)
@@ -387,8 +368,7 @@ class TestBacktester(unittest.TestCase):
 
     @patch('src.portfolio_backtester.backtester_logic.optimization.GeneticOptimizer')
     @patch('src.portfolio_backtester.backtester.Backtester._get_data_source') # Mock data source loading
-    @patch('src.portfolio_backtester.backtester.precompute_features') # Mock feature precomputation
-    def test_run_optimization_with_genetic_optimizer(self, mock_precompute, mock_get_ds, mock_genetic_optimizer_class):
+    def test_run_optimization_with_genetic_optimizer(self, mock_get_ds, mock_genetic_optimizer_class):
         """Test that run_optimization calls GeneticOptimizer when specified."""
         args = self.MockArgs()
         args.optimizer = "genetic" # Specify genetic optimizer
@@ -396,7 +376,6 @@ class TestBacktester(unittest.TestCase):
 
         # Mock data source and feature computation for Backtester initialization
         mock_get_ds.return_value = MagicMock()
-        mock_precompute.return_value = {} # Empty features dict
 
         # Minimal scenario for testing optimizer dispatch
         scenario_config = self.scenarios[0].copy() # Use a copy of the existing scenario
@@ -445,15 +424,13 @@ class TestBacktester(unittest.TestCase):
     @patch('src.portfolio_backtester.backtester_logic.optimization._evaluate_params_walk_forward')
     @patch('src.portfolio_backtester.backtester_logic.optimization.Progress') # Mock Progress bar
     @patch('src.portfolio_backtester.backtester.Backtester._get_data_source')
-    @patch('src.portfolio_backtester.backtester.precompute_features')
-    def test_run_optimization_with_optuna_optimizer(self, mock_precompute, mock_get_ds, mock_progress, mock_evaluate, mock_setup_study):
+    def test_run_optimization_with_optuna_optimizer(self, mock_get_ds, mock_progress, mock_evaluate, mock_setup_study):
         """Test that run_optimization calls Optuna logic when specified (or by default)."""
         args = self.MockArgs()
         args.optimizer = "optuna" # Explicitly optuna
         args.mode = "optimize"
 
         mock_get_ds.return_value = MagicMock()
-        mock_precompute.return_value = {}
 
         scenario_config = self.scenarios[0].copy()
         backtester = Backtester(self.global_config, [scenario_config], args, random_state=42)
