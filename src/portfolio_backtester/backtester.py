@@ -76,6 +76,8 @@ class Backtester:
     def _get_strategy(self, strategy_name, params):
         if strategy_name == "momentum":
             class_name = "MomentumStrategy"
+        elif strategy_name == "momentum_unfiltered_atr":
+            class_name = "MomentumUnfilteredAtrStrategy"
         elif strategy_name == "vams_momentum":
             class_name = "VAMSMomentumStrategy"
         elif strategy_name == "vams_no_downside":

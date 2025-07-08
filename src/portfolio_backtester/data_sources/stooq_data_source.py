@@ -47,7 +47,13 @@ class StooqDataSource(BaseDataSource):
                 if df.empty or not isinstance(df.index, pd.DatetimeIndex):
                     logger.debug(f"Cached file for {ticker} is empty or has invalid dates. Forcing re-download.")
                     return None
-                df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+                
+                # Convert numeric columns to proper types
+                numeric_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                for col in numeric_columns:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+                
                 logger.debug(f"Loaded {ticker} from cache.")
                 return df
             except Exception as exc:  # pragma: no cover – any parsing error => fallback to live download
@@ -75,16 +81,16 @@ class StooqDataSource(BaseDataSource):
     # Public API
     # ------------------------------------------------------------------
     def get_data(self, tickers: List[str], start_date: str, end_date: str) -> pd.DataFrame:
-        """Fetch daily close prices for *tickers* between *start_date* and *end_date*.
+        """Fetch daily OHLCV data for *tickers* between *start_date* and *end_date*.
 
-        A CSV cache is created per-ticker in *data/* exactly like the Yahoo
-        implementation so existing datasets remain valid.
+        Returns a DataFrame with MultiIndex columns: (Ticker, Field) where Field 
+        includes 'Open', 'High', 'Low', 'Close', 'Volume'.
         """
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir, exist_ok=True)
             logger.info(f"Created data directory at: {self.data_dir}")
 
-        all_closes: list[pd.Series] = []
+        all_ticker_data = []
         logger.info(f"Fetching data from Stooq for {len(tickers)} tickers from {start_date} to {end_date}.")
 
         # Map tickers that differ between Yahoo and Stooq so the rest of the
@@ -114,28 +120,34 @@ class StooqDataSource(BaseDataSource):
 
                 if df is not None and not df.empty:
                     df.index.name = "Date"
-                    if "Close" in df.columns:
-                        close_series = df["Close"].copy()
-                    elif "Adj Close" in df.columns:
-                        close_series = df["Adj Close"].copy()
-                    elif orig_ticker in df.columns:
-                        close_series = df[orig_ticker].copy()
-                    else:
-                        logger.error(
-                            f"Could not find a 'Close', 'Adj Close' or '{orig_ticker}' column in downloaded data for {orig_ticker}"
-                        )
-                        raise ValueError(
-                            f"Could not find a 'Close', 'Adj Close' or '{orig_ticker}' column in downloaded data for {orig_ticker}"
-                        )
-                    close_series.name = orig_ticker
-                    all_closes.append(close_series)
+                    
+                    # Ensure we have the expected OHLCV columns
+                    expected_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                    available_columns = [col for col in expected_columns if col in df.columns]
+                    
+                    if not available_columns:
+                        logger.error(f"No OHLCV columns found for {orig_ticker}. Available columns: {df.columns.tolist()}")
+                        progress.advance(dl_task)
+                        continue
+                    
+                    # Create MultiIndex DataFrame for this ticker
+                    ticker_df = df[available_columns].copy()
+                    
+                    # Create MultiIndex columns: (Ticker, Field)
+                    ticker_df.columns = pd.MultiIndex.from_product(
+                        [[orig_ticker], ticker_df.columns], 
+                        names=['Ticker', 'Field']
+                    )
+                    
+                    all_ticker_data.append(ticker_df)
 
                 progress.advance(dl_task)
 
-        if not all_closes:
+        if not all_ticker_data:
             logger.warning("No data fetched for any ticker from Stooq.")
             return pd.DataFrame()
 
-        result_df = pd.concat(all_closes, axis=1)
+        # Concatenate all ticker data
+        result_df = pd.concat(all_ticker_data, axis=1)
         logger.info("Data fetching from Stooq complete.")
         return result_df 

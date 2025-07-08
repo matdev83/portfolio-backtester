@@ -218,8 +218,8 @@ class BaseStrategy(ABC):
             # Not enough data, maintain previous state or default to not derisked if no previous state
             return previous_derisk_flag, consecutive_periods_under_sma
 
-        price = benchmark_prices_at_current_date.iloc[0]
-        sma = benchmark_sma_at_current_date.iloc[0]
+        price = benchmark_prices_at_current_date.iloc[0].item()
+        sma = benchmark_sma_at_current_date.iloc[0].item()
 
         if price < sma:
             consecutive_periods_under_sma += 1

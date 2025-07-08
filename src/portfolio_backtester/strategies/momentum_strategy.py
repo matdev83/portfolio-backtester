@@ -203,9 +203,12 @@ class MomentumStrategy(BaseStrategy):
         # For now, we pass what's available and assume internal adaptation or future changes in Step 3
 
         # Data for stop loss: OHLCV up to current_date for assets, and current prices
-        # `all_historical_data` is already sliced up to current_date in the backtester (assumption for now)
-        # or should be sliced here if it's full history. Let's assume it's pre-sliced.
-        asset_ohlc_hist = all_historical_data[all_historical_data.index <= current_date]
+        # OPTIMIZATION: Only pass the data needed for ATR calculation (last 30 periods + buffer)
+        # to avoid processing the entire historical dataset for every rebalancing date
+        atr_length = sl_handler.stop_loss_specific_config.get("atr_length", 14) if hasattr(sl_handler, 'stop_loss_specific_config') else 14
+        buffer_periods = max(30, atr_length * 2)  # Ensure enough data for ATR calculation
+        recent_data = all_historical_data[all_historical_data.index <= current_date].tail(buffer_periods)
+        asset_ohlc_hist = recent_data
 
         current_prices_for_sl = asset_ohlc_hist.xs(price_col_asset, level='Field', axis=1).loc[current_date] if isinstance(asset_ohlc_hist.columns, pd.MultiIndex) and current_date in asset_ohlc_hist.index else (asset_ohlc_hist.loc[current_date] if current_date in asset_ohlc_hist.index else pd.Series(dtype=float))
 
@@ -235,7 +238,7 @@ class MomentumStrategy(BaseStrategy):
         # SMA Filter
         sma_filter_window = params.get("sma_filter_window")
         if sma_filter_window and sma_filter_window > 0:
-            benchmark_price_series_for_sma = benchmark_prices_hist[price_col_benchmark]
+            benchmark_price_series_for_sma = benchmark_prices_hist.xs(price_col_benchmark, level='Field', axis=1) if isinstance(benchmark_prices_hist.columns, pd.MultiIndex) else benchmark_prices_hist[price_col_benchmark]
             benchmark_sma = self._calculate_benchmark_sma(benchmark_prices_hist, sma_filter_window, price_col_benchmark)
 
             if current_date in benchmark_price_series_for_sma.index and current_date in benchmark_sma.index:
@@ -258,7 +261,7 @@ class MomentumStrategy(BaseStrategy):
                     final_weights[:] = 0.0
                 # General SMA filter (if price < SMA, regardless of consecutive days)
                 elif not current_benchmark_price.empty and not current_benchmark_sma.empty and \
-                     current_benchmark_price.iloc[0] < current_benchmark_sma.iloc[0]:
+                     current_benchmark_price.iloc[0].item() < current_benchmark_sma.iloc[0].item():
                     final_weights[:] = 0.0
 
 

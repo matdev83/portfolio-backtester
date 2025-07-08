@@ -1,8 +1,11 @@
 import pandas as pd
 import numpy as np
+import logging
 from scipy.stats import skew, kurtosis, norm, linregress
 from typing import Tuple # Import Tuple for type hinting
 import scipy._lib._util as sp_util
+
+logger = logging.getLogger(__name__)
 
 if not hasattr(sp_util, "_lazywhere"):
     def _lazywhere(cond, arrays, func, fillvalue=np.nan, out=None):
@@ -283,14 +286,37 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
 
     common_index = active_rets.index.intersection(active_bench_rets.index)
     rets_aligned, bench_aligned = active_rets.loc[common_index], active_bench_rets.loc[common_index]
+    
+    # Debug logging
+    if len(rets_aligned) == 0 or len(bench_aligned) == 0:
+        logger.debug(f"Empty aligned series: rets_len={len(rets_aligned)}, bench_len={len(bench_aligned)}")
+    if not isinstance(rets_aligned, pd.Series) or not isinstance(bench_aligned, pd.Series):
+        logger.debug(f"Unexpected types: rets_type={type(rets_aligned)}, bench_type={type(bench_aligned)}")
 
     # Ensure enough data for CAPM regression and that strategy returns have variance
-    if len(rets_aligned) < 2 or len(bench_aligned) < 2 or bench_aligned.std() == 0 or rets_aligned.std() == 0:
+    # Handle std() calculation safely
+    try:
+        bench_std_val = bench_aligned.std()
+        bench_std = float(bench_std_val) if pd.notna(bench_std_val) else 0.0
+    except:
+        bench_std = 0.0
+        
+    try:
+        rets_std_val = rets_aligned.std()
+        rets_std = float(rets_std_val) if pd.notna(rets_std_val) else 0.0
+    except:
+        rets_std = 0.0
+    
+    if len(rets_aligned) < 2 or len(bench_aligned) < 2 or abs(bench_std) < EPSILON_FOR_DIVISION or abs(rets_std) < EPSILON_FOR_DIVISION:
         alpha = np.nan
         beta = np.nan
         r_squared = np.nan
     else:
-        X = sm.add_constant(bench_aligned)
+        # Set the name of the benchmark series to ensure proper column naming in regression
+        bench_aligned_named = bench_aligned.copy()
+        bench_aligned_named.name = bench_ticker_name
+        
+        X = sm.add_constant(bench_aligned_named)
         try:
             capm = sm.OLS(rets_aligned, X).fit()
             alpha = capm.params.get("const", np.nan) * steps_per_year
@@ -310,7 +336,8 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
     if len(active_rets) >= 2:
         log_equity = np.log((1 + active_rets).cumprod())
         # Ensure log_equity has variance before regression
-        if log_equity.std() < EPSILON_FOR_DIVISION:
+        log_equity_std = float(log_equity.std()) if not pd.isna(log_equity.std()) else 0.0
+        if log_equity_std < EPSILON_FOR_DIVISION:
             k_ratio = np.nan
         else:
             idx = np.arange(len(log_equity))

@@ -121,6 +121,7 @@ class AtrBasedStopLoss(BaseStopLoss):
         super().__init__(strategy_config, stop_loss_specific_config)
         self.atr_length = self.stop_loss_specific_config.get("atr_length", 14)
         self.atr_multiple = self.stop_loss_specific_config.get("atr_multiple", 2.5)
+        self._atr_cache = {}  # Cache for ATR calculations
 
     def get_required_features(self) -> Set[Feature]:
         from ..features.atr import ATRFeature # Import here to avoid circular dependency at module load time
@@ -172,12 +173,19 @@ class AtrBasedStopLoss(BaseStopLoss):
         if asset_ohlc_history.empty:
             return pd.Series(dtype=float)
         
+        # Create cache key
+        cache_key = (str(current_date), self.atr_length, len(asset_ohlc_history))
+        if cache_key in self._atr_cache:
+            return self._atr_cache[cache_key]
+        
         # Filter data up to current_date
         ohlc_data = asset_ohlc_history[asset_ohlc_history.index <= current_date]
         
         if len(ohlc_data) < self.atr_length:
             # Not enough data for ATR calculation
-            return pd.Series(np.nan, index=asset_ohlc_history.columns.get_level_values(0).unique() if isinstance(asset_ohlc_history.columns, pd.MultiIndex) else asset_ohlc_history.columns)
+            result = pd.Series(np.nan, index=asset_ohlc_history.columns.get_level_values(0).unique() if isinstance(asset_ohlc_history.columns, pd.MultiIndex) else asset_ohlc_history.columns)
+            self._atr_cache[cache_key] = result
+            return result
         
         # Extract OHLC data for each asset
         if isinstance(ohlc_data.columns, pd.MultiIndex) and 'Field' in ohlc_data.columns.names:
@@ -210,11 +218,52 @@ class AtrBasedStopLoss(BaseStopLoss):
                     # Missing OHLC data for this asset
                     atr_values[asset] = np.nan
             
-            return pd.Series(atr_values)
+            result = pd.Series(atr_values)
         else:
-            # Assume flat columns are close prices only - cannot calculate ATR
-            print(f"Warning: Cannot calculate ATR from non-OHLC data. ATR Stop Loss disabled.")
-            return pd.Series(np.nan, index=ohlc_data.columns)
+            # Only Close prices available - use rolling standard deviation as ATR proxy
+            # OPTIMIZED: Pre-calculate all returns and rolling stats once
+            atr_values = {}
+            
+            # Get the last self.atr_length + 1 rows for efficiency
+            recent_data = ohlc_data.tail(self.atr_length + 10)  # Add buffer for safety
+            
+            for asset in ohlc_data.columns:
+                try:
+                    close_prices = recent_data[asset].dropna()
+                    
+                    if len(close_prices) < self.atr_length:
+                        atr_values[asset] = np.nan
+                        continue
+                    
+                    # Calculate returns and rolling std more efficiently
+                    returns = close_prices.pct_change().dropna()
+                    if len(returns) < self.atr_length:
+                        atr_values[asset] = np.nan
+                        continue
+                        
+                    rolling_std = returns.rolling(window=self.atr_length, min_periods=self.atr_length).std()
+                    
+                    # Convert to price-based volatility (approximate ATR)
+                    if current_date in close_prices.index:
+                        current_price = close_prices.loc[current_date]
+                        if current_date in rolling_std.index and not pd.isna(rolling_std.loc[current_date]):
+                            # ATR proxy = current_price * rolling_volatility * scaling_factor
+                            scaling_factor = 1.0  # This can be adjusted based on empirical analysis
+                            atr_values[asset] = current_price * rolling_std.loc[current_date] * scaling_factor
+                        else:
+                            atr_values[asset] = np.nan
+                    else:
+                        atr_values[asset] = np.nan
+                        
+                except (KeyError, Exception):
+                    # Missing data for this asset
+                    atr_values[asset] = np.nan
+            
+            result = pd.Series(atr_values)
+        
+        # Cache the result
+        self._atr_cache[cache_key] = result
+        return result
 
     def apply_stop_loss(
         self,

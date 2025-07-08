@@ -30,7 +30,9 @@ def register_signal_handler():
 
 def _resolve_strategy(name: str):
     class_name = "".join(w.capitalize() for w in name.split('_')) + "Strategy"
-    if name == "vams_momentum":
+    if name == "momentum_unfiltered_atr":
+        class_name = "MomentumUnfilteredAtrStrategy"
+    elif name == "vams_momentum":
         class_name = "VAMSMomentumStrategy"
     elif name == "vams_no_downside":
         class_name = "VAMSNoDownsideStrategy"

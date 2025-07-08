@@ -22,12 +22,7 @@ def _evaluate_params_walk_forward(self, trial: Any, scenario_config: dict, windo
         d_slice = daily_data.loc[tr_start:te_end]
         r_slice = rets_full.loc[tr_start:te_end]
 
-        f_slice = {}
-        if self.features:
-            for name, feat_df in self.features.items():
-                f_slice[name] = feat_df.reindex(m_slice.index)
-
-        window_returns = self.run_scenario(scenario_config, m_slice, d_slice, r_slice, f_slice, verbose=False)
+        window_returns = self.run_scenario(scenario_config, m_slice, d_slice, r_slice, verbose=False)
 
         if window_returns is None or window_returns.empty:
             self.logger.warning(f"No returns generated for window {tr_start}-{te_end}. Skipping.")

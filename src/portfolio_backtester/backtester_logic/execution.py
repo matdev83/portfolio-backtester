@@ -17,7 +17,7 @@ def run_backtest_mode(self, scenario_config, monthly_data, daily_data, rets_full
         except Exception as e:
             self.logger.error(f"Error loading Optuna study: {e}. Using default parameters.")
 
-    rets = self.run_scenario(scenario_config, monthly_data, daily_data, rets_full, self.features)
+    rets = self.run_scenario(scenario_config, monthly_data, daily_data, rets_full)
     train_end_date = pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
     self.results[scenario_config["name"]] = {"returns": rets, "display_name": scenario_config["name"], "train_end_date": train_end_date}
 
@@ -46,7 +46,7 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
     optimized_scenario["strategy_params"] = optimal_params
     
     self.logger.info(f"Running full backtest with optimal parameters: {optimal_params}")
-    full_rets = self.run_scenario(optimized_scenario, monthly_data, daily_data, rets_full, self.features)
+    full_rets = self.run_scenario(optimized_scenario, monthly_data, daily_data, rets_full)
     
     optimized_name = f'{scenario_config["name"]} (Optimized)'
     self.results[optimized_name] = {
