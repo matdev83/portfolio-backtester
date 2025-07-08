@@ -209,21 +209,26 @@ class MomentumStrategy(BaseStrategy):
 
         current_prices_for_sl = asset_ohlc_hist.xs(price_col_asset, level='Field', axis=1).loc[current_date] if isinstance(asset_ohlc_hist.columns, pd.MultiIndex) and current_date in asset_ohlc_hist.index else (asset_ohlc_hist.loc[current_date] if current_date in asset_ohlc_hist.index else pd.Series(dtype=float))
 
-        # TODO: The stop loss handler's interface needs to change to accept `asset_ohlc_hist` and `current_date`
-        # instead of `features` and separate `prices`. This is part of Step 3 of the plan.
-        # Placeholder for how it *might* be called after SL interface is updated:
-        # stop_levels = sl_handler.calculate_stop_levels(current_date, asset_ohlc_hist, self.w_prev, self.entry_prices)
-        # weights_after_sl = sl_handler.apply_stop_loss(current_date, current_prices_for_sl, weights_at_current_date, self.entry_prices, stop_levels)
+        # --- Apply Stop Loss --- (Updated call)
+        sl_handler = self.get_stop_loss_handler()
 
-        # Using old interface for now, this will break until SL is refactored or we pass dummy features
-        # This part highlights the dependency on Step 3. For now, let's assume SL might not have all it needs.
-        # A more robust temporary solution would be to pass None for features if SL handler expects it.
-        mock_features_for_sl = {} # SL handlers will need refactoring in Step 3
+        # asset_ohlc_hist is already defined above as:
+        # all_historical_data[all_historical_data.index <= current_date]
+        # current_prices_for_sl is also defined above as the relevant 'Close' price series for current_date
+
         stop_levels = sl_handler.calculate_stop_levels(
-             current_date, asset_prices_hist, mock_features_for_sl, self.w_prev, self.entry_prices
+            current_date,
+            asset_ohlc_hist, # Pass full OHLC history up to current_date
+            self.w_prev,     # current_weights before this period's new signals
+            self.entry_prices
         )
+
         weights_after_sl = sl_handler.apply_stop_loss(
-             current_date, current_prices_for_sl, weights_at_current_date, self.entry_prices, stop_levels
+            current_date,
+            current_prices_for_sl, # Current period's close prices for checking stops
+            weights_at_current_date, # Target weights before stop-loss application
+            self.entry_prices,
+            stop_levels
         )
 
         for asset in current_universe_tickers: # Update entry prices if SL closed positions
