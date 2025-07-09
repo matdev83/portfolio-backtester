@@ -78,6 +78,16 @@ def display_results(self, daily_data_for_display):
         "num_trials_map": num_trials_full
     })
 
+    # Check for constraint violations and display warnings
+    constraint_violations_found = False
+    for name, result_data in self.results.items():
+        if result_data.get("constraint_status") == "VIOLATED":
+            constraint_violations_found = True
+            break
+    
+    if constraint_violations_found:
+        _display_constraint_violation_warning(self, console)
+    
     for period_data in periods_data:
         _generate_performance_table(
             self,
@@ -168,14 +178,58 @@ def _generate_performance_table(self, console: Console, period_returns: dict,
         result_data = self.results.get(name, {})
         optimal_params = result_data.get("optimal_params")
         display_name = result_data.get("display_name", name)
+        constraint_status = result_data.get("constraint_status", "UNKNOWN")
 
         if optimal_params:
-            params_table = Table(title=f"Optimal Parameters for {display_name}", show_header=True, header_style="bold magenta")
+            # Add constraint status to the title if there are violations
+            title_suffix = ""
+            if constraint_status == "VIOLATED":
+                title_suffix = " ⚠️ CONSTRAINT VIOLATION"
+            elif constraint_status == "ADJUSTED":
+                title_suffix = " ✅ CONSTRAINT ADJUSTED"
+            elif constraint_status == "FALLBACK_OK":
+                title_suffix = " ⚠️ FALLBACK USED"
+            
+            params_table = Table(
+                title=f"Optimal Parameters for {display_name}{title_suffix}", 
+                show_header=True, 
+                header_style="bold magenta"
+            )
             params_table.add_column("Parameter", style="cyan")
             params_table.add_column("Value", style="green")
             
             for param, value in optimal_params.items():
                 params_table.add_row(str(param), str(value))
+            
+            # Add constraint status row if there are constraints
+            constraints_config = result_data.get("constraints_config", [])
+            if constraints_config:
+                params_table.add_row("", "")  # Empty row for spacing
+                params_table.add_row("Constraint Status", constraint_status)
+                
+                constraint_message = result_data.get("constraint_message", "")
+                if constraint_message:
+                    # Split long messages into multiple rows
+                    if len(constraint_message) > 50:
+                        words = constraint_message.split()
+                        lines = []
+                        current_line = []
+                        for word in words:
+                            if len(" ".join(current_line + [word])) <= 50:
+                                current_line.append(word)
+                            else:
+                                lines.append(" ".join(current_line))
+                                current_line = [word]
+                        if current_line:
+                            lines.append(" ".join(current_line))
+                        
+                        for i, line in enumerate(lines):
+                            if i == 0:
+                                params_table.add_row("Constraint Details", line)
+                            else:
+                                params_table.add_row("", line)
+                    else:
+                        params_table.add_row("Constraint Details", constraint_message)
             
             console.print(params_table)
 
@@ -812,10 +866,13 @@ def _create_parameter_heatmaps(self, df: pd.DataFrame, param_names: list, scenar
         rows = (num_pairs + cols - 1) // cols
         
         fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
-        if num_pairs == 1:
-            axes = [axes]
+        # Ensure axes is always a 2D array for consistent indexing
+        if rows == 1 and cols == 1:
+            axes = np.array([[axes]])
         elif rows == 1:
             axes = axes.reshape(1, -1)
+        elif cols == 1:
+            axes = axes.reshape(-1, 1)
         
         # Get parameter pairs sorted by importance
         param_pairs = []
@@ -835,7 +892,7 @@ def _create_parameter_heatmaps(self, df: pd.DataFrame, param_names: list, scenar
         for idx, (param1, param2, _) in enumerate(param_pairs):
             row = idx // cols
             col = idx % cols
-            ax = axes[row, col] if rows > 1 else axes[col]
+            ax = axes[row, col]
             
             # Create pivot table for heatmap
             try:
@@ -849,7 +906,7 @@ def _create_parameter_heatmaps(self, df: pd.DataFrame, param_names: list, scenar
                     param2_values = pd.cut(param2_values, bins=10, precision=2)
                 
                 # Create pivot table
-                pivot_data = df.groupby([param1_values, param2_values])['objective_value'].mean().unstack(fill_value=np.nan)
+                pivot_data = df.groupby([param1_values, param2_values], observed=True)['objective_value'].mean().unstack(fill_value=np.nan)
                 
                 # Create heatmap
                 im = sns.heatmap(pivot_data, annot=True, fmt='.3f', cmap='viridis', 
@@ -872,7 +929,7 @@ def _create_parameter_heatmaps(self, df: pd.DataFrame, param_names: list, scenar
         for idx in range(num_pairs, rows * cols):
             row = idx // cols
             col = idx % cols
-            ax = axes[row, col] if rows > 1 else axes[col]
+            ax = axes[row, col]
             ax.set_visible(False)
         
         plt.suptitle(f'Parameter Heatmaps: {scenario_name}', fontsize=16, fontweight='bold')
@@ -906,15 +963,18 @@ def _create_parameter_sensitivity_analysis(self, df: pd.DataFrame, param_names: 
         rows = (num_params + cols - 1) // cols
         
         fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
-        if num_params == 1:
-            axes = [axes]
+        # Ensure axes is always a 2D array for consistent indexing
+        if rows == 1 and cols == 1:
+            axes = np.array([[axes]])
         elif rows == 1:
             axes = axes.reshape(1, -1)
+        elif cols == 1:
+            axes = axes.reshape(-1, 1)
         
         for idx, param in enumerate(param_names):
             row = idx // cols
             col = idx % cols
-            ax = axes[row, col] if rows > 1 else axes[col]
+            ax = axes[row, col]
             
             try:
                 # Create scatter plot with trend line
@@ -960,7 +1020,7 @@ def _create_parameter_sensitivity_analysis(self, df: pd.DataFrame, param_names: 
         for idx in range(num_params, rows * cols):
             row = idx // cols
             col = idx % cols
-            ax = axes[row, col] if rows > 1 else axes[col]
+            ax = axes[row, col]
             ax.set_visible(False)
         
         plt.suptitle(f'Parameter Sensitivity Analysis: {scenario_name}', fontsize=16, fontweight='bold')
@@ -1461,3 +1521,43 @@ def _create_parameter_robustness_analysis(self, df: pd.DataFrame, param_names: l
         logger.error(f"Error creating parameter robustness analysis: {e}")
         import traceback
         logger.debug(traceback.format_exc())
+
+def _display_constraint_violation_warning(self, console: Console):
+    """Display a prominent constraint violation warning."""
+    from rich.panel import Panel
+    from rich.text import Text
+    
+    warning_text = Text()
+    warning_text.append("🚨 CONSTRAINT VIOLATION DETECTED! 🚨\n\n", style="bold red")
+    
+    for name, result_data in self.results.items():
+        constraint_status = result_data.get("constraint_status", "UNKNOWN")
+        if constraint_status == "VIOLATED":
+            warning_text.append(f"Strategy: {result_data.get('display_name', name)}\n", style="bold yellow")
+            warning_text.append(f"Status: {constraint_status}\n", style="red")
+            warning_text.append(f"Issue: {result_data.get('constraint_message', 'Unknown constraint violation')}\n", style="red")
+            
+            violations = result_data.get("constraint_violations", [])
+            if violations:
+                warning_text.append("Violations:\n", style="bold red")
+                for i, violation in enumerate(violations, 1):
+                    warning_text.append(f"  {i}. {violation}\n", style="red")
+            
+            warning_text.append("\n")
+    
+    warning_text.append("💡 RECOMMENDATIONS:\n", style="bold cyan")
+    warning_text.append("• Relax the constraint limits (e.g., increase max volatility)\n", style="cyan")
+    warning_text.append("• Modify strategy parameters to reduce risk\n", style="cyan")
+    warning_text.append("• Consider different optimization targets\n", style="cyan")
+    warning_text.append("• Review strategy configuration and universe\n", style="cyan")
+    
+    panel = Panel(
+        warning_text,
+        title="⚠️  OPTIMIZATION CONSTRAINT FAILURE ⚠️",
+        title_align="center",
+        border_style="red",
+        expand=False
+    )
+    
+    console.print(panel)
+    console.print()  # Add spacing

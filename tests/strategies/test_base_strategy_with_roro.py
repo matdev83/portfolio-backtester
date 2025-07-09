@@ -8,14 +8,12 @@ from src.portfolio_backtester.roro_signals import DummyRoRoSignal
 class StrategyWithDummyRoRo(MomentumStrategy):
     """A test strategy that uses the DummyRoRoSignal."""
     
+    # Set the class attribute to enable RoRo signal
+    roro_signal_class = DummyRoRoSignal
+    
     def __init__(self, strategy_config: dict):
         super().__init__(strategy_config)
-        # Override the roro signal to use DummyRoRoSignal
-        self._roro_signal_instance = DummyRoRoSignal({})
-
-    def get_roro_signal(self):
-        """Override to return our dummy signal."""
-        return self._roro_signal_instance
+        # The base class will handle instantiation via get_roro_signal()
 
 
 class TestBaseStrategyWithRoRo(unittest.TestCase):
@@ -36,11 +34,10 @@ class TestBaseStrategyWithRoRo(unittest.TestCase):
         self.test_strategy = StrategyWithDummyRoRo(self.strategy_config)
 
         # Create sample data with MultiIndex columns (OHLCV format)
+        # Start from 2010 onwards to ensure sufficient historical data
         self.dates = pd.to_datetime([
-            "2005-12-31", "2006-01-31", "2006-02-28", # Before, Start of RoRo, During RoRo
-            "2009-12-31", "2010-01-31",             # End of RoRo, After RoRo
-            "2019-12-31", "2020-01-31", "2020-02-29", # Before, Start of RoRo, During RoRo
-            "2020-04-30", "2020-05-31",             # End of RoRo (Window ends Apr 1, so Apr 30 is out), After RoRo
+            "2019-12-31", "2020-01-31", "2020-02-29", "2020-03-31", # Before, Start of RoRo, During RoRo, End of RoRo
+            "2020-04-30", "2020-05-31",             # After RoRo (Window ends Apr 1, so Apr 30 is out)
             "2021-12-31", "2022-01-31", "2022-10-31", # Before, Start of RoRo, During RoRo
             "2022-11-30", "2022-12-31"              # End of RoRo (Window ends Nov 5, so Nov 30 is out), After RoRo
         ])
@@ -53,34 +50,38 @@ class TestBaseStrategyWithRoRo(unittest.TestCase):
         fields = ['Open', 'High', 'Low', 'Close', 'Volume']
         columns = pd.MultiIndex.from_product([self.assets, fields], names=['Ticker', 'Field'])
         
-        # Generate sample OHLCV data
+        # Generate sample OHLCV data with sufficient history before test dates
+        # Add historical data starting from 2010 to ensure momentum calculations work
+        historical_start = pd.Timestamp("2010-01-31")
+        all_dates = pd.date_range(start=historical_start, end=self.dates[-1], freq='ME')
+        
         np.random.seed(42)
         data = {}
         for asset in self.assets:
             base_price = 100
-            for i, date in enumerate(self.dates):
-                price = base_price + np.random.normal(0, 5) + i * 0.5  # Slight upward trend
+            for i, date in enumerate(all_dates):
+                price = base_price + np.random.normal(0, 5) + i * 0.1  # Slight upward trend
                 data[(asset, 'Open')] = data.get((asset, 'Open'), []) + [price * 0.99]
                 data[(asset, 'High')] = data.get((asset, 'High'), []) + [price * 1.02]
                 data[(asset, 'Low')] = data.get((asset, 'Low'), []) + [price * 0.98]
                 data[(asset, 'Close')] = data.get((asset, 'Close'), []) + [price]
                 data[(asset, 'Volume')] = data.get((asset, 'Volume'), []) + [1000000]
         
-        self.asset_data = pd.DataFrame(data, index=self.dates, columns=columns)
-
-        # Create benchmark data with MultiIndex
+        self.asset_data = pd.DataFrame(data, index=all_dates, columns=columns)
+        
+        # Create benchmark data with MultiIndex - also with full history
         benchmark_columns = pd.MultiIndex.from_product([['SPY'], fields], names=['Ticker', 'Field'])
         benchmark_data = {}
         base_price = 100
-        for i, date in enumerate(self.dates):
-            price = base_price + np.random.normal(0, 3) + i * 0.3
+        for i, date in enumerate(all_dates):
+            price = base_price + np.random.normal(0, 3) + i * 0.1
             benchmark_data[('SPY', 'Open')] = benchmark_data.get(('SPY', 'Open'), []) + [price * 0.99]
             benchmark_data[('SPY', 'High')] = benchmark_data.get(('SPY', 'High'), []) + [price * 1.01]
             benchmark_data[('SPY', 'Low')] = benchmark_data.get(('SPY', 'Low'), []) + [price * 0.98]
             benchmark_data[('SPY', 'Close')] = benchmark_data.get(('SPY', 'Close'), []) + [price]
             benchmark_data[('SPY', 'Volume')] = benchmark_data.get(('SPY', 'Volume'), []) + [50000000]
         
-        self.benchmark_data = pd.DataFrame(benchmark_data, index=self.dates, columns=benchmark_columns)
+        self.benchmark_data = pd.DataFrame(benchmark_data, index=all_dates, columns=benchmark_columns)
 
     def test_weights_with_dummy_roro_signal(self):
         """
@@ -103,16 +104,13 @@ class TestBaseStrategyWithRoRo(unittest.TestCase):
 
         # Expected RoRo "on" periods for the *monthly* dates in self.dates
         # DummyRoRoSignal windows:
-        # 2006-01-01 to 2009-12-31
         # 2020-01-01 to 2020-04-01
         # 2022-01-01 to 2022-11-05
 
         expected_risk_on_dates = pd.to_datetime([
-            # First window
-            "2006-01-31", "2006-02-28", "2009-12-31",
-            # Second window
-            "2020-01-31", "2020-02-29", # Note: 2020-04-01 is the end, so 2020-03-31 would be in, 2020-04-30 is out
-            # Third window
+            # Second window: 2020-01-01 to 2020-04-01
+            "2020-01-31", "2020-02-29", "2020-03-31", # Note: 2020-04-01 is the end, so 2020-03-31 is in, 2020-04-30 is out
+            # Third window: 2022-01-01 to 2022-11-05
             "2022-01-31", "2022-10-31" # Note: 2022-11-05 is the end, so 2022-10-31 is in, 2022-11-30 is out
         ])
         # Ensure these are also month-end

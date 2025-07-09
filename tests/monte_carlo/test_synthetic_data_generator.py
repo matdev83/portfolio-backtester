@@ -20,44 +20,45 @@ from src.portfolio_backtester.monte_carlo.synthetic_data_generator import (
 )
 
 
+@pytest.fixture
+def sample_config():
+    """Sample configuration for testing."""
+    return {
+        'replacement_percentage': 0.10,
+        'min_historical_observations': 100,
+        'garch_config': {
+            'model_type': 'GARCH',
+            'p': 1,
+            'q': 1,
+            'distribution': 'studentt',
+            'bounds': {
+                'omega': [1e-6, 1.0],
+                'alpha': [0.01, 0.3],
+                'beta': [0.5, 0.99],
+                'nu': [2.1, 30.0]
+            }
+        },
+        'generation_config': {
+            'buffer_multiplier': 1.2,
+            'max_attempts': 5,
+            'validation_tolerance': 0.1
+        },
+        'validation_config': {
+            'enable_validation': True,
+            'ks_test_pvalue_threshold': 0.01,
+            'autocorr_max_deviation': 0.1,
+            'volatility_clustering_threshold': 0.05,
+            'tail_index_tolerance': 0.2
+        },
+        'jump_diffusion': {
+            'enable': False
+        },
+        'random_seed': 42
+    }
+
+
 class TestSyntheticDataGenerator:
     """Test suite for SyntheticDataGenerator class."""
-    
-    @pytest.fixture
-    def sample_config(self):
-        """Sample configuration for testing."""
-        return {
-            'replacement_percentage': 0.10,
-            'min_historical_observations': 100,
-            'garch_config': {
-                'model_type': 'GARCH',
-                'p': 1,
-                'q': 1,
-                'distribution': 'studentt',
-                'bounds': {
-                    'omega': [1e-6, 1.0],
-                    'alpha': [0.01, 0.3],
-                    'beta': [0.5, 0.99],
-                    'nu': [2.1, 30.0]
-                }
-            },
-            'generation_config': {
-                'buffer_multiplier': 1.2,
-                'max_attempts': 5,
-                'validation_tolerance': 0.1
-            },
-            'validation_config': {
-                'enable_validation': True,
-                'ks_test_pvalue_threshold': 0.01,
-                'autocorr_max_deviation': 0.1,
-                'volatility_clustering_threshold': 0.05,
-                'tail_index_tolerance': 0.2
-            },
-            'jump_diffusion': {
-                'enable': False
-            },
-            'random_seed': 42
-        }
     
     @pytest.fixture
     def sample_ohlc_data(self):

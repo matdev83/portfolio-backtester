@@ -67,11 +67,13 @@ class TestBacktester(unittest.TestCase):
         self.mock_args = self.MockArgs() # Use the class attribute
         # self.backtester = Backtester(self.global_config, self.scenarios, self.mock_args) # Defer to specific tests or a more minimal setup
         
-        # Create mock data
-        dates = pd.date_range(start="2020-01-01", periods=48, freq="ME")
+        # Create mock data with sufficient history for walk-forward optimization
+        # Need at least train_window_months (24) + test_window_months (6) = 30 months minimum
+        # Add extra buffer for multiple windows
+        dates = pd.date_range(start="2018-01-01", periods=72, freq="ME")  # 6 years of data
         tickers = self.global_config["universe"] + [self.global_config["benchmark"]]
         self.mock_data = pd.DataFrame(
-            np.random.randn(48, len(tickers)) / 100 + 0.001,
+            np.random.randn(72, len(tickers)) / 100 + 0.001,
             index=dates,
             columns=tickers
         )
@@ -425,10 +427,9 @@ class TestBacktester(unittest.TestCase):
         self.assertEqual(num_trials, 50)
 
     @patch('src.portfolio_backtester.backtester_logic.optimization._setup_optuna_study')
-    @patch('src.portfolio_backtester.backtester_logic.optimization._evaluate_params_walk_forward')
     @patch('src.portfolio_backtester.backtester_logic.optimization.Progress') # Mock Progress bar
     @patch('src.portfolio_backtester.backtester.Backtester._get_data_source')
-    def test_run_optimization_with_optuna_optimizer(self, mock_get_ds, mock_progress, mock_evaluate, mock_setup_study):
+    def test_run_optimization_with_optuna_optimizer(self, mock_get_ds, mock_progress, mock_setup_study):
         """Test that run_optimization calls Optuna logic when specified (or by default)."""
         args = self.MockArgs()
         args.optimizer = "optuna" # Explicitly optuna
@@ -445,15 +446,17 @@ class TestBacktester(unittest.TestCase):
         mock_study_instance.best_trial.number = 42 # Example trial number
         mock_setup_study.return_value = (mock_study_instance, 10) # study, n_trials
 
-        mock_evaluate.return_value = 1.2 # Mock evaluation result (e.g., Sharpe ratio)
+        # Mock evaluation is now handled by the backtester instance method
 
         # Provide enough data for walk-forward window generation
-        long_monthly_idx = pd.date_range(start="2018-01-01", periods=40, freq="ME")
+        # Need at least train_window_months (24) + test_window_months (6) = 30 months minimum
+        # Add extra buffer for multiple windows
+        long_monthly_idx = pd.date_range(start="2018-01-01", periods=60, freq="ME")
         mock_monthly_data_long = pd.DataFrame(index=long_monthly_idx, data={'PRICE': np.arange(len(long_monthly_idx))})
         mock_daily_data = pd.DataFrame({'A': [1,2,3,4,5,6]}) # Simplified, not directly used by this level of mock
         mock_rets_full = pd.DataFrame({'A': [0.1,0.01,0.02, -0.01, 0.005, 0.003]}) # Simplified
 
-        optimal_params, num_trials = backtester.run_optimization(
+        optimal_params, num_trials, best_trial_obj = backtester.run_optimization(
             scenario_config,
             mock_monthly_data_long,
             mock_daily_data,

@@ -81,6 +81,13 @@ class TestAdvancedVisualizations:
         # Create mock study
         study = Mock()
         study.trials = trials
+        
+        # Mock the completed trials filtering
+        def mock_trial_filter(trials_list):
+            return [t for t in trials_list if t.state == optuna.trial.TrialState.COMPLETE]
+        
+        # Ensure the filtering works correctly
+        study.trials = trials
         return study
     
     @pytest.fixture

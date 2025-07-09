@@ -11,7 +11,7 @@ BACKTEST_SCENARIOS:
         direction: "maximize"
     optimization_constraints:
       - metric: "Ann. Vol"
-        max_value: 0.15  # Keep annualized volatility <= 15%
+        max_value: 0.10  # Keep annualized volatility <= 10%
     optimize:
       - parameter: "fast_ema_days"
         min_value: 7

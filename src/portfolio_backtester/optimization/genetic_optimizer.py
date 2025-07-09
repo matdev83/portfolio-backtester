@@ -26,6 +26,7 @@ class GeneticOptimizer:
     def __init__(self, scenario_config, backtester_instance, global_config, monthly_data, daily_data, rets_full, random_state=None):
         self.scenario_config = scenario_config
         self.backtester = backtester_instance
+        self.backtester_instance = backtester_instance  # For backward compatibility
         self.global_config = global_config
         self.monthly_data = monthly_data
         self.daily_data = daily_data
@@ -128,8 +129,7 @@ class GeneticOptimizer:
                 logger.error("Not enough data for walk-forward windows in GeneticOptimizer.")
                 return -np.inf if not self.is_multi_objective else [-np.inf] * len(self.metrics_to_optimize)
 
-            objectives_values = self.backtester_instance._evaluate_params_walk_forward(
-                self.backtester,
+            objectives_values = self.backtester._evaluate_params_walk_forward(
                 mock_trial,
                 trial_scenario_config,
                 windows,

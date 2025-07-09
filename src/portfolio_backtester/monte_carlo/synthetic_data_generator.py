@@ -38,6 +38,7 @@ class DistributionType(Enum):
     NORMAL = "normal"
     STUDENT_T = "studentt" 
     SKEWED_STUDENT_T = "skewstudent"
+    GED = "ged"
 
 
 @dataclass
@@ -97,18 +98,18 @@ class ImprovedSyntheticDataGenerator:
         if config.get('random_seed') is not None:
             np.random.seed(config['random_seed'])
     
-    def analyze_asset_statistics(self, ohlc_data: pd.DataFrame) -> AssetStatistics:
+    def analyze_asset_statistics(self, data) -> AssetStatistics:
         """
         Analyze statistical properties of historical asset data.
         
         Args:
-            ohlc_data: DataFrame with OHLC price data
+            data: DataFrame with OHLC price data OR Series with returns data
             
         Returns:
             AssetStatistics object with computed properties
         """
-        if ohlc_data.empty or len(ohlc_data) == 0:
-            logger.warning("Empty OHLC data provided. Using default statistics.")
+        if hasattr(data, 'empty') and data.empty or len(data) == 0:
+            logger.warning("Empty data provided. Using default statistics.")
             return AssetStatistics(
                 mean_return=0.0,
                 volatility=1.0,
@@ -120,21 +121,25 @@ class ImprovedSyntheticDataGenerator:
                 garch_params=None
             )
         
-        # Calculate returns (using Close prices)
-        if 'Close' not in ohlc_data.columns:
-            logger.error("No 'Close' column found in OHLC data. Using default statistics.")
-            return AssetStatistics(
-                mean_return=0.0,
-                volatility=1.0,
-                skewness=0.0,
-                kurtosis=3.0,
-                autocorr_returns=0.0,
-                autocorr_squared=0.0,
-                tail_index=2.0,
-                garch_params=None
-            )
-        
-        returns = ohlc_data['Close'].pct_change(fill_method=None).dropna()
+        # Handle both DataFrame (OHLC) and Series (returns) inputs
+        if isinstance(data, pd.DataFrame):
+            # Calculate returns from OHLC data
+            if 'Close' not in data.columns:
+                logger.error("No 'Close' column found in OHLC data. Using default statistics.")
+                return AssetStatistics(
+                    mean_return=0.0,
+                    volatility=1.0,
+                    skewness=0.0,
+                    kurtosis=3.0,
+                    autocorr_returns=0.0,
+                    autocorr_squared=0.0,
+                    tail_index=2.0,
+                    garch_params=None
+                )
+            returns = data['Close'].pct_change(fill_method=None).dropna()
+        else:
+            # Assume it's already returns data (Series)
+            returns = data.dropna() if hasattr(data, 'dropna') else pd.Series(data).dropna()
         
         if len(returns) == 0:
             logger.warning("No valid returns calculated. Using default statistics.")
@@ -634,6 +639,54 @@ class ImprovedSyntheticDataGenerator:
             nu=nu,
             distribution=DistributionType.STUDENT_T
         )
+    
+    def _fit_garch_model(self, returns: pd.Series) -> GARCHParameters:
+        """
+        Fit GARCH model to returns data. This is a wrapper around the professional fitting method.
+        
+        Args:
+            returns: Return series (can be in decimal or percentage terms)
+            
+        Returns:
+            GARCHParameters object with fitted parameters
+        """
+        # Always work with the original scale for consistency
+        # The professional GARCH model should handle the appropriate scaling internally
+        try:
+            return self._fit_professional_garch_model(returns)
+        except Exception as e:
+            logger.warning(f"Professional GARCH fitting failed: {e}. Using fallback parameters.")
+            return self._get_fallback_garch_params(returns)
+    
+    def _generate_garch_returns(self, garch_params: GARCHParameters, length: int) -> np.ndarray:
+        """
+        Generate synthetic returns using GARCH parameters.
+        
+        Args:
+            garch_params: GARCH parameters to use for generation
+            length: Number of returns to generate
+            
+        Returns:
+            Array of synthetic returns (in decimal form)
+        """
+        # Create a minimal AssetStatistics object for the fallback method
+        asset_stats = AssetStatistics(
+            mean_return=0.0,  # Will be handled by GARCH process
+            volatility=np.sqrt(garch_params.omega / (1 - garch_params.alpha - garch_params.beta)),
+            skewness=0.0,
+            kurtosis=3.0,
+            autocorr_returns=0.0,
+            autocorr_squared=0.0,
+            tail_index=garch_params.nu if garch_params.nu else 3.0,
+            garch_params=garch_params
+        )
+        
+        # Generate returns using the fallback method 
+        # The fallback method should return decimal returns, not percentage
+        synthetic_returns = self._generate_fallback_returns(asset_stats, length)
+        
+        # The fallback method returns decimal returns, so no conversion needed
+        return synthetic_returns
 
 
 # Backward compatibility - alias the new class to the old name

@@ -285,12 +285,16 @@ def build_objective(
         for i, metric_name in enumerate(metrics_to_optimize):
             val = all_calculated_metrics.get(metric_name)
             if pd.isna(val) or not np.isfinite(val):
-                # Use appropriate penalty values based on optimization direction
-                direction = metric_directions[i] if i < len(metric_directions) else "maximize"
-                if direction == "maximize":
-                    val = float("-inf")  # Worst possible value for maximization
+                if is_multi_objective:
+                    # For multi-objective, preserve NaN/inf as NaN to let Optuna handle it
+                    val = float('nan')
                 else:
-                    val = float("inf")   # Worst possible value for minimization
+                    # For single objective, use penalty values
+                    direction = metric_directions[i] if i < len(metric_directions) else "maximize"
+                    if direction == "maximize":
+                        val = float("-inf")  # Worst possible value for maximization
+                    else:
+                        val = float("inf")   # Worst possible value for minimization
             results.append(val)
 
         if is_multi_objective:

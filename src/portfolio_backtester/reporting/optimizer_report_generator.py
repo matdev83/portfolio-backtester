@@ -280,6 +280,58 @@ class OptimizerReportGenerator:
         report_lines.append(f"**Run Directory:** `{run_dir.name}`")
         report_lines.append("")
         
+        # Constraint Violation Warning (if applicable)
+        constraint_info = additional_info.get('constraint_info', {}) if additional_info else {}
+        if constraint_info.get('status') == 'VIOLATED':
+            report_lines.append("## ⚠️ CONSTRAINT VIOLATION DETECTED")
+            report_lines.append("")
+            report_lines.append("🚨 **CRITICAL NOTICE:** This optimization failed to satisfy the specified constraints.")
+            report_lines.append("")
+            
+            # Constraint details
+            violations = constraint_info.get('violations', [])
+            if violations:
+                report_lines.append("### Constraint Violations")
+                for i, violation in enumerate(violations, 1):
+                    report_lines.append(f"{i}. **{violation}**")
+                report_lines.append("")
+            
+            # Status explanation
+            constraint_message = constraint_info.get('message', 'Unknown constraint violation')
+            report_lines.append(f"**Status:** {constraint_message}")
+            report_lines.append("")
+            
+            # Recommendations
+            report_lines.append("### 💡 Recommendations")
+            report_lines.append("")
+            report_lines.append("To resolve constraint violations, consider:")
+            report_lines.append("- **Relax constraints:** Increase volatility limits or adjust other constraint thresholds")
+            report_lines.append("- **Modify strategy:** Adjust strategy parameters to naturally reduce risk")
+            report_lines.append("- **Change optimization targets:** Focus on different performance metrics")
+            report_lines.append("- **Review universe:** Consider using less volatile assets")
+            report_lines.append("- **Reduce leverage:** Lower position sizing or leverage parameters")
+            report_lines.append("")
+            
+            # Impact warning
+            report_lines.append("> **⚠️ WARNING:** The results below represent a fallback configuration that may not meet your risk requirements. Consider addressing the constraint violations before implementing this strategy.")
+            report_lines.append("")
+        elif constraint_info.get('status') == 'ADJUSTED':
+            report_lines.append("## ✅ CONSTRAINT ADJUSTMENT SUCCESSFUL")
+            report_lines.append("")
+            report_lines.append("**NOTICE:** The original optimization violated constraints, but the system successfully found adjusted parameters that satisfy all requirements.")
+            report_lines.append("")
+            constraint_message = constraint_info.get('message', 'Constraints satisfied after adjustment')
+            report_lines.append(f"**Status:** {constraint_message}")
+            report_lines.append("")
+        elif constraint_info.get('status') == 'FALLBACK_OK':
+            report_lines.append("## ⚠️ FALLBACK PARAMETERS USED")
+            report_lines.append("")
+            report_lines.append("**NOTICE:** The optimization could not find constraint-satisfying parameters, but the fallback configuration meets all requirements.")
+            report_lines.append("")
+            constraint_message = constraint_info.get('message', 'Constraints satisfied using fallback parameters')
+            report_lines.append(f"**Status:** {constraint_message}")
+            report_lines.append("")
+        
         # Executive Summary
         report_lines.append("## Executive Summary")
         report_lines.append("")
