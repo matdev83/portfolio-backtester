@@ -5,6 +5,70 @@ from rich.progress import track
 import os
 import uuid
 import json
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+
+class MonteCarloSimulator:
+    """
+    Wrapper class for Monte Carlo simulation functionality.
+    Provides a clean interface for the existing Monte Carlo functions.
+    """
+    
+    def __init__(self, n_simulations=1000, n_years=10, initial_capital=1.0):
+        """
+        Initialize the Monte Carlo simulator.
+        
+        Args:
+            n_simulations: Number of simulation paths
+            n_years: Number of years to simulate
+            initial_capital: Starting capital
+        """
+        self.n_simulations = n_simulations
+        self.n_years = n_years
+        self.initial_capital = initial_capital
+    
+    def run_simulation(self, strategy_returns):
+        """
+        Run Monte Carlo simulation on strategy returns.
+        
+        Args:
+            strategy_returns: Historical returns of the strategy
+            
+        Returns:
+            DataFrame with simulation results
+        """
+        return run_monte_carlo_simulation(
+            strategy_returns,
+            n_simulations=self.n_simulations,
+            n_years=self.n_years,
+            initial_capital=self.initial_capital
+        )
+    
+    def plot_results(self, simulation_results, title="Monte Carlo Simulation", 
+                    scenario_name=None, params=None, output_dir="data/pnl_charts", 
+                    interactive=False):
+        """
+        Plot simulation results.
+        
+        Args:
+            simulation_results: Results from run_simulation
+            title: Plot title
+            scenario_name: Scenario name for filename
+            params: Parameters for filename
+            output_dir: Directory to save plot
+            interactive: Whether to display plot
+        """
+        plot_monte_carlo_results(
+            simulation_results,
+            title=title,
+            scenario_name=scenario_name,
+            params=params,
+            output_dir=output_dir,
+            interactive=interactive
+        )
 
 def run_monte_carlo_simulation(
     strategy_returns, 

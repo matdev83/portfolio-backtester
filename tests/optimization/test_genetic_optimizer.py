@@ -22,6 +22,9 @@ MOCK_GLOBAL_CONFIG = {
 MOCK_SCENARIO_CONFIG_SINGLE_OBJECTIVE = {
     "name": "Test_GA_Single",
     "strategy_params": {"initial_param": 50},
+    "train_window_months": 36,  # 3 years as specified
+    "test_window_months": 48,   # 4 years as specified
+    "walk_forward_type": "expanding",
     "optimize": [
         {"parameter": "param1_int", "type": "int", "min_value": 2, "max_value": 5, "step": 1},
         {"parameter": "param2_float", "type": "float", "min_value": 0.2, "max_value": 0.5},
@@ -38,6 +41,9 @@ MOCK_SCENARIO_CONFIG_SINGLE_OBJECTIVE = {
 MOCK_SCENARIO_CONFIG_MULTI_OBJECTIVE = {
     "name": "Test_GA_Multi",
     "strategy_params": {"initial_param": 50},
+    "train_window_months": 36,  # 3 years as specified
+    "test_window_months": 48,   # 4 years as specified
+    "walk_forward_type": "expanding",
     "optimize": [
         {"parameter": "param1_int", "type": "int", "min_value": 2, "max_value": 5, "step": 1}
     ],
@@ -52,10 +58,11 @@ MOCK_SCENARIO_CONFIG_MULTI_OBJECTIVE = {
     }
 }
 
-# Mock data (simplified)
-date_rng = pd.date_range(start='2020-01-01', end='2023-01-01', freq='BME')
+# Mock data (sufficient for 36+48=84 months minimum)
+# Create 10 years of data to ensure we have enough for the proper window sizes
+date_rng = pd.date_range(start='2015-01-01', end='2025-01-01', freq='BME')
 MOCK_MONTHLY_DATA = pd.DataFrame(index=date_rng, data={'PRICE_A': np.random.rand(len(date_rng)) * 100})
-MOCK_DAILY_DATA = pd.DataFrame(index=pd.date_range(start='2020-01-01', end='2023-01-01', freq='B'), data={'PRICE_A': np.random.rand(pd.date_range(start='2020-01-01', end='2023-01-01', freq='B').size) * 100})
+MOCK_DAILY_DATA = pd.DataFrame(index=pd.date_range(start='2015-01-01', end='2025-01-01', freq='B'), data={'PRICE_A': np.random.rand(pd.date_range(start='2015-01-01', end='2025-01-01', freq='B').size) * 100})
 MOCK_RETS_FULL = MOCK_DAILY_DATA.pct_change(fill_method=None).fillna(0)
 
 

@@ -166,7 +166,7 @@ INSANE_RETURN_THRESHOLD = 20000.0
 
 def assert_sane_metrics(metrics: dict[str, float]):
     assert metrics, "Metrics dictionary should not be empty."
-    key_metrics_to_check = ["Total Return", "Ann. Return", "Sharpe", "Sortino", "Calmar", "Max DD"]
+    key_metrics_to_check = ["Total Return", "Ann. Return", "Sharpe", "Sortino", "Calmar", "Max Drawdown"]
     for metric_name in key_metrics_to_check:
         assert metric_name in metrics, f"Key metric '{metric_name}' not found. Parsed: {list(metrics.keys())}"
         value = metrics[metric_name]
@@ -179,9 +179,9 @@ def assert_sane_metrics(metrics: dict[str, float]):
     ann_return = metrics.get("Ann. Return")
     if ann_return is not None:
         assert ann_return < INSANE_RETURN_THRESHOLD / 5, f"Ann. Return {ann_return} excessively high."
-    max_drawdown = metrics.get("Max DD")
+    max_drawdown = metrics.get("Max Drawdown")
     if max_drawdown is not None:
-        assert max_drawdown <= 0 + ZERO_TOLERANCE, f"Max DD {max_drawdown} should be <= 0."
+        assert max_drawdown <= 0 + ZERO_TOLERANCE, f"Max Drawdown {max_drawdown} should be <= 0."
 
 def cleanup_temp_files(*files: Path):
     for f_path in files:

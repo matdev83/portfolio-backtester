@@ -1,17 +1,21 @@
 import optuna
 import os
+import random
+import numpy as np
 from functools import reduce
 from operator import mul
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
 from rich.console import Console
-import numpy as np
+import pandas as pd
 
-from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
+from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG, generate_randomized_wfo_windows
 from ..optimization.genetic_optimizer import GeneticOptimizer
-from ..evaluation_logic import _evaluate_params_walk_forward
+# _evaluate_params_walk_forward is now a method of the Backtester class
 
 # Global progress tracker for window-level updates
 _global_progress_tracker = None
+
+
 
 def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full):
     global _global_progress_tracker
@@ -36,37 +40,24 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         return optimal_params, num_evaluations
 
     self.logger.info("Using Optuna Optimizer.")
-    train_window_m = scenario_config.get("train_window_months", 24)
-    test_window_m = scenario_config.get("test_window_months", 12)
-    wf_type = scenario_config.get("walk_forward_type", "expanding").lower()
-
-    idx = monthly_data.index
-    windows = []
-    start_idx = train_window_m
-    while start_idx + test_window_m <= len(idx):
-        train_end_idx = start_idx - 1
-        test_start_idx = train_end_idx + 1
-        test_end_idx = test_start_idx + test_window_m - 1
-        if test_end_idx >= len(idx):
-            break
-        if wf_type == "rolling":
-            train_start_idx = train_end_idx - train_window_m + 1
-        else:
-            train_start_idx = 0
-        windows.append(
-            (
-                idx[train_start_idx],
-                idx[train_end_idx],
-                idx[test_start_idx],
-                idx[test_end_idx],
-            )
-        )
-        start_idx += test_window_m
+    
+    # Generate randomized WFO windows
+    windows = generate_randomized_wfo_windows(
+        monthly_data.index, 
+        scenario_config, 
+        self.global_config, 
+        self.random_state
+    )
 
     if not windows:
         raise ValueError("Not enough data for the requested walk-forward windows.")
 
-    self.logger.info(f"Generated {len(windows)} walk-forward windows using '{wf_type}' splits.")
+    # Log randomization details
+    robustness_config = self.global_config.get("wfo_robustness_config", {})
+    if robustness_config.get("enable_window_randomization", False) or robustness_config.get("enable_start_date_randomization", False):
+        self.logger.info(f"Generated {len(windows)} randomized walk-forward windows for robustness testing.")
+    else:
+        self.logger.info(f"Generated {len(windows)} standard walk-forward windows.")
 
     if self.args.storage_url:
         storage = self.args.storage_url
@@ -92,8 +83,8 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         current_params = _suggest_optuna_params(self, trial, scenario_config["strategy_params"], scenario_config.get("optimize", []))
         trial_scenario_config = scenario_config.copy()
         trial_scenario_config["strategy_params"] = current_params
-        return _evaluate_params_walk_forward(
-            self, trial, trial_scenario_config, windows, monthly_data, daily_data, rets_full,
+        return self._evaluate_params_walk_forward(
+            trial, trial_scenario_config, windows, monthly_data, daily_data, rets_full,
             metrics_to_optimize, is_multi_objective
         )
 
@@ -163,28 +154,35 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         _global_progress_tracker = None
     
     optimal_params = scenario_config["strategy_params"].copy()
+    best_trial_obj = None # Initialize best_trial_obj
+    actual_trial_number_for_dsr = 0 # Initialize to a default value
     if len(study.directions) > 1:
         best_trials = study.best_trials
         if not best_trials:
             self.logger.error("Multi-objective optimization finished without finding any best trials.")
-            return optimal_params, len(study.trials)
+            return optimal_params, len(study.trials), None
 
-        chosen_best_trial = best_trials[0]
-        optimal_params.update(chosen_best_trial.params)
-        self.logger.info(f"Best parameters (from Pareto front, first trial) found on training set: {chosen_best_trial.params}")
-        print(f"Optuna Optimizer - Best parameters found: {chosen_best_trial.params}")
-        actual_trial_number_for_dsr = chosen_best_trial.number
+        best_trial_obj = best_trials[0]
+        optimal_params.update(best_trial_obj.params)
+        self.logger.info(f"Best parameters (from Pareto front, first trial) found on training set: {best_trial_obj.params}")
+        print(f"Optuna Optimizer - Best parameters found: {best_trial_obj.params}")
+        actual_trial_number_for_dsr = best_trial_obj.number
     else:
         if not study.best_trial:
              self.logger.error("Single-objective optimization finished without finding a best trial.")
-             return optimal_params, len(study.trials)
+             return optimal_params, len(study.trials), None
 
-        optimal_params.update(study.best_trial.params)
-        self.logger.info(f"Best parameters found on training set: {study.best_trial.params}")
-        print(f"Optuna Optimizer - Best parameters found: {study.best_trial.params}")
+        best_trial_obj = study.best_trial
+        optimal_params.update(best_trial_obj.params)
+        self.logger.info(f"Best parameters found on training set: {best_trial_obj.params}")
+        print(f"Optuna Optimizer - Best parameters found: {best_trial_obj.params}")
         actual_trial_number_for_dsr = study.best_trial.number
     
-    return optimal_params, actual_trial_number_for_dsr
+    # Store the study object in the best_trial_obj for later use in plotting
+    if best_trial_obj is not None:
+        best_trial_obj.study = study
+    
+    return optimal_params, actual_trial_number_for_dsr, best_trial_obj
 
 def _setup_optuna_study(self, scenario_config, storage, study_name_base: str):
     study_name = f"{study_name_base}_seed_{self.random_state}" if self.args.random_seed is not None else study_name_base

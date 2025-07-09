@@ -1,4 +1,4 @@
-from ..monte_carlo import run_monte_carlo_simulation, plot_monte_carlo_results
+from ..monte_carlo.monte_carlo import run_monte_carlo_simulation, plot_monte_carlo_results
 import pandas as pd
 
 def run_monte_carlo_mode(self, scenario_config, monthly_data, daily_data, rets_full):

@@ -6,8 +6,9 @@ import numpy as np
 import logging
 import argparse
 import sys
-from typing import Dict
+from typing import Dict, Any
 import types
+import optuna
 from .config_loader import GLOBAL_CONFIG, BACKTEST_SCENARIOS, OPTIMIZER_PARAMETER_DEFAULTS
 from .config_initializer import populate_default_optimizations
 from . import strategies
@@ -82,6 +83,8 @@ class Backtester:
             class_name = "VAMSMomentumStrategy"
         elif strategy_name == "vams_no_downside":
             class_name = "VAMSNoDownsideStrategy"
+        elif strategy_name == "ema_crossover":
+            class_name = "EMAStrategy"
         else:
             class_name = "".join(word.capitalize() for word in strategy_name.split('_')) + "Strategy"
         
@@ -151,12 +154,12 @@ class Backtester:
             # Prepare historical data up to the current_rebalance_date
             # For assets in universe
             if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and 'Ticker' in price_data_daily_ohlc.columns.names:
-                asset_hist_data_cols = pd.MultiIndex.from_product([universe_tickers, price_data_daily_ohlc.columns.get_level_values('Field').unique()], names=['Ticker', 'Field'])
+                asset_hist_data_cols = pd.MultiIndex.from_product([universe_tickers, list(price_data_daily_ohlc.columns.get_level_values('Field').unique())], names=['Ticker', 'Field'])
                 asset_hist_data_cols = [col for col in asset_hist_data_cols if col in price_data_daily_ohlc.columns] # Ensure columns exist
                 all_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, asset_hist_data_cols]
 
                 # For benchmark
-                benchmark_hist_data_cols = pd.MultiIndex.from_product([[benchmark_ticker], price_data_daily_ohlc.columns.get_level_values('Field').unique()], names=['Ticker', 'Field'])
+                benchmark_hist_data_cols = pd.MultiIndex.from_product([[benchmark_ticker], list(price_data_daily_ohlc.columns.get_level_values('Field').unique())], names=['Ticker', 'Field'])
                 benchmark_hist_data_cols = [col for col in benchmark_hist_data_cols if col in price_data_daily_ohlc.columns]
                 benchmark_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, benchmark_hist_data_cols]
             else: # Assuming flat columns, tickers are column names
@@ -303,7 +306,15 @@ class Backtester:
             daily_portfolio_returns_gross = (weights_daily[valid_universe_tickers_in_rets] * aligned_rets_daily[valid_universe_tickers_in_rets]).sum(axis=1)
 
         turnover = (weights_daily - weights_daily.shift(1)).abs().sum(axis=1).fillna(0.0)
-        transaction_costs = turnover * (scenario_config.get("transaction_costs_bps", 0) / 10000.0)
+        
+        # Use realistic transaction costs for retail trading of liquid S&P 500 stocks
+        from .transaction_costs import calculate_realistic_transaction_costs
+        transaction_costs = calculate_realistic_transaction_costs(
+            turnover=turnover,
+            weights_daily=weights_daily,
+            price_data=price_data_daily_ohlc,
+            global_config=self.global_config
+        )
 
         portfolio_rets_net = (daily_portfolio_returns_gross - transaction_costs).fillna(0.0)
 
@@ -312,6 +323,299 @@ class Backtester:
             logger.info(f"Net returns index: {portfolio_rets_net.index.min()} to {portfolio_rets_net.index.max()}")
 
         return portfolio_rets_net
+
+    def _evaluate_params_walk_forward(self, trial: Any, scenario_config: dict, windows: list,
+                                      monthly_data, daily_data, rets_full,
+                                      metrics_to_optimize: list, is_multi_objective: bool) -> float | tuple[float, ...]:
+        """
+        Evaluate strategy parameters using walk-forward optimization with optional Monte Carlo robustness testing.
+        
+        MONTE CARLO TWO-STAGE PROCESS:
+        1. Stage 1 (HERE): Lightweight MC during WFO test phases for parameter robustness
+           - Introduces minor synthetic noise during test periods only
+           - Uses single replacement percentage (typically 5-10%)
+           - Goal: Test parameter stability against slightly modified market conditions
+           
+        2. Stage 2 (AFTER OPTIMIZATION): Full MC stress testing for strategy assessment  
+           - Multiple replacement levels (5%, 7.5%, 10%, 12.5%, 15%)
+           - Multiple simulations per level (20+ per level)
+           - Goal: Comprehensive stress testing and robustness analysis plots
+        """
+        # Import here to avoid circular imports
+        from .backtester_logic.optimization import _global_progress_tracker
+        from .reporting.performance_metrics import calculate_metrics
+        from .utils import calculate_stability_metrics, INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
+        from .monte_carlo.asset_replacement import AssetReplacementManager
+        
+        metric_values_per_objective = [[] for _ in metrics_to_optimize]
+        processed_steps_for_pruning = 0
+
+        pruning_enabled = getattr(self.args, "pruning_enabled", False)
+        pruning_interval_steps = getattr(self.args, "pruning_interval_steps", 1)
+
+        # STAGE 1 MONTE CARLO: Lightweight robustness testing during optimization
+        # Initialize Monte Carlo asset replacement manager for trial-level robustness
+        monte_carlo_config = self.global_config.get('monte_carlo_config', {})
+        asset_replacement_manager = None
+        trial_synthetic_data = None
+        
+        # Check if Monte Carlo is enabled and not explicitly disabled during optimization
+        mc_enabled = monte_carlo_config.get('enable_synthetic_data', False)
+        mc_during_optimization = monte_carlo_config.get('enable_during_optimization', True)
+        
+        if mc_enabled and mc_during_optimization:
+            from .monte_carlo.asset_replacement import AssetReplacementManager
+            
+            # Create optimized config for Stage 1 MC (faster generation during optimization)
+            stage1_config = monte_carlo_config.copy()
+            stage1_config['stage1_optimization'] = True  # Flag for optimization mode
+            stage1_config['replacement_percentage'] = monte_carlo_config.get('replacement_percentage', 0.05)  # Keep lightweight
+            
+            # Override generation settings for speed
+            stage1_config['generation_config'] = {
+                'buffer_multiplier': 1.0,  # No buffer for speed
+                'max_attempts': 1,         # Single attempt only
+                'validation_tolerance': 1.0  # Very lenient validation
+            }
+            
+            # Disable validation during optimization for speed
+            stage1_config['validation_config'] = {
+                'enable_validation': False
+            }
+            
+            asset_replacement_manager = AssetReplacementManager(stage1_config)
+            logger.debug("Stage 1 MC: Lightweight synthetic data enabled for optimization robustness")
+        elif mc_enabled and not mc_during_optimization:
+            logger.debug("Stage 1 MC: Disabled during optimization for performance")
+        else:
+            logger.debug("Stage 1 MC: Monte Carlo disabled in configuration")
+
+        # Store all window returns for this trial to create full P&L curve
+        all_window_returns = []
+        
+        # Update progress description to show current trial
+        if _global_progress_tracker and trial and hasattr(trial, 'number'):
+            trial_num = trial.number + 1  # Optuna uses 0-based indexing
+            total_trials = _global_progress_tracker['total_trials']
+            _global_progress_tracker['progress'].update(
+                _global_progress_tracker['task'], 
+                description=f"[cyan]Trial {trial_num}/{total_trials} running ({len(windows)} windows/trial)..."
+            )
+
+        # Generate lightweight synthetic data ONCE per trial for Stage 1 MC
+        replacement_info = None
+        if asset_replacement_manager is not None:
+            try:
+                # Get universe from scenario config or global config
+                universe = scenario_config.get('universe', self.global_config.get('universe', []))
+                
+                # Find the overall data range across all windows
+                all_start_dates = [tr_start for tr_start, _, _, _ in windows]
+                all_end_dates = [te_end for _, _, _, te_end in windows]
+                overall_start = min(all_start_dates)
+                overall_end = max(all_end_dates)
+                
+                # Get full data range for synthetic generation
+                full_data_slice = daily_data.loc[overall_start:overall_end]
+                
+                # Convert to dictionary format expected by asset replacement
+                daily_data_dict = {}
+                
+                if isinstance(full_data_slice.columns, pd.MultiIndex):
+                    # Handle MultiIndex columns (Ticker, Field)
+                    for ticker in universe:
+                        ticker_data = full_data_slice.xs(ticker, level='Ticker', axis=1, drop_level=True)
+                        if not ticker_data.empty:
+                            daily_data_dict[ticker] = ticker_data
+                else:
+                    # Handle simple column structure
+                    for ticker in universe:
+                        if ticker in full_data_slice.columns:
+                            # Create OHLC structure from single price column
+                            ticker_data = pd.DataFrame({
+                                'Open': full_data_slice[ticker],
+                                'High': full_data_slice[ticker],
+                                'Low': full_data_slice[ticker],
+                                'Close': full_data_slice[ticker]
+                            })
+                            daily_data_dict[ticker] = ticker_data
+                
+                # Generate random seed for this trial
+                trial_seed = None
+                if monte_carlo_config.get('random_seed') is not None:
+                    trial_seed = monte_carlo_config['random_seed'] + getattr(trial, 'number', 0)
+                
+                # Stage 1 MC: Generate lightweight synthetic data for robustness testing
+                logger.debug(f"Stage 1 MC: Generating lightweight synthetic data for trial {getattr(trial, 'number', 0)}")
+                trial_synthetic_data, replacement_info = asset_replacement_manager.create_monte_carlo_dataset(
+                    original_data=daily_data_dict,
+                    universe=universe,
+                    test_start=overall_start,
+                    test_end=overall_end,
+                    run_id=f"trial_{getattr(trial, 'number', 0)}",
+                    random_seed=trial_seed
+                )
+                
+                if replacement_info and replacement_info.selected_assets:
+                    logger.debug(f"Stage 1 MC: Trial {getattr(trial, 'number', 0)} using synthetic data for {len(replacement_info.selected_assets)} assets")
+                
+            except Exception as e:
+                logger.error(f"Stage 1 MC: Failed to generate synthetic data for trial {getattr(trial, 'number', 0)}: {e}")
+                trial_synthetic_data = None
+                replacement_info = None
+
+        for window_idx, (tr_start, tr_end, te_start, te_end) in enumerate(windows):
+            if CENTRAL_INTERRUPTED_FLAG:
+                self.logger.warning("Evaluation interrupted by user via central flag.")
+                break
+
+            m_slice = monthly_data.loc[tr_start:tr_end]
+            d_slice = daily_data.loc[tr_start:te_end]
+            r_slice = rets_full.loc[tr_start:te_end]
+
+            # Stage 1 MC: Apply lightweight synthetic data to test period only (for robustness)
+            if trial_synthetic_data is not None and replacement_info is not None:
+                try:
+                    # Apply synthetic data only to test period for Stage 1 MC robustness testing
+                    if isinstance(r_slice.columns, pd.MultiIndex):
+                        # Handle MultiIndex columns
+                        modified_r_slice = r_slice.copy()
+                        for ticker in replacement_info.selected_assets:
+                            if ticker in trial_synthetic_data:
+                                ticker_data = trial_synthetic_data[ticker]
+                                test_mask = (ticker_data.index >= te_start) & (ticker_data.index <= te_end)
+                                if test_mask.any():
+                                    synthetic_returns = ticker_data['Close'].pct_change(fill_method=None).fillna(0)
+                                    # Only replace returns in test period for Stage 1 MC
+                                    if (ticker, 'Close') in modified_r_slice.columns:
+                                        modified_r_slice.loc[te_start:te_end, (ticker, 'Close')] = synthetic_returns.loc[te_start:te_end]
+                        r_slice = modified_r_slice
+                    else:
+                        # Simple column structure
+                        modified_r_slice = r_slice.copy()
+                        for ticker in replacement_info.selected_assets:
+                            if ticker in trial_synthetic_data and ticker in r_slice.columns:
+                                ticker_data = trial_synthetic_data[ticker]
+                                test_mask = (ticker_data.index >= te_start) & (ticker_data.index <= te_end)
+                                if test_mask.any():
+                                    synthetic_returns = ticker_data['Close'].pct_change(fill_method=None).fillna(0)
+                                    # Only replace returns in test period for Stage 1 MC
+                                    modified_r_slice.loc[te_start:te_end, ticker] = synthetic_returns.loc[te_start:te_end]
+                        r_slice = modified_r_slice
+                    
+                    # Log replacement info for this window (only once per trial)
+                    if window_idx == 0 and replacement_info.selected_assets:
+                        logger.debug(f"Stage 1 MC: Trial {getattr(trial, 'number', 0)} applying synthetic data to test periods")
+                    
+                except Exception as e:
+                    logger.error(f"Stage 1 MC: Failed to apply synthetic data for window {window_idx}: {e}")
+                    # Continue with original data if synthetic data application fails
+
+            window_returns = self.run_scenario(scenario_config, m_slice, d_slice, r_slice, verbose=False)
+
+            if window_returns is None or window_returns.empty:
+                self.logger.warning(f"No returns generated for window {tr_start}-{te_end}. Skipping.")
+                for i in range(len(metrics_to_optimize)):
+                    metric_values_per_objective[i].append(np.nan)
+                # Update progress bar after processing this window
+                if _global_progress_tracker:
+                    _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
+                continue
+
+            # Store the full window returns for later use in plotting
+            all_window_returns.append(window_returns)
+
+            test_rets = window_returns.loc[te_start:te_end]
+            if test_rets.empty:
+                self.logger.debug(f"Test returns empty for window {tr_start}-{te_end} with params {scenario_config['strategy_params']}.")
+                # Update progress bar before returning
+                if _global_progress_tracker:
+                    _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
+                if is_multi_objective:
+                    return tuple([float("nan")] * len(metrics_to_optimize))
+                return float("nan")
+
+            if abs(test_rets.mean()) < 1e-9 and abs(test_rets.std()) < 1e-9:
+                if trial and hasattr(trial, "set_user_attr"):
+                    trial.set_user_attr("zero_returns", True)
+                    if hasattr(trial, "number"):
+                        self.logger.debug(f"Trial {trial.number}, window {window_idx+1}: Marked with zero_returns.")
+
+            bench_ser = d_slice[self.global_config["benchmark"]].loc[te_start:te_end]
+            bench_period_rets = bench_ser.pct_change(fill_method=None).fillna(0)
+            metrics = calculate_metrics(test_rets, bench_period_rets, self.global_config["benchmark"])
+            current_metrics = np.array([metrics.get(m, np.nan) for m in metrics_to_optimize], dtype=float)
+
+            for i, metric_val in enumerate(current_metrics):
+                metric_values_per_objective[i].append(metric_val)
+
+            # Update progress bar after processing this window
+            if _global_progress_tracker:
+                _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
+
+            # Handle pruning if enabled
+            processed_steps_for_pruning += 1
+            if pruning_enabled and processed_steps_for_pruning % pruning_interval_steps == 0:
+                if trial and hasattr(trial, "should_prune"):
+                    current_score = np.nanmean(metric_values_per_objective[0])
+                    if hasattr(trial, "report"):
+                        trial.report(current_score, processed_steps_for_pruning)
+                    if trial.should_prune():
+                        self.logger.info(f"Trial {getattr(trial, 'number', 'N/A')} pruned at step {processed_steps_for_pruning}")
+                        raise optuna.exceptions.TrialPruned()
+
+        # Combine all window returns to create full trial P&L curve
+        if all_window_returns and trial and hasattr(trial, "set_user_attr"):
+            try:
+                # Concatenate all window returns in chronological order
+                full_trial_returns = pd.concat(all_window_returns).sort_index()
+                
+                # Store as trial attribute for later plotting
+                # Convert to dict for JSON serialization
+                trial_returns_dict = {
+                    'dates': full_trial_returns.index.strftime('%Y-%m-%d').tolist(),
+                    'returns': full_trial_returns.values.tolist()
+                }
+                trial.set_user_attr("trial_returns", trial_returns_dict)
+                
+                # Also store parameters for easy access
+                trial.set_user_attr("trial_params", scenario_config["strategy_params"])
+                
+            except Exception as e:
+                logger.warning(f"Failed to store trial returns for trial {getattr(trial, 'number', 'N/A')}: {e}")
+
+        # Calculate stability metrics
+        stability_config = self.global_config.get("stability_config", {})
+        if stability_config.get("enable", True) and trial and hasattr(trial, "set_user_attr"):
+            stability_metrics = calculate_stability_metrics(
+                metric_values_per_objective, 
+                metrics_to_optimize, 
+                self.global_config
+            )
+            
+            # Store stability metrics as trial attributes
+            for metric_name, metric_value in stability_metrics.items():
+                trial.set_user_attr(metric_name, metric_value)
+            
+            # Log stability metrics for debugging
+            if hasattr(trial, "number"):
+                self.logger.debug(f"Trial {trial.number} stability metrics: {stability_metrics}")
+
+        # Store Monte Carlo replacement statistics if available
+        if asset_replacement_manager is not None and trial and hasattr(trial, "set_user_attr"):
+            replacement_stats = asset_replacement_manager.get_replacement_statistics()
+            trial.set_user_attr("monte_carlo_replacement_stats", replacement_stats)
+
+        metric_avgs = [np.nanmean(values) if not all(np.isnan(values)) else np.nan for values in metric_values_per_objective]
+
+        if all(np.isnan(np.array(metric_avgs))):
+            self.logger.warning(f"No valid windows produced results for params: {scenario_config['strategy_params']}. Returning NaN.")
+            return tuple([float("nan")] * len(metrics_to_optimize)) if is_multi_objective else float("nan")
+
+        if is_multi_objective:
+            return tuple(float(v) for v in metric_avgs)
+        else:
+            return float(metric_avgs[0])
 
     def run(self):
         logger.info("Starting backtest data retrieval.")
@@ -401,19 +705,22 @@ class Backtester:
             self.run_optimize_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         elif self.args.mode == "backtest":
             self.run_backtest_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
-        elif self.args.mode == "monte_carlo":
             # Monte Carlo might need different data inputs or just portfolio returns.
             # Assuming it primarily works off portfolio returns generated by run_backtest_mode.
             # For now, keeping its inputs similar, but this might need review based on its internal logic.
             self.run_monte_carlo_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
-
+        
+        # Moved logic from the module level into the class method's finally block
+        # This ensures it always runs after backtest/optimization, or upon interruption.
         if self.args.mode != "monte_carlo":
             if CENTRAL_INTERRUPTED_FLAG:
-                logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
+                self.logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
             else:
-                logger.info("All scenarios completed. Displaying results.")
-                self.display_results(daily_data)
-
+                self.logger.info("All scenarios completed. Displaying results.")
+                self.display_results(daily_data) # daily_data is available here
+        
+# The following code block was incorrectly placed inside the class in the previous attempt.
+# It should remain at the module level.
 from .utils import register_signal_handler as register_central_signal_handler
 
 if __name__ == "__main__":
@@ -484,3 +791,10 @@ if __name__ == "__main__":
             sys.exit(130)
         else:
             logger.info("Backtester run completed.")
+            # Moved from outside the try-finally block
+            if args.mode != "monte_carlo":
+                if CENTRAL_INTERRUPTED_FLAG:
+                    logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
+                else:
+                    logger.info("All scenarios completed. Displaying results.")
+                    backtester.display_results(backtester.daily_data_ohlc)

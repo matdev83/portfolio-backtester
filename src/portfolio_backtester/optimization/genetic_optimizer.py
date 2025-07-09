@@ -2,7 +2,8 @@ import pygad
 import numpy as np
 import logging # Import logging
 import optuna
-from ..evaluation_logic import _evaluate_params_walk_forward
+# _evaluate_params_walk_forward is now a method of the Backtester class
+from ..utils import generate_randomized_wfo_windows
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -42,6 +43,10 @@ class GeneticOptimizer:
             logger.info(f"Multi-objective optimization for: {self.metrics_to_optimize}")
 
         self.ga_instance = None
+
+        # Early stopping variables
+        self.zero_fitness_streak = 0
+        self.best_fitness_so_far = -np.inf
 
     def _validate_gene_space(self, gene_space):
         """Validate gene space to prevent PyGAD errors."""
@@ -111,31 +116,19 @@ class GeneticOptimizer:
             mock_study = type('MockStudy', (), {'directions': [optuna.study.StudyDirection.MAXIMIZE for _ in self.metrics_to_optimize]})()
             mock_trial = MockTrial(current_params, mock_study, solution_idx)
 
-            # Generate walk-forward windows
-            train_window_m = self.scenario_config.get("train_window_months", 24)
-            test_window_m = self.scenario_config.get("test_window_months", 12)
-            wf_type = self.scenario_config.get("walk_forward_type", "expanding").lower()
-            idx = self.monthly_data.index
-            windows = []
-            start_idx = train_window_m
-            while start_idx + test_window_m <= len(idx):
-                train_end_idx = start_idx - 1
-                test_start_idx = train_end_idx + 1
-                test_end_idx = test_start_idx + test_window_m - 1
-                if test_end_idx >= len(idx): 
-                    break
-                if wf_type == "rolling":
-                    train_start_idx = train_end_idx - train_window_m + 1
-                else:
-                    train_start_idx = 0
-                windows.append((idx[train_start_idx], idx[train_end_idx], idx[test_start_idx], idx[test_end_idx]))
-                start_idx += test_window_m
+            # Generate walk-forward windows using centralized function
+            windows = generate_randomized_wfo_windows(
+                self.monthly_data.index,
+                self.scenario_config,
+                self.global_config,
+                self.random_state
+            )
 
             if not windows:
                 logger.error("Not enough data for walk-forward windows in GeneticOptimizer.")
                 return -np.inf if not self.is_multi_objective else [-np.inf] * len(self.metrics_to_optimize)
 
-            objectives_values = _evaluate_params_walk_forward(
+            objectives_values = self.backtester_instance._evaluate_params_walk_forward(
                 self.backtester,
                 mock_trial,
                 trial_scenario_config,

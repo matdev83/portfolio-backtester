@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import Callable, Optional # Added Optional
-
-import numpy as np
 import pandas as pd
+import numpy as np
+import logging
+from abc import ABC, abstractmethod
+from typing import Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 # Removed Feature and BenchmarkSMA imports as features are now internal
 # from ..features.base import Feature
@@ -310,40 +312,97 @@ class BaseStrategy(ABC):
         
         return True, ""
 
-    # The old _calculate_derisk_flags was designed to work on a whole series.
-    # The new one above is for point-in-time calculation within a loop.
-    # If a series-based calculation is still needed by a strategy, it can implement it locally.
-    # For now, I'll comment out the old one to avoid confusion.
-
-    # def _calculate_derisk_flags(self, sma_risk_on_series: pd.Series, derisk_days: int) -> pd.Series:
-    #     """
-    #     Calculates flags indicating when to derisk based on consecutive days under SMA.
-
-    #     Parameters:
-    #     - sma_risk_on_series (pd.Series): Boolean series indicating if risk is on (True, price >= SMA)
-    #                                       or off (False, price < SMA). Index must match prices.index.
-    #     - derisk_days (int): Number of consecutive days asset must be under SMA to trigger derisking.
-
-    #     Returns:
-    #     - pd.Series: Boolean series with True where derisking should occur.
-    #     """
-    #     if not isinstance(sma_risk_on_series, pd.Series) or not isinstance(derisk_days, int) or derisk_days <= 0:
-    #         # This case should ideally be handled by the caller (use_sma_derisk check)
-    #         # but as a safeguard, return an all-false series.
-    #         return pd.Series(False, index=sma_risk_on_series.index)
-
-    #     derisk_flags = pd.Series(False, index=sma_risk_on_series.index)
-    #     consecutive_days_risk_off = 0
-
-    #     for date_val in sma_risk_on_series.index: # Renamed 'date' to 'date_val' to avoid conflict
-    #         if sma_risk_on_series.loc[date_val]:  # Price is >= SMA (Risk is ON based on SMA)
-    #             consecutive_days_risk_off = 0
-    #         else:  # Price is < SMA (Risk is OFF based on SMA)
-    #             consecutive_days_risk_off += 1
-
-    #         if consecutive_days_risk_off > derisk_days: # Note: strictly greater
-    #             derisk_flags.loc[date_val] = True
-    #         # else: # If it's not > derisk_days, the flag remains False (or becomes False if it was True and now sma_risk_on_series is True)
-    #         #    if derisk_flags.loc[date_val]: # This logic is not needed as we reset consecutive_days_risk_off
-    #         #        pass
-    #     return derisk_flags
+    def filter_universe_by_data_availability(
+        self,
+        all_historical_data: pd.DataFrame,
+        current_date: pd.Timestamp,
+        min_periods_override: int = None
+    ) -> list:
+        """
+        Filter the universe to only include assets that have sufficient historical data
+        as of the current date. This handles cases where stocks were not yet listed
+        or have been delisted.
+        
+        Args:
+            all_historical_data: DataFrame with historical data for universe assets
+            current_date: The date for which we're checking data availability
+            min_periods_override: Override minimum periods requirement (default: use strategy requirement)
+            
+        Returns:
+            list: List of assets that have sufficient data
+        """
+        min_periods_required = min_periods_override or self.get_minimum_required_periods()
+        
+        if all_historical_data.empty:
+            return []
+        
+        # Filter data up to current_date
+        available_data = all_historical_data[all_historical_data.index <= current_date]
+        if available_data.empty:
+            return []
+        
+        valid_assets = []
+        
+        # Get asset list based on column structure
+        if isinstance(all_historical_data.columns, pd.MultiIndex):
+            # MultiIndex columns - get unique tickers
+            asset_list = all_historical_data.columns.get_level_values('Ticker').unique()
+        else:
+            # Simple columns - column names are tickers
+            asset_list = all_historical_data.columns
+        
+        for asset in asset_list:
+            try:
+                # Extract asset data
+                if isinstance(all_historical_data.columns, pd.MultiIndex):
+                    # For MultiIndex, get all fields for this ticker
+                    asset_data = available_data.xs(asset, level='Ticker', axis=1, drop_level=False)
+                    # Check if we have Close prices (most important)
+                    if (asset, 'Close') in asset_data.columns:
+                        asset_prices = asset_data[(asset, 'Close')].dropna()
+                    else:
+                        continue  # Skip if no Close prices
+                else:
+                    # Simple column structure
+                    if asset not in available_data.columns:
+                        continue
+                    asset_prices = available_data[asset].dropna()
+                
+                # Check if asset has sufficient data
+                if len(asset_prices) == 0:
+                    continue  # No data for this asset
+                
+                # Check data availability period
+                asset_earliest = asset_prices.index.min()
+                asset_latest = asset_prices.index.max()
+                
+                # Skip if asset data doesn't reach current date (delisted or data gap)
+                if asset_latest < current_date - pd.DateOffset(days=30):  # Allow 30-day lag
+                    continue
+                
+                # Calculate available months for this asset
+                available_months = (current_date.year - asset_earliest.year) * 12 + (current_date.month - asset_earliest.month)
+                
+                # Check if asset has minimum required data
+                if available_months >= min_periods_required:
+                    valid_assets.append(asset)
+                    
+            except Exception as e:
+                # Skip assets that cause errors in data processing
+                logger.debug(f"Skipping asset {asset} due to data processing error: {e}")
+                continue
+        
+        if len(valid_assets) < len(asset_list):
+            excluded_count = len(asset_list) - len(valid_assets)
+            exclusion_rate = excluded_count / len(asset_list)
+            
+            # Only log if there are significant issues
+            if len(valid_assets) == 0:
+                logger.error(f"No assets have sufficient data for {current_date.strftime('%Y-%m-%d')} - all {len(asset_list)} assets excluded")
+            elif exclusion_rate > 0.5:  # More than 50% excluded
+                logger.warning(f"High asset exclusion rate: {len(valid_assets)}/{len(asset_list)} assets have sufficient data for {current_date.strftime('%Y-%m-%d')} ({exclusion_rate:.1%} excluded)")
+            else:
+                # Normal filtering - only log at debug level
+                logger.debug(f"Filtered universe: {len(valid_assets)}/{len(asset_list)} assets have sufficient data for {current_date.strftime('%Y-%m-%d')} (excluded {excluded_count} assets)")
+        
+        return valid_assets

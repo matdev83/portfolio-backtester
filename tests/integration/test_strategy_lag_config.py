@@ -11,7 +11,8 @@ from src.portfolio_backtester.strategies import (
     VAMSNoDownsideStrategy,
     MomentumDvolSizerStrategy
 )
-from src.portfolio_backtester.features.momentum import Momentum # For feature name generation
+# from src.portfolio_backtester.features.momentum import Momentum # For feature name generation
+# Note: Momentum feature class doesn't exist, using hardcoded feature name instead
 
 strategies_to_test_lag = [
     (MomentumStrategy, {"lookback_months": 6}),
@@ -36,7 +37,7 @@ def test_configurable_trading_lag(strategy_class, initial_params):
     if strategy_class in [MomentumStrategy, MomentumDvolSizerStrategy]:
         lb = initial_params.get("lookback_months", 6)
         # Momentum feature with skip=0, no_suffix has name "momentum_{lb}m"
-        mock_features[Momentum(lookback_months=lb).name] = pd.DataFrame(0.1, index=dates, columns=assets)
+        mock_features[f"momentum_{lb}m"] = pd.DataFrame(0.1, index=dates, columns=assets)
     elif strategy_class == CalmarMomentumStrategy:
         rw = initial_params.get("rolling_window", 6)
         mock_features[f"calmar_{rw}m"] = pd.DataFrame(0.1, index=dates, columns=assets)

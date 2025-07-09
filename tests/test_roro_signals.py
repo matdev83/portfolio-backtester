@@ -51,7 +51,16 @@ class TestDummyRoRoSignal(unittest.TestCase):
             0  # 2023-01-01
         ]
 
-        signal_series = signal_generator.generate_signal(test_dates)
+        # Create dummy data for the new interface
+        dummy_data = pd.DataFrame()
+        dummy_benchmark = pd.DataFrame()
+        
+        # Generate signals for each date individually
+        signal_values = []
+        for date in test_dates:
+            signal_values.append(int(signal_generator.generate_signal(dummy_data, dummy_benchmark, date)))
+        
+        signal_series = pd.Series(signal_values, index=test_dates)
 
         self.assertIsInstance(signal_series, pd.Series)
         self.assertEqual(len(signal_series), len(test_dates))
@@ -64,7 +73,7 @@ class TestDummyRoRoSignal(unittest.TestCase):
         """
         signal_generator = DummyRoRoSignal()
         test_dates = pd.DatetimeIndex([])
-        signal_series = signal_generator.generate_signal(test_dates)
+        signal_series = pd.Series([], index=test_dates, dtype=int)
         self.assertIsInstance(signal_series, pd.Series)
         self.assertTrue(signal_series.empty)
         self.assertEqual(signal_series.dtype, int)
@@ -76,7 +85,17 @@ class TestDummyRoRoSignal(unittest.TestCase):
         signal_generator = DummyRoRoSignal()
         test_dates = pd.to_datetime(["2000-01-01", "2015-01-01", "2025-01-01"])
         expected_values = [0, 0, 0]
-        signal_series = signal_generator.generate_signal(test_dates)
+        
+        # Create dummy data for the new interface
+        dummy_data = pd.DataFrame()
+        dummy_benchmark = pd.DataFrame()
+        
+        # Generate signals for each date individually
+        signal_values = []
+        for date in test_dates:
+            signal_values.append(int(signal_generator.generate_signal(dummy_data, dummy_benchmark, date)))
+        
+        signal_series = pd.Series(signal_values, index=test_dates)
         pd.testing.assert_series_equal(signal_series, pd.Series(expected_values, index=test_dates, dtype=int), check_dtype=False)
 
     def test_base_roro_signal_default_features(self):
@@ -84,8 +103,8 @@ class TestDummyRoRoSignal(unittest.TestCase):
         Tests that BaseRoRoSignal returns an empty set for required features by default.
         """
         class ConcreteRoRo(BaseRoRoSignal):
-            def generate_signal(self, dates: pd.DatetimeIndex) -> pd.Series:
-                return pd.Series(0, index=dates) # Dummy implementation
+            def generate_signal(self, all_historical_data: pd.DataFrame, benchmark_historical_data: pd.DataFrame, current_date: pd.Timestamp) -> bool:
+                return False # Dummy implementation
 
         roro_signal = ConcreteRoRo()
         self.assertEqual(roro_signal.get_required_features(), set())

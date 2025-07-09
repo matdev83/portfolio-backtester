@@ -1,6 +1,40 @@
 # Portfolio Backtester
 
-This project is a Python-based tool for backtesting portfolio strategies.
+This project is a sophisticated Python-based tool for backtesting portfolio strategies with advanced features including two-stage Monte Carlo simulation, walk-forward optimization robustness testing, and comprehensive performance analysis.
+
+## Key Features
+
+### Core Capabilities
+- **Multiple Strategy Types**: Momentum, VAMS, Calmar, Sortino-based strategies
+- **Advanced Position Sizing**: Equal weight, volatility-based, risk-adjusted sizing
+- **Flexible Rebalancing**: Monthly, quarterly, custom frequencies
+- **Transaction Cost Modeling**: Realistic cost simulation with basis points
+
+### Advanced Optimization
+- **Walk-Forward Optimization (WFO)**: Robust parameter optimization with time-series validation
+- **WFO Robustness Features**: Randomized window sizes and start dates for enhanced robustness
+- **Multi-Objective Optimization**: Simultaneous optimization of multiple metrics (Sharpe, Sortino, Max Drawdown)
+- **Dual Optimization Engines**: Optuna (Bayesian) and Genetic Algorithm support
+- **Trial Pruning**: Early stopping of unpromising parameter combinations
+
+### Two-Stage Monte Carlo System
+- **Stage 1 (During Optimization)**: Lightweight synthetic data injection for parameter robustness testing
+- **Stage 2 (Post-Optimization)**: Comprehensive stress testing with multiple replacement levels
+- **GARCH-Based Synthetic Data**: Realistic market condition simulation preserving statistical properties
+- **Asset Replacement Strategy**: Configurable percentage of assets replaced with synthetic equivalents
+
+### Advanced Analytics & Reporting
+- **Comprehensive Performance Metrics**: Sharpe, Sortino, Calmar ratios, drawdown analysis
+- **Stability Metrics**: Parameter consistency across walk-forward windows
+- **Trial P&L Visualization**: Monte Carlo-style plots showing optimization trial performance
+- **Parameter Impact Analysis**: Sensitivity, correlation, and importance ranking
+- **Robustness Stress Testing**: Visual analysis of strategy performance under synthetic market conditions
+
+### Enhanced Configuration System
+- **YAML-Based Configuration**: Flexible parameter and scenario management
+- **Robustness Configuration**: Fine-tuned control over WFO randomization
+- **Monte Carlo Configuration**: Detailed control over synthetic data generation
+- **Strategy Parameter Defaults**: Centralized optimization parameter management
 
 ## Setup
 
@@ -37,402 +71,262 @@ The main backtesting script can be run directly as a Python module:
 python -m src.portfolio_backtester.backtester
 ```
 
-### CLI Parameters for `backtester.py`
+### CLI Parameters
 
-* `--log-level`: Set the logging level.
+#### Core Parameters
+* `--mode`: Mode to run the backtester in.
+  * **Choices:** `backtest`, `optimize`, `monte_carlo`
+  * **Required:** Yes
+  * **Description:** 
+    - `backtest`: Single scenario backtesting
+    - `optimize`: Walk-forward optimization with robustness features
+    - `monte_carlo`: Full Monte Carlo stress testing analysis
+* `--scenario-name`: Name of the scenario from `config/scenarios.yaml`
+  * **Required:** Yes for optimize/monte_carlo modes
+* `--log-level`: Set the logging level
   * **Choices:** `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
   * **Default:** `INFO`
-  * **Description:** Controls the verbosity of the backtester's output.
-* `--mode`: Mode to run the backtester in.
-  * **Choices:** `backtest`, `optimize`
-  * **Required:** Yes
-  * **Description:** `backtest` for single scenario backtesting, `optimize` for walk-forward optimization.
-* `--scenario-name`: Name of the scenario to run/optimize from `BACKTEST_SCENARIOS` in `src/portfolio_backtester/config.py`.
-  * **Required:** Yes
-  * **Description:** Specifies which predefined scenario configuration to use.
-* `--study-name`: Name of the Optuna study to use.
-  * **Description:** In `optimize` mode, this names the study where optimization results are saved. In `backtest` mode, if provided, it loads the best parameters from this study; otherwise, default parameters from the scenario are used.
-* `--random-seed`: Set a random seed for reproducibility.
-  * **Default:** `None`
-* `--optimize-min-positions`: Minimum number of positions to consider during optimization of `num_holdings`.
-  * **Default:** `10`
-* `--optimize-max-positions`: Maximum number of positions to consider during optimization of `num_holdings`.
-  * **Default:** `30`
-* `--top-n-params`: Number of top performing parameter values to keep per grid.
-  * **Default:** `3`
-* `--n-jobs`: Parallel worker processes to use.
-  * **Default:** `8` (`-1` means all cores).
-* `--early-stop-patience`: Stop optimization after N successive ~zero-return evaluations.
-  * **Default:** `10`
-* `--optuna-trials`: Maximum trials per WFA slice.
-  * **Default:** `200`
-* `--optuna-timeout-sec`: Time budget per WFA slice (seconds).
-  * **Default:** `None` (no timeout)
-* `--optimizer`: Choose the optimization algorithm.
+
+#### Optimization Parameters
+* `--optimizer`: Choose the optimization algorithm
   * **Choices:** `optuna`, `genetic`
   * **Default:** `optuna`
-  * **Description:** Selects whether to use Optuna (hyperparameter optimization framework) or a Genetic Algorithm for finding optimal strategy parameters.
+* `--optuna-trials`: Maximum trials per optimization
+  * **Default:** `200`
+* `--optuna-timeout-sec`: Time budget per optimization (seconds)
+  * **Default:** `None` (no timeout)
+* `--n-jobs`: Parallel worker processes
+  * **Default:** `8` (`-1` means all cores)
+* `--random-seed`: Set random seed for reproducibility
+  * **Default:** `None`
 
-#### Optuna Pruning Configuration
-
-Trial pruning can significantly speed up optimization by stopping unpromising trials early. This is based on evaluating intermediate results during the walk-forward analysis. The `MedianPruner` is used.
-
-* `--pruning-enabled`: Enable trial pruning.
-  * **Action:** `store_true` (flag, disabled by default)
-  * **Description:** If set, enables the `MedianPruner` to stop trials early if their intermediate performance (e.g., average Sharpe ratio over initial walk-forward windows) is poor compared to other trials.
-* `--pruning-n-startup-trials`: Number of initial trials to complete before pruning begins.
+#### Advanced Optimization Features
+* `--pruning-enabled`: Enable trial pruning for faster optimization
+* `--pruning-n-startup-trials`: Trials to complete before pruning begins
   * **Default:** `5`
-  * **Description:** The pruner will not prune any of the first `N` trials, allowing it to gather initial data.
-* `--pruning-n-warmup-steps`: Number of intermediate steps (walk-forward windows) to complete within a trial before it can be pruned.
-  * **Default:** `0`
-  * **Description:** A trial will report intermediate values after each walk-forward window (or every `pruning-interval-steps`). This parameter specifies how many such reports must occur before the pruner considers pruning that trial.
-* `--pruning-interval-steps`: Report intermediate value and check for pruning every N walk-forward windows.
+* `--pruning-interval-steps`: Report interval for pruning checks
   * **Default:** `1`
-  * **Description:** For example, if set to `2`, a trial reports its performance and is eligible for pruning after its 2nd, 4th, 6th, etc., walk-forward window evaluation (subject to `pruning-n-warmup-steps`).
+* `--early-stop-patience`: Stop after N consecutive poor trials
+  * **Default:** `10`
 
-**Note on Early Stopping Mechanisms:**
-
-* **Trial Pruning** (configured above): Stops *individual unpromising trials* early during the optimization process based on intermediate performance across walk-forward windows. This helps focus computational resources on more promising parameter sets.
-* `--early-stop-patience`: Stops the *entire optimization study* if a specified number of *consecutive trials* result in near-zero returns in any of their test windows. This acts as a global failsafe for the overall optimization process.
-
-These two mechanisms are complementary.
+#### Monte Carlo Parameters
+* `--mc-simulations`: Number of Monte Carlo simulations
+  * **Default:** `1000`
+* `--mc-years`: Years to project in Monte Carlo analysis
+  * **Default:** `10`
+* `--interactive`: Show plots interactively
 
 ### Examples
 
-**1. Run an optimization for a scenario:**
-
-```bash
-python -m src.portfolio_backtester.backtester --mode optimize --scenario-name "Sharpe_Momentum" --study-name "sharpe_momentum_opt_run_1" --optuna-trials 100 --optuna-timeout-sec 3600
-```
-
-**2. Run a backtest using optimized parameters from a study:**
-
-```bash
-python -m src.portfolio_backtester.backtester --mode backtest --scenario-name "Sharpe_Momentum" --study-name "sharpe_momentum_opt_run_1"
-```
-
-**3. Run a backtest using default parameters for a scenario:**
-
+**1. Basic Strategy Backtest:**
 ```bash
 python -m src.portfolio_backtester.backtester --mode backtest --scenario-name "Momentum_Unfiltered"
 ```
 
-**4. Run backtests on all defined scenarios:**
-
+**2. Advanced Optimization with Robustness:**
 ```bash
-python -m src.portfolio_backtester.backtester --mode backtest
-```
-*   This command will iterate through all scenarios defined in `src/portfolio_backtester/config.py` (or `config/scenarios.yaml`) and run a backtest for each.
-
-The tool for downloading SPY holdings can be run with:
-
-```bash
-python src/portfolio_backtester/spy_holdings.py --out spy_holdings.csv
-```
-
-### CLI Parameters for `spy_holdings.py`
-
-* `--start`: Start date for data download.
-  * **Format:** `YYYY-MM-DD`
-  * **Default:** `2004-01-01` (earliest SEC N-Q filing)
-  * **Description:** Specifies the beginning of the date range for which to download holdings data.
-* `--end`: End date for data download.
-  * **Format:** `YYYY-MM-DD`
-  * **Default:** Today's date
-  * **Description:** Specifies the end of the date range for which to download holdings data.
-* `--out`: Output filename for the downloaded data.
-  * **Format:** `.parquet` or `.csv` extension
-  * **Required:** Yes
-  * **Description:** The name and format of the file where the downloaded SPY holdings will be saved.
-* `--log-level`: Set the logging level.
-  * **Choices:** `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
-  * **Default:** `INFO`
-  * **Description:** Controls the verbosity of the data downloader's output.
-
-Example:
-
-```bash
-python src/portfolio_backtester/spy_holdings.py --start 2020-01-01 --end 2023-12-31 --out spy_holdings_2020_2023.parquet --log-level INFO
+python -m src.portfolio_backtester.backtester \
+  --mode optimize \
+  --scenario-name "Momentum_Unfiltered" \
+  --study-name "robust_momentum_v1" \
+  --optimizer optuna \
+  --optuna-trials 500 \
+  --pruning-enabled \
+  --n-jobs -1 \
+  --random-seed 42
 ```
 
+**3. Monte Carlo Stress Testing:**
 ```bash
-# First full build (creates data/spy_holdings_full.parquet)
-python -m portfolio_backtester.spy_holdings \
-       --start 2004-01-01 --end 2025-06-30 \
-       --out spy_holdings_full.parquet
-
-# Nightly / incremental refresh (only fetches new dates)
-python -m portfolio_backtester.spy_holdings \
-       --start 2004-01-01 --end 2025-06-30 \
-       --out spy_holdings_full.parquet --update
+python -m src.portfolio_backtester.backtester \
+  --mode monte_carlo \
+  --scenario-name "Momentum_Unfiltered" \
+  --mc-simulations 2000 \
+  --mc-years 15 \
+  --interactive
 ```
 
-The script saves the file inside the top-level `data/` directory (never in `src/data`).  Internally it automatically forward-fills missing business days so every ticker has a continuous daily weight series.
+**4. Genetic Algorithm Optimization:**
+```bash
+python -m src.portfolio_backtester.backtester \
+  --mode optimize \
+  --scenario-name "VAMS_Momentum" \
+  --optimizer genetic \
+  --optuna-trials 200 \
+  --study-name "genetic_vams_opt"
+```
 
-### Position Sizing Methods
+## Configuration
 
-The project supports pluggable position sizing methods, defined in `src/portfolio_backtester/portfolio/position_sizer.py`. These methods determine how capital is allocated to different assets based on signals and other market data.
-
-* **`equal_weight`**:
-  * **Description**: Distributes capital equally among all assets that have a signal. If there are N assets with signals, each receives 1/N of the capital. This is a simple and common method for diversified portfolios.
-
-* **`rolling_sharpe`**:
-  * **Description**: Weights positions based on the rolling Sharpe ratio of asset returns. Assets with higher historical risk-adjusted returns (Sharpe ratio) receive a larger allocation. This method aims to maximize the portfolio's overall Sharpe ratio.
-  * **Parameters**:
-    * `window` (int): The look-back window for calculating rolling returns and standard deviation.
-
-* **`rolling_sortino`**:
-  * **Description**: Weights positions based on the rolling Sortino ratio of asset returns. Similar to Sharpe, but it penalizes only downside volatility (returns below a target return). Assets with higher Sortino ratios (better risk-adjusted returns with respect to downside risk) receive larger allocations.
-  * **Parameters**:
-    * `window` (int): The look-back window for calculating rolling returns and downside deviation.
-    * `target_return` (float, default: 0.0): The minimum acceptable return used in the Sortino ratio calculation.
-
-* **`rolling_beta`**:
-  * **Description**: Weights positions inversely proportional to their rolling beta against a specified benchmark. Assets with lower beta (less sensitivity to market movements) receive larger allocations, aiming to reduce overall portfolio volatility relative to the market.
-  * **Parameters**:
-    * `window` (int): The look-back window for calculating rolling covariance and variance.
-    * `benchmark` (pd.Series): The benchmark returns used for beta calculation.
-
-* **`rolling_benchmark_corr`**:
-  * **Description**: Weights positions inversely proportional to their rolling correlation with a specified benchmark. Assets with lower correlation to the benchmark receive larger allocations, aiming to improve diversification and reduce systematic risk.
-  * **Parameters**:
-    * `window` (int): The look-back window for calculating rolling correlation.
-    * `benchmark` (pd.Series): The benchmark returns used for correlation calculation.
-
-### Optimizer Configuration
-
-## Strategy Optimization
-
-This section details how to configure and run strategy parameter optimization to find the best-performing parameters based on your objectives.
-
-### Supported Performance Metrics
-
-The optimizer can target any of the following performance metrics, which are calculated by the backtester.
-
-| Metric | Description | Goal |
-| --- | --- | --- |
-| **Total Return** | The total return of the strategy over the entire backtest period. | `maximize` |
-| **Ann. Return** | The annualized geometric mean return. | `maximize` |
-| **Ann. Vol** | The annualized volatility (standard deviation of returns). | `minimize` |
-| **Sharpe** | The annualized Sharpe ratio (risk-adjusted return). | `maximize` |
-| **Sortino** | The annualized Sortino ratio (risk-adjusted return focusing on downside volatility). | `maximize` |
-| **Calmar** | The Calmar ratio (annualized return divided by the maximum drawdown). | `maximize` |
-| **Max DD** | The maximum drawdown of the strategy. | `minimize` |
-| **Alpha (ann)** | The annualized alpha of the strategy against the benchmark. | `maximize` |
-| **Beta** | The beta of the strategy against the benchmark. | `minimize` or `maximize` |
-| **R^2** | The R-squared value of the strategy against the benchmark. | `maximize` |
-| **K-Ratio** | The K-Ratio, a measure of return consistency. | `maximize` |
-| **ADF Statistic** | The Augmented Dickey-Fuller test statistic for stationarity of the equity curve. | `minimize` |
-| **ADF p-value** | The p-value from the ADF test. | `minimize` |
-| **Deflated Sharpe** | The Deflated Sharpe Ratio (DSR), which accounts for the probability of "backtest overfitting". | `maximize` |
-
-### Optimization Goals
-
-For each metric, you can specify an optimization goal. The supported goals are:
-
-*   `maximize`: Find parameters that result in the highest possible value for the metric.
-*   `minimize`: Find parameters that result in the lowest possible value for the metric.
-*   `less_than`: Find parameters where the metric is less than a specified value.
-*   `greater_than`: Find parameters where the metric is greater than a specified value.
-
-### YAML Configuration for Optimization
-
-Optimization parameters are configured in the `config/scenarios.yaml` file. Here are some examples of how to set up your optimization scenarios.
-
-#### Single-Objective Optimization
-
-This example shows how to optimize for a single metric (Calmar ratio).
+### WFO Robustness Configuration (`config/parameters.yaml`)
 
 ```yaml
-# In config/scenarios.yaml
-- name: "Calmar_Momentum_Optimization"
-  strategy: "MomentumStrategy"
-  strategy_params:
-    lookback: 12
-    num_assets: 20
-  optimization_metric: "Calmar"
-  optimize:
-    - parameter: "lookback"
-      type: "int"
-      min_value: 3
-      max_value: 24
-    - parameter: "num_assets"
-      type: "int"
-      min_value: 5
-      max_value: 50
+wfo_robustness_config:
+  enable_window_randomization: true
+  enable_start_date_randomization: true
+  train_window_randomization:
+    min_offset: 3    # Minimum months to add to base train window
+    max_offset: 14   # Maximum months to add to base train window
+  test_window_randomization:
+    min_offset: 3    # Minimum months to add to base test window
+    max_offset: 14   # Maximum months to add to base test window
+  start_date_randomization:
+    min_offset: 0    # Minimum months to offset start date
+    max_offset: 12   # Maximum months to offset start date
+  stability_metrics:
+    enable: true
+    worst_percentile: 10
+    consistency_threshold: 0.0
+  random_seed: null  # Set for reproducible randomization
 ```
 
-#### Multi-Objective Optimization
-
-This example shows how to optimize for multiple metrics simultaneously (Sharpe ratio and Max DD).
+### Monte Carlo Configuration
 
 ```yaml
-# In config/scenarios.yaml
-- name: "Multi_Objective_Sharpe_MaxDD"
-  strategy: "MomentumStrategy"
-  strategy_params:
-    lookback: 12
-    num_assets: 20
-  optimization_targets:
-    - name: "Sharpe"
-      direction: "maximize"
-    - name: "Max DD"
-      direction: "minimize"
-  optimize:
-    - parameter: "lookback"
-      type: "int"
-      min_value: 3
-      max_value: 24
-    - parameter: "num_assets"
-      type: "int"
-      min_value: 5
-      max_value: 50
+monte_carlo_config:
+  enable_synthetic_data: true
+  enable_during_optimization: true    # Stage 1: Lightweight MC during optimization
+  enable_stage2_stress_testing: true  # Stage 2: Full stress testing after optimization
+  replacement_percentage: 0.05        # 5% of assets replaced with synthetic data
+  min_historical_observations: 200    # Minimum data for parameter estimation
+  
+  garch_config:
+    model_type: "GARCH"
+    p: 1
+    q: 1
+    distribution: "studentt"
+    bounds:
+      omega: [1e-6, 1.0]
+      alpha: [0.01, 0.3]
+      beta: [0.5, 0.99]
+      nu: [2.1, 30.0]
+  
+  generation_config:
+    buffer_multiplier: 1.2
+    max_attempts: 2
+    validation_tolerance: 0.3
+  
+  validation_config:
+    enable_validation: false  # Disabled during optimization for speed
+    tolerance: 0.8
 ```
 
-#### Optimization with Constraints
+## Performance Metrics
 
-This example shows how to optimize for the Sharpe ratio while ensuring the Beta remains below a certain value.
+The backtester calculates comprehensive performance metrics:
 
-```yaml
-# In config/scenarios.yaml
-- name: "Sharpe_With_Beta_Constraint"
-  strategy: "MomentumStrategy"
-  strategy_params:
-    lookback: 12
-    num_assets: 20
-  optimization_targets:
-    - name: "Sharpe"
-      direction: "maximize"
-  optimization_constraints:
-    - name: "Beta"
-      max_value: 0.8
-  optimize:
-    - parameter: "lookback"
-      type: "int"
-      min_value: 3
-      max_value: 24
-    - parameter: "num_assets"
-      type: "int"
-      min_value: 5
-      max_value: 50
+| Metric | Description | Interpretation |
+|--------|-------------|----------------|
+| **Total Return** | Cumulative return over period | Higher is better |
+| **Annualized Return** | Geometric mean annual return | Higher is better |
+| **Volatility** | Annualized standard deviation | Lower is generally better |
+| **Sharpe Ratio** | Risk-adjusted return (excess return / volatility) | Higher is better |
+| **Sortino Ratio** | Downside risk-adjusted return | Higher is better |
+| **Calmar Ratio** | Return / Maximum Drawdown | Higher is better |
+| **Max Drawdown** | Largest peak-to-trough decline | Lower is better |
+| **VaR (95%)** | Value at Risk at 95% confidence | Lower absolute value is better |
+| **CVaR (95%)** | Conditional Value at Risk | Lower absolute value is better |
+
+### Stability Metrics (WFO Robustness)
+
+| Metric | Description | Interpretation |
+|--------|-------------|----------------|
+| **Metric_Std** | Standard deviation across WFO windows | Lower indicates more stable performance |
+| **Metric_CV** | Coefficient of variation (Std/Mean) | Lower indicates more consistent performance |
+| **Metric_Worst_Xpct** | Worst percentile performance | Higher worst-case is better |
+| **Metric_Consistency_Ratio** | Fraction of windows above threshold | Higher indicates more reliable performance |
+
+## Architecture
+
+### Two-Stage Monte Carlo System
+
+```
+Stage 1 (During Optimization):
+Parameter Trial -> Lightweight MC (5% replacement) -> Robustness Test
+
+Stage 2 (Post-Optimization):
+Optimal Params -> Comprehensive MC (5%-15% levels) -> Stress Analysis & Visualization
 ```
 
-### Optuna vs. Genetic Algorithm
+### WFO Robustness Process
 
-The backtester supports two optimization algorithms: Optuna and a genetic algorithm. You can choose between them using the `--optimizer` command-line argument.
+```
+Standard WFO:
+[Train 36m][Test 12m] -> [Train 36m][Test 12m] -> [Train 36m][Test 12m]
 
-| Feature | Optuna | Genetic Algorithm |
-| --- | --- | --- |
-| **Algorithm** | Bayesian optimization (TPE sampler) | Evolutionary algorithm (NSGA-II for multi-objective) |
-| **Search Strategy** | Builds a probabilistic model of the objective function and uses it to select the most promising parameters to try next. | Evolves a population of solutions over several generations, using selection, crossover, and mutation to find optimal solutions. |
-| **Configuration** | Fewer hyperparameters to tune. The main parameters are the number of trials and the timeout. | More hyperparameters to tune (population size, mutation rate, crossover rate, etc.). |
-| **Use Cases** | Good for a wide range of problems, especially when the objective function is expensive to evaluate. | Can be effective for problems with a large number of parameters or complex, non-smooth objective functions. |
-| **Multi-Objective** | Supported directly. | Supported via NSGA-II, which finds a set of non-dominated solutions (the Pareto front). |
-
-#### When to Choose Optuna
-
-*   You have a relatively small number of parameters to optimize.
-*   The objective function is expensive to evaluate (e.g., long backtests).
-*   You want a good solution quickly.
-
-#### When to Choose the Genetic Algorithm
-
-*   You have a large number of parameters or a very complex search space.
-*   You are looking for a globally optimal solution and are willing to spend more time searching.
-*   You want to explore a diverse set of solutions (the Pareto front in multi-objective optimization).
-
-### Multi-Objective Optimization in Detail
-
-When you run a multi-objective optimization, the optimizer tries to find a set of solutions that represent the best possible trade-offs between the different objectives.
-
-*   **With Optuna**, the result is a set of "best" trials, each representing a different trade-off. The study will report the best trial based on a weighted combination of the objectives.
-*   **With the Genetic Algorithm**, the result is the Pareto front, which is a set of solutions where you cannot improve one objective without making another objective worse. The optimizer will then select one solution from the Pareto front as the "best" (typically the one that is most balanced or best for the first objective specified).
-
-To run a multi-objective optimization, simply define multiple `optimization_targets` in your `scenarios.yaml` file, as shown in the example above.
-
-
-
-The default search space for optimizable parameters is now defined in `src/portfolio_backtester/config.py` within the `OPTIMIZER_PARAMETER_DEFAULTS` dictionary. This centralizes the configuration and makes it easier to manage.
-
-Individual scenarios in `BACKTEST_SCENARIOS` can still override these defaults by specifying `min_value`, `max_value`, and `step` within their `optimize` section.
-
-### Genetic Algorithm (GA) Settings
-
-When using the Genetic Algorithm (`--optimizer genetic`), its behavior can be tuned using parameters specified in `src/portfolio_backtester/config_loader.py` under `OPTIMIZER_PARAMETER_DEFAULTS` (with keys typically starting `ga_`) or overridden per scenario within the `genetic_algorithm_params` dictionary in your scenario configuration.
-
-Key GA parameters include:
-
-* **`ga_num_generations`**:
-  * **Description**: The number of generations the GA will run.
-  * **Default**: `100`
-* **`ga_sol_per_pop`**:
-  * **Description**: The number of solutions (individuals) in each population.
-  * **Default**: `50`
-* **`ga_num_parents_mating`**:
-  * **Description**: The number of solutions to be selected as parents for the next generation.
-  * **Default**: `10`
-* **`ga_parent_selection_type`**:
-  * **Description**: Method for selecting parents (e.g., `sss` for steady-state selection, `rws` for roulette wheel, `tournament`).
-  * **Default**: `sss`
-* **`ga_crossover_type`**:
-  * **Description**: Method for crossover (e.g., `single_point`, `two_points`, `uniform`).
-  * **Default**: `single_point`
-* **`ga_mutation_type`**:
-  * **Description**: Method for mutation (e.g., `random`, `swap`, `adaptive`).
-  * **Default**: `random`
-* **`ga_mutation_percent_genes`**:
-  * **Description**: The percentage of genes to mutate in each chromosome. Can be "default" for PyGAD's internal default, or a specific percentage (e.g., 10 for 10%).
-  * **Default**: `"default"`
-
-These parameters are defined with their defaults in `src/portfolio_backtester/optimization/genetic_optimizer.py` via `get_ga_optimizer_parameter_defaults()` and are loaded into the global `OPTIMIZER_PARAMETER_DEFAULTS`. You can override them in `config/parameters.yaml` under the `OPTIMIZER_PARAMETER_DEFAULTS` section, or for a specific scenario by adding a `genetic_algorithm_params` dictionary to its configuration in `config/scenarios.yaml`.
-
-**Example Scenario Override for GA:**
-
-```yaml
-# In config/scenarios.yaml
-- name: "My_GA_Optimized_Strategy"
-  # ... other strategy settings ...
-  optimizer: "genetic" # Not a direct config, but implies these params are relevant
-  genetic_algorithm_params:
-    ga_num_generations: 150
-    ga_sol_per_pop: 75
-    ga_mutation_type: "adaptive"
-  optimize:
-    # ... parameter optimization specs ...
+Robust WFO:
+[Train 39-50m][Test 15-26m] -> [Train 42-53m][Test 9-20m] -> [Train 45-56m][Test 12-23m]
+        Randomized windows        Different start dates    Stability metrics
 ```
 
-## Development
+## Testing
 
-### Development Practices and Standards
+The project includes comprehensive test coverage:
 
-To ensure the long-term quality, maintainability, and scalability of this project, all contributors are expected to adhere to the following development practices and principles:
+```bash
+# Run all tests
+python -m pytest tests/ -v
 
-### Modular, Layered Architecture
+# Run specific test categories
+python -m pytest tests/monte_carlo/ -v          # Monte Carlo tests
+python -m pytest tests/optimization/ -v         # WFO robustness tests
+python -m pytest tests/reporting/ -v            # Visualization tests
+python -m pytest tests/integration/ -v          # End-to-end tests
 
-The project follows a modular and layered architecture. This approach promotes separation of concerns and allows for proper code re-use. Each component should have a single, well-defined responsibility and interact with other components through clear interfaces.
+# Run with coverage
+python -m pytest tests/ --cov=src --cov-report=html
+```
 
-### Test-Driven Development (TDD)
+## Advanced Features
 
-We practice Test-Driven Development. This means that for any new feature or bug fix, a test should be written *before* the implementation code. The development cycle is as follows:
+### Walk-Forward Optimization Robustness
 
-1. **Red:** Write a failing test that captures the requirements of the new feature.
-2. **Green:** Write the simplest possible code to make the test pass.
-3. **Refactor:** Clean up and optimize the code while ensuring all tests still pass.
+Traditional WFO uses fixed window sizes, which can lead to overfitting to specific time periods. The enhanced WFO system introduces:
 
-### SOLID Principles
+1. **Window Randomization**: Train and test windows are randomly extended within configured bounds
+2. **Start Date Randomization**: Starting points are randomly offset to test different market regimes
+3. **Stability Metrics**: Performance consistency is measured across randomized windows
+4. **Parameter Impact Analysis**: Comprehensive analysis of parameter sensitivity and importance
 
-We adhere to the SOLID principles of object-oriented design:
+### Two-Stage Monte Carlo Process
 
-* **S - Single-responsibility Principle:** A class should have only one reason to change, meaning it should have only one job or responsibility.
-* **O - Open-closed Principle:** Software entities (classes, modules, functions, etc.) should be open for extension but closed for modification. This means you should be able to add new functionality without changing existing code.
-* **L - Liskov Substitution Principle:** Subtypes must be substitutable for their base types. In other words, objects of a superclass should be replaceable with objects of a subclass without affecting the correctness of the program.
-* **I - Interface Segregation Principle:** No client should be forced to depend on methods it does not use. This principle suggests that larger interfaces should be split into smaller, more specific ones.
-* **D - Dependency Inversion Principle:** High-level modules should not depend on low-level modules. Both should depend on abstractions. Abstractions should not depend on details; details should depend on abstractions.
+The Monte Carlo system operates in two distinct stages:
 
-### KISS (Keep It Simple, Stupid)
+**Stage 1 (Optimization Robustness)**:
+- Lightweight synthetic data injection during parameter optimization
+- 5-10% asset replacement with GARCH-generated synthetic data
+- Fast generation with minimal validation for optimization speed
+- Tests parameter stability against slightly modified market conditions
 
-We favor simplicity in our designs and implementations. Avoid unnecessary complexity and over-engineering. A simple, clear solution is always preferable to a complex one, as it is easier to understand, maintain, and debug.
+**Stage 2 (Strategy Stress Testing)**:
+- Comprehensive stress testing after optimization completes
+- Multiple replacement levels (5%, 7.5%, 10%, 12.5%, 15%)
+- Full validation and quality checks for realistic synthetic data
+- Generates detailed robustness analysis and visualization
 
-### Convention over Configuration
+### GARCH-Based Synthetic Data
 
-The project prefers convention over configuration. This means we rely on established conventions to reduce the number of decisions a developer needs to make. Defaults should be sane, logical, and work out-of-the-box for the most common use cases, while still allowing for configuration when necessary.
+The synthetic data generation uses sophisticated GARCH models to preserve:
+- **Volatility Clustering**: Periods of high/low volatility
+- **Return Distribution Properties**: Skewness, kurtosis, tail behavior
+- **Autocorrelation Structure**: Serial correlation in returns and squared returns
+- **Jump-Diffusion Processes**: Sudden market movements and regime changes
+
+## Dependencies
+
+### Core Dependencies
+- **pandas**: Data manipulation and analysis
+- **numpy**: Numerical computing
+- **scipy**: Scientific computing and statistics
+- **matplotlib**: Plotting and visualization
+- **yfinance**: Financial data acquisition
+- **optuna**: Bayesian optimization framework
+- **pygad**: Genetic algorithm optimization
+- **arch**: GARCH modeling for synthetic data
+
+### Advanced Features
+- **rich**: Enhanced console output and progress bars
+- **tqdm**: Progress tracking for long operations
+- **statsmodels**: Statistical modeling and analysis
+- **seaborn**: Statistical data visualization
+- **PyYAML**: YAML configuration file handling

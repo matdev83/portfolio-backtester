@@ -37,14 +37,13 @@ class BaseRoRoSignal(ABC):
         """
         pass
 
-    # Removed get_required_features as it's no longer needed
-    # def get_required_features(self) -> Set[Feature]:
-    #     """
-    #     Returns a set of features required by the RoRo signal.
-    #     By default, RoRo signals do not require any features.
-    #     Subclasses can override this method if they need features.
-    #     """
-    #     return set()
+    def get_required_features(self) -> set:
+        """
+        Returns a set of features required by the RoRo signal.
+        By default, RoRo signals do not require any features.
+        Subclasses can override this method if they need features.
+        """
+        return set()
 
 
 class DummyRoRoSignal(BaseRoRoSignal):

@@ -1,0 +1,35 @@
+{
+  "strategy_name": "MomentumStrategy_Demo",
+  "optimal_parameters": {
+    "lookback_months": 6,
+    "skip_months": 1,
+    "num_holdings": 15,
+    "smoothing_lambda": 0.3,
+    "leverage": 1.2,
+    "sizer_dvol_window": 12,
+    "sizer_target_volatility": 0.15
+  },
+  "performance_metrics": {
+    "Sharpe": 1.25,
+    "Calmar": 0.85,
+    "Sortino": 1.45,
+    "Max_Drawdown": -0.15,
+    "Volatility": 0.18,
+    "Win_Rate": 0.62,
+    "Total_Return": 0.24,
+    "Ann_Return": 0.12
+  },
+  "optimization_metadata": {
+    "num_trials": 150,
+    "optimizer_type": "optuna",
+    "optimization_date": "2025-07-09T20:15:10.440871",
+    "random_seed": 42
+  },
+  "parameter_importance": {
+    "lookback_months": 0.35,
+    "num_holdings": 0.28,
+    "smoothing_lambda": 0.15,
+    "leverage": 0.12,
+    "skip_months": 0.1
+  }
+}

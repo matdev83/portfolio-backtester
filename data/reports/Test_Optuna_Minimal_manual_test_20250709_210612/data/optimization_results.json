@@ -1,0 +1,20 @@
+{
+  "strategy_name": "Test_Optuna_Minimal",
+  "optimal_parameters": {
+    "lookback_months": 6,
+    "num_holdings": 20
+  },
+  "performance_metrics": {
+    "Sharpe": 1.45,
+    "Calmar": 1.12,
+    "Sortino": 1.68,
+    "Max_Drawdown": -0.08,
+    "Volatility": 0.14,
+    "Win_Rate": 0.58
+  },
+  "optimization_metadata": {
+    "num_trials": 10,
+    "optimizer_type": "optuna",
+    "optimization_date": "2025-07-09T21:06:12.979547"
+  }
+}

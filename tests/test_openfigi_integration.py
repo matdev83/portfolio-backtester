@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from portfolio_backtester.cusip_mapping import CusipMappingDB, OPENFIGI_API_KEY
+from src.portfolio_backtester.cusip_mapping import CusipMappingDB, OPENFIGI_API_KEY
 
 # Skip the test automatically if no API key present (e.g. in CI without secrets)
 pytestmark = [pytest.mark.network, pytest.mark.skipif(not OPENFIGI_API_KEY, reason="OpenFIGI key missing – live test skipped")]

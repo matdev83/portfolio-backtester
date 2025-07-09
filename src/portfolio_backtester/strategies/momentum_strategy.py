@@ -172,6 +172,19 @@ class MomentumStrategy(BaseStrategy):
                       else all_historical_data.columns)
             return pd.DataFrame(0.0, index=[current_date], columns=columns)
 
+        # --- Filter Universe by Data Availability ---
+        # Only include assets that have sufficient historical data for this date
+        valid_assets = self.filter_universe_by_data_availability(
+            all_historical_data, current_date
+        )
+        
+        if not valid_assets:
+            logger.warning(f"No assets have sufficient data for {current_date.strftime('%Y-%m-%d')}")
+            columns = (all_historical_data.columns.get_level_values(0).unique() 
+                      if isinstance(all_historical_data.columns, pd.MultiIndex) 
+                      else all_historical_data.columns)
+            return pd.DataFrame(0.0, index=[current_date], columns=columns)
+
         params = self.strategy_config.get("strategy_params", self.strategy_config)
         price_col_asset = params["price_column_asset"]
         price_col_benchmark = params["price_column_benchmark"]
@@ -187,8 +200,13 @@ class MomentumStrategy(BaseStrategy):
         # Extract relevant price column for assets. Assuming 'all_historical_data' has a 'Ticker' level if MultiIndex.
         if isinstance(all_historical_data.columns, pd.MultiIndex) and 'Ticker' in all_historical_data.columns.names:
             asset_prices_for_mom = all_historical_data.xs(price_col_asset, level='Field', axis=1)
+            # Filter to only valid assets
+            valid_asset_cols = [col for col in asset_prices_for_mom.columns if col in valid_assets]
+            asset_prices_for_mom = asset_prices_for_mom[valid_asset_cols]
         else: # Assume single level column index with tickers, or already just Close prices
-            asset_prices_for_mom = all_historical_data
+            # Filter to only valid assets
+            valid_asset_cols = [col for col in all_historical_data.columns if col in valid_assets]
+            asset_prices_for_mom = all_historical_data[valid_asset_cols]
 
         # Filter data up to current_date for calculations
         asset_prices_hist = asset_prices_for_mom[asset_prices_for_mom.index <= current_date]

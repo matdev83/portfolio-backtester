@@ -1,0 +1,7 @@
+{
+  "lookback_months": 0.35,
+  "num_holdings": 0.28,
+  "smoothing_lambda": 0.15,
+  "leverage": 0.12,
+  "skip_months": 0.1
+}

@@ -90,7 +90,7 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
             "Calmar": ZERO_EQUIVALENT_METRIC_VALUE if is_all_zero_returns else VERY_BAD_METRIC_VALUE,
             "Alpha (ann)": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY, # Alpha might be calculable against bench even if strat is flat
             "Beta": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY,    # Beta might be calculable
-            "Max DD": ZERO_EQUIVALENT_METRIC_VALUE, # Max drawdown is 0 if returns are flat or no active returns
+            "Max Drawdown": ZERO_EQUIVALENT_METRIC_VALUE, # Max drawdown is 0 if returns are flat or no active returns
             "Skew": np.nan, # Skew is undefined for constant series
             "Kurtosis": np.nan, # Kurtosis is undefined for constant series
             "R^2": NEUTRAL_METRIC_VALUE_FOR_ZERO_ACTIVITY, # R^2 might be calculable
@@ -112,12 +112,41 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
                 # Add check for rets_for_capm.std() == 0
                 rets_std = rets_for_capm.std()
                 bench_std = bench_for_capm.std()
-                # Ensure stds are scalars (not Series, int, or numpy types)
-                if hasattr(rets_std, 'item') and not isinstance(rets_std, (float, int)) and hasattr(rets_std, '__len__'):
-                    rets_std = rets_std.item()
-                if hasattr(bench_std, 'item') and not isinstance(bench_std, (float, int)) and hasattr(bench_std, '__len__'):
-                    bench_std = bench_std.item()
-                if len(rets_for_capm) >= 2 and len(bench_for_capm) >= 2 and bench_std != 0 and rets_std != 0:
+                # Ensure rets_std and bench_std are scalar values for comparison
+                def ensure_scalar(value):
+                    """Convert any pandas Series, numpy array, or other sequence to a scalar float."""
+                    if value is None:
+                        return 0.0
+                    
+                    # If it's already a scalar number, return it
+                    if isinstance(value, (int, float)) and not hasattr(value, '__len__'):
+                        return float(value)
+                    
+                    # Handle pandas Series/DataFrame
+                    if hasattr(value, 'iloc'):
+                        if len(value) == 0:
+                            return 0.0
+                        return float(value.iloc[0])
+                    
+                    # Handle numpy arrays and other sequences
+                    if hasattr(value, '__len__'):
+                        if len(value) == 0:
+                            return 0.0
+                        return float(value[0])
+                    
+                    # Handle numpy scalars
+                    try:
+                        return float(value)
+                    except (TypeError, ValueError):
+                        return 0.0
+                
+                # Convert both to scalars
+                rets_std_scalar = ensure_scalar(rets_std)
+                bench_std_scalar = ensure_scalar(bench_std)
+                
+                # Now we can safely compare scalars
+                if (len(rets_for_capm) >= 2 and len(bench_for_capm) >= 2 and 
+                    bench_std_scalar != 0 and rets_std_scalar != 0):
                     steps_per_year_for_capm = _infer_steps_per_year(common_idx_for_capm)
                     X_capm = sm.add_constant(bench_for_capm)
                     try:
@@ -133,7 +162,8 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
         # Ensure all expected metrics are present
         expected_metric_keys = [
             "Total Return", "Ann. Return", "Ann. Vol", "Sharpe", "Sortino", "Calmar",
-            "Alpha (ann)", "Beta", "Max DD", "Skew", "Kurtosis", "R^2", "K-Ratio",
+            "Alpha (ann)", "Beta", "Max Drawdown", "VaR (5%)", "CVaR (5%)", "Tail Ratio",
+            "Avg DD Duration", "Avg Recovery Time", "Skew", "Kurtosis", "R^2", "K-Ratio",
             "ADF Statistic", "ADF p-value", "Deflated Sharpe"
         ]
         for key in expected_metric_keys:
@@ -316,6 +346,108 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
 
         return dsr_probability
 
+    def value_at_risk(rets, confidence_level=0.05):
+        """Calculate Value at Risk (VaR) at given confidence level."""
+        if rets.empty or rets.isnull().all():
+            return np.nan
+        return np.percentile(rets, confidence_level * 100)
+
+    def conditional_value_at_risk(rets, confidence_level=0.05):
+        """Calculate Conditional Value at Risk (CVaR) - expected loss beyond VaR."""
+        if rets.empty or rets.isnull().all():
+            return np.nan
+        var = value_at_risk(rets, confidence_level)
+        if pd.isna(var):
+            return np.nan
+        tail_losses = rets[rets <= var]
+        if tail_losses.empty:
+            return var  # If no losses beyond VaR, return VaR itself
+        return tail_losses.mean()
+
+    def tail_ratio(rets, percentile=95):
+        """Calculate Tail Ratio - ratio of average positive returns to average negative returns."""
+        if rets.empty or rets.isnull().all():
+            return np.nan
+        
+        positive_rets = rets[rets > 0]
+        negative_rets = rets[rets < 0]
+        
+        if positive_rets.empty or negative_rets.empty:
+            return np.nan
+            
+        upper_tail = np.percentile(positive_rets, percentile)
+        lower_tail = np.percentile(negative_rets, 100 - percentile)
+        
+        if abs(lower_tail) < EPSILON_FOR_DIVISION:
+            return np.inf if upper_tail > 0 else np.nan
+            
+        return upper_tail / abs(lower_tail)
+
+    def drawdown_duration_and_recovery(equity_curve):
+        """Calculate average drawdown duration and recovery time."""
+        if equity_curve.empty or equity_curve.isnull().all():
+            return np.nan, np.nan
+            
+        # Calculate running maximum and drawdown
+        running_max = equity_curve.cummax()
+        drawdown = (equity_curve / running_max - 1)
+        
+        # Identify drawdown periods
+        is_drawdown = drawdown < -EPSILON_FOR_DIVISION
+        
+        if not is_drawdown.any():
+            return 0.0, 0.0  # No drawdowns
+        
+        # Find drawdown periods
+        drawdown_periods = []
+        recovery_periods = []
+        
+        in_drawdown = False
+        drawdown_start = None
+        drawdown_end = None
+        
+        for i, (date, dd_val) in enumerate(drawdown.items()):
+            if dd_val < -EPSILON_FOR_DIVISION and not in_drawdown:
+                # Start of drawdown
+                in_drawdown = True
+                drawdown_start = i
+            elif dd_val >= -EPSILON_FOR_DIVISION and in_drawdown:
+                # End of drawdown
+                in_drawdown = False
+                drawdown_end = i - 1
+                
+                if drawdown_start is not None and drawdown_end is not None:
+                    duration = drawdown_end - drawdown_start + 1
+                    drawdown_periods.append(duration)
+                    
+                    # Find recovery period (time to reach new high)
+                    peak_before_dd = running_max.iloc[drawdown_start]
+                    recovery_start = drawdown_end + 1
+                    
+                    if recovery_start < len(equity_curve):
+                        recovery_found = False
+                        for j in range(recovery_start, len(equity_curve)):
+                            if equity_curve.iloc[j] >= peak_before_dd:
+                                recovery_time = j - drawdown_end
+                                recovery_periods.append(recovery_time)
+                                recovery_found = True
+                                break
+                        
+                        if not recovery_found:
+                            # Still in recovery at end of period
+                            recovery_time = len(equity_curve) - 1 - drawdown_end
+                            recovery_periods.append(recovery_time)
+        
+        # Handle case where period ends in drawdown
+        if in_drawdown and drawdown_start is not None:
+            duration = len(drawdown) - drawdown_start
+            drawdown_periods.append(duration)
+        
+        avg_dd_duration = np.mean(drawdown_periods) if drawdown_periods else 0.0
+        avg_recovery_time = np.mean(recovery_periods) if recovery_periods else np.nan
+        
+        return avg_dd_duration, avg_recovery_time
+
     common_index = active_rets.index.intersection(active_bench_rets.index)
     rets_aligned, bench_aligned = active_rets.loc[common_index], active_bench_rets.loc[common_index]
     
@@ -391,6 +523,15 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
     else:
         k_ratio = np.nan
 
+    # Calculate new risk metrics
+    var_5pct = value_at_risk(active_rets, 0.05)
+    cvar_5pct = conditional_value_at_risk(active_rets, 0.05)
+    tail_ratio_95 = tail_ratio(active_rets, 95)
+    
+    # Calculate drawdown metrics using full equity curve
+    equity_curve = (1 + rets).cumprod()
+    avg_dd_duration, avg_recovery_time = drawdown_duration_and_recovery(equity_curve)
+
     metrics = pd.Series({
         "Total Return": total_ret(active_rets),
         "Ann. Return": ann(active_rets),
@@ -400,7 +541,12 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
         "Calmar": calmar(active_rets),
         "Alpha (ann)": alpha,
         "Beta": beta,
-        "Max DD": mdd((1 + rets).cumprod()),  # Use original rets, not active_rets - zero returns are valid for drawdown
+        "Max Drawdown": mdd((1 + rets).cumprod()),  # Use original rets, not active_rets - zero returns are valid for drawdown
+        "VaR (5%)": var_5pct,
+        "CVaR (5%)": cvar_5pct,
+        "Tail Ratio": tail_ratio_95,
+        "Avg DD Duration": avg_dd_duration,
+        "Avg Recovery Time": avg_recovery_time,
         "Skew": skew(active_rets),
         "Kurtosis": kurtosis(active_rets),
         "R^2": r_squared,

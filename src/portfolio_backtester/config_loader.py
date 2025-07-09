@@ -27,6 +27,11 @@ def load_config():
     with open(PARAMETERS_FILE, 'r') as f:
         params_data = yaml.safe_load(f)
         GLOBAL_CONFIG = params_data.get("GLOBAL_CONFIG", {})
+        
+        # Add Monte Carlo and WFO robustness configurations to global config
+        GLOBAL_CONFIG["monte_carlo_config"] = params_data.get("monte_carlo_config", {})
+        GLOBAL_CONFIG["wfo_robustness_config"] = params_data.get("wfo_robustness_config", {})
+        
         # Start with Optuna defaults from parameters.yaml
         OPTIMIZER_PARAMETER_DEFAULTS = params_data.get("OPTIMIZER_PARAMETER_DEFAULTS", {})
         # Update with GA defaults, allowing GA defaults to be overridden by parameters.yaml if specified there

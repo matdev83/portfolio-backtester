@@ -1,16 +1,52 @@
 BACKTEST_SCENARIOS:
+  - name: "EMA_Crossover_Test"
+    strategy: "ema_crossover"
+    rebalance_frequency: "ME"
+    position_sizer: "equal_weight"
+    transaction_costs_bps: 10
+    train_window_months: 24  # Shorter for faster testing
+    test_window_months: 12   # Shorter for faster testing
+    optimization_targets:
+      - name: "Sortino"
+        direction: "maximize"
+    optimization_constraints:
+      - metric: "Ann. Vol"
+        max_value: 0.15  # Keep annualized volatility <= 15%
+    optimize:
+      - parameter: "fast_ema_days"
+        min_value: 7
+        max_value: 32
+        step: 1
+      - parameter: "slow_ema_days"
+        min_value: 64
+        max_value: 128
+        step: 32
+      - parameter: "leverage"
+        min_value: 1.0
+        max_value: 3.0
+        step: 0.5
+    strategy_params:
+      fast_ema_days: 20
+      slow_ema_days: 64
+      leverage: 3.0
+    mc_simulations: 100
+    mc_years: 5
+
   - name: "Momentum_Unfiltered"
     strategy: "momentum"
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 60
-    test_window_months: 24
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_targets:
       - name: "Sortino"
         direction: "maximize"
       - name: "Max Drawdown"
         direction: "minimize"
+    optimization_constraints:
+      - metric: "Ann. Vol"
+        max_value: 0.15  # Keep annualized volatility <= 15%
     optimize:
       - parameter: "num_holdings"
         min_value: 10
@@ -49,8 +85,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 60
-    test_window_months: 24
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Sortino"  # Single objective optimization
     optimize:
       - parameter: "num_holdings"
@@ -88,8 +124,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 24
-    test_window_months: 12
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Sortino"
     optimize:
       - parameter: "num_holdings"
@@ -130,8 +166,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 24
-    test_window_months: 12
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Sortino"
     optimize:
       - parameter: "num_holdings"
@@ -172,8 +208,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 60
-    test_window_months: 24
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     strategy_params:
       lookback_months: 6
       num_holdings: 20
@@ -193,8 +229,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "rolling_beta"
     transaction_costs_bps: 10
-    train_window_months: 60
-    test_window_months: 24
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Sortino"
     optimize:
       - parameter: "num_holdings"
@@ -240,8 +276,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "rolling_downside_volatility"
     transaction_costs_bps: 10
-    train_window_months: 60
-    test_window_months: 24
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Total Return"
     optimize:
       - parameter: "num_holdings"
@@ -297,8 +333,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 24
-    test_window_months: 12
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Total Return"
     optimize:
       - parameter: "num_holdings"
@@ -325,8 +361,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 24
-    test_window_months: 12
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Sharpe"
     optimize:
       - parameter: "num_holdings"
@@ -353,10 +389,10 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 5
-    # Use very short train/test windows to speed up data processing within optimization loop
-    train_window_months: 12 # Minimal realistic training window
-    test_window_months: 3  # Minimal realistic test window
-    walk_forward_type: "expanding" # Or rolling, ensure data is sufficient
+    # Use longer windows for robustness
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
+    walk_forward_type: "randomized" # Changed to randomized for stability metrics
     optimization_metric: "Sharpe" # Single metric for simplicity
     optimize:
       - parameter: "lookback_months"
@@ -381,8 +417,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 5
-    train_window_months: 12
-    test_window_months: 3
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     walk_forward_type: "expanding"
     optimization_metric: "Sharpe"
     genetic_algorithm_params: # Ensure fast execution for tests
@@ -412,8 +448,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     # position_sizer: "equal_weight" # Initial sizer, will be overridden by optimizer
     transaction_costs_bps: 10
-    train_window_months: 60 # Keep it reasonably long for sizers like rolling_sharpe
-    test_window_months: 24
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Sharpe" # Single metric for simplicity
     optimize:
       - parameter: "position_sizer" # Optimize the position sizer choice
@@ -474,8 +510,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 24 # Use a 24-month training window
-    test_window_months: 12 # Test on the next 12 months
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Sortino"
     strategy_params:
       long_only: True
@@ -513,8 +549,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 24 # Use a 24-month training window
-    test_window_months: 12 # Test on the next 12 months
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Sortino"
     strategy_params:
       long_only: True
@@ -548,8 +584,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 24
-    test_window_months: 12
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Sortino"
     optimize:
       - parameter: "num_holdings"
@@ -576,8 +612,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 24
-    test_window_months: 12
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Calmar"
     optimize:
       - parameter: "num_holdings"
@@ -603,8 +639,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "rolling_sharpe"
     transaction_costs_bps: 10
-    train_window_months: 24
-    test_window_months: 12
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Sharpe"
     optimize:
       - parameter: "num_holdings"
@@ -634,8 +670,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
-    train_window_months: 24
-    test_window_months: 12
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     optimization_metric: "Sortino"
     optimize:
       - parameter: "num_holdings"
@@ -670,6 +706,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     strategy_params:
       momentum_lookback_standard: 6
       momentum_lookback_predictive: 6
@@ -690,6 +728,8 @@ BACKTEST_SCENARIOS:
     rebalance_frequency: "ME"
     position_sizer: "equal_weight"
     transaction_costs_bps: 10
+    train_window_months: 36  # 3 years - increased for robustness
+    test_window_months: 48   # 4 years - increased for robustness
     strategy_params:
       lookback_months: 6
       num_holdings: 15

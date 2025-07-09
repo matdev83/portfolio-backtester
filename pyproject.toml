@@ -37,7 +37,8 @@ dependencies = [
     "pytest-cov",
     "httpx",
     "PyYAML",
-    "setuptools"
+    "setuptools",
+    "arch>=7.0.0"  # Professional GARCH modeling package
 ]
 
 [project.optional-dependencies]

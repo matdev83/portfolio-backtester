@@ -59,10 +59,115 @@ GLOBAL_CONFIG:
   benchmark: "SPY"
   start_date: "2010-01-01"
   end_date: "2025-06-30"
+  # IBKR Commission Structure (for detailed calculations if needed)
   ibkr_commission_per_share: 0.005
   ibkr_commission_min_per_order: 1.0
   ibkr_commission_max_percent_of_trade: 0.005 # 0.5% of trade value
-  slippage_bps: 1 # 1 basis point (0.01%) of trade value
+  
+  # Realistic slippage for top 100 S&P 500 stocks (highly liquid large caps)
+  slippage_bps: 2.5 # 2.5 basis points - realistic for liquid large caps
+  
+  # Total realistic transaction costs for retail trading liquid S&P 500 stocks
+  # Combines: IBKR commissions (~1-3 bps) + slippage (~2-3 bps) + bid-ask spread (~1-2 bps)
+  # + execution timing costs (~1-2 bps) = ~13 bps total (conservative estimate)
+
+# Walk-Forward Optimization Robustness Configuration
+wfo_robustness_config:
+  # Enable/disable randomization features
+  enable_window_randomization: true
+  enable_start_date_randomization: true
+  
+  # Window length randomization (in months)
+  train_window_randomization:
+    min_offset: 3    # Minimum months to add/subtract from base train window
+    max_offset: 14   # Maximum months to add/subtract from base train window
+  
+  test_window_randomization:
+    min_offset: 3    # Minimum months to add/subtract from base test window  
+    max_offset: 14   # Maximum months to add/subtract from base test window
+  
+  # Start date randomization (in months)
+  start_date_randomization:
+    min_offset: 0    # Minimum months to offset start date
+    max_offset: 12   # Maximum months to offset start date (up to 1 year)
+  
+  # Stability metrics configuration
+  stability_metrics:
+    enable: true
+    worst_percentile: 10     # Percentile for worst-case performance metric
+    consistency_threshold: 0.0  # Threshold for consistency ratio (>0 performance)
+  
+  # Random seed for reproducibility (optional)
+  random_seed: null  # Set to integer for reproducible randomization, null for random
+
+# Monte-Carlo Synthetic Data Configuration
+monte_carlo_config:
+  # Enable/disable synthetic data generation
+  enable_synthetic_data: true
+  
+  # Performance optimization: disable Monte Carlo during optimization trials for faster testing
+  # Stage 1 MC (during optimization) vs Stage 2 MC (after optimization stress testing)
+  enable_during_optimization: false  # Set to false for faster optimization, true for robustness testing
+  
+  # Stage 2 comprehensive stress testing after optimization
+  enable_stage2_stress_testing: false  # Set to false for faster optimization, true for full robustness analysis
+  
+  # Percentage of assets to replace with synthetic data (0.0 to 1.0)
+  replacement_percentage: 0.05  # Reduced to 5% for faster testing
+  
+  # Minimum number of historical observations required for parameter estimation
+  min_historical_observations: 200  # Reduced from 252 to 200 for more flexibility (about 8 months)
+  
+  # GARCH model configuration
+  garch_config:
+    # Model specification
+    model_type: "GARCH"  # Options: "GARCH", "EGARCH", "GJR-GARCH"
+    p: 1  # GARCH lag order
+    q: 1  # ARCH lag order
+    
+    # Innovation distribution
+    distribution: "studentt"  # Options: "normal", "studentt", "skewstudent", "ged"
+    
+    # Parameter bounds for estimation
+    bounds:
+      omega: [1e-6, 1.0]      # Constant term
+      alpha: [0.01, 0.3]      # ARCH coefficient
+      beta: [0.5, 0.99]       # GARCH coefficient
+      nu: [2.1, 30.0]         # Degrees of freedom (Student-t)
+      lambda: [-0.5, 0.5]     # Skewness parameter (if skewed distribution)
+  
+  # Jump-diffusion enhancement (optional)
+  jump_diffusion:
+    enable: false
+    jump_intensity: 0.1     # Average jumps per day
+    jump_size_mean: 0.0     # Mean jump size
+    jump_size_std: 0.02     # Jump size volatility
+  
+  # Synthetic data generation parameters
+  generation_config:
+    # Length of synthetic series (will be trimmed to match required length)
+    buffer_multiplier: 1.2  # Generate 20% more data than needed for trimming
+    
+    # Validation parameters
+    max_attempts: 2         # Reduced attempts for faster generation
+    validation_tolerance: 0.3  # Relaxed tolerance for faster generation
+    
+    # Preserve key statistical properties
+    preserve_properties:
+      - "mean"              # Daily return mean
+      - "volatility"        # Daily return volatility  
+      - "skewness"          # Return distribution skewness
+      - "kurtosis"          # Return distribution kurtosis
+      - "autocorr_returns"  # Return autocorrelation (lag 1)
+      - "autocorr_squared"  # Squared return autocorrelation (volatility clustering)
+  
+  # Validation configuration for synthetic data quality
+  validation_config:
+    enable_validation: false  # Disable validation during optimization for better performance
+    tolerance: 0.8  # Increase tolerance to 80% for more lenient validation when enabled
+  
+  # Random seed handling
+  random_seed: null  # Set to integer for reproducible generation, null for random
 
 OPTIMIZER_PARAMETER_DEFAULTS:
   max_lookback:
@@ -93,6 +198,16 @@ OPTIMIZER_PARAMETER_DEFAULTS:
     type: "int"
     low: 20
     high: 250
+  fast_ema_days:
+    type: "int"
+    low: 5
+    high: 50
+    step: 1
+  slow_ema_days:
+    type: "int"
+    low: 50
+    high: 200
+    step: 1
     step: 10
   target_return:
     type: "float"
