@@ -337,7 +337,7 @@ class TestCurrentSystemValidation:
         
         for asset in assets:
             data, _ = self.create_simple_asset_data(
-                volatility=0.02 + 0.005 * hash(asset) % 4
+                volatility=0.02 + 0.005 * (abs(hash(asset)) % 4)
             )
             asset_data[asset] = data
         

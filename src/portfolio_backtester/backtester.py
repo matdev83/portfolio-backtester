@@ -52,6 +52,12 @@ class Backtester:
         self.early_stop_patience = getattr(args, "early_stop_patience", 10)
         self.logger = logger
         logger.info("Backtester initialized.")
+        
+        # Initialize Monte Carlo components if enabled
+        self.asset_replacement_manager = None
+        self.synthetic_data_generator = None
+        if self.global_config.get('enable_synthetic_data', False):
+            self._initialize_monte_carlo_components()
 
         # Assign methods from the logic modules to the instance
         self.run_optimization = types.MethodType(run_optimization, self)
@@ -96,6 +102,148 @@ class Backtester:
         else:
             logger.error(f"Unsupported strategy: {strategy_name}")
             raise ValueError(f"Unsupported strategy: {strategy_name}")
+    
+    def _initialize_monte_carlo_components(self):
+        """Initialize Monte Carlo components for synthetic data generation."""
+        try:
+            from .monte_carlo.asset_replacement import AssetReplacementManager
+            from .monte_carlo.synthetic_data_generator import SyntheticDataGenerator
+            
+            # Initialize asset replacement manager
+            self.asset_replacement_manager = AssetReplacementManager(self.global_config)
+            
+            # Initialize synthetic data generator
+            self.synthetic_data_generator = SyntheticDataGenerator(self.global_config)
+            
+            self.logger.info("Monte Carlo components initialized successfully")
+            
+        except ImportError as e:
+            self.logger.warning(f"Monte Carlo components not available: {e}")
+            self.asset_replacement_manager = None
+            self.synthetic_data_generator = None
+    
+    def apply_monte_carlo_replacement(self, original_data, universe, train_start, train_end, 
+                                    test_start, test_end, trial_number=None):
+        """
+        Apply Monte Carlo data replacement to historical data.
+        
+        Args:
+            original_data: Dictionary of asset DataFrames with OHLC data
+            universe: List of asset symbols to consider for replacement
+            train_start: Start date for training period
+            train_end: End date for training period  
+            test_start: Start date for test period
+            test_end: End date for test period
+            trial_number: Optional trial number for reproducibility
+            
+        Returns:
+            Dictionary of modified asset DataFrames
+        """
+        if not self.asset_replacement_manager:
+            self.logger.warning("Monte Carlo not enabled, returning original data")
+            return original_data.copy()
+        
+        try:
+            # Select assets for replacement
+            selected_assets = self.asset_replacement_manager.select_assets_for_replacement(
+                universe=universe
+            )
+            
+            self.logger.info(f"Selected {len(selected_assets)} assets for Monte Carlo replacement: {selected_assets}")
+            
+            # Create modified data copy
+            modified_data = {}
+            
+            for asset in universe:
+                if asset in selected_assets:
+                    # Replace test period data with synthetic data
+                    modified_data[asset] = self._replace_asset_data(
+                        original_data[asset], 
+                        asset,
+                        train_start, 
+                        train_end,
+                        test_start, 
+                        test_end
+                    )
+                else:
+                    # Keep original data
+                    modified_data[asset] = original_data[asset].copy()
+            
+            return modified_data
+            
+        except Exception as e:
+            self.logger.error(f"Monte Carlo replacement failed: {e}")
+            return original_data.copy()
+    
+    def _replace_asset_data(self, asset_data, asset_name, train_start, train_end, 
+                          test_start, test_end):
+        """
+        Replace test period data for a single asset with synthetic data.
+        
+        Args:
+            asset_data: Original asset DataFrame with OHLC data
+            asset_name: Name of the asset
+            train_start, train_end: Training period dates
+            test_start, test_end: Test period dates
+            
+        Returns:
+            Modified asset DataFrame
+        """
+        try:
+            # Get training data for analysis
+            train_mask = (asset_data.index >= train_start) & (asset_data.index <= train_end)
+            train_data = asset_data.loc[train_mask]
+            
+            if len(train_data) < 50:
+                self.logger.warning(f"Insufficient training data for {asset_name}, using original data")
+                return asset_data.copy()
+            
+            # Analyze training data properties
+            asset_stats = self.synthetic_data_generator.analyze_asset_statistics(train_data)
+            
+            # Get test period length
+            test_mask = (asset_data.index >= test_start) & (asset_data.index <= test_end)
+            test_data = asset_data.loc[test_mask]
+            test_length = len(test_data)
+            
+            if test_length == 0:
+                self.logger.warning(f"No test data for {asset_name}, using original data")
+                return asset_data.copy()
+            
+            # Generate synthetic returns for test period
+            synthetic_returns = self.synthetic_data_generator.generate_synthetic_returns(
+                asset_stats, test_length, f"MC_{asset_name}"
+            )
+            
+            # Convert synthetic returns to price data
+            last_train_price = train_data['Close'].iloc[-1]
+            synthetic_prices = last_train_price * np.cumprod(1 + synthetic_returns)
+            
+            # Create synthetic OHLC data
+            synthetic_ohlc = pd.DataFrame({
+                'Open': synthetic_prices * np.random.uniform(0.995, 1.005, len(synthetic_prices)),
+                'High': synthetic_prices * np.random.uniform(1.0, 1.02, len(synthetic_prices)),
+                'Low': synthetic_prices * np.random.uniform(0.98, 1.0, len(synthetic_prices)),
+                'Close': synthetic_prices,
+                'Volume': test_data['Volume'].values if 'Volume' in test_data.columns else np.ones(len(synthetic_prices))
+            }, index=test_data.index)
+            
+            # Ensure High >= max(Open, Close) and Low <= min(Open, Close)
+            synthetic_ohlc['High'] = np.maximum(synthetic_ohlc['High'], 
+                                              np.maximum(synthetic_ohlc['Open'], synthetic_ohlc['Close']))
+            synthetic_ohlc['Low'] = np.minimum(synthetic_ohlc['Low'], 
+                                             np.minimum(synthetic_ohlc['Open'], synthetic_ohlc['Close']))
+            
+            # Combine training data with synthetic test data
+            modified_data = asset_data.copy()
+            modified_data.loc[test_mask] = synthetic_ohlc
+            
+            self.logger.info(f"Successfully replaced test data for {asset_name}")
+            return modified_data
+            
+        except Exception as e:
+            self.logger.error(f"Failed to replace data for {asset_name}: {e}")
+            return asset_data.copy()
 
     def run_scenario(
         self,
@@ -345,7 +493,6 @@ class Backtester:
         from .backtester_logic.optimization import _global_progress_tracker
         from .reporting.performance_metrics import calculate_metrics
         from .utils import calculate_stability_metrics, INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
-        from .monte_carlo.asset_replacement import AssetReplacementManager
         
         metric_values_per_objective = [[] for _ in metrics_to_optimize]
         processed_steps_for_pruning = 0
@@ -403,6 +550,7 @@ class Backtester:
             )
 
         # Generate lightweight synthetic data ONCE per trial for Stage 1 MC
+        # PERFORMANCE FIX: Only do expensive data preparation if Monte Carlo is actually enabled
         replacement_info = None
         if asset_replacement_manager is not None:
             try:
@@ -474,6 +622,7 @@ class Backtester:
             r_slice = rets_full.loc[tr_start:te_end]
 
             # Stage 1 MC: Apply lightweight synthetic data to test period only (for robustness)
+            # PERFORMANCE FIX: Only do expensive synthetic data application if Monte Carlo is enabled
             if trial_synthetic_data is not None and replacement_info is not None:
                 try:
                     # Apply synthetic data only to test period for Stage 1 MC robustness testing
@@ -564,42 +713,18 @@ class Backtester:
                         self.logger.info(f"Trial {getattr(trial, 'number', 'N/A')} pruned at step {processed_steps_for_pruning}")
                         raise optuna.exceptions.TrialPruned()
 
-        # Combine all window returns to create full trial P&L curve
-        if all_window_returns and trial and hasattr(trial, "set_user_attr"):
-            try:
-                # Concatenate all window returns in chronological order
-                full_trial_returns = pd.concat(all_window_returns).sort_index()
-                
-                # Store as trial attribute for later plotting
-                # Convert to dict for JSON serialization
-                trial_returns_dict = {
-                    'dates': full_trial_returns.index.strftime('%Y-%m-%d').tolist(),
-                    'returns': full_trial_returns.values.tolist()
-                }
-                trial.set_user_attr("trial_returns", trial_returns_dict)
-                
-                # Also store parameters for easy access
-                trial.set_user_attr("trial_params", scenario_config["strategy_params"])
-                
-            except Exception as e:
-                logger.warning(f"Failed to store trial returns for trial {getattr(trial, 'number', 'N/A')}: {e}")
-
-        # Calculate stability metrics
-        stability_config = self.global_config.get("stability_config", {})
-        if stability_config.get("enable", True) and trial and hasattr(trial, "set_user_attr"):
-            stability_metrics = calculate_stability_metrics(
-                metric_values_per_objective, 
-                metrics_to_optimize, 
-                self.global_config
-            )
-            
-            # Store stability metrics as trial attributes
-            for metric_name, metric_value in stability_metrics.items():
-                trial.set_user_attr(metric_name, metric_value)
-            
-            # Log stability metrics for debugging
-            if hasattr(trial, "number"):
-                self.logger.debug(f"Trial {trial.number} stability metrics: {stability_metrics}")
+        # Calculate and store stability metrics for this trial
+        if trial and hasattr(trial, "set_user_attr"):
+            if all_window_returns:
+                try:
+                    stability_metrics = calculate_stability_metrics(metric_values_per_objective, metrics_to_optimize, self.global_config)
+                    trial.set_user_attr("stability_metrics", stability_metrics)
+                    if hasattr(trial, "number"):
+                        self.logger.debug(f"Trial {trial.number} stability metrics: {stability_metrics}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to calculate stability metrics for trial {getattr(trial, 'number', 'N/A')}: {e}")
+            else:
+                self.logger.debug(f"Trial {getattr(trial, 'number', 'N/A')} has no window returns for stability metrics")
 
         # Store Monte Carlo replacement statistics if available
         if asset_replacement_manager is not None and trial and hasattr(trial, "set_user_attr"):

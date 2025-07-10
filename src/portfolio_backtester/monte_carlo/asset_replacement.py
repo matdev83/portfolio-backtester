@@ -432,4 +432,24 @@ class AssetReplacementManager:
     def reset_history(self):
         """Reset the replacement history."""
         self.replacement_history.clear()
-        logger.info("Reset replacement history") 
+        logger.info("Reset replacement history")
+    
+    def get_replacement_info(self):
+        """
+        Get information about the most recent asset replacement.
+        
+        Returns:
+            Object with selected_assets attribute containing list of replaced assets
+        """
+        class ReplacementInfoResult:
+            def __init__(self, selected_assets):
+                self.selected_assets = selected_assets
+        
+        # Get the most recent replacement from history
+        if self.replacement_history:
+            latest_replacement = self.replacement_history[-1]
+            selected_assets = latest_replacement.selected_assets
+        else:
+            selected_assets = set()
+        
+        return ReplacementInfoResult(selected_assets) 

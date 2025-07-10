@@ -94,9 +94,13 @@ class ImprovedSyntheticDataGenerator:
         self.generation_config = config.get('generation_config', {})
         self.validation_config = config.get('validation_config', {})
         
-        # Set random seed if specified
-        if config.get('random_seed') is not None:
-            np.random.seed(config['random_seed'])
+        # Set random seed if specified and create consistent random state
+        self.random_seed = config.get('random_seed', 42)
+        if self.random_seed is not None:
+            np.random.seed(self.random_seed)
+            self.rng = np.random.RandomState(self.random_seed)
+        else:
+            self.rng = np.random.RandomState()
     
     def analyze_asset_statistics(self, data) -> AssetStatistics:
         """
@@ -168,8 +172,12 @@ class ImprovedSyntheticDataGenerator:
             # Instead of hard error, log warning and use all available data
             logger.warning(f"Limited historical data: {len(returns)} observations (minimum: {min_required}). Using fallback approach.")
             
-            # If we have very little data, use simple statistical approach
-            if len(returns) < 30:
+            # If we have very little data, raise an error as expected by tests
+            if len(returns) < 10:
+                raise ValueError(f"Insufficient historical data: {len(returns)} observations. "
+                               f"Minimum required: 10 observations for basic analysis.")
+            # If we have some data but not much, use simple statistical approach
+            elif len(returns) < 30:
                 logger.warning(f"Very limited data ({len(returns)} observations). Using simple statistical fallback.")
                 # Create minimal statistics for fallback generation
                 mean_return = returns.mean() * 100 if len(returns) > 0 else 0.0
@@ -189,11 +197,14 @@ class ImprovedSyntheticDataGenerator:
         # Convert to percentage returns for better numerical stability
         returns_pct = returns * 100
         
-        # Basic statistics
-        mean_return = returns_pct.mean()
-        volatility = returns_pct.std()
-        skewness = returns_pct.skew()
-        kurtosis = returns_pct.kurtosis()
+        # Basic statistics - use original returns scale for consistency
+        mean_return = returns.mean()
+        volatility = returns.std()
+        skewness = returns.skew()
+        kurtosis = returns.kurtosis()
+        
+        # Use percentage returns only for GARCH fitting
+        returns_pct = returns * 100
         
         # Autocorrelations
         autocorr_returns = returns_pct.autocorr(lag=1) if len(returns_pct) > 1 else 0.0
@@ -202,28 +213,48 @@ class ImprovedSyntheticDataGenerator:
         # Estimate tail index using Hill estimator
         tail_index = self._estimate_tail_index(returns_pct)
         
-        # Fit GARCH model using arch package
-        try:
-            # Only attempt GARCH fitting if we have sufficient data
-            if len(returns_pct) >= 100:  # Minimum for reliable GARCH estimation
-                garch_params = self._fit_professional_garch_model(returns_pct)
-            else:
-                logger.info(f"Insufficient data for GARCH fitting ({len(returns_pct)} observations). Using fallback parameters.")
-                garch_params = self._get_fallback_garch_params(returns_pct)
-        except Exception as e:
-            logger.warning(f"Professional GARCH fitting failed: {e}. Using fallback parameters.")
-            garch_params = self._get_fallback_garch_params(returns_pct)
+        # Use modern robust t-distribution approach instead of problematic GARCH
+        logger.info("Using robust t-distribution approach for synthetic data generation")
         
-        return AssetStatistics(
-            mean_return=mean_return,
-            volatility=volatility,
-            skewness=skewness,
-            kurtosis=kurtosis,
-            autocorr_returns=autocorr_returns,
-            autocorr_squared=autocorr_squared,
-            tail_index=tail_index,
-            garch_params=garch_params
-        )
+        # Fit t-distribution to capture fat tails properly
+        from scipy import stats
+        
+        try:
+            # Fit t-distribution to the returns data (use original scale, not percentage)
+            df_fitted, loc_fitted, scale_fitted = stats.t.fit(returns)
+            
+            # Ensure reasonable parameters
+            df_fitted = max(df_fitted, 2.1)  # Ensure finite variance
+            df_fitted = min(df_fitted, 30.0)  # Avoid numerical issues
+            
+            logger.info(f"Fitted t-distribution: df={df_fitted:.2f}, loc={loc_fitted:.6f}, scale={scale_fitted:.6f}")
+            
+            # Create enhanced statistics with t-distribution parameters
+            return AssetStatistics(
+                mean_return=loc_fitted,  # Use fitted location
+                volatility=scale_fitted,  # Use fitted scale
+                skewness=skewness,
+                kurtosis=kurtosis,
+                autocorr_returns=autocorr_returns,
+                autocorr_squared=autocorr_squared,
+                tail_index=df_fitted,  # Use fitted degrees of freedom
+                garch_params=None  # No GARCH - using t-distribution approach
+            )
+            
+        except Exception as e:
+            logger.warning(f"T-distribution fitting failed: {e}. Using basic statistics.")
+            
+            # Final fallback to basic statistics
+            return AssetStatistics(
+                mean_return=mean_return,
+                volatility=volatility,
+                skewness=skewness,
+                kurtosis=kurtosis,
+                autocorr_returns=autocorr_returns,
+                autocorr_squared=autocorr_squared,
+                tail_index=max(kurtosis + 3, 3.0) if not np.isnan(kurtosis) else 5.0,
+                garch_params=None
+            )
     
     def _fit_professional_garch_model(self, returns: pd.Series) -> GARCHParameters:
         """
@@ -337,9 +368,56 @@ class ImprovedSyntheticDataGenerator:
         """
         max_attempts = self.generation_config.get('max_attempts', 3)
         
+        # This code block is now handled by the primary t-distribution method below
+        # Removed duplicate to avoid confusion
+        
+        # Use modern t-distribution approach as the primary method
+        logger.info(f"Using robust t-distribution generation for {asset_name}")
+        
+        try:
+            from scipy import stats
+            
+            # Use the fitted t-distribution parameters with proper validation
+            df = max(asset_stats.tail_index, 2.1)  # Ensure finite variance
+            df = min(df, 30.0)  # Avoid numerical issues
+            loc = asset_stats.mean_return
+            scale = max(asset_stats.volatility, 1e-6)  # Ensure positive scale
+            
+            logger.info(f"Generating with t-distribution: df={df:.2f}, loc={loc:.6f}, scale={scale:.6f}")
+            
+            # Generate synthetic returns using t-distribution
+            synthetic_returns = stats.t.rvs(
+                df=df, 
+                loc=loc, 
+                scale=scale, 
+                size=length, 
+                random_state=self.rng
+            )
+            
+            # Validate generated returns to prevent extreme values
+            if np.any(np.isnan(synthetic_returns)) or np.any(np.isinf(synthetic_returns)):
+                raise ValueError("Generated NaN or infinite values")
+            
+            # Clip extreme outliers to prevent unrealistic returns
+            max_return = 5 * scale  # Max 5 standard deviations
+            synthetic_returns = np.clip(synthetic_returns, 
+                                      loc - max_return, 
+                                      loc + max_return)
+            
+            # Add simple volatility clustering if autocorrelation exists
+            if asset_stats.autocorr_squared > 0.1:
+                synthetic_returns = self._add_volatility_clustering(synthetic_returns, asset_stats.autocorr_squared)
+            
+            logger.info(f"Generated {length} synthetic returns using t-distribution for {asset_name}")
+            return synthetic_returns
+            
+        except Exception as e:
+            logger.warning(f"T-distribution generation failed for {asset_name}: {e}. Using simple fallback.")
+        
+        # Fallback to simple method only if t-distribution fails
         for attempt in range(max_attempts):
             try:
-                # Generate synthetic returns using fallback method (more reliable)
+                # Generate synthetic returns using simple fallback method
                 synthetic_returns_pct = self._generate_fallback_returns(asset_stats, length)
                 
                 # Convert back to decimal returns
@@ -479,9 +557,26 @@ class ImprovedSyntheticDataGenerator:
         return synthetic_df
     
     def _returns_to_prices(self, returns: np.ndarray, initial_price: float) -> np.ndarray:
-        """Convert returns to price levels."""
-        price_relatives = 1 + returns
+        """Convert returns to price levels with protection against non-positive prices."""
+        # Only clip extreme outliers that would cause mathematical issues
+        # Allow up to -95% single-period returns (more realistic for financial markets)
+        max_negative_return = -0.95  # Maximum -95% return to prevent negative prices
+        
+        # Only clip the most extreme outliers to preserve volatility
+        clipped_returns = np.clip(returns, max_negative_return, 5.0)  # Cap at 500% gain too
+        
+        # Convert to price relatives
+        price_relatives = 1 + clipped_returns
+        
+        # Only ensure positive price relatives for the most extreme cases
+        price_relatives = np.maximum(price_relatives, 0.05)  # Minimum 5% of previous price
+        
+        # Calculate cumulative prices
         prices = initial_price * np.cumprod(price_relatives)
+        
+        # Minimal safety check - only prevent truly problematic values
+        prices = np.maximum(prices, initial_price * 0.001)  # Minimum 0.1% of initial price
+        
         return prices
     
     def _generate_ohlc_from_prices(self, prices: np.ndarray) -> np.ndarray:
@@ -510,9 +605,25 @@ class ImprovedSyntheticDataGenerator:
             # Generate intraday volatility
             intraday_vol = np.random.uniform(0.005, 0.02)  # 0.5% to 2% intraday range
             
-            # High and low around open-close range
-            high = max(open_price, close) * (1 + np.random.uniform(0, intraday_vol))
-            low = min(open_price, close) * (1 - np.random.uniform(0, intraday_vol))
+            # Ensure proper OHLC relationships - High >= max(Open, Close), Low <= min(Open, Close)
+            max_oc = max(open_price, close)
+            min_oc = min(open_price, close)
+            
+            # High must be >= max(open, close) - add random upward movement
+            high_multiplier = 1 + np.random.uniform(0, intraday_vol)
+            high = max_oc * high_multiplier
+            
+            # Low must be <= min(open, close) - subtract random downward movement
+            low_multiplier = 1 - np.random.uniform(0, intraday_vol)
+            low = min_oc * low_multiplier
+            
+            # Absolute safety check to guarantee OHLC relationships
+            high = max(high, open_price, close)  # High >= Open, Close
+            low = min(low, open_price, close)    # Low <= Open, Close
+            
+            # Additional safety: ensure High >= Low
+            if high < low:
+                high, low = low, high
             
             ohlc[i] = [open_price, high, low, close]
         
@@ -658,7 +769,7 @@ class ImprovedSyntheticDataGenerator:
             logger.warning(f"Professional GARCH fitting failed: {e}. Using fallback parameters.")
             return self._get_fallback_garch_params(returns)
     
-    def _generate_garch_returns(self, garch_params: GARCHParameters, length: int) -> np.ndarray:
+    def _generate_garch_returns(self, garch_params: GARCHParameters, length: int, mean_return: float = 0.0) -> np.ndarray:
         """
         Generate synthetic returns using GARCH parameters.
         
@@ -669,24 +780,161 @@ class ImprovedSyntheticDataGenerator:
         Returns:
             Array of synthetic returns (in decimal form)
         """
-        # Create a minimal AssetStatistics object for the fallback method
-        asset_stats = AssetStatistics(
-            mean_return=0.0,  # Will be handled by GARCH process
-            volatility=np.sqrt(garch_params.omega / (1 - garch_params.alpha - garch_params.beta)),
-            skewness=0.0,
-            kurtosis=3.0,
-            autocorr_returns=0.0,
-            autocorr_squared=0.0,
-            tail_index=garch_params.nu if garch_params.nu else 3.0,
-            garch_params=garch_params
-        )
+        logger.info(f"DEBUG: _generate_garch_returns called with omega={garch_params.omega:.6f}")
+        # CRITICAL: Validate GARCH parameters to prevent extreme values
+        # Check for unrealistic omega values that would cause overflow
+        if garch_params.omega > 1000:  # Extremely large omega (variance > 1000%)
+            logger.warning(f"GARCH omega extremely large ({garch_params.omega:.2f}), using fallback volatility")
+            # Use a reasonable fallback volatility instead of trying to convert
+            volatility_decimal = 0.02  # 2% daily volatility as reasonable default
+            omega_decimal = volatility_decimal ** 2  # Set omega_decimal for debug print
+        else:
+            # The GARCH parameters are in percentage scale, but we need decimal scale
+            # GARCH omega represents variance in percentage scale, so convert to decimal scale
+            # For percentage returns: omega_pct -> omega_decimal = omega_pct / 100^2
+            if garch_params.omega > 0.01:  # Likely percentage scale (variance > 1%)
+                omega_decimal = garch_params.omega / 10000  # Convert percentage variance to decimal variance
+            else:
+                omega_decimal = garch_params.omega  # Already in decimal scale
+            
+            # Calculate unconditional volatility in decimal scale
+            persistence = garch_params.alpha + garch_params.beta
+            print(f"DEBUG: GARCH persistence (alpha + beta): {persistence:.6f}")
+            
+            if persistence < 0.999:  # Use a small buffer to avoid division by zero
+                volatility_decimal = np.sqrt(omega_decimal / (1 - persistence))
+                print(f"DEBUG: Using stationary formula")
+            else:
+                # For non-stationary case, use a volatility that preserves the scale
+                # Use the square root of omega directly as a reasonable approximation
+                volatility_decimal = np.sqrt(omega_decimal)
+                print(f"DEBUG: Using non-stationary fallback with omega-based volatility")
         
-        # Generate returns using the fallback method 
-        # The fallback method should return decimal returns, not percentage
-        synthetic_returns = self._generate_fallback_returns(asset_stats, length)
         
-        # The fallback method returns decimal returns, so no conversion needed
+        print(f"DEBUG: GARCH conversion - omega: {garch_params.omega:.6f} -> {omega_decimal:.8f}")
+        print(f"DEBUG: GARCH conversion - volatility: {volatility_decimal:.8f}")
+        print(f"DEBUG: GARCH mean_return: {mean_return:.8f}")
+        
+        # Use the consistent random state for reproducibility
+        rng = self.rng
+        
+        # Use the passed mean_return parameter
+        
+        # Add parameter validation to prevent extreme values
+        # Clamp volatility to reasonable bounds
+        volatility_decimal = np.clip(volatility_decimal, 1e-6, 0.5)  # Max 50% daily volatility
+        
+        # For GARCH processes, we need to simulate the actual GARCH dynamics to preserve clustering
+        # Generate GARCH process with proper volatility clustering
+        if garch_params.alpha > 0 and garch_params.beta > 0:
+            # Simulate GARCH(1,1) process
+            synthetic_returns = self._simulate_garch_process(
+                garch_params, volatility_decimal, mean_return, length, rng
+            )
+        else:
+            # Fallback to simple distribution
+            if garch_params.nu and garch_params.nu > 2:
+                from scipy import stats
+                df = max(garch_params.nu, 3.0)  # Ensure df >= 3 for finite variance
+                df = min(df, 30.0)  # Cap df to avoid numerical issues
+                
+                # For Student-t, adjust scale to match target volatility
+                scale = volatility_decimal / np.sqrt(df / (df - 2)) if df > 2 else volatility_decimal
+                synthetic_returns = stats.t.rvs(df=df, loc=mean_return, scale=scale, size=length, random_state=rng)
+                
+                # Clip extreme outliers to prevent unrealistic values
+                max_return = 5 * volatility_decimal  # Max 5 standard deviations
+                synthetic_returns = np.clip(synthetic_returns, 
+                                          mean_return - max_return, 
+                                          mean_return + max_return)
+            else:
+                # Use normal distribution
+                synthetic_returns = rng.normal(mean_return, volatility_decimal, length)
+        
+        print(f"DEBUG: Generated returns sample: {synthetic_returns[:5]}")
+        print(f"DEBUG: Generated returns std: {np.std(synthetic_returns):.8f}")
+        
         return synthetic_returns
+    
+    def _simulate_garch_process(self, garch_params, target_volatility, mean_return, length, rng):
+        """
+        Simulate a GARCH(1,1) process to preserve volatility clustering.
+        
+        Args:
+            garch_params: GARCH parameters
+            target_volatility: Target unconditional volatility
+            mean_return: Mean return
+            length: Number of periods to simulate
+            
+        Returns:
+            Array of simulated returns with GARCH dynamics
+        """
+        # Initialize arrays
+        returns = np.zeros(length)
+        variances = np.zeros(length)
+        
+        # Convert parameters to appropriate scale
+        omega = garch_params.omega / 10000 if garch_params.omega > 0.01 else garch_params.omega
+        alpha = garch_params.alpha
+        beta = garch_params.beta
+        
+        # Initialize variance
+        if alpha + beta < 0.999:
+            initial_variance = omega / (1 - alpha - beta)
+        else:
+            initial_variance = target_volatility ** 2
+        
+        variances[0] = initial_variance
+        
+        # Generate innovations using consistent random state
+        if garch_params.nu and garch_params.nu > 2:
+            from scipy import stats
+            df = max(garch_params.nu, 3.0)
+            innovations = stats.t.rvs(df=df, size=length, random_state=self.rng)
+        else:
+            innovations = self.rng.standard_normal(length)
+        
+        # Simulate GARCH process
+        for t in range(length):
+            # Generate return
+            returns[t] = mean_return + innovations[t] * np.sqrt(variances[t])
+            
+            # Update variance for next period
+            if t < length - 1:
+                variances[t + 1] = omega + alpha * (returns[t] - mean_return) ** 2 + beta * variances[t]
+                # Ensure variance stays positive and reasonable
+                variances[t + 1] = max(variances[t + 1], omega)
+                variances[t + 1] = min(variances[t + 1], target_volatility ** 2 * 100)  # Cap at 100x target
+        
+        return returns
+    
+    def _add_volatility_clustering(self, returns: np.ndarray, autocorr_target: float) -> np.ndarray:
+        """
+        Add simple volatility clustering to returns to preserve autocorrelation in squared returns.
+        
+        Args:
+            returns: Base synthetic returns
+            autocorr_target: Target autocorrelation for squared returns
+            
+        Returns:
+            Returns with enhanced volatility clustering
+        """
+        try:
+            # Simple volatility clustering: scale returns by lagged absolute returns
+            enhanced_returns = returns.copy()
+            abs_returns = np.abs(enhanced_returns)
+            
+            # Apply simple volatility scaling based on previous period
+            for t in range(1, len(enhanced_returns)):
+                # Scale current return by function of previous absolute return
+                vol_multiplier = 1.0 + autocorr_target * (abs_returns[t-1] / np.std(abs_returns))
+                enhanced_returns[t] *= vol_multiplier
+            
+            return enhanced_returns
+            
+        except Exception as e:
+            logger.warning(f"Volatility clustering enhancement failed: {e}. Using original returns.")
+            return returns
 
 
 # Backward compatibility - alias the new class to the old name

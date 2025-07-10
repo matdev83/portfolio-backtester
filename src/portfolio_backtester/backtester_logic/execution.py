@@ -57,6 +57,11 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
     # Initialize optimized_name with default value
     optimized_name = f'{scenario_config["name"]} (Optimized)'
     
+    # Initialize constraint-related variables with defaults
+    constraint_status = "NO_CONSTRAINTS"
+    constraint_message = "No constraints defined"
+    constraint_violations = []
+    
     # Validate constraints on final backtest results
     constraints_config = scenario_config.get("optimization_constraints", [])
     if constraints_config and full_rets is not None and not full_rets.empty:

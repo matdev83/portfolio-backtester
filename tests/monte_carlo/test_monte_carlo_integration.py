@@ -99,13 +99,21 @@ class TestMonteCarloSystemIntegration:
             # Convert to prices
             prices = 100 * (1 + i * 0.5) * np.exp(np.cumsum(returns))  # Different starting prices
             
-            # Create realistic OHLC data
+            # Create realistic OHLC data with proper relationships
+            open_prices = prices * np.random.uniform(0.995, 1.005, len(prices))
+            
+            # Ensure proper OHLC relationships
+            high_prices = np.maximum(open_prices, prices) * np.random.uniform(1.0, 1.03, len(prices))
+            low_prices = np.minimum(open_prices, prices) * np.random.uniform(0.97, 1.0, len(prices))
+            
+            # Final safety check to ensure OHLC relationships
+            high_prices = np.maximum(high_prices, np.maximum(open_prices, prices))
+            low_prices = np.minimum(low_prices, np.minimum(open_prices, prices))
+            
             market_data[asset] = pd.DataFrame({
-                'Open': prices * np.random.uniform(0.995, 1.005, len(prices)),
-                'High': np.maximum(prices * np.random.uniform(0.995, 1.005, len(prices)), 
-                                 prices) * np.random.uniform(1.0, 1.03, len(prices)),
-                'Low': np.minimum(prices * np.random.uniform(0.995, 1.005, len(prices)), 
-                                prices) * np.random.uniform(0.97, 1.0, len(prices)),
+                'Open': open_prices,
+                'High': high_prices,
+                'Low': low_prices,
                 'Close': prices,
                 'Volume': np.random.lognormal(15, 0.5, len(prices))  # Realistic volume
             }, index=dates)

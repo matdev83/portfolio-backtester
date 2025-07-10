@@ -74,8 +74,8 @@ GLOBAL_CONFIG:
 # Walk-Forward Optimization Robustness Configuration
 wfo_robustness_config:
   # Enable/disable randomization features
-  enable_window_randomization: true
-  enable_start_date_randomization: true
+  enable_window_randomization: true  # RESTORED: Re-enabled for robustness testing
+  enable_start_date_randomization: true  # RESTORED: Re-enabled for robustness testing
   
   # Window length randomization (in months)
   train_window_randomization:
@@ -103,14 +103,14 @@ wfo_robustness_config:
 # Monte-Carlo Synthetic Data Configuration
 monte_carlo_config:
   # Enable/disable synthetic data generation
-  enable_synthetic_data: true
+  enable_synthetic_data: true  # RESTORED: Re-enabled for robustness testing
   
-  # Performance optimization: disable Monte Carlo during optimization trials for faster testing
+  # Performance optimization: enable Monte Carlo during optimization trials for robustness testing
   # Stage 1 MC (during optimization) vs Stage 2 MC (after optimization stress testing)
-  enable_during_optimization: false  # Set to false for faster optimization, true for robustness testing
+  enable_during_optimization: true  # RESTORED: Re-enabled for parameter robustness testing
   
   # Stage 2 comprehensive stress testing after optimization
-  enable_stage2_stress_testing: false  # Set to false for faster optimization, true for full robustness analysis
+  enable_stage2_stress_testing: true  # RESTORED: Re-enabled for full robustness analysis
   
   # Percentage of assets to replace with synthetic data (0.0 to 1.0)
   replacement_percentage: 0.05  # Reduced to 5% for faster testing

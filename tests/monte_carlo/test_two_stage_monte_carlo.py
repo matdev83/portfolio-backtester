@@ -146,13 +146,16 @@ class TestTwoStageMonteCarlo:
         mock_trial.number = 5
         mock_trial.set_user_attr = Mock()
         
-        # Create mock data
-        dates = pd.date_range('2020-01-01', periods=100, freq='D')
-        monthly_dates = pd.date_range('2020-01-01', periods=12, freq='ME')
-        daily_data = pd.DataFrame(np.random.randn(100, 4), 
+        # Create mock data with sufficient history for asset replacement
+        # Need data starting much earlier to provide historical context
+        dates = pd.date_range('2018-01-01', periods=800, freq='D')  # 2+ years of daily data
+        monthly_dates = pd.date_range('2018-01-01', periods=36, freq='ME')  # 3 years of monthly data
+        
+        np.random.seed(42)  # For reproducible test data
+        daily_data = pd.DataFrame(np.random.randn(len(dates), 4) * 0.01 + 0.0005, 
                                  columns=['AAPL', 'MSFT', 'GOOGL', 'SPY'], 
                                  index=dates)
-        monthly_data = pd.DataFrame(np.random.randn(12, 4), 
+        monthly_data = pd.DataFrame(np.random.randn(len(monthly_dates), 4) * 0.02 + 0.001, 
                                    columns=['AAPL', 'MSFT', 'GOOGL', 'SPY'], 
                                    index=monthly_dates)
         rets_full = daily_data.pct_change().fillna(0)
