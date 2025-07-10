@@ -158,7 +158,7 @@ class TestTwoStageMonteCarlo:
         monthly_data = pd.DataFrame(np.random.randn(len(monthly_dates), 4) * 0.02 + 0.001, 
                                    columns=['AAPL', 'MSFT', 'GOOGL', 'SPY'], 
                                    index=monthly_dates)
-        rets_full = daily_data.pct_change().fillna(0)
+        rets_full = daily_data.pct_change(fill_method=None).fillna(0)
         
         # Create windows
         windows = [

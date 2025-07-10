@@ -9,6 +9,7 @@ from .vams_no_downside_strategy import VAMSNoDownsideStrategy
 from .momentum_dvol_sizer_strategy import MomentumDvolSizerStrategy
 from .filtered_lagged_momentum_strategy import FilteredLaggedMomentumStrategy
 from .ema_crossover_strategy import EMAStrategy
+from .low_volatility_factor_strategy import LowVolatilityFactorStrategy
 
 __all__ = [
     "BaseStrategy",
@@ -22,4 +23,5 @@ __all__ = [
     "MomentumDvolSizerStrategy",
     "FilteredLaggedMomentumStrategy",
     "EMAStrategy",
+    "LowVolatilityFactorStrategy",
 ]

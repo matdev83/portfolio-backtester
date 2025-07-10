@@ -57,7 +57,7 @@ GLOBAL_CONFIG:
     - "UNH"
     - "GBTC"
   benchmark: "SPY"
-  start_date: "2010-01-01"
+  start_date: "2013-01-01"
   end_date: "2025-06-30"
   # IBKR Commission Structure (for detailed calculations if needed)
   ibkr_commission_per_share: 0.005
@@ -74,8 +74,8 @@ GLOBAL_CONFIG:
 # Walk-Forward Optimization Robustness Configuration
 wfo_robustness_config:
   # Enable/disable randomization features
-  enable_window_randomization: true  # RESTORED: Re-enabled for robustness testing
-  enable_start_date_randomization: true  # RESTORED: Re-enabled for robustness testing
+  enable_window_randomization: false  # Disabled to avoid processing insufficient data periods
+  enable_start_date_randomization: false  # Disabled to avoid processing insufficient data periods
   
   # Window length randomization (in months)
   train_window_randomization:
@@ -99,11 +99,15 @@ wfo_robustness_config:
   
   # Random seed for reproducibility (optional)
   random_seed: null  # Set to integer for reproducible randomization, null for random
+  
+  # PERFORMANCE OPTIMIZATION: Smart caching and vectorization
+  cache_windows: true           # Cache randomized windows for repeated parameter combinations
+  vectorized_randomization: true  # Use numpy for batch random number generation
 
 # Monte-Carlo Synthetic Data Configuration
 monte_carlo_config:
   # Enable/disable synthetic data generation
-  enable_synthetic_data: true  # RESTORED: Re-enabled for robustness testing
+  enable_synthetic_data: false  # Disabled to avoid performance issues during optimization
   
   # Performance optimization: enable Monte Carlo during optimization trials for robustness testing
   # Stage 1 MC (during optimization) vs Stage 2 MC (after optimization stress testing)
@@ -117,6 +121,14 @@ monte_carlo_config:
   
   # Minimum number of historical observations required for parameter estimation
   min_historical_observations: 200  # Reduced from 252 to 200 for more flexibility (about 8 months)
+  
+  # PERFORMANCE OPTIMIZATION: Smart caching system
+  cache_synthetic_data: true  # Enable caching of synthetic data generation
+  max_cache_size_mb: 1000     # Maximum cache size in MB
+  parallel_generation: true   # Enable parallel synthetic data generation
+  
+  # PERFORMANCE PROFILES: Choose optimization vs robustness trade-off
+  optimization_mode: "balanced"  # Options: "fast", "balanced", "comprehensive"
   
   # GARCH model configuration
   garch_config:
@@ -317,3 +329,58 @@ OPTIMIZER_PARAMETER_DEFAULTS:
     low: 1.0
     high: 5.0
     step: 0.5
+  # Low-Volatility Factor Strategy Parameters
+  volatility_lookback_days:
+    type: "int"
+    low: 63
+    high: 504
+    step: 63
+  size_percentile:
+    type: "int"
+    low: 40
+    high: 60
+    step: 10
+  vol_percentile_low:
+    type: "int"
+    low: 20
+    high: 40
+    step: 5
+  vol_percentile_high:
+    type: "int"
+    low: 60
+    high: 80
+    step: 5
+  beta_lookback_months:
+    type: "int"
+    low: 24
+    high: 48
+    step: 12
+  beta_min_cap:
+    type: "float"
+    low: 0.1
+    high: 0.5
+    step: 0.05
+  beta_max_cap:
+    type: "float"
+    low: 1.5
+    high: 3.0
+    step: 0.5
+  beta_max_low_vol:
+    type: "float"
+    low: 0.8
+    high: 1.2
+    step: 0.1
+  use_hedged_legs:
+    type: "categorical"
+    values: [true, false]
+  long_only:
+    type: "categorical"
+    values: [true, false]
+  account_for_costs:
+    type: "categorical"
+    values: [true, false]
+  shorting_fee_annual:
+    type: "float"
+    low: 0.005
+    high: 0.02
+    step: 0.005

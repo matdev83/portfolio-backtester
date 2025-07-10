@@ -558,24 +558,31 @@ class ImprovedSyntheticDataGenerator:
     
     def _returns_to_prices(self, returns: np.ndarray, initial_price: float) -> np.ndarray:
         """Convert returns to price levels with protection against non-positive prices."""
+        logger.debug(f"DEBUG: _returns_to_prices - initial_price: {initial_price:.6f}, returns sample: {returns[:5]}")
+        
         # Only clip extreme outliers that would cause mathematical issues
         # Allow up to -95% single-period returns (more realistic for financial markets)
         max_negative_return = -0.95  # Maximum -95% return to prevent negative prices
         
         # Only clip the most extreme outliers to preserve volatility
         clipped_returns = np.clip(returns, max_negative_return, 5.0)  # Cap at 500% gain too
+        logger.debug(f"DEBUG: _returns_to_prices - clipped_returns sample: {clipped_returns[:5]}")
         
         # Convert to price relatives
         price_relatives = 1 + clipped_returns
+        logger.debug(f"DEBUG: _returns_to_prices - price_relatives sample: {price_relatives[:5]}")
         
         # Only ensure positive price relatives for the most extreme cases
         price_relatives = np.maximum(price_relatives, 0.05)  # Minimum 5% of previous price
+        logger.debug(f"DEBUG: _returns_to_prices - price_relatives (after max): {price_relatives[:5]}")
         
         # Calculate cumulative prices
         prices = initial_price * np.cumprod(price_relatives)
+        logger.debug(f"DEBUG: _returns_to_prices - prices sample: {prices[:5]}")
         
         # Minimal safety check - only prevent truly problematic values
         prices = np.maximum(prices, initial_price * 0.001)  # Minimum 0.1% of initial price
+        logger.debug(f"DEBUG: _returns_to_prices - prices (after max): {prices[:5]}")
         
         return prices
     
@@ -717,12 +724,18 @@ class ImprovedSyntheticDataGenerator:
             top_returns = sorted_returns[-k:]
             
             if len(top_returns) > 1:
+                # Add logging for debugging divide by zero
+                if top_returns[0] == 0:
+                    logger.warning("DEBUG: top_returns[0] is zero in _estimate_tail_index. Using default tail index.")
+                    return 3.0
                 log_ratios = np.log(top_returns[1:] / top_returns[0])
                 tail_index = 1.0 / np.mean(log_ratios)
                 return max(1.5, min(tail_index, 10.0))  # Bound between 1.5 and 10
             else:
+                logger.warning("DEBUG: Not enough top returns for tail index estimation. Using default tail index.")
                 return 3.0  # Default value
-        except:
+        except Exception as e:
+            logger.warning(f"DEBUG: Tail index estimation failed: {e}. Using default tail index.")
             return 3.0  # Default value if estimation fails
     
     def _get_fallback_garch_params(self, returns: pd.Series) -> GARCHParameters:

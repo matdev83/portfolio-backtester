@@ -217,7 +217,7 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
         self.logger.error(f"Failed to generate optimization report: {e}")
         self.logger.debug("Report generation error details:", exc_info=True)
 
-    def _generate_optimization_report(self, scenario_config, optimal_params, full_rets, best_trial_obj, actual_num_trials):
+def _generate_optimization_report(self, scenario_config, optimal_params, full_rets, best_trial_obj, actual_num_trials):
         """Generate comprehensive optimization report with performance analysis."""
         
         strategy_name = scenario_config["name"]

@@ -1,0 +1,1562 @@
+{
+  "strategy_name": "LowVolatilityFactor_LongOnly",
+  "optimal_parameters": {
+    "volatility_lookback_days": 252,
+    "size_percentile": 50,
+    "vol_percentile_low": 30,
+    "vol_percentile_high": 70,
+    "beta_lookback_months": 36,
+    "use_hedged_legs": true,
+    "long_only": true,
+    "account_for_costs": false,
+    "leverage": 1.0,
+    "smoothing_lambda": 0.30000000000000004,
+    "price_column": "Close",
+    "beta_min_cap": 0.25,
+    "beta_max_cap": 2.0,
+    "beta_max_low_vol": 1.0,
+    "rebalance_frequency": "monthly",
+    "shorting_fee_annual": 0.01
+  },
+  "performance_metrics": {
+    "Total Return": 3.3610346326954748,
+    "Ann. Return": 0.12894316720876353,
+    "Ann. Vol": 0.14427024916142203,
+    "Sharpe": 0.8937613122473419,
+    "Sortino": 1.299671496837775,
+    "Calmar": 0.4351667871109528,
+    "Alpha (ann)": 0.02818086672552639,
+    "Beta": 0.7162386625468481,
+    "Max Drawdown": -0.2963074642364363,
+    "VaR (5%)": -0.012856800497573912,
+    "CVaR (5%)": -0.02107565975930664,
+    "Tail Ratio": 0.8450742589251257,
+    "Avg DD Duration": 13.36734693877551,
+    "Avg Recovery Time": 1.0,
+    "Skew": -0.3060327472383902,
+    "Kurtosis": 18.721082000383127,
+    "R^2": 0.7350046055046642,
+    "K-Ratio": 24160.906149337774,
+    "ADF Statistic": 0.5721327236710283,
+    "ADF p-value": 0.986908223277916,
+    "Deflated Sharpe": 1.0
+  },
+  "optimization_metadata": {
+    "num_trials": 47,
+    "optimizer_type": "optuna",
+    "optimization_date": "2025-07-10T14:52:47.813434",
+    "global_config": {
+      "data_source": "stooq",
+      "universe": [
+        "AAPL",
+        "AMZN",
+        "MSFT",
+        "GOOGL",
+        "NVDA",
+        "TSLA",
+        "V",
+        "MCD",
+        "AVGO",
+        "AMD",
+        "WMT",
+        "COST",
+        "JPM",
+        "MA",
+        "MU",
+        "LLY",
+        "TGT",
+        "META",
+        "ORCL",
+        "PG",
+        "HD",
+        "JNJ",
+        "BAC",
+        "ABBV",
+        "XOM",
+        "CVX",
+        "WFC",
+        "CRM",
+        "GE",
+        "BA",
+        "ABT",
+        "MS",
+        "GS",
+        "DIS",
+        "LIN",
+        "MRK",
+        "RTX",
+        "BKNG",
+        "CAT",
+        "PEP",
+        "KO",
+        "INTU",
+        "TMUS",
+        "ACN",
+        "SCHW",
+        "TMO",
+        "SYK",
+        "AMGN",
+        "HON",
+        "AMAT",
+        "DHR",
+        "NEE",
+        "PLTR",
+        "UNH",
+        "GBTC"
+      ],
+      "benchmark": "SPY",
+      "start_date": "2013-01-01",
+      "end_date": "2025-06-30",
+      "ibkr_commission_per_share": 0.005,
+      "ibkr_commission_min_per_order": 1.0,
+      "ibkr_commission_max_percent_of_trade": 0.005,
+      "slippage_bps": 2.5,
+      "monte_carlo_config": {
+        "enable_synthetic_data": false,
+        "enable_during_optimization": true,
+        "enable_stage2_stress_testing": true,
+        "replacement_percentage": 0.05,
+        "min_historical_observations": 200,
+        "cache_synthetic_data": true,
+        "max_cache_size_mb": 1000,
+        "parallel_generation": true,
+        "optimization_mode": "balanced",
+        "garch_config": {
+          "model_type": "GARCH",
+          "p": 1,
+          "q": 1,
+          "distribution": "studentt",
+          "bounds": {
+            "omega": [
+              "1e-6",
+              1.0
+            ],
+            "alpha": [
+              0.01,
+              0.3
+            ],
+            "beta": [
+              0.5,
+              0.99
+            ],
+            "nu": [
+              2.1,
+              30.0
+            ],
+            "lambda": [
+              -0.5,
+              0.5
+            ]
+          }
+        },
+        "jump_diffusion": {
+          "enable": false,
+          "jump_intensity": 0.1,
+          "jump_size_mean": 0.0,
+          "jump_size_std": 0.02
+        },
+        "generation_config": {
+          "buffer_multiplier": 1.2,
+          "max_attempts": 2,
+          "validation_tolerance": 0.3,
+          "preserve_properties": [
+            "mean",
+            "volatility",
+            "skewness",
+            "kurtosis",
+            "autocorr_returns",
+            "autocorr_squared"
+          ]
+        },
+        "validation_config": {
+          "enable_validation": false,
+          "tolerance": 0.8
+        },
+        "random_seed": null
+      },
+      "wfo_robustness_config": {
+        "enable_window_randomization": false,
+        "enable_start_date_randomization": false,
+        "train_window_randomization": {
+          "min_offset": 3,
+          "max_offset": 14
+        },
+        "test_window_randomization": {
+          "min_offset": 3,
+          "max_offset": 14
+        },
+        "start_date_randomization": {
+          "min_offset": 0,
+          "max_offset": 12
+        },
+        "stability_metrics": {
+          "enable": true,
+          "worst_percentile": 10,
+          "consistency_threshold": 0.0
+        },
+        "random_seed": null,
+        "cache_windows": true,
+        "vectorized_randomization": true
+      },
+      "optimizer_parameter_defaults": {
+        "max_lookback": {
+          "type": "int",
+          "low": 20,
+          "high": 250,
+          "step": 10
+        },
+        "calmar_lookback": {
+          "type": "int",
+          "low": 20,
+          "high": 250,
+          "step": 10
+        },
+        "leverage": {
+          "type": "float",
+          "low": 0.5,
+          "high": 2.0,
+          "step": 0.1
+        },
+        "smoothing_lambda": {
+          "type": "float",
+          "low": 0.0,
+          "high": 0.9
+        },
+        "num_holdings": {
+          "type": "int",
+          "low": 1,
+          "high": 50,
+          "step": 1
+        },
+        "sma_filter_window": {
+          "type": "int",
+          "low": 20,
+          "high": 250
+        },
+        "fast_ema_days": {
+          "type": "int",
+          "low": 5,
+          "high": 50,
+          "step": 1
+        },
+        "slow_ema_days": {
+          "type": "int",
+          "low": 50,
+          "high": 200,
+          "step": 10
+        },
+        "target_return": {
+          "type": "float",
+          "low": 0.0,
+          "high": 0.1,
+          "step": 0.01
+        },
+        "lookback_months": {
+          "type": "categorical",
+          "values": [
+            6
+          ]
+        },
+        "momentum_lookback_standard": {
+          "type": "int",
+          "low": 6,
+          "high": 12,
+          "step": 1
+        },
+        "momentum_skip_standard": {
+          "type": "int",
+          "low": 1,
+          "high": 2,
+          "step": 1
+        },
+        "momentum_lookback_predictive": {
+          "type": "int",
+          "low": 6,
+          "high": 12,
+          "step": 1
+        },
+        "momentum_skip_predictive": {
+          "type": "int",
+          "low": 0,
+          "high": 1,
+          "step": 1
+        },
+        "blending_lambda": {
+          "type": "float",
+          "low": 0.0,
+          "high": 1.0,
+          "step": 0.1
+        },
+        "apply_trading_lag": {
+          "type": "categorical",
+          "values": [
+            true,
+            false
+          ]
+        },
+        "alpha": {
+          "type": "float",
+          "low": 0.1,
+          "high": 0.9,
+          "step": 0.1
+        },
+        "top_decile_fraction": {
+          "type": "float",
+          "low": 0.1,
+          "high": 0.5,
+          "step": 0.1
+        },
+        "derisk_days_under_sma": {
+          "type": "int",
+          "low": 4,
+          "high": 18,
+          "step": 2
+        },
+        "sizer_sharpe_window": {
+          "type": "int",
+          "low": 2,
+          "high": 12,
+          "step": 1
+        },
+        "sizer_sortino_window": {
+          "type": "int",
+          "low": 2,
+          "high": 12,
+          "step": 1
+        },
+        "sizer_beta_window": {
+          "type": "int",
+          "low": 2,
+          "high": 12,
+          "step": 1
+        },
+        "sizer_corr_window": {
+          "type": "int",
+          "low": 2,
+          "high": 12,
+          "step": 1
+        },
+        "sizer_dvol_window": {
+          "type": "int",
+          "low": 6,
+          "high": 12,
+          "step": 1
+        },
+        "long_only": {
+          "type": "categorical",
+          "values": [
+            true,
+            false
+          ]
+        },
+        "target_volatility": {
+          "type": "float",
+          "low": 0.05,
+          "high": 0.3,
+          "step": 0.01
+        },
+        "rsi_period_enum": {
+          "type": "categorical",
+          "values": [
+            14,
+            21,
+            28
+          ]
+        },
+        "signal_generator_type": {
+          "type": "categorical",
+          "values": [
+            "RSI",
+            "MovingAverageCrossover"
+          ]
+        },
+        "position_sizer": {
+          "type": "categorical",
+          "values": [
+            "equal_weight",
+            "rolling_sharpe",
+            "rolling_sortino",
+            "rolling_beta",
+            "rolling_benchmark_corr",
+            "rolling_downside_volatility"
+          ]
+        },
+        "stop_loss_type": {
+          "type": "categorical",
+          "values": [
+            "NoStopLoss",
+            "AtrBasedStopLoss"
+          ]
+        },
+        "atr_length": {
+          "type": "int",
+          "low": 5,
+          "high": 30,
+          "step": 1
+        },
+        "atr_multiple": {
+          "type": "float",
+          "low": 1.0,
+          "high": 5.0,
+          "step": 0.5
+        },
+        "volatility_lookback_days": {
+          "type": "int",
+          "low": 63,
+          "high": 504,
+          "step": 63
+        },
+        "size_percentile": {
+          "type": "int",
+          "low": 40,
+          "high": 60,
+          "step": 10
+        },
+        "vol_percentile_low": {
+          "type": "int",
+          "low": 20,
+          "high": 40,
+          "step": 5
+        },
+        "vol_percentile_high": {
+          "type": "int",
+          "low": 60,
+          "high": 80,
+          "step": 5
+        },
+        "beta_lookback_months": {
+          "type": "int",
+          "low": 24,
+          "high": 48,
+          "step": 12
+        },
+        "beta_min_cap": {
+          "type": "float",
+          "low": 0.1,
+          "high": 0.5,
+          "step": 0.05
+        },
+        "beta_max_cap": {
+          "type": "float",
+          "low": 1.5,
+          "high": 3.0,
+          "step": 0.5
+        },
+        "beta_max_low_vol": {
+          "type": "float",
+          "low": 0.8,
+          "high": 1.2,
+          "step": 0.1
+        },
+        "use_hedged_legs": {
+          "type": "categorical",
+          "values": [
+            true,
+            false
+          ]
+        },
+        "account_for_costs": {
+          "type": "categorical",
+          "values": [
+            true,
+            false
+          ]
+        },
+        "shorting_fee_annual": {
+          "type": "float",
+          "low": 0.005,
+          "high": 0.02,
+          "step": 0.005
+        },
+        "ga_num_generations": {
+          "default": 100,
+          "type": "int",
+          "low": 10,
+          "high": 1000,
+          "help": "Number of generations for GA."
+        },
+        "ga_num_parents_mating": {
+          "default": 10,
+          "type": "int",
+          "low": 2,
+          "high": 50,
+          "help": "Number of parents to mate in GA."
+        },
+        "ga_sol_per_pop": {
+          "default": 50,
+          "type": "int",
+          "low": 10,
+          "high": 200,
+          "help": "Solutions per population in GA."
+        },
+        "ga_parent_selection_type": {
+          "default": "sss",
+          "type": "categorical",
+          "values": [
+            "sss",
+            "rws",
+            "sus",
+            "rank",
+            "random",
+            "tournament"
+          ],
+          "help": "Parent selection type for GA."
+        },
+        "ga_crossover_type": {
+          "default": "single_point",
+          "type": "categorical",
+          "values": [
+            "single_point",
+            "two_points",
+            "uniform",
+            "scattered"
+          ],
+          "help": "Crossover type for GA."
+        },
+        "ga_mutation_type": {
+          "default": "random",
+          "type": "categorical",
+          "values": [
+            "random",
+            "swap",
+            "inversion",
+            "scramble",
+            "adaptive"
+          ],
+          "help": "Mutation type for GA."
+        },
+        "ga_mutation_percent_genes": {
+          "default": "default",
+          "type": "str",
+          "help": "Percentage of genes to mutate (e.g., 'default', 10 for 10%)."
+        }
+      }
+    }
+  },
+  "trials_data": [
+    {
+      "number": 0,
+      "value": 1.2581988752212725,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 25,
+        "leverage": 1.5,
+        "smoothing_lambda": 0.1
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.21081843930197236,
+          "stability_Sortino_CV": 0.16755573658011488,
+          "stability_Sortino_Worst_10pct": 1.0182369080632774,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 1,
+      "value": 1.4015077025883982,
+      "params": {
+        "volatility_lookback_days": 504,
+        "vol_percentile_low": 40,
+        "leverage": 1.0,
+        "smoothing_lambda": 0.1
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.3195959882159514,
+          "stability_Sortino_CV": 0.22803726845432257,
+          "stability_Sortino_Worst_10pct": 1.0917274794911687,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 2,
+      "value": 1.3827320415516327,
+      "params": {
+        "volatility_lookback_days": 504,
+        "vol_percentile_low": 25,
+        "leverage": 1.25,
+        "smoothing_lambda": 0.7000000000000001
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.2954647096619777,
+          "stability_Sortino_CV": 0.21368182755815943,
+          "stability_Sortino_Worst_10pct": 1.0900559154294538,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 3,
+      "value": 1.4560149508268447,
+      "params": {
+        "volatility_lookback_days": 441,
+        "vol_percentile_low": 30,
+        "leverage": 0.75,
+        "smoothing_lambda": 1.0
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.4362334363676183,
+          "stability_Sortino_CV": 0.29960780012587723,
+          "stability_Sortino_Worst_10pct": 1.0219011904917543,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 4,
+      "value": 1.4739811964644927,
+      "params": {
+        "volatility_lookback_days": 504,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.1
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.31860587591587,
+          "stability_Sortino_CV": 0.21615328382755594,
+          "stability_Sortino_Worst_10pct": 1.2077819287885057,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 5,
+      "value": 1.1519304878370877,
+      "params": {
+        "volatility_lookback_days": 441,
+        "vol_percentile_low": 30,
+        "leverage": 1.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.4373782864112067,
+          "stability_Sortino_CV": 0.3796915621466415,
+          "stability_Sortino_Worst_10pct": 0.6773652221688358,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 6,
+      "value": 1.2325139062037138,
+      "params": {
+        "volatility_lookback_days": 504,
+        "vol_percentile_low": 25,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.8
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.47181908783794646,
+          "stability_Sortino_CV": 0.3828103565104625,
+          "stability_Sortino_Worst_10pct": 0.7766292123692051,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 7,
+      "value": 1.2281336532533977,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 20,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.7000000000000001
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.6238534473364441,
+          "stability_Sortino_CV": 0.5079686935406581,
+          "stability_Sortino_Worst_10pct": 0.6795378720647599,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 8,
+      "value": 1.1159856156400851,
+      "params": {
+        "volatility_lookback_days": 252,
+        "vol_percentile_low": 20,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.1
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.23508922093834184,
+          "stability_Sortino_CV": 0.2106561389713827,
+          "stability_Sortino_Worst_10pct": 0.8804789514375208,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 9,
+      "value": 1.2565012477782918,
+      "params": {
+        "volatility_lookback_days": 504,
+        "vol_percentile_low": 25,
+        "leverage": 0.75,
+        "smoothing_lambda": 1.0
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.0854071581664117,
+          "stability_Sortino_CV": 0.06797220322496783,
+          "stability_Sortino_Worst_10pct": 1.1714910856851142,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 10,
+      "value": 1.1687767383825383,
+      "params": {
+        "volatility_lookback_days": 189,
+        "vol_percentile_low": 40,
+        "leverage": 1.0,
+        "smoothing_lambda": 0.7000000000000001
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.16269711654691732,
+          "stability_Sortino_CV": 0.13920290437339872,
+          "stability_Sortino_Worst_10pct": 1.0040986437439146,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        },
+        "monte_carlo_replacement_stats": {
+          "total_runs": 1,
+          "total_assets_replaced": 2,
+          "avg_replacement_percentage": 0.05,
+          "avg_assets_per_run": 2.0,
+          "asset_replacement_counts": {
+            "UNH": 1,
+            "SYK": 1
+          },
+          "most_replaced_assets": [
+            [
+              "UNH",
+              1
+            ],
+            [
+              "SYK",
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "number": 11,
+      "value": 1.2371558839633845,
+      "params": {
+        "volatility_lookback_days": 504,
+        "vol_percentile_low": 40,
+        "leverage": 0.75,
+        "smoothing_lambda": 1.0
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.1622999525220492,
+          "stability_Sortino_CV": 0.13118795668828806,
+          "stability_Sortino_Worst_10pct": 1.0757444600723336,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        },
+        "monte_carlo_replacement_stats": {
+          "total_runs": 1,
+          "total_assets_replaced": 2,
+          "avg_replacement_percentage": 0.05,
+          "avg_assets_per_run": 2.0,
+          "asset_replacement_counts": {
+            "RTX": 1,
+            "GS": 1
+          },
+          "most_replaced_assets": [
+            [
+              "RTX",
+              1
+            ],
+            [
+              "GS",
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "number": 12,
+      "value": 1.1996238754695694,
+      "params": {
+        "volatility_lookback_days": 315,
+        "vol_percentile_low": 40,
+        "leverage": 1.25,
+        "smoothing_lambda": 0.9
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.10199916794215229,
+          "stability_Sortino_CV": 0.08502595690855744,
+          "stability_Sortino_Worst_10pct": 1.0991576428329444,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        },
+        "monte_carlo_replacement_stats": {
+          "total_runs": 1,
+          "total_assets_replaced": 2,
+          "avg_replacement_percentage": 0.05,
+          "avg_assets_per_run": 2.0,
+          "asset_replacement_counts": {
+            "LLY": 1,
+            "COST": 1
+          },
+          "most_replaced_assets": [
+            [
+              "LLY",
+              1
+            ],
+            [
+              "COST",
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "number": 13,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.30000000000000004
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 14,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.30000000000000004
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 15,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 16,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.30000000000000004
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 17,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 18,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.30000000000000004
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 19,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 20,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 21,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 22,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 23,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 24,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 25,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 26,
+      "value": 1.1401673684349152,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.22191554896975282,
+          "stability_Sortino_CV": 0.19463418714953387,
+          "stability_Sortino_Worst_10pct": 0.9741823398480477,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        },
+        "monte_carlo_replacement_stats": {
+          "total_runs": 1,
+          "total_assets_replaced": 2,
+          "avg_replacement_percentage": 0.05,
+          "avg_assets_per_run": 2.0,
+          "asset_replacement_counts": {
+            "PEP": 1,
+            "BKNG": 1
+          },
+          "most_replaced_assets": [
+            [
+              "PEP",
+              1
+            ],
+            [
+              "BKNG",
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "number": 27,
+      "value": 1.1401673684349152,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.22191554896975282,
+          "stability_Sortino_CV": 0.19463418714953387,
+          "stability_Sortino_Worst_10pct": 0.9741823398480477,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        },
+        "monte_carlo_replacement_stats": {
+          "total_runs": 1,
+          "total_assets_replaced": 2,
+          "avg_replacement_percentage": 0.05,
+          "avg_assets_per_run": 2.0,
+          "asset_replacement_counts": {
+            "SYK": 1,
+            "WFC": 1
+          },
+          "most_replaced_assets": [
+            [
+              "SYK",
+              1
+            ],
+            [
+              "WFC",
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "number": 28,
+      "value": 1.1401673684349152,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.22191554896975282,
+          "stability_Sortino_CV": 0.19463418714953387,
+          "stability_Sortino_Worst_10pct": 0.9741823398480477,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        },
+        "monte_carlo_replacement_stats": {
+          "total_runs": 1,
+          "total_assets_replaced": 2,
+          "avg_replacement_percentage": 0.05,
+          "avg_assets_per_run": 2.0,
+          "asset_replacement_counts": {
+            "GOOGL": 1,
+            "AMGN": 1
+          },
+          "most_replaced_assets": [
+            [
+              "GOOGL",
+              1
+            ],
+            [
+              "AMGN",
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "number": 29,
+      "value": 1.1401673684349152,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.22191554896975282,
+          "stability_Sortino_CV": 0.19463418714953387,
+          "stability_Sortino_Worst_10pct": 0.9741823398480477,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        },
+        "monte_carlo_replacement_stats": {
+          "total_runs": 1,
+          "total_assets_replaced": 2,
+          "avg_replacement_percentage": 0.05,
+          "avg_assets_per_run": 2.0,
+          "asset_replacement_counts": {
+            "LIN": 1,
+            "PG": 1
+          },
+          "most_replaced_assets": [
+            [
+              "LIN",
+              1
+            ],
+            [
+              "PG",
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "number": 30,
+      "value": 1.1401673684349152,
+      "params": {
+        "volatility_lookback_days": 378,
+        "vol_percentile_low": 35,
+        "leverage": 0.5,
+        "smoothing_lambda": 0.4
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.22191554896975282,
+          "stability_Sortino_CV": 0.19463418714953387,
+          "stability_Sortino_Worst_10pct": 0.9741823398480477,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        },
+        "monte_carlo_replacement_stats": {
+          "total_runs": 1,
+          "total_assets_replaced": 2,
+          "avg_replacement_percentage": 0.05,
+          "avg_assets_per_run": 2.0,
+          "asset_replacement_counts": {
+            "MA": 1,
+            "UNH": 1
+          },
+          "most_replaced_assets": [
+            [
+              "MA",
+              1
+            ],
+            [
+              "UNH",
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "number": 31,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 126,
+        "vol_percentile_low": 30,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.0
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 32,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 126,
+        "vol_percentile_low": 30,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.0
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 33,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 126,
+        "vol_percentile_low": 30,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.0
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 34,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 441,
+        "vol_percentile_low": 30,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.0
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 35,
+      "value": null,
+      "params": {
+        "volatility_lookback_days": 126,
+        "vol_percentile_low": 30,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.0
+      },
+      "state": "RUNNING"
+    },
+    {
+      "number": 36,
+      "value": 1.5287798715456065,
+      "params": {
+        "volatility_lookback_days": 441,
+        "vol_percentile_low": 30,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.0
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.9884823747757433,
+          "stability_Sortino_CV": 0.6465825415246874,
+          "stability_Sortino_Worst_10pct": 0.6918367484384642,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 37,
+      "value": 1.5729521402479594,
+      "params": {
+        "volatility_lookback_days": 126,
+        "vol_percentile_low": 30,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.0
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.9765532120038168,
+          "stability_Sortino_CV": 0.6208410205347211,
+          "stability_Sortino_Worst_10pct": 0.717647724678655,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 38,
+      "value": 1.5729521402479594,
+      "params": {
+        "volatility_lookback_days": 126,
+        "vol_percentile_low": 30,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.0
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.9765532120038168,
+          "stability_Sortino_CV": 0.6208410205347211,
+          "stability_Sortino_Worst_10pct": 0.717647724678655,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 39,
+      "value": 1.6077160482841932,
+      "params": {
+        "volatility_lookback_days": 126,
+        "vol_percentile_low": 30,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.2
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.0159562061518443,
+          "stability_Sortino_CV": 0.6319251507354833,
+          "stability_Sortino_Worst_10pct": 0.7381508570488992,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 40,
+      "value": 1.5729521402479594,
+      "params": {
+        "volatility_lookback_days": 126,
+        "vol_percentile_low": 30,
+        "leverage": 0.75,
+        "smoothing_lambda": 0.0
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 0.9765532120038168,
+          "stability_Sortino_CV": 0.6208410205347211,
+          "stability_Sortino_Worst_10pct": 0.717647724678655,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 41,
+      "value": 1.6158110756087367,
+      "params": {
+        "volatility_lookback_days": 126,
+        "vol_percentile_low": 30,
+        "leverage": 1.0,
+        "smoothing_lambda": 0.2
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.0251719287964134,
+          "stability_Sortino_CV": 0.634462743987686,
+          "stability_Sortino_Worst_10pct": 0.7430041437755138,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 42,
+      "value": 1.6158110756087367,
+      "params": {
+        "volatility_lookback_days": 126,
+        "vol_percentile_low": 30,
+        "leverage": 1.0,
+        "smoothing_lambda": 0.2
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.0251719287964134,
+          "stability_Sortino_CV": 0.634462743987686,
+          "stability_Sortino_Worst_10pct": 0.7430041437755138,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 43,
+      "value": 1.6158110756087367,
+      "params": {
+        "volatility_lookback_days": 126,
+        "vol_percentile_low": 30,
+        "leverage": 1.0,
+        "smoothing_lambda": 0.2
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.0251719287964134,
+          "stability_Sortino_CV": 0.634462743987686,
+          "stability_Sortino_Worst_10pct": 0.7430041437755138,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 44,
+      "value": 1.563120093583779,
+      "params": {
+        "volatility_lookback_days": 189,
+        "vol_percentile_low": 25,
+        "leverage": 1.25,
+        "smoothing_lambda": 0.2
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.123859026477106,
+          "stability_Sortino_CV": 0.718984440856636,
+          "stability_Sortino_Worst_10pct": 0.65707676763482,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 45,
+      "value": 1.563120093583779,
+      "params": {
+        "volatility_lookback_days": 189,
+        "vol_percentile_low": 25,
+        "leverage": 1.25,
+        "smoothing_lambda": 0.2
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.123859026477106,
+          "stability_Sortino_CV": 0.718984440856636,
+          "stability_Sortino_Worst_10pct": 0.65707676763482,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 46,
+      "value": 1.563120093583779,
+      "params": {
+        "volatility_lookback_days": 189,
+        "vol_percentile_low": 25,
+        "leverage": 1.25,
+        "smoothing_lambda": 0.2
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.123859026477106,
+          "stability_Sortino_CV": 0.718984440856636,
+          "stability_Sortino_Worst_10pct": 0.65707676763482,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 47,
+      "value": 1.6513856464084937,
+      "params": {
+        "volatility_lookback_days": 252,
+        "vol_percentile_low": 30,
+        "leverage": 1.0,
+        "smoothing_lambda": 0.30000000000000004
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.1964974909167223,
+          "stability_Sortino_CV": 0.7245415348734063,
+          "stability_Sortino_Worst_10pct": 0.7765297882271689,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 48,
+      "value": 1.6513856464084937,
+      "params": {
+        "volatility_lookback_days": 252,
+        "vol_percentile_low": 30,
+        "leverage": 1.0,
+        "smoothing_lambda": 0.30000000000000004
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.1964974909167223,
+          "stability_Sortino_CV": 0.7245415348734063,
+          "stability_Sortino_Worst_10pct": 0.7765297882271689,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 49,
+      "value": 1.6513856464084937,
+      "params": {
+        "volatility_lookback_days": 252,
+        "vol_percentile_low": 30,
+        "leverage": 1.0,
+        "smoothing_lambda": 0.30000000000000004
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.1964974909167223,
+          "stability_Sortino_CV": 0.7245415348734063,
+          "stability_Sortino_Worst_10pct": 0.7765297882271689,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 50,
+      "value": 1.6513856464084937,
+      "params": {
+        "volatility_lookback_days": 252,
+        "vol_percentile_low": 30,
+        "leverage": 1.0,
+        "smoothing_lambda": 0.30000000000000004
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.1964974909167223,
+          "stability_Sortino_CV": 0.7245415348734063,
+          "stability_Sortino_Worst_10pct": 0.7765297882271689,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 51,
+      "value": 1.6513856464084937,
+      "params": {
+        "volatility_lookback_days": 252,
+        "vol_percentile_low": 30,
+        "leverage": 1.0,
+        "smoothing_lambda": 0.30000000000000004
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.1964974909167223,
+          "stability_Sortino_CV": 0.7245415348734063,
+          "stability_Sortino_Worst_10pct": 0.7765297882271689,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    },
+    {
+      "number": 52,
+      "value": 1.6513856464084937,
+      "params": {
+        "volatility_lookback_days": 252,
+        "vol_percentile_low": 30,
+        "leverage": 1.0,
+        "smoothing_lambda": 0.30000000000000004
+      },
+      "state": "COMPLETE",
+      "user_attrs": {
+        "stability_metrics": {
+          "stability_Sortino_Std": 1.1964974909167223,
+          "stability_Sortino_CV": 0.7245415348734063,
+          "stability_Sortino_Worst_10pct": 0.7765297882271689,
+          "stability_Sortino_Consistency_Ratio": 1.0
+        }
+      }
+    }
+  ],
+  "best_trial_number": 47
+}

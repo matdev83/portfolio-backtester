@@ -42,6 +42,8 @@ def _resolve_strategy(name: str):
         class_name = "VAMSNoDownsideStrategy"
     elif name == "ema_crossover":
         class_name = "EMAStrategy"
+    elif name == "low_volatility_factor":
+        class_name = "LowVolatilityFactorStrategy"
     return getattr(strategies, class_name, None)
 
 

@@ -201,18 +201,22 @@ class OptimizerReportGenerator:
             return {key: self._make_json_serializable(value) for key, value in obj.items()}
         elif isinstance(obj, list):
             return [self._make_json_serializable(item) for item in obj]
+        elif isinstance(obj, (pd.Series, pd.DataFrame)):
+            return obj.to_dict() if hasattr(obj, 'to_dict') else str(obj)
         elif isinstance(obj, np.integer):
             return int(obj)
         elif isinstance(obj, np.floating):
             return float(obj)
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
-        elif pd.isna(obj):
+        elif isinstance(obj, (pd.Timestamp, pd.DatetimeIndex)):
+            return str(obj)
+        elif pd.isna(obj) if not isinstance(obj, (pd.Series, pd.DataFrame)) else False:
             return None
         else:
             return obj
     
-    def move_plots_to_run_directory(self, run_dir: Path, plots_source_dir: str = "plots") -> Dict[str, str]:
+    def move_plots_to_run_directory(self, run_dir: Path, plots_source_dir: str = "plots", strategy_name: Optional[str] = None) -> Dict[str, str]:
         """Move generated plots from the plots directory to the run directory."""
         plots_dir = run_dir / "plots"
         source_plots_dir = Path(plots_source_dir)
@@ -221,6 +225,10 @@ class OptimizerReportGenerator:
         
         if source_plots_dir.exists():
             for plot_file in source_plots_dir.glob("*.png"):
+                # Filter plots by strategy name if provided
+                if strategy_name and strategy_name not in plot_file.name:
+                    continue
+                    
                 destination = plots_dir / plot_file.name
                 try:
                     plot_file.rename(destination)
@@ -724,7 +732,7 @@ def create_optimization_report(
     generator.save_optimization_data(run_dir, optimization_results)
     
     # Move plots to run directory
-    moved_plots = generator.move_plots_to_run_directory(run_dir, plots_source_dir)
+    moved_plots = generator.move_plots_to_run_directory(run_dir, plots_source_dir, strategy_name)
     
     # Generate comprehensive markdown report
     report_path = generator.generate_markdown_report(

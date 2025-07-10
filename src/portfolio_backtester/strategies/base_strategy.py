@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable, Union
 
 logger = logging.getLogger(__name__)
 
@@ -142,40 +142,241 @@ class BaseStrategy(ABC):
         return w_new
 
     # ------------------------------------------------------------------ #
-    # Default signal generation pipeline (Abstract method to be implemented by subclasses)
+    # ------------------------------------------------------------------ #
+    # Core Feature Pre-computation (Abstract methods for vectorized operations)
     # ------------------------------------------------------------------ #
     @abstractmethod
-    def generate_signals(
+    def _precompute_core_features(
         self,
-        all_historical_data: pd.DataFrame, # Full historical data for universe assets
-        benchmark_historical_data: pd.DataFrame, # Full historical data for benchmark
-        current_date: pd.Timestamp, # The current date for signal generation
-        start_date: Optional[pd.Timestamp] = None, # Optional start date for WFO window
-        end_date: Optional[pd.Timestamp] = None, # Optional end date for WFO window
-    ) -> pd.DataFrame: # Returns a DataFrame of weights
+        all_historical_data: pd.DataFrame,  # Full historical OHLCV for the entire window (train+test)
+        benchmark_historical_data: pd.DataFrame,  # Full historical OHLCV for benchmark
+        universe_tickers: list[str],
+        benchmark_ticker: str
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Generates trading signals based on historical data and current date.
-        Subclasses must implement this method.
+        Pre-computes core features (e.g., momentum scores, SMAs) for all assets
+        and benchmark over the entire historical window in a vectorized manner.
 
         Args:
-            all_historical_data: DataFrame with historical OHLCV data for all assets
-                                 in the strategy's universe, up to and including current_date.
-            benchmark_historical_data: DataFrame with historical OHLCV data for the benchmark,
-                                       up to and including current_date.
-            current_date: The specific date for which signals are to be generated.
-                          Calculations should not use data beyond this date.
-            start_date: If provided, signals should only be generated on or after this date.
-            end_date: If provided, signals should only be generated on or before this date.
+            all_historical_data: DataFrame with historical OHLCV data for all assets.
+            benchmark_historical_data: DataFrame with historical OHLCV data for the benchmark.
+            universe_tickers: List of tickers in the strategy's universe.
+            benchmark_ticker: Ticker for the benchmark.
 
         Returns:
-            A DataFrame indexed by date, with columns for each asset, containing
-            the target weights. Should typically contain a single row for current_date
-            if generating signals for one date at a time, or multiple rows if the
-            strategy generates signals for a range and then filters.
-            The weights should adhere to the start_date and end_date if provided.
+            A tuple of DataFrames: (precomputed_asset_features, precomputed_benchmark_features).
+            - precomputed_asset_features: DataFrame with pre-computed asset-specific features (e.g., momentum scores)
+                                          indexed by date, columns by asset.
+            - precomputed_benchmark_features: DataFrame with pre-computed benchmark features (e.g., SMAs)
+                                              indexed by date.
         """
         pass
 
+    # ------------------------------------------------------------------ #
+    # Stateful Signal Application (Abstract method for iterative application)
+    # ------------------------------------------------------------------ #
+    @abstractmethod
+    def _apply_filters_and_smoothing(
+        self,
+        current_date: pd.Timestamp,
+        asset_features_at_date: pd.DataFrame,  # Sliced features for current_date (could be multiple features, so DataFrame)
+        benchmark_features_at_date: pd.Series,  # Sliced benchmark features for current_date (e.g. benchmark SMA value)
+        asset_ohlc_hist_for_sl: pd.DataFrame, # Recent OHLCV for SL calc (sliced)
+        benchmark_ohlc_hist_for_sma: pd.DataFrame, # Recent OHLCV for SMA calc (sliced) - full price series for rolling
+        w_prev: pd.Series,  # Previous period's weights (state)
+        entry_prices: pd.Series, # Entry prices (state)
+        current_derisk_flag: bool, # Previous derisk state
+        consecutive_periods_under_sma: int # Previous consecutive periods under SMA
+    ) -> tuple[pd.Series, pd.Series, bool, int]: # Updated return type hint for final_weights_for_date to pd.Series
+        """
+        Applies stateful filters, smoothing, and stop loss to generate final weights
+        for a single `current_date` using pre-computed features and previous state.
+        
+        Returns:
+            A tuple: (final_weights_for_current_date, updated_entry_prices, updated_derisk_flag, updated_consecutive_periods_under_sma)
+        """
+        pass
+
+    # ------------------------------------------------------------------ #
+    # Overall Signal Generation Pipeline (Orchestrates vectorized and iterative steps)
+    # ------------------------------------------------------------------ #
+    def generate_signals(
+        self,
+        all_historical_data: pd.DataFrame,  # Full historical OHLCV for universe assets
+        benchmark_historical_data: pd.DataFrame,  # Full historical OHLCV for benchmark
+        rebalance_dates: pd.DatetimeIndex,  # All rebalance dates for the window
+        wfo_start_date: Optional[pd.Timestamp] = None, # Optional start date for WFO window (for filtering output)
+        wfo_end_date: Optional[pd.Timestamp] = None, # Optional end date for WFO window (for filtering output)
+        global_config: Optional[dict] = None # Added global_config for get_universe
+    ) -> pd.DataFrame:
+        """
+        Generates trading signals for all rebalance dates within a given window.
+        This method orchestrates the vectorized feature pre-computation and the
+        iterative application of stateful filters and smoothing.
+
+        Args:
+            all_historical_data: DataFrame with historical OHLCV data for all assets
+                                 in the strategy's universe, for the entire WFO window.
+            benchmark_historical_data: DataFrame with historical OHLCV data for the benchmark,
+                                       for the entire WFO window.
+            rebalance_dates: A DatetimeIndex of all dates for which signals need to be generated
+                             within this window.
+            wfo_start_date: Optional. The actual start date of the WFO *test* window. Signals
+                            before this date should be zeroed out.
+            wfo_end_date: Optional. The actual end date of the WFO *test* window. Signals
+                          after this date should be zeroed out.
+            global_config: Optional. The global configuration dictionary, needed for universe.
+
+        Returns:
+            A DataFrame indexed by rebalance_dates, with columns for each asset,
+            containing the target weights.
+        """
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        
+        # Use provided global_config if available, otherwise fallback to strategy_config (less ideal)
+        effective_global_config = global_config if global_config is not None else self.strategy_config.get("global_config", {})
+        universe_tickers = [item[0] for item in self.get_universe(effective_global_config)]
+        benchmark_ticker = effective_global_config.get("benchmark", "")
+
+        # --- Initial Data Sufficiency & Availability Validation (once per window) ---
+        is_sufficient, reason = self.validate_data_sufficiency(
+            all_historical_data, benchmark_historical_data, rebalance_dates.max() if not rebalance_dates.empty else pd.Timestamp.now()
+        )
+        if not is_sufficient:
+            logger.warning(f"Insufficient data for window: {reason}. Returning zero weights.")
+            return pd.DataFrame(0.0, index=rebalance_dates, columns=universe_tickers)
+
+        valid_assets_for_window = self.filter_universe_by_data_availability(
+            all_historical_data, rebalance_dates.max() if not rebalance_dates.empty else pd.Timestamp.now()
+        )
+        if not valid_assets_for_window:
+            logger.warning(f"No valid assets for window. Returning zero weights.")
+            return pd.DataFrame(0.0, index=rebalance_dates, columns=universe_tickers)
+        
+        # Filter all_historical_data to only include valid assets
+        if isinstance(all_historical_data.columns, pd.MultiIndex):
+            cols_to_select = []
+            all_fields = all_historical_data.columns.get_level_values('Field').unique()
+            for asset in valid_assets_for_window:
+                for field in all_fields:
+                    if (asset, field) in all_historical_data.columns:
+                        cols_to_select.append((asset, field))
+            all_historical_data_filtered = all_historical_data[cols_to_select]
+        else:
+            all_historical_data_filtered = all_historical_data[valid_assets_for_window]
+
+        # --- Pre-compute Core Features (Vectorized once per window) ---
+        try:
+            asset_features, benchmark_features = self._precompute_core_features(
+                all_historical_data_filtered, benchmark_historical_data, valid_assets_for_window, benchmark_ticker
+            )
+            if asset_features.empty:
+                logger.warning(f"Pre-computed asset features are empty. Returning zero weights.")
+                return pd.DataFrame(0.0, index=rebalance_dates, columns=valid_assets_for_window)
+            if benchmark_features.empty and params.get("sma_filter_window", 0) > 0:
+                 logger.warning(f"Pre-computed benchmark features are empty but SMA filter is enabled. Returning zero weights.")
+                 return pd.DataFrame(0.0, index=rebalance_dates, columns=valid_assets_for_window)
+        except Exception as e:
+            logger.error(f"Error during pre-computation of core features: {e}", exc_info=True)
+            return pd.DataFrame(0.0, index=rebalance_dates, columns=valid_assets_for_window)
+
+
+        # --- Initialize Stateful Variables ---
+        self.w_prev = pd.Series(0.0, index=valid_assets_for_window)
+        self.current_derisk_flag = False
+        self.consecutive_periods_under_sma = 0
+        self.entry_prices = pd.Series(np.nan, index=valid_assets_for_window)
+
+        all_monthly_weights = []
+
+        # --- Iterative Application of Stateful Logic ---
+        for current_rebalance_date in rebalance_dates:
+            # Filter by WFO window (if applicable) - apply after calculations for full window
+            if (wfo_start_date and current_rebalance_date < wfo_start_date) or \
+               (wfo_end_date and current_rebalance_date > wfo_end_date):
+                all_monthly_weights.append(pd.DataFrame(0.0, index=[current_rebalance_date], columns=valid_assets_for_window))
+                continue
+
+            # Slice pre-computed features for current date
+            # Ensure asset_features_at_date is a DataFrame consistent with _apply_filters_and_smoothing signature
+            asset_features_at_date = asset_features.loc[[current_rebalance_date]] if current_rebalance_date in asset_features.index else pd.DataFrame(dtype=float, index=[current_rebalance_date], columns=valid_assets_for_window)
+            # Ensure benchmark_features_at_date is a Series
+            benchmark_features_at_date = benchmark_features.loc[current_rebalance_date] if current_rebalance_date in benchmark_features.index else pd.Series(dtype=float, index=[benchmark_ticker])
+
+            # Prepare recent OHLCV data for stop loss and SMA calculation (if they still need it for context)
+            # OPTIMIZATION: Slice only needed recent data
+            sl_handler = self.get_stop_loss_handler()
+            atr_length = sl_handler.stop_loss_specific_config.get("atr_length", 14) if hasattr(sl_handler, 'stop_loss_specific_config') else 14
+            buffer_periods_sl = max(30, atr_length * 2) # e.g., 20 days per month
+            
+            # Fetch `current_rebalance_date`'s exact timestamp in `all_historical_data` index
+            try:
+                # Ensure get_loc returns an integer, explicitly cast if needed
+                current_date_exact_idx = int(all_historical_data.index.get_loc(current_rebalance_date, method='ffill'))
+                slice_start_idx_sl = max(0, current_date_exact_idx - buffer_periods_sl)
+                asset_ohlc_hist_for_sl = all_historical_data.iloc[slice_start_idx_sl : current_date_exact_idx + 1]
+            except KeyError:
+                logger.warning(f"current_rebalance_date {current_rebalance_date} not found in all_historical_data for SL slice. Using full data up to date.")
+                asset_ohlc_hist_for_sl = all_historical_data[all_historical_data.index <= current_rebalance_date]
+            except Exception as e:
+                logger.warning(f"Error getting precise index for SL: {e}. Falling back to full data slice.")
+                asset_ohlc_hist_for_sl = all_historical_data[all_historical_data.index <= current_rebalance_date]
+
+
+            # Similarly for benchmark_ohlc_hist_for_sma
+            sma_filter_window = params.get("sma_filter_window")
+            # Convert monthly window to daily periods for buffer, assuming daily data
+            buffer_periods_sma = max(30, sma_filter_window * 20) if sma_filter_window and sma_filter_window > 0 else 0 
+            
+            if sma_filter_window and sma_filter_window > 0:
+                try:
+                    # Ensure get_loc returns an integer, explicitly cast if needed
+                    benchmark_date_exact_idx = int(benchmark_historical_data.index.get_loc(current_rebalance_date, method='ffill'))
+                    slice_start_idx_sma = max(0, benchmark_date_exact_idx - buffer_periods_sma)
+                    benchmark_ohlc_hist_for_sma = benchmark_historical_data.iloc[slice_start_idx_sma : benchmark_date_exact_idx + 1]
+                except KeyError:
+                     logger.warning(f"current_rebalance_date {current_rebalance_date} not found in benchmark_historical_data for SMA slice. Using full data up to date.")
+                     benchmark_ohlc_hist_for_sma = benchmark_historical_data[benchmark_historical_data.index <= current_rebalance_date]
+                except Exception as e:
+                    logger.warning(f"Error getting precise index for SMA: {e}. Falling back to full data slice.")
+                    benchmark_ohlc_hist_for_sma = benchmark_historical_data[benchmark_historical_data.index <= current_rebalance_date]
+            else:
+                 benchmark_ohlc_hist_for_sma = pd.DataFrame() # Empty if SMA filter not enabled
+
+            # Call the abstract method for stateful application
+            try:
+                final_weights_for_date, self.entry_prices, self.current_derisk_flag, self.consecutive_periods_under_sma = \
+                    self._apply_filters_and_smoothing(
+                        current_rebalance_date,
+                        asset_features_at_date,
+                        benchmark_features_at_date,
+                        asset_ohlc_hist_for_sl,
+                        benchmark_ohlc_hist_for_sma,
+                        self.w_prev,
+                        self.entry_prices,
+                        self.current_derisk_flag,
+                        self.consecutive_periods_under_sma
+                    )
+            except Exception as e:
+                logger.error(f"Error applying filters and smoothing for date {current_rebalance_date}: {e}", exc_info=True)
+                final_weights_for_date = pd.Series(0.0, index=valid_assets_for_window) # Return zero weights on error
+
+            self.w_prev = final_weights_for_date.copy()
+
+            # Append the weights for the current date
+            output_weights_df = pd.DataFrame(0.0, index=[current_rebalance_date], columns=valid_assets_for_window)
+            output_weights_df.loc[current_rebalance_date] = final_weights_for_date
+            all_monthly_weights.append(output_weights_df)
+
+        if not all_monthly_weights:
+            return pd.DataFrame(0.0, index=rebalance_dates, columns=universe_tickers)
+
+        # Concatenate all generated weights
+        signals = pd.concat(all_monthly_weights)
+        signals = signals.reindex(rebalance_dates).fillna(0.0) # Ensure all rebalance dates are present
+
+        return signals
+    
     # --- Helper methods that might be used by subclasses ---
 
     # _calculate_candidate_weights and _apply_leverage_and_smoothing remain as they are useful general helpers.
@@ -331,7 +532,7 @@ class BaseStrategy(ABC):
         Returns:
             list: List of assets that have sufficient data
         """
-        min_periods_required = min_periods_override or self.get_minimum_required_periods()
+        min_periods_required = min_periods_override if min_periods_override is not None else self.get_minimum_required_periods()
         
         if all_historical_data.empty:
             return []
@@ -343,13 +544,11 @@ class BaseStrategy(ABC):
         
         valid_assets = []
         
-        # Get asset list based on column structure
+        # Get asset list based on column structure, ensuring it's a list
         if isinstance(all_historical_data.columns, pd.MultiIndex):
-            # MultiIndex columns - get unique tickers
-            asset_list = all_historical_data.columns.get_level_values('Ticker').unique()
+            asset_list = list(all_historical_data.columns.get_level_values('Ticker').unique())
         else:
-            # Simple columns - column names are tickers
-            asset_list = all_historical_data.columns
+            asset_list = list(all_historical_data.columns)
         
         for asset in asset_list:
             try:
@@ -381,6 +580,19 @@ class BaseStrategy(ABC):
                     continue
                 
                 # Calculate available months for this asset
+                # Use total_seconds for more robust month calculation for varying timeframes
+                # Or simply check length of asset_prices based on frequency (assuming daily here)
+                available_periods_approx = len(asset_prices)
+                
+                # Assuming get_minimum_required_periods() returns in *months* or *trading days*
+                # If it's months, convert `available_periods_approx` (days) to months approx (20 trading days/month)
+                # For more accuracy, use pd.DateOffset(months=min_periods_required) check
+                
+                # Simpler check: ensure there are enough daily data points
+                # Assuming min_periods_required from get_minimum_required_periods is in *trading days*
+                # If get_minimum_required_periods returns months, this needs adjustment
+                
+                # For now, stick to the original month calculation, as it's consistent with `get_minimum_required_periods`
                 available_months = (current_date.year - asset_earliest.year) * 12 + (current_date.month - asset_earliest.month)
                 
                 # Check if asset has minimum required data
@@ -392,6 +604,10 @@ class BaseStrategy(ABC):
                 logger.debug(f"Skipping asset {asset} due to data processing error: {e}")
                 continue
         
+        # Ensure asset_list is not empty before calculating rates
+        if not asset_list: # If no assets were initially in all_historical_data
+            return []
+
         if len(valid_assets) < len(asset_list):
             excluded_count = len(asset_list) - len(valid_assets)
             exclusion_rate = excluded_count / len(asset_list)

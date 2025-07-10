@@ -232,7 +232,7 @@ class TestEnhancedBacktestingIntegration:
                     enhanced_scenario_config,
                     mock_market_data.xs('Close', level='Field', axis=1).resample('ME').last(),
                     mock_market_data,
-                    mock_market_data.xs('Close', level='Field', axis=1).pct_change().fillna(0)
+                    mock_market_data.xs('Close', level='Field', axis=1).pct_change(fill_method=None).fillna(0)
                 )
                 
                 # Verify optimization ran
@@ -383,7 +383,7 @@ class TestEnhancedBacktestingIntegration:
                 columns=['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'SPY'],
                 index=monthly_dates
             )
-            rets_full = daily_data.pct_change().fillna(0)
+            rets_full = daily_data.pct_change(fill_method=None).fillna(0)
             
             # Create windows
             windows = [

@@ -1,0 +1,34 @@
+{
+  "strategy_name": "Test_Momentum_WFO",
+  "optimal_parameters": {
+    "lookback_months": 6,
+    "leverage": 1.0,
+    "smoothing_lambda": 0.5,
+    "long_only": true,
+    "top_decile_fraction": 0.1
+  },
+  "performance_metrics": {
+    "Total Return": -1.000000000064373,
+    "Ann. Return": -1.0,
+    "Ann. Vol": 14.983525945344724,
+    "Sharpe": -0.06673996518894759,
+    "Sortino": -1.7438522826251257,
+    "Calmar": -0.4879766470925373,
+    "Alpha (ann)": NaN,
+    "Beta": NaN,
+    "Max Drawdown": -2.049278394689993,
+    "VaR (5%)": -1.4854103564753114,
+    "CVaR (5%)": -2.1718941303144574,
+    "Tail Ratio": 0.9156060366706008,
+    "Avg DD Duration": 86.0,
+    "Avg Recovery Time": NaN,
+    "Skew": -0.12622636839270476,
+    "Kurtosis": 0.35014451242010436,
+    "R^2": NaN,
+    "K-Ratio": NaN,
+    "ADF Statistic": -15.51597801520952,
+    "ADF p-value": 2.3160561264722118e-28,
+    "Deflated Sharpe": 1.0
+  },
+  "optimization_metadata": {
+    "num_trials": 

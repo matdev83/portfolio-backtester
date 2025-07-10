@@ -333,7 +333,7 @@ class TestAdvancedVisualizations:
         daily_data = pd.DataFrame(np.random.randn(100, 4), 
                                  columns=['AAPL', 'MSFT', 'GOOGL', 'SPY'],
                                  index=dates)
-        rets_full = daily_data.pct_change().fillna(0)
+        rets_full = daily_data.pct_change(fill_method=None).fillna(0)
         
         # Mock run_scenario to return sample returns
         mock_backtester.run_scenario.return_value = pd.Series(

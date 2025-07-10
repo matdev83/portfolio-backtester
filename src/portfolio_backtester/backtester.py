@@ -20,7 +20,7 @@ from .spy_holdings import reset_history_cache, get_top_weight_sp500_components
 from .utils import _resolve_strategy, INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
 from .backtester_logic.reporting import display_results
 from .backtester_logic.optimization import run_optimization
-from .backtester_logic.execution import run_backtest_mode, run_optimize_mode
+from .backtester_logic.execution import run_backtest_mode, run_optimize_mode, _generate_optimization_report
 from .backtester_logic.monte_carlo import run_monte_carlo_mode
 from .constants import ZERO_RET_EPS
 
@@ -65,6 +65,7 @@ class Backtester:
         self.run_optimize_mode = types.MethodType(run_optimize_mode, self)
         self.run_monte_carlo_mode = types.MethodType(run_monte_carlo_mode, self)
         self.display_results = types.MethodType(display_results, self)
+        self._generate_optimization_report = types.MethodType(_generate_optimization_report, self)
 
     def _get_data_source(self):
         ds = self.global_config.get("data_source", "yfinance").lower()
@@ -107,13 +108,12 @@ class Backtester:
         """Initialize Monte Carlo components for synthetic data generation."""
         try:
             from .monte_carlo.asset_replacement import AssetReplacementManager
-            from .monte_carlo.synthetic_data_generator import SyntheticDataGenerator
             
-            # Initialize asset replacement manager
+            # Initialize asset replacement manager, which in turn initializes SyntheticDataGenerator
             self.asset_replacement_manager = AssetReplacementManager(self.global_config)
             
-            # Initialize synthetic data generator
-            self.synthetic_data_generator = SyntheticDataGenerator(self.global_config)
+            # Access the synthetic_data_generator instance from the asset_replacement_manager
+            self.synthetic_data_generator = self.asset_replacement_manager.synthetic_generator
             
             self.logger.info("Monte Carlo components initialized successfully")
             
@@ -121,129 +121,6 @@ class Backtester:
             self.logger.warning(f"Monte Carlo components not available: {e}")
             self.asset_replacement_manager = None
             self.synthetic_data_generator = None
-    
-    def apply_monte_carlo_replacement(self, original_data, universe, train_start, train_end, 
-                                    test_start, test_end, trial_number=None):
-        """
-        Apply Monte Carlo data replacement to historical data.
-        
-        Args:
-            original_data: Dictionary of asset DataFrames with OHLC data
-            universe: List of asset symbols to consider for replacement
-            train_start: Start date for training period
-            train_end: End date for training period  
-            test_start: Start date for test period
-            test_end: End date for test period
-            trial_number: Optional trial number for reproducibility
-            
-        Returns:
-            Dictionary of modified asset DataFrames
-        """
-        if not self.asset_replacement_manager:
-            self.logger.warning("Monte Carlo not enabled, returning original data")
-            return original_data.copy()
-        
-        try:
-            # Select assets for replacement
-            selected_assets = self.asset_replacement_manager.select_assets_for_replacement(
-                universe=universe
-            )
-            
-            self.logger.info(f"Selected {len(selected_assets)} assets for Monte Carlo replacement: {selected_assets}")
-            
-            # Create modified data copy
-            modified_data = {}
-            
-            for asset in universe:
-                if asset in selected_assets:
-                    # Replace test period data with synthetic data
-                    modified_data[asset] = self._replace_asset_data(
-                        original_data[asset], 
-                        asset,
-                        train_start, 
-                        train_end,
-                        test_start, 
-                        test_end
-                    )
-                else:
-                    # Keep original data
-                    modified_data[asset] = original_data[asset].copy()
-            
-            return modified_data
-            
-        except Exception as e:
-            self.logger.error(f"Monte Carlo replacement failed: {e}")
-            return original_data.copy()
-    
-    def _replace_asset_data(self, asset_data, asset_name, train_start, train_end, 
-                          test_start, test_end):
-        """
-        Replace test period data for a single asset with synthetic data.
-        
-        Args:
-            asset_data: Original asset DataFrame with OHLC data
-            asset_name: Name of the asset
-            train_start, train_end: Training period dates
-            test_start, test_end: Test period dates
-            
-        Returns:
-            Modified asset DataFrame
-        """
-        try:
-            # Get training data for analysis
-            train_mask = (asset_data.index >= train_start) & (asset_data.index <= train_end)
-            train_data = asset_data.loc[train_mask]
-            
-            if len(train_data) < 50:
-                self.logger.warning(f"Insufficient training data for {asset_name}, using original data")
-                return asset_data.copy()
-            
-            # Analyze training data properties
-            asset_stats = self.synthetic_data_generator.analyze_asset_statistics(train_data)
-            
-            # Get test period length
-            test_mask = (asset_data.index >= test_start) & (asset_data.index <= test_end)
-            test_data = asset_data.loc[test_mask]
-            test_length = len(test_data)
-            
-            if test_length == 0:
-                self.logger.warning(f"No test data for {asset_name}, using original data")
-                return asset_data.copy()
-            
-            # Generate synthetic returns for test period
-            synthetic_returns = self.synthetic_data_generator.generate_synthetic_returns(
-                asset_stats, test_length, f"MC_{asset_name}"
-            )
-            
-            # Convert synthetic returns to price data
-            last_train_price = train_data['Close'].iloc[-1]
-            synthetic_prices = last_train_price * np.cumprod(1 + synthetic_returns)
-            
-            # Create synthetic OHLC data
-            synthetic_ohlc = pd.DataFrame({
-                'Open': synthetic_prices * np.random.uniform(0.995, 1.005, len(synthetic_prices)),
-                'High': synthetic_prices * np.random.uniform(1.0, 1.02, len(synthetic_prices)),
-                'Low': synthetic_prices * np.random.uniform(0.98, 1.0, len(synthetic_prices)),
-                'Close': synthetic_prices,
-                'Volume': test_data['Volume'].values if 'Volume' in test_data.columns else np.ones(len(synthetic_prices))
-            }, index=test_data.index)
-            
-            # Ensure High >= max(Open, Close) and Low <= min(Open, Close)
-            synthetic_ohlc['High'] = np.maximum(synthetic_ohlc['High'], 
-                                              np.maximum(synthetic_ohlc['Open'], synthetic_ohlc['Close']))
-            synthetic_ohlc['Low'] = np.minimum(synthetic_ohlc['Low'], 
-                                             np.minimum(synthetic_ohlc['Open'], synthetic_ohlc['Close']))
-            
-            # Combine training data with synthetic test data
-            modified_data = asset_data.copy()
-            modified_data.loc[test_mask] = synthetic_ohlc
-            
-            self.logger.info(f"Successfully replaced test data for {asset_name}")
-            return modified_data
-            
-        except Exception as e:
-            self.logger.error(f"Failed to replace data for {asset_name}: {e}")
-            return asset_data.copy()
 
     def run_scenario(
         self,
@@ -510,7 +387,15 @@ class Backtester:
         mc_enabled = monte_carlo_config.get('enable_synthetic_data', False)
         mc_during_optimization = monte_carlo_config.get('enable_during_optimization', True)
         
-        if mc_enabled and mc_during_optimization:
+        # SMART FEATURE FLAGS: Adaptive Monte Carlo based on optimization mode
+        optimization_mode = monte_carlo_config.get('optimization_mode', 'balanced')
+        trial_threshold = self._get_monte_carlo_trial_threshold(optimization_mode)
+        
+        # Only enable Monte Carlo after sufficient trials for adaptive performance
+        trial_number = getattr(trial, 'number', 0) if trial else 0
+        mc_adaptive_enabled = mc_enabled and mc_during_optimization and (trial_number >= trial_threshold)
+        
+        if mc_adaptive_enabled:
             from .monte_carlo.asset_replacement import AssetReplacementManager
             
             # Create optimized config for Stage 1 MC (faster generation during optimization)
@@ -531,9 +416,11 @@ class Backtester:
             }
             
             asset_replacement_manager = AssetReplacementManager(stage1_config)
-            logger.debug("Stage 1 MC: Lightweight synthetic data enabled for optimization robustness")
+            logger.debug(f"Stage 1 MC: Lightweight synthetic data enabled for optimization robustness (mode: {optimization_mode}, trial: {trial_number})")
         elif mc_enabled and not mc_during_optimization:
             logger.debug("Stage 1 MC: Disabled during optimization for performance")
+        elif mc_enabled and trial_number < trial_threshold:
+            logger.debug(f"Stage 1 MC: Waiting for trial {trial_threshold} before enabling (current: {trial_number}, mode: {optimization_mode})")
         else:
             logger.debug("Stage 1 MC: Monte Carlo disabled in configuration")
 
@@ -621,46 +508,40 @@ class Backtester:
             d_slice = daily_data.loc[tr_start:te_end]
             r_slice = rets_full.loc[tr_start:te_end]
 
-            # Stage 1 MC: Apply lightweight synthetic data to test period only (for robustness)
-            # PERFORMANCE FIX: Only do expensive synthetic data application if Monte Carlo is enabled
-            if trial_synthetic_data is not None and replacement_info is not None:
-                try:
-                    # Apply synthetic data only to test period for Stage 1 MC robustness testing
-                    if isinstance(r_slice.columns, pd.MultiIndex):
-                        # Handle MultiIndex columns
-                        modified_r_slice = r_slice.copy()
-                        for ticker in replacement_info.selected_assets:
-                            if ticker in trial_synthetic_data:
-                                ticker_data = trial_synthetic_data[ticker]
-                                test_mask = (ticker_data.index >= te_start) & (ticker_data.index <= te_end)
-                                if test_mask.any():
-                                    synthetic_returns = ticker_data['Close'].pct_change(fill_method=None).fillna(0)
-                                    # Only replace returns in test period for Stage 1 MC
-                                    if (ticker, 'Close') in modified_r_slice.columns:
-                                        modified_r_slice.loc[te_start:te_end, (ticker, 'Close')] = synthetic_returns.loc[te_start:te_end]
-                        r_slice = modified_r_slice
-                    else:
-                        # Simple column structure
-                        modified_r_slice = r_slice.copy()
-                        for ticker in replacement_info.selected_assets:
-                            if ticker in trial_synthetic_data and ticker in r_slice.columns:
-                                ticker_data = trial_synthetic_data[ticker]
-                                test_mask = (ticker_data.index >= te_start) & (ticker_data.index <= te_end)
-                                if test_mask.any():
-                                    synthetic_returns = ticker_data['Close'].pct_change(fill_method=None).fillna(0)
-                                    # Only replace returns in test period for Stage 1 MC
-                                    modified_r_slice.loc[te_start:te_end, ticker] = synthetic_returns.loc[te_start:te_end]
-                        r_slice = modified_r_slice
-                    
-                    # Log replacement info for this window (only once per trial)
-                    if window_idx == 0 and replacement_info.selected_assets:
-                        logger.debug(f"Stage 1 MC: Trial {getattr(trial, 'number', 0)} applying synthetic data to test periods")
-                    
-                except Exception as e:
-                    logger.error(f"Stage 1 MC: Failed to apply synthetic data for window {window_idx}: {e}")
-                    # Continue with original data if synthetic data application fails
+            # d_slice is the original daily OHLC data for the current window
+            current_daily_data_ohlc = d_slice.copy()
 
-            window_returns = self.run_scenario(scenario_config, m_slice, d_slice, r_slice, verbose=False)
+            # Stage 1 MC: Apply lightweight synthetic data to test period only (for robustness)
+            if mc_adaptive_enabled and trial_synthetic_data is not None and replacement_info is not None:
+                # Iterate through selected assets and replace their test period data
+                for asset in replacement_info.selected_assets:
+                    if asset in trial_synthetic_data:
+                        synthetic_ohlc_for_asset = trial_synthetic_data[asset]
+                        
+                        # Get the test period slice for this asset from the synthetic data
+                        window_synthetic_ohlc = synthetic_ohlc_for_asset.loc[te_start:te_end]
+                        
+                        if not window_synthetic_ohlc.empty:
+                            # Replace data in current_daily_data_ohlc for the test period
+                            if isinstance(current_daily_data_ohlc.columns, pd.MultiIndex):
+                                # MultiIndex: (Ticker, Field)
+                                for field in window_synthetic_ohlc.columns:
+                                    if (asset, field) in current_daily_data_ohlc.columns:
+                                        current_daily_data_ohlc.loc[window_synthetic_ohlc.index, (asset, field)] = window_synthetic_ohlc[field]
+                            else:
+                                # Flat columns: Ticker_Field
+                                for field in window_synthetic_ohlc.columns:
+                                    col_name = f"{asset}_{field}"
+                                    if col_name in current_daily_data_ohlc.columns:
+                                        current_daily_data_ohlc.loc[window_synthetic_ohlc.index, col_name] = window_synthetic_ohlc[field]
+                                    elif field == 'Close' and asset in current_daily_data_ohlc.columns: # Fallback for single column per ticker
+                                        current_daily_data_ohlc.loc[window_synthetic_ohlc.index, asset] = window_synthetic_ohlc[field]
+                                    else:
+                                        logger.warning(f"Could not find column {col_name} or {asset} for synthetic data replacement in current_daily_data_ohlc.")
+                logger.debug(f"Stage 1 MC: Applied synthetic data to current_daily_data_ohlc for window {window_idx+1}")
+            
+            # Pass the potentially modified daily OHLC data to run_scenario
+            window_returns = self.run_scenario(scenario_config, m_slice, current_daily_data_ohlc, rets_daily=None, verbose=False)
 
             if window_returns is None or window_returns.empty:
                 self.logger.warning(f"No returns generated for window {tr_start}-{te_end}. Skipping.")
@@ -741,6 +622,23 @@ class Backtester:
             return tuple(float(v) for v in metric_avgs)
         else:
             return float(metric_avgs[0])
+    
+    def _get_monte_carlo_trial_threshold(self, optimization_mode):
+        """
+        Get the trial threshold for enabling Monte Carlo based on optimization mode.
+        
+        Args:
+            optimization_mode: Performance mode ("fast", "balanced", "comprehensive")
+            
+        Returns:
+            Trial number threshold for enabling Monte Carlo
+        """
+        thresholds = {
+            'fast': 20,        # Enable MC after 20 trials for fast mode
+            'balanced': 10,    # Enable MC after 10 trials for balanced mode  
+            'comprehensive': 5 # Enable MC after 5 trials for comprehensive mode
+        }
+        return thresholds.get(optimization_mode, 10)  # Default to balanced
 
     def run(self):
         logger.info("Starting backtest data retrieval.")

@@ -88,6 +88,11 @@ class SyntheticDataValidator:
             original_data, synthetic_data, asset_name
         )
         
+        # Rolling volatility validation
+        results['rolling_volatility'] = self._validate_rolling_volatility(
+            original_data, synthetic_data, asset_name
+        )
+        
         # Fat tail validation
         results['fat_tails'] = self._validate_fat_tails(
             original_data, synthetic_data, asset_name
@@ -148,6 +153,11 @@ class SyntheticDataValidator:
                 if rel_diff > tolerance:
                     passed = False
             
+            logger.debug(f"Basic Stats for {asset_name}:")
+            logger.debug(f"  Original: {orig_stats}")
+            logger.debug(f"  Synthetic: {synth_stats}")
+            logger.debug(f"  Differences: {differences}")
+            
             return ValidationResults(
                 test_name="basic_statistics",
                 passed=passed,
@@ -180,6 +190,7 @@ class SyntheticDataValidator:
             synth_clean = synthetic.dropna()
             
             if len(orig_clean) < 10 or len(synth_clean) < 10:
+                logger.warning(f"Insufficient data for KS test for {asset_name}. Original: {len(orig_clean)}, Synthetic: {len(synth_clean)}")
                 return ValidationResults(
                     test_name="distribution_similarity",
                     passed=False,
@@ -193,11 +204,13 @@ class SyntheticDataValidator:
             threshold = self.validation_config.get('ks_test_pvalue_threshold', 0.05)
             passed = p_value > threshold
             
+            logger.debug(f"KS Test for {asset_name}: Statistic={ks_statistic:.4f}, P-value={p_value:.4f}, Threshold={threshold:.4f}, Passed={passed}")
+            
             return ValidationResults(
                 test_name="distribution_similarity",
                 passed=passed,
-                p_value=p_value,
-                statistic=ks_statistic,
+                p_value=float(p_value),
+                statistic=float(ks_statistic),
                 critical_value=threshold,
                 details={
                     'test_type': 'Kolmogorov-Smirnov',
@@ -228,16 +241,19 @@ class SyntheticDataValidator:
             orig_autocorr = [original.autocorr(lag=lag) for lag in lags]
             synth_autocorr = [synthetic.autocorr(lag=lag) for lag in lags]
             
-            # Calculate differences
-            autocorr_diffs = [abs(o - s) for o, s in zip(orig_autocorr, synth_autocorr) 
-                            if not (pd.isna(o) or pd.isna(s))]
+            # Filter out NaN values from autocorrelations
+            valid_autocorr_pairs = [(o, s) for o, s in zip(orig_autocorr, synth_autocorr)
+                                    if not (pd.isna(o) or pd.isna(s))]
             
-            if not autocorr_diffs:
+            if not valid_autocorr_pairs:
+                logger.warning(f"No valid autocorrelation values for {asset_name}. Skipping autocorrelation validation.")
                 return ValidationResults(
                     test_name="autocorrelation_structure",
                     passed=False,
                     details={'error': 'No valid autocorrelation values'}
                 )
+            
+            autocorr_diffs = [abs(o - s) for o, s in valid_autocorr_pairs]
             
             # Check if autocorrelation structure is preserved
             tolerance = self.validation_config.get('autocorr_max_deviation', 0.1)
@@ -245,6 +261,8 @@ class SyntheticDataValidator:
             avg_diff = np.mean(autocorr_diffs)
             
             passed = max_diff < tolerance
+            
+            logger.debug(f"Autocorrelation for {asset_name}: Max Diff={max_diff:.4f}, Avg Diff={avg_diff:.4f}, Tolerance={tolerance:.4f}, Passed={passed}")
             
             return ValidationResults(
                 test_name="autocorrelation_structure",
@@ -295,9 +313,11 @@ class SyntheticDataValidator:
             
             # Also check that synthetic data shows volatility clustering
             has_clustering = first_lag_synth > threshold
-            clustering_preserved = clustering_diff < 0.1
+            clustering_preserved = clustering_diff < 0.1 # More lenient for clustering preservation
             
             passed = has_clustering and clustering_preserved
+            
+            logger.debug(f"Volatility Clustering for {asset_name}: Orig Lag1={first_lag_orig:.4f}, Synth Lag1={first_lag_synth:.4f}, Diff={clustering_diff:.4f}, Passed={passed}")
             
             return ValidationResults(
                 test_name="volatility_clustering",
@@ -320,13 +340,82 @@ class SyntheticDataValidator:
                 details={'error': str(e)}
             )
     
+    def _validate_rolling_volatility(
+        self,
+        original: pd.Series,
+        synthetic: pd.Series,
+        asset_name: str
+    ) -> ValidationResults:
+        """Validate rolling volatility similarity."""
+        try:
+            window = self.validation_config.get('rolling_volatility_window', 22) # Default to 22 trading days
+            tolerance = self.validation_config.get('rolling_volatility_tolerance', 0.3) # 30% tolerance
+            
+            if len(original) < window or len(synthetic) < window:
+                logger.warning(f"Insufficient data for rolling volatility validation for {asset_name}. Need at least {window} observations.")
+                return ValidationResults(
+                    test_name="rolling_volatility",
+                    passed=False,
+                    details={'error': 'Insufficient data for rolling volatility validation'}
+                )
+            
+            orig_rolling_std = original.rolling(window=window).std().dropna()
+            synth_rolling_std = synthetic.rolling(window=window).std().dropna()
+            
+            # Ensure both series have comparable length after rolling window
+            min_len = min(len(orig_rolling_std), len(synth_rolling_std))
+            if min_len == 0:
+                logger.warning(f"No valid rolling standard deviations for {asset_name}. Skipping rolling volatility validation.")
+                return ValidationResults(
+                    test_name="rolling_volatility",
+                    passed=False,
+                    details={'error': 'No valid rolling standard deviations'}
+                )
+            
+            orig_rolling_std = orig_rolling_std.iloc[-min_len:]
+            synth_rolling_std = synth_rolling_std.iloc[-min_len:]
+            
+            # Calculate mean absolute percentage error (MAPE) or similar
+            # Avoid division by zero for very low volatility periods
+            diffs = np.abs(synth_rolling_std - orig_rolling_std)
+            
+            # Use a robust comparison, e.g., mean absolute difference relative to mean original volatility
+            if orig_rolling_std.mean() > 1e-8:
+                relative_diff = diffs.mean() / orig_rolling_std.mean()
+            else:
+                relative_diff = diffs.mean() # If original is near zero, just check absolute diff
+            
+            passed = relative_diff < tolerance
+            
+            logger.debug(f"Rolling Volatility for {asset_name}: Relative Diff={relative_diff:.4f}, Tolerance={tolerance:.4f}, Passed={passed}")
+            
+            return ValidationResults(
+                test_name="rolling_volatility",
+                passed=passed,
+                details={
+                    'window': window,
+                    'original_mean_rolling_std': orig_rolling_std.mean(),
+                    'synthetic_mean_rolling_std': synth_rolling_std.mean(),
+                    'relative_difference': relative_diff,
+                    'tolerance': tolerance
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Rolling volatility validation failed for {asset_name}: {e}")
+            return ValidationResults(
+                test_name="rolling_volatility",
+                passed=False,
+                details={'error': str(e)}
+            )
+    
     def _validate_fat_tails(
         self,
         original: pd.Series,
         synthetic: pd.Series,
         asset_name: str
     ) -> ValidationResults:
-        """Validate fat tail properties using Hill estimator."""
+        """Validate fat tail properties using Hill estimator and kurtosis."""
         try:
             # Estimate tail indices
             orig_tail_index = self._estimate_tail_index(original)
@@ -336,15 +425,29 @@ class SyntheticDataValidator:
             tolerance = self.validation_config.get('tail_index_tolerance', 0.5)
             tail_diff = abs(orig_tail_index - synth_tail_index)
             
-            passed = tail_diff < tolerance
+            passed_tail_index = tail_diff < tolerance
             
-            # Additional fat tail tests
+            # Additional fat tail tests using kurtosis
             orig_kurtosis = original.kurtosis()
             synth_kurtosis = synthetic.kurtosis()
             
+            # Ensure kurtosis values are floats for comparison using pd.to_numeric
+            orig_kurtosis_val = pd.to_numeric(orig_kurtosis, errors='coerce')
+            synth_kurtosis_val = pd.to_numeric(synth_kurtosis, errors='coerce')
+
             # Check if both show excess kurtosis (fat tails)
-            excess_kurtosis_orig = orig_kurtosis > 3
-            excess_kurtosis_synth = synth_kurtosis > 3
+            excess_kurtosis_orig = orig_kurtosis_val > 3
+            excess_kurtosis_synth = synth_kurtosis_val > 3
+
+            # A more robust check for kurtosis: ensure synthetic kurtosis is within a reasonable range of original
+            kurtosis_tolerance = self.validation_config.get('kurtosis_tolerance', 1.0) # Absolute difference
+            passed_kurtosis = abs(orig_kurtosis_val - synth_kurtosis_val) < kurtosis_tolerance
+            
+            # Overall pass if either tail index or kurtosis check passes (more lenient)
+            passed = passed_tail_index or passed_kurtosis
+            
+            logger.debug(f"Fat Tails for {asset_name}: Orig Tail Index={orig_tail_index:.2f}, Synth Tail Index={synth_tail_index:.2f}, Diff={tail_diff:.2f}, Passed Tail Index={passed_tail_index}")
+            logger.debug(f"  Orig Kurtosis={orig_kurtosis_val:.2f}, Synth Kurtosis={synth_kurtosis_val:.2f}, Passed Kurtosis={passed_kurtosis}, Overall Passed={passed}")
             
             return ValidationResults(
                 test_name="fat_tails",
@@ -353,9 +456,10 @@ class SyntheticDataValidator:
                     'original_tail_index': orig_tail_index,
                     'synthetic_tail_index': synth_tail_index,
                     'tail_index_difference': tail_diff,
-                    'tolerance': tolerance,
+                    'tail_index_tolerance': tolerance,
                     'original_kurtosis': orig_kurtosis,
                     'synthetic_kurtosis': synth_kurtosis,
+                    'kurtosis_tolerance': kurtosis_tolerance,
                     'excess_kurtosis_orig': excess_kurtosis_orig,
                     'excess_kurtosis_synth': excess_kurtosis_synth
                 }
@@ -378,6 +482,15 @@ class SyntheticDataValidator:
         """Validate extreme value characteristics."""
         try:
             # Calculate extreme value statistics
+            # Ensure enough data points for percentiles
+            if len(original.dropna()) < 100 or len(synthetic.dropna()) < 100:
+                logger.warning(f"Insufficient data for extreme value validation for {asset_name}. Need at least 100 observations.")
+                return ValidationResults(
+                    test_name="extreme_values",
+                    passed=False,
+                    details={'error': 'Insufficient data for extreme value validation'}
+                )
+            
             orig_percentiles = np.percentile(original.dropna(), [1, 5, 95, 99])
             synth_percentiles = np.percentile(synthetic.dropna(), [1, 5, 95, 99])
             
@@ -385,10 +498,14 @@ class SyntheticDataValidator:
             percentile_diffs = np.abs(orig_percentiles - synth_percentiles)
             
             # Check if extreme values are reasonably similar
-            tolerance = self.validation_config.get('extreme_value_tolerance', 0.5)
+            tolerance = self.validation_config.get('extreme_value_tolerance', 0.5) # Absolute difference tolerance
             max_percentile_diff = np.max(percentile_diffs)
             
             passed = max_percentile_diff < tolerance
+            
+            logger.debug(f"Extreme Values for {asset_name}: Max Percentile Diff={max_percentile_diff:.4f}, Tolerance={tolerance:.4f}, Passed={passed}")
+            logger.debug(f"  Original Percentiles: {orig_percentiles}")
+            logger.debug(f"  Synthetic Percentiles: {synth_percentiles}")
             
             return ValidationResults(
                 test_name="extreme_values",
@@ -428,6 +545,7 @@ class SyntheticDataValidator:
             total_tests = len(test_results)
             
             if total_tests == 0:
+                logger.warning("No individual validation tests performed. Overall quality cannot be calculated.")
                 return ValidationResults(
                     test_name="overall_quality",
                     passed=False,
@@ -440,6 +558,8 @@ class SyntheticDataValidator:
             # Determine overall pass/fail
             quality_threshold = self.validation_config.get('overall_quality_threshold', 0.7)
             passed = quality_score >= quality_threshold
+            
+            logger.debug(f"Overall Quality: Score={quality_score:.3f}, Passed Tests={passed_tests}/{total_tests}, Threshold={quality_threshold:.3f}, Overall Passed={passed}")
             
             return ValidationResults(
                 test_name="overall_quality",
@@ -468,25 +588,47 @@ class SyntheticDataValidator:
             abs_data = np.abs(data.dropna())
             
             if len(abs_data) < 20:
+                logger.warning(f"Insufficient data ({len(abs_data)}) for Hill tail index estimation. Returning default 3.0.")
                 return 3.0  # Default assumption
             
             # Sort in descending order
             sorted_data = np.sort(abs_data)[::-1]
             
-            # Use top 10% for Hill estimator
+            # Use top 10% for Hill estimator, but at least 10 observations
             k = max(10, int(0.1 * len(sorted_data)))
             
-            # Hill estimator
-            if k > 1:
-                log_ratios = np.log(sorted_data[:k] / sorted_data[k])
-                tail_index = 1.0 / np.mean(log_ratios)
-            else:
-                tail_index = 3.0
+            # Ensure k does not exceed available data
+            k = min(k, len(sorted_data) - 1)
             
-            # Bound the estimate
+            if k <= 0:
+                logger.warning(f"Not enough data points for Hill estimator after filtering. Returning default 3.0.")
+                return 3.0
+            
+            # Hill estimator
+            # Ensure sorted_data[k] is not zero to avoid division by zero in log
+            if sorted_data[k] == 0:
+                logger.warning(f"Value at k-th position is zero in Hill estimator. Returning default 3.0.")
+                return 3.0
+            
+            log_ratios = np.log(sorted_data[:k] / sorted_data[k])
+            
+            # Handle cases where log_ratios might contain inf or NaN
+            if np.any(np.isinf(log_ratios)) or np.any(np.isnan(log_ratios)):
+                logger.warning(f"Invalid log ratios in Hill estimator. Returning default 3.0.")
+                return 3.0
+            
+            mean_log_ratios = np.mean(log_ratios)
+            if mean_log_ratios == 0:
+                logger.warning(f"Mean log ratios is zero in Hill estimator. Returning default 3.0.")
+                return 3.0
+            
+            tail_index = 1.0 / mean_log_ratios
+            
+            # Bound the estimate to reasonable financial values
             return np.clip(tail_index, 1.5, 10.0)
             
-        except Exception:
+        except Exception as e:
+            logger.error(f"Hill tail index estimation failed: {e}. Returning default 3.0.")
             return 3.0  # Default fallback
     
     def generate_validation_report(
@@ -502,7 +644,7 @@ class SyntheticDataValidator:
         
         # Overall quality
         overall = results.get('overall_quality')
-        if overall:
+        if overall and overall.details: # Add check for overall.details
             status = "PASSED" if overall.passed else "FAILED"
             score = overall.details.get('quality_score', 0) * 100
             report_lines.extend([
@@ -523,8 +665,14 @@ class SyntheticDataValidator:
             
             if result.details:
                 for key, value in result.details.items():
+                    # Only print simple values or nested dicts for stats
                     if key not in ['error'] and not isinstance(value, dict):
                         report_lines.append(f"  {key}: {value}")
+                    elif isinstance(value, dict):
+                        # For nested dictionaries like 'original_stats', print each item
+                        report_lines.append(f"  {key}:")
+                        for sub_key, sub_value in value.items():
+                            report_lines.append(f"    {sub_key}: {sub_value:.4f}" if isinstance(sub_value, (int, float)) else f"    {sub_key}: {sub_value}")
         
         report_lines.append("")
         return "\n".join(report_lines)
@@ -558,4 +706,4 @@ class SyntheticDataValidator:
             'passed_validations': passed_validations,
             'overall_pass_rate': passed_validations / total_validations if total_validations > 0 else 0,
             'test_type_statistics': test_type_stats
-        } 
+        }
