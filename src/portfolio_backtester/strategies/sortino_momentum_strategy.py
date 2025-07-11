@@ -155,7 +155,9 @@ class SortinoMomentumStrategy(BaseStrategy):
                         self.entry_prices[asset] = asset_current_price
                     elif w_target_pre_filter.get(asset, 0) == 0:
                         self.entry_prices[asset] = np.nan
-            weights_at_current_date = w_target_pre_filter.copy()
+            # PERFORMANCE OPTIMIZATION: Only copy if we need to modify
+
+            weights_at_current_date = w_target_pre_filter
 
         # --- Apply Stop Loss ---
         sl_handler = self.get_stop_loss_handler()
@@ -175,10 +177,12 @@ class SortinoMomentumStrategy(BaseStrategy):
         for asset in current_universe_tickers:
             if weights_at_current_date.get(asset, 0) != 0 and weights_after_sl.get(asset, 0) == 0:
                 self.entry_prices[asset] = np.nan
+        # PERFORMANCE OPTIMIZATION: Only copy if we need to modify
+
         weights_at_current_date = weights_after_sl
 
         # --- Apply Risk Filters (SMA, RoRo) ---
-        final_weights = weights_at_current_date.copy()
+        final_weights = weights_at_current_date
 
         sma_filter_window = params.get("sma_filter_window")
         if sma_filter_window and sma_filter_window > 0:
@@ -230,7 +234,10 @@ class SortinoMomentumStrategy(BaseStrategy):
             if weights_at_current_date.get(asset, 0) != 0 and final_weights.get(asset, 0) == 0:
                  self.entry_prices[asset] = np.nan
 
-        self.w_prev = final_weights.copy()
+        # PERFORMANCE OPTIMIZATION: Store reference, copy only if strategy modifies weights later
+
+
+        self.w_prev = final_weights
 
         output_weights_df = pd.DataFrame(0.0, index=[current_date], columns=current_universe_tickers)
         output_weights_df.loc[current_date, :] = final_weights

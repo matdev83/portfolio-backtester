@@ -273,7 +273,9 @@ class AtrBasedStopLoss(BaseStopLoss):
         entry_prices: pd.Series, # Unused here, but part of the interface
         stop_levels: pd.Series
     ) -> pd.Series:
-        adjusted_weights = target_weights.copy()
+        # PERFORMANCE OPTIMIZATION: Avoid unnecessary copy
+
+        adjusted_weights = target_weights
 
         # Ensure prices_for_current_date is a Series for the specific date if it's a DataFrame row
         # The plan is that BaseStrategy will pass prices.loc[[date]], which is a DataFrame with one row.

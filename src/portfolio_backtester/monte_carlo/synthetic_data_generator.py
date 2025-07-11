@@ -45,8 +45,9 @@ class DistributionType(Enum):
 class GARCHParameters:
     """Container for GARCH model parameters from arch package."""
     omega: float  # Constant term
-    alpha: float  # ARCH coefficient  
+    alpha: float  # ARCH coefficient
     beta: float   # GARCH coefficient
+    gamma: Optional[float] = None   # Asymmetry parameter (GJR-GARCH)
     nu: Optional[float] = None      # Degrees of freedom (Student-t)
     lambda_: Optional[float] = None  # Skewness parameter
     distribution: DistributionType = DistributionType.STUDENT_T
@@ -245,59 +246,65 @@ class ImprovedSyntheticDataGenerator:
         Returns:
             GARCHParameters object with fitted parameters
         """
+        from typing import cast, Literal
+        from arch import arch_model
+
         # Get GARCH specification from config
         p = self.garch_config.get('p', 1)
         q = self.garch_config.get('q', 1)
         dist = self.garch_config.get('distribution', 'normal')  # Default to normal for compatibility
         
         # Try different distributions in order of preference
-        distributions_to_try = ['normal', 't', 'skewt'] if dist == 'studentt' else [dist, 'normal']
+        distributions_to_try = ['t', 'skewt', 'normal'] if dist == 'studentt' else [dist, 'normal']
         
         best_model = None
         best_aic = np.inf
-        model = None
         
-        from typing import cast, Literal
-        for distribution in distributions_to_try:
-            model = None
-            try:
-                # Create and fit GARCH model
-                dist = cast(Literal['normal', 'gaussian', 't', 'studentst', 'skewstudent', 'skewt', 'ged', 'generalized error'], distribution)
-                model = arch_model( # type: ignore
-                    returns,
-                    vol='GARCH',
-                    p=p,
-                    o=0,  # Use standard GARCH(1,1) instead of GJR-GARCH for better stability
-                    q=q,
-                    dist=dist,
-                    rescale=False
-                )
-                
-                # Fit with robust optimization (arch package doesn't support bounds parameter)
-                res = model.fit(
-                    disp='off',
-                    show_warning=False,
-                    options={'maxiter': 2000, 'ftol': 1e-8}
-                )
-                
-                # Check if fit converged properly
-                if hasattr(res, 'convergence_flag') and res.convergence_flag != 0:
-                    if logger.isEnabledFor(logging.WARNING):
-
-                        logger.warning(f"GARCH model with {distribution} distribution did not converge")
-                    continue
-                
-                # Select best model based on AIC
-                if hasattr(res, 'aic') and res.aic < best_aic:
-                    best_aic = res.aic
-                    best_model = res
+        # Try GJR-GARCH (o=1), then fallback to standard GARCH (o=0) for robustness
+        for model_type in ['GJR-GARCH', 'GARCH']:
+            o = 1 if model_type == 'GJR-GARCH' else 0
+            for distribution in distributions_to_try:
+                model = None
+                try:
+                    # Create the model instance to get its parameter names
+                    dist_cast = cast(Literal['normal', 'gaussian', 't', 'studentst', 'skewstudent', 'skewt', 'ged', 'generalized error'], distribution)
+                    model = arch_model( # type: ignore
+                        returns,
+                        vol='GARCH',
+                        p=p,
+                        o=o,
+                        q=q,
+                        dist=dist_cast,
+                        rescale=False
+                    )
                     
-            except Exception as e:
-                if logger.isEnabledFor(logging.WARNING):
+                    # Fit with robust optimization; let arch handle starting values
+                    res = model.fit(
+                        disp='off',
+                        show_warning=False,
+                        options={'maxiter': 2000, 'ftol': 1e-8}
+                    )
+                    
+                    # Check if fit converged properly
+                    if hasattr(res, 'convergence_flag') and res.convergence_flag != 0:
+                        if logger.isEnabledFor(logging.WARNING):
+                            logger.warning(f"{model_type} model with {distribution} distribution did not converge")
+                        continue
+                    
+                    # Select best model based on AIC
+                    if hasattr(res, 'aic') and res.aic < best_aic:
+                        best_aic = res.aic
+                        best_model = res
+                        
+                except Exception as e:
+                    if logger.isEnabledFor(logging.WARNING):
+                        logger.warning(f"Failed to fit {model_type} with {distribution} distribution: {e}")
+                    continue
+            
+            # If we found a model with the more complex model_type, don't try the simpler one
+            if best_model:
+                break
 
-                    logger.warning(f"Failed to fit GARCH with {distribution} distribution: {e}")
-                continue
-        
         if best_model is None:
             raise ValueError("All GARCH model fitting attempts failed")
         
@@ -306,24 +313,35 @@ class ImprovedSyntheticDataGenerator:
         
         # Get bounds from config for parameter enforcement
         bounds = self.garch_config.get('bounds', {})
-        omega_bounds = bounds.get('omega', [1e-6, 1.0])
+        cfg_omega_bounds = bounds.get('omega', [1e-6, 1.0])
+        # Enforce a safer upper cap to avoid exploding unconditional variance
+        omega_upper_cap = 0.002
+        omega_bounds = [cfg_omega_bounds[0], min(cfg_omega_bounds[1], omega_upper_cap)]
         alpha_bounds = bounds.get('alpha', [0.01, 0.3])
         beta_bounds = bounds.get('beta', [0.5, 0.99])
         nu_bounds = bounds.get('nu', [2.1, 30.0])
-        
+        gamma_bounds = bounds.get('gamma', [0.0, 1.0])
+
         # Extract and enforce parameter bounds
         omega = np.clip(params['omega'], omega_bounds[0], omega_bounds[1])
-        alpha = np.clip(params['alpha[1]'] if 'alpha[1]' in params.index else params.get('alpha', 0.1), 
+        alpha = np.clip(params['alpha[1]'] if 'alpha[1]' in params.index else params.get('alpha', 0.1),
                        alpha_bounds[0], alpha_bounds[1])
         beta = np.clip(params['beta[1]'] if 'beta[1]' in params.index else params.get('beta', 0.8),
-                      beta_bounds[0], beta_bounds[1])
+                       beta_bounds[0], beta_bounds[1])
+        # Prevent unrealistically low beta values that break persistence estimation
+        if beta < 0.65:
+            beta = 0.65
+        gamma = np.clip(params['gamma[1]'] if 'gamma[1]' in params.index else 0.0,
+                       gamma_bounds[0], gamma_bounds[1])
         
-        # Ensure stationarity: alpha + beta < 1
-        if alpha + beta >= 1.0:
+        # Ensure stationarity for GJR-GARCH: alpha + beta + gamma / 2.0 < 1
+        if alpha + beta + gamma / 2.0 >= 1.0:
             # Rescale to ensure stationarity while preserving relative magnitudes
-            total = alpha + beta
-            alpha = alpha * 0.95 / total
-            beta = beta * 0.95 / total
+            total = alpha + beta + gamma / 2.0
+            scale_factor = 0.95 / total
+            alpha *= scale_factor
+            beta *= scale_factor
+            gamma *= scale_factor
         
         # Get distribution-specific parameters
         nu = None
@@ -349,7 +367,6 @@ class ImprovedSyntheticDataGenerator:
                     dist_type = DistributionType.NORMAL
         except Exception as e:
             if logger.isEnabledFor(logging.WARNING):
-
                 logger.warning(f"Could not determine distribution type from model: {e}. Falling back to Normal.")
             dist_type = DistributionType.NORMAL # Fallback to normal if we can't determine distribution
         
@@ -357,6 +374,7 @@ class ImprovedSyntheticDataGenerator:
             omega=omega,
             alpha=alpha,
             beta=beta,
+            gamma=gamma,
             nu=nu,
             lambda_=lambda_,
             distribution=dist_type,
@@ -386,8 +404,10 @@ class ImprovedSyntheticDataGenerator:
         # Use GARCH model as the primary method with retries
         for attempt in range(max_attempts):
             try:
+                if asset_stats.garch_params is None:
+                    raise ValueError("GARCH parameters are not available for generation.")
                 synthetic_returns = self._generate_garch_returns(
-                    asset_stats.garch_params, length, asset_stats.mean_return
+                    asset_stats.garch_params, length, asset_stats.mean_return, asset_stats.volatility
                 )
 
                 # Validate generated returns to prevent extreme values
@@ -397,8 +417,8 @@ class ImprovedSyntheticDataGenerator:
                         logger.warning(f"Generated NaN or infinite values for {asset_name} (Attempt {attempt + 1}). Retrying.")
                     raise ValueError("Generated NaN or infinite values")
                 
-                # Clip extreme outliers to prevent unrealistic returns
-                max_return_abs = 5 * asset_stats.volatility  # Max 5 standard deviations
+                # Tighter clipping to control excess kurtosis
+                max_return_abs = 3 * asset_stats.volatility  # Max 3 standard deviations
                 synthetic_returns = np.clip(synthetic_returns,
                                           asset_stats.mean_return - max_return_abs,
                                           asset_stats.mean_return + max_return_abs)
@@ -418,8 +438,6 @@ class ImprovedSyntheticDataGenerator:
                     continue # Retry generation
                 
                 # Add simple volatility clustering if autocorrelation exists
-                if asset_stats.autocorr_squared > 0.1:
-                    synthetic_returns = self._add_volatility_clustering(synthetic_returns, asset_stats.autocorr_squared)
                 
                 if logger.isEnabledFor(logging.DEBUG):
 
@@ -804,197 +822,183 @@ class ImprovedSyntheticDataGenerator:
             returns: Return series (can be in decimal or percentage terms)
             
         Returns:
-            GARCHParameters object with fitted parameters
+            GARCHParameters object with fitted parameters, with omega scaled to the input returns.
         """
-        # Always work with the original scale for consistency
-        # The professional GARCH model should handle the appropriate scaling internally
+        was_scaled = False
+        # Heuristic to check if returns are in decimal and convert to percentage
+        # for numerical stability in GARCH fitting.
+        # A standard deviation check is a reliable way to infer the scale.
+        if returns.std() < 0.1:  # Typical daily % returns std is > 0.5
+            returns_for_fitting = returns * 100
+            was_scaled = True
+            logger.debug("Input returns appear to be in decimal form. Scaling by 100 for GARCH fitting.")
+        else:
+            returns_for_fitting = returns
+
         try:
-            return self._fit_professional_garch_model(returns)
+            # The professional model expects percentage returns
+            garch_params = self._fit_professional_garch_model(returns_for_fitting)
+            
+            # If we scaled the returns, we need to scale back omega.
+            # alpha, beta, gamma, nu, lambda are scale-invariant.
+            if was_scaled:
+                garch_params.omega /= 10000
+                logger.debug(f"Rescaled omega back to decimal scale: {garch_params.omega}")
+                # Reapply lower bound to avoid extremely small omega values
+                if garch_params.omega < 1e-6:
+                    garch_params.omega = 1e-6
+
+            return garch_params
+
         except Exception as e:
             if logger.isEnabledFor(logging.WARNING):
 
                 logger.warning(f"Professional GARCH fitting failed: {e}. Using fallback parameters.")
+            
+            # Fallback should use the original returns to calculate vol for correct scale
             return self._get_fallback_garch_params(returns)
     
-    def _generate_garch_returns(self, garch_params: GARCHParameters, length: int, mean_return: float = 0.0) -> np.ndarray:
+    def _generate_garch_returns(self, garch_params: GARCHParameters, length: int, mean_return: float, target_volatility: float) -> np.ndarray:
         """
-        Generate synthetic returns using GARCH parameters.
-        
+        Generate synthetic returns using GARCH parameters, ensuring volatility preservation.
+
         Args:
-            garch_params: GARCH parameters to use for generation
-            length: Number of returns to generate
-            
+            garch_params: GARCH parameters to use for generation.
+            length: Number of returns to generate.
+            mean_return: The target mean return for the synthetic data.
+            target_volatility: The target volatility (standard deviation) for the synthetic data.
+
         Returns:
-            Array of synthetic returns (in decimal form)
+            Array of synthetic returns (in decimal form).
         """
-        if logger.isEnabledFor(logging.DEBUG):
-
-            logger.debug(f"DEBUG: _generate_garch_returns called with omega={garch_params.omega:.6f}")
-        # CRITICAL: Validate GARCH parameters to prevent extreme values
-        # Check for unrealistic omega values that would cause overflow
-        if garch_params.omega > 1000:  # Extremely large omega (variance > 1000%)
-            if logger.isEnabledFor(logging.WARNING):
-
-                logger.warning(f"GARCH omega extremely large ({garch_params.omega:.2f}), using fallback volatility")
-            # Use a reasonable fallback volatility instead of trying to convert
-            volatility_decimal = 0.02  # 2% daily volatility as reasonable default
-            omega_decimal = volatility_decimal ** 2  # Set omega_decimal for debug print
-        else:
-            # The GARCH parameters are in percentage scale, but we need decimal scale
-            # GARCH omega represents variance in percentage scale, so convert to decimal scale
-            # For percentage returns: omega_pct -> omega_decimal = omega_pct / 100^2
-            if garch_params.omega > 0.01:  # Likely percentage scale (variance > 1%)
-                omega_decimal = garch_params.omega / 10000  # Convert percentage variance to decimal variance
-            else:
-                omega_decimal = garch_params.omega  # Already in decimal scale
-            
-            # Calculate unconditional volatility in decimal scale
-            persistence = garch_params.alpha + garch_params.beta
-            print(f"DEBUG: GARCH persistence (alpha + beta): {persistence:.6f}")
-            
-            if persistence < 0.999:  # Use a small buffer to avoid division by zero
-                volatility_decimal = np.sqrt(omega_decimal / (1 - persistence))
-                print(f"DEBUG: Using stationary formula")
-            else:
-                # For non-stationary case, use a volatility that preserves the scale
-                # Use the square root of omega directly as a reasonable approximation
-                volatility_decimal = np.sqrt(omega_decimal)
-                print(f"DEBUG: Using non-stationary fallback with omega-based volatility")
-        
-        
-        print(f"DEBUG: GARCH conversion - omega: {garch_params.omega:.6f} -> {omega_decimal:.8f}")
-        print(f"DEBUG: GARCH conversion - volatility: {volatility_decimal:.8f}")
-        print(f"DEBUG: GARCH mean_return: {mean_return:.8f}")
-        
         # Use the consistent random state for reproducibility
         rng = self.rng
-        
-        # Use the passed mean_return parameter
-        
-        # Add parameter validation to prevent extreme values
-        # Clamp volatility to reasonable bounds, increased minimum
-        volatility_decimal = np.clip(volatility_decimal, 1e-5, 0.5)  # Max 50% daily volatility
-        
-        # For GARCH processes, we need to simulate the actual GARCH dynamics to preserve clustering
-        # Generate GARCH process with proper volatility clustering
-        if garch_params.alpha > 0 and garch_params.beta > 0:
-            # Simulate GARCH(1,1) process
-            synthetic_returns = self._simulate_garch_process(
-                garch_params, volatility_decimal, mean_return, length, rng
-            )
-        else:
-            # Fallback to simple distribution
-            if garch_params.nu and garch_params.nu > 2:
-                from scipy import stats
-                df = max(garch_params.nu, 3.0)  # Ensure df >= 3 for finite variance
-                df = min(df, 30.0)  # Cap df to avoid numerical issues
-                
-                # For Student-t, adjust scale to match target volatility
-                scale = volatility_decimal / np.sqrt(df / (df - 2)) if df > 2 else volatility_decimal
-                synthetic_returns = stats.t.rvs(df=df, loc=mean_return, scale=scale, size=length, random_state=rng)
-                
-                # Clip extreme outliers to prevent unrealistic values
-                max_return = 5 * volatility_decimal  # Max 5 standard deviations
-                synthetic_returns = np.clip(synthetic_returns,
-                                          mean_return - max_return,
-                                          mean_return + max_return)
-            else:
-                # Use normal distribution
-                synthetic_returns = rng.normal(mean_return, volatility_decimal, length)
-        
-        if logger.isEnabledFor(logging.DEBUG):
 
+        # GJR-GARCH parameters
+        alpha = garch_params.alpha
+        beta = garch_params.beta
+        gamma = garch_params.gamma if garch_params.gamma is not None else 0.0
+        nu = garch_params.nu
+
+        # CRITICAL: Back-calculate omega to match the target unconditional volatility.
+        # This is more robust than trusting the fitted omega, which can be unstable.
+        # Unconditional variance for GJR-GARCH: omega / (1 - alpha - beta - gamma/2)
+        persistence = alpha + beta + gamma / 2.0
         
+        if persistence >= 1.0:
+            # If the process is non-stationary, we cannot use the formula.
+            # Fallback to a reasonable omega based on target volatility.
+            # This is a simplified assumption for a complex case.
+            omega_decimal = (target_volatility ** 2) * 0.05 # Assume omega is 5% of variance
+            logger.warning(f"GJR-GARCH process is non-stationary (persistence={persistence:.4f}). "
+                           f"Using fallback omega calculation.")
+        else:
+            omega_decimal = target_volatility**2 * (1 - persistence)
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"DEBUG: GJR-GARCH persistence: {persistence:.4f}")
+            logger.debug(f"DEBUG: Target Volatility: {target_volatility:.6f}")
+            logger.debug(f"DEBUG: Back-calculated Omega: {omega_decimal:.8f}")
+
+        # Simulate the GJR-GARCH process
+        synthetic_returns = self._simulate_garch_process(
+            omega_decimal, alpha, beta, gamma, nu,
+            target_volatility, mean_return, length, rng
+        )
+
+        # --- Post-simulation scaling ------------------------------------------------
+        # Re-scale the synthetic series so that its realised volatility and
+        # mean match the target statistics that we measured on the original
+        # asset.
+        generated_std = np.std(synthetic_returns)
+        if generated_std > 1e-12:
+            scale_factor = target_volatility / generated_std
+            synthetic_returns *= scale_factor
+
+        # Adjust mean after scaling
+        synthetic_returns -= np.mean(synthetic_returns)
+        synthetic_returns += mean_return
+
+        if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"DEBUG: Generated returns sample: {synthetic_returns[:5]}")
-        logger.debug(f"DEBUG: Generated returns (min/max/mean/std): "
-                     f"{np.min(synthetic_returns):.6f}/{np.max(synthetic_returns):.6f}/"
-                     f"{np.mean(synthetic_returns):.6f}/{np.std(synthetic_returns):.6f}")
-        
+            logger.debug(f"DEBUG: Generated returns (min/max/mean/std): "
+                         f"{np.min(synthetic_returns):.6f}/{np.max(synthetic_returns):.6f}/"
+                         f"{np.mean(synthetic_returns):.6f}/{np.std(synthetic_returns):.6f}")
+
         return synthetic_returns
     
-    def _simulate_garch_process(self, garch_params, target_volatility, mean_return, length, rng):
+    def _simulate_garch_process(self, omega, alpha, beta, gamma, nu, target_volatility, mean_return, length, rng):
         """
-        Simulate a GARCH(1,1) process to preserve volatility clustering.
-        
+        Simulate a GJR-GARCH(1,1,1) process to preserve volatility clustering and asymmetry.
+
         Args:
-            garch_params: GARCH parameters
-            target_volatility: Target unconditional volatility
-            mean_return: Mean return
-            length: Number of periods to simulate
-            
+            omega (float): GARCH omega parameter (decimal scale).
+            alpha (float): GARCH alpha parameter.
+            beta (float): GARCH beta parameter.
+            gamma (float): GARCH gamma (asymmetry) parameter.
+            nu (float): Degrees of freedom for Student-t distribution.
+            target_volatility (float): Target unconditional volatility.
+            mean_return (float): Mean return.
+            length (int): Number of periods to simulate.
+            rng (np.random.RandomState): The random number generator.
+
         Returns:
-            Array of simulated returns with GARCH dynamics
+            Array of simulated returns with GJR-GARCH dynamics.
         """
         if logger.isEnabledFor(logging.DEBUG):
-
             logger.debug(f"DEBUG: _simulate_garch_process - target_volatility: {target_volatility:.6f}, mean_return: {mean_return:.6f}")
-        
+
         # Initialize arrays
         returns: np.ndarray = np.zeros(length)
         variances: np.ndarray = np.zeros(length)
-        
-        # Convert parameters to appropriate scale
-        omega = garch_params.omega / 10000 if garch_params.omega > 0.01 else garch_params.omega
-        alpha = garch_params.alpha
-        beta = garch_params.beta
-        
+
         if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"DEBUG: _simulate_garch_process - omega: {omega:.8f}, alpha: {alpha:.6f}, beta: {beta:.6f}, gamma: {gamma:.6f}")
 
-        
-            logger.debug(f"DEBUG: _simulate_garch_process - omega: {omega:.8f}, alpha: {alpha:.6f}, beta: {beta:.6f}")
-        
-        # Initialize variance
-        if alpha + beta < 0.999:
-            initial_variance = max(target_volatility ** 2, omega / (1 - alpha - beta))
-            if logger.isEnabledFor(logging.DEBUG):
-
-                logger.debug(f"DEBUG: _simulate_garch_process - initial_variance (stationary): {initial_variance:.8f}")
-        else:
-            initial_variance = target_volatility ** 2
-            if logger.isEnabledFor(logging.DEBUG):
-
-                logger.debug(f"DEBUG: _simulate_garch_process - initial_variance (non-stationary fallback): {initial_variance:.8f}")
-        
+        # Initialize variance to the unconditional target variance
+        initial_variance = target_volatility ** 2
         variances[0] = initial_variance
-        
+
         # Generate innovations using consistent random state
-        if garch_params.nu and garch_params.nu > 2:
+        if nu and nu > 2:
             from scipy import stats
-            df = max(garch_params.nu, 3.0)
+            df = max(nu, 3.0)
             innovations: np.ndarray = np.array(stats.t.rvs(df=df, size=length, random_state=self.rng))
             if logger.isEnabledFor(logging.DEBUG):
-
                 logger.debug(f"DEBUG: _simulate_garch_process - using Student-t innovations (df={df:.2f})")
         else:
             innovations: np.ndarray = np.array(self.rng.standard_normal(length))
-            logger.debug(f"DEBUG: _simulate_garch_process - using Normal innovations")
-        
-        logger.debug(f"DEBUG: _simulate_garch_process - innovations (min/max/mean/std): "
-                     f"{np.min(innovations):.6f}/{np.max(innovations):.6f}/"
-                     f"{np.mean(innovations):.6f}/{np.std(innovations):.6f}")
-        
-        # Simulate GARCH process
-        for t in range(length):
-            # Generate return
-            returns[t] = mean_return + innovations[t] * np.sqrt(variances[t])
             if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"DEBUG: _simulate_garch_process - using Normal innovations")
 
-                logger.debug(f"DEBUG: _simulate_garch_process - t={t}, return={returns[t]:.6f}, variance={variances[t]:.6f}")
-            
-            # Update variance for next period
+        # Simulate GJR-GARCH process
+        for t in range(length):
+            # Generate return for the current period
+            current_std_dev = np.sqrt(max(1e-12, variances[t])) # Prevent sqrt of negative
+            returns[t] = mean_return + innovations[t] * current_std_dev
+
+            # Update variance for the next period
             if t < length - 1:
-                variances[t + 1] = omega + alpha * (returns[t] - mean_return) ** 2 + beta * variances[t]
+                error_term = returns[t] - mean_return
+                error_term_sq = error_term ** 2
+                
+                # Asymmetry term: I(e_{t-1} < 0)
+                indicator = 1.0 if error_term < 0 else 0.0
+                
+                variances[t + 1] = omega + alpha * error_term_sq + gamma * error_term_sq * indicator + beta * variances[t]
+                
                 # Ensure variance stays positive and reasonable
-                variances[t + 1] = max(variances[t + 1], omega)
-                variances[t + 1] = min(variances[t + 1], target_volatility ** 2 * 100)  # Cap at 100x target
-        
-        logger.debug(f"DEBUG: _simulate_garch_process - final returns (min/max/mean/std): "
-                     f"{np.min(returns):.6f}/{np.max(returns):.6f}/"
-                     f"{np.mean(returns):.6f}/{np.std(returns):.6f}")
-        logger.debug(f"DEBUG: _simulate_garch_process - final variances (min/max/mean/std): "
-                     f"{np.min(variances):.6f}/{np.max(variances):.6f}/"
-                     f"{np.mean(variances):.6f}/{np.std(variances):.6f}")
-        
+                variances[t + 1] = max(variances[t + 1], 1e-12) # Prevent negative variance
+                variances[t + 1] = min(variances[t + 1], initial_variance * 100)  # Cap at 100x target
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"DEBUG: _simulate_garch_process - final returns (min/max/mean/std): "
+                            f"{np.min(returns):.6f}/{np.max(returns):.6f}/"
+                            f"{np.mean(returns):.6f}/{np.std(returns):.6f}")
+            logger.debug(f"DEBUG: _simulate_garch_process - final variances (min/max/mean/std): "
+                            f"{np.min(variances):.6f}/{np.max(variances):.6f}/"
+                            f"{np.mean(variances):.6f}/{np.std(variances):.6f}")
+
         return returns
     
     def _add_volatility_clustering(self, returns: np.ndarray, autocorr_target: float) -> np.ndarray:

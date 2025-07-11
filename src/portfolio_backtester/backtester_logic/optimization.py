@@ -11,6 +11,7 @@ import logging
 
 from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG, generate_randomized_wfo_windows
 from ..optimization.genetic_optimizer import GeneticOptimizer
+from ..parallel_wfo import create_parallel_wfo_processor
 # _evaluate_params_walk_forward is now a method of the Backtester class
 
 # Global progress tracker for window-level updates

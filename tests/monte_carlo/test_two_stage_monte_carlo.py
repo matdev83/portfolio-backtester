@@ -180,7 +180,7 @@ class TestTwoStageMonteCarlo:
                 )
                 
                 # Test Stage 1 MC during evaluation
-                objective_value, pnl_returns = backtester._evaluate_params_walk_forward(
+                objective_value = backtester._evaluate_params_walk_forward(
                     mock_trial, scenario_config, windows,
                     monthly_data, daily_data, rets_full,
                     ['Sharpe'], False

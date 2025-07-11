@@ -254,7 +254,8 @@ class MomentumStrategy(BaseStrategy):
         )
 
         if scores_at_current_date.isna().all() or scores_at_current_date.empty: # No valid scores
-            weights_at_current_date = self.w_prev.copy()
+            # PERFORMANCE OPTIMIZATION: Only copy if we need to modify
+            weights_at_current_date = self.w_prev
             # Apply risk filters even if weights are unchanged
         else:
             # Calculate candidate weights based on scores
@@ -280,7 +281,8 @@ class MomentumStrategy(BaseStrategy):
                     elif w_target_pre_filter.get(asset, 0) == 0:
                         self.entry_prices[asset] = np.nan
 
-            weights_at_current_date = w_target_pre_filter.copy()
+            # PERFORMANCE OPTIMIZATION: Only copy if we need to modify
+            weights_at_current_date = w_target_pre_filter
 
 
         # --- Apply Stop Loss ---
@@ -319,7 +321,8 @@ class MomentumStrategy(BaseStrategy):
 
 
         # --- Apply Risk Filters (SMA, RoRo) ---
-        final_weights = weights_at_current_date.copy()
+        # PERFORMANCE OPTIMIZATION: Only copy when we actually modify the weights
+        final_weights = weights_at_current_date
 
         # SMA Filter
         sma_filter_window = params.get("sma_filter_window")
@@ -389,7 +392,8 @@ class MomentumStrategy(BaseStrategy):
             if weights_at_current_date.get(asset, 0) != 0 and final_weights.get(asset, 0) == 0:
                  self.entry_prices[asset] = np.nan
 
-        self.w_prev = final_weights.copy()
+        # PERFORMANCE OPTIMIZATION: Store reference, copy only if strategy modifies weights later
+        self.w_prev = final_weights
 
         # Create a DataFrame for the current date's weights
         output_weights_df = pd.DataFrame(0.0, index=[current_date], columns=current_universe_tickers)

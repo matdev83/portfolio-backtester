@@ -110,6 +110,11 @@ def display_results(self, daily_data_for_display):
     _plot_performance_summary(self, bench_rets_full, train_end_date)
 
     # Plot stability measures if available and optimization reports are enabled
+    # Check performance optimization settings
+    advanced_reporting_config = self.global_config.get('advanced_reporting_config', {})
+    enable_during_optimization = advanced_reporting_config.get('enable_during_optimization', False)
+    defer_expensive_plots = advanced_reporting_config.get('defer_expensive_plots', True)
+    
     if enable_optimization_reports:
         for name, result_data in self.results.items():
             if "best_trial_obj" in result_data and result_data["best_trial_obj"] is not None:

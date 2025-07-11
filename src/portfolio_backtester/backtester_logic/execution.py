@@ -213,25 +213,56 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
     if self.logger.isEnabledFor(logging.DEBUG):
         self.logger.debug(f"Full backtest with optimized parameters completed for {scenario_config['name']}.")
     
-    # Generate comprehensive optimization report
-    try:
-        self._generate_optimization_report(
-            scenario_config=scenario_config,
-            optimal_params=optimal_params,
-            full_rets=full_rets,
-            best_trial_obj=best_trial_obj,
-            actual_num_trials=actual_num_trials
-        )
-    except Exception as e:
-        self.logger.error(f"Failed to generate optimization report: {e}")
-        self.logger.debug("Report generation error details:", exc_info=True)
+    # Generate optimization report (with performance optimizations)
+    advanced_reporting_config = self.global_config.get('advanced_reporting_config', {})
+    enable_during_optimization = advanced_reporting_config.get('enable_during_optimization', False)
+    enable_optimization_reports = advanced_reporting_config.get('enable_optimization_reports', True)
+    
+    if enable_optimization_reports:
+        if enable_during_optimization:
+            # Full reporting during optimization (slower but immediate)
+            try:
+                self._generate_optimization_report(
+                    scenario_config=scenario_config,
+                    optimal_params=optimal_params,
+                    full_rets=full_rets,
+                    best_trial_obj=best_trial_obj,
+                    actual_num_trials=actual_num_trials
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to generate optimization report: {e}")
+                self.logger.debug("Report generation error details:", exc_info=True)
+        else:
+            # Deferred reporting for performance (faster optimization)
+            self.logger.info("⚡ Optimization report generation deferred for performance - will generate after optimization completes")
+            # Store data for later report generation
+            self._deferred_report_data = {
+                'scenario_config': scenario_config,
+                'optimal_params': optimal_params,
+                'full_rets': full_rets,
+                'best_trial_obj': best_trial_obj,
+                'actual_num_trials': actual_num_trials
+            }
+    else:
+        self.logger.info("📊 Optimization reports disabled in configuration")
 
 def _generate_optimization_report(self, scenario_config, optimal_params, full_rets, best_trial_obj, actual_num_trials):
         """Generate comprehensive optimization report with performance analysis."""
         
         strategy_name = scenario_config["name"]
+        advanced_reporting_config = self.global_config.get('advanced_reporting_config', {})
+        
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Generating comprehensive optimization report for {strategy_name}")
+        
+        # Check if we should defer expensive operations
+        defer_expensive_plots = advanced_reporting_config.get('defer_expensive_plots', True)
+        defer_parameter_analysis = advanced_reporting_config.get('defer_parameter_analysis', True)
+        
+        if defer_expensive_plots:
+            self.logger.info("⚡ Using performance-optimized reporting (expensive plots deferred)")
+        else:
+            self.logger.info("📊 Generating full comprehensive report (may take longer)")
         
         # Calculate performance metrics for the optimized strategy
         if full_rets is not None and not full_rets.empty:
@@ -267,12 +298,14 @@ def _generate_optimization_report(self, scenario_config, optimal_params, full_re
                 "num_trials": actual_num_trials,
                 "optimizer_type": getattr(self.args, "optimizer", "optuna"),
                 "optimization_date": pd.Timestamp.now().isoformat(),
-                "global_config": self.global_config
+                "global_config": self.global_config,
+                "defer_expensive_plots": defer_expensive_plots,
+                "defer_parameter_analysis": defer_parameter_analysis
             }
         }
         
-        # Add trial data if available from best_trial_obj
-        if best_trial_obj and hasattr(best_trial_obj, 'study'):
+        # Add trial data if available from best_trial_obj (only if not deferring analysis)
+        if best_trial_obj and hasattr(best_trial_obj, 'study') and not defer_parameter_analysis:
             try:
                 study = best_trial_obj.study
                 trials_data = []
@@ -305,6 +338,8 @@ def _generate_optimization_report(self, scenario_config, optimal_params, full_re
                 
             except Exception as e:
                 self.logger.warning(f"Could not extract trial data from study: {e}")
+        elif defer_parameter_analysis:
+            self.logger.info("⚡ Parameter analysis deferred for performance")
         
         # Get constraint information from results
         optimized_result_name = list(self.results.keys())[-1]  # Get the most recent result
@@ -313,7 +348,7 @@ def _generate_optimization_report(self, scenario_config, optimal_params, full_re
         # Prepare additional information
         additional_info = {
             "num_trials": actual_num_trials,
-            "best_trial_number": best_trial_obj.number,
+            "best_trial_number": best_trial_obj.number if best_trial_obj else None,
             "optimization_time": "Not tracked",  # Could be enhanced to track actual time
             "random_seed": getattr(self, 'random_state', None),
             "constraint_info": {
@@ -321,6 +356,10 @@ def _generate_optimization_report(self, scenario_config, optimal_params, full_re
                 "message": result_data.get("constraint_message", ""),
                 "violations": result_data.get("constraint_violations", []),
                 "constraints_config": result_data.get("constraints_config", [])
+            },
+            "performance_optimizations": {
+                "defer_expensive_plots": defer_expensive_plots,
+                "defer_parameter_analysis": defer_parameter_analysis
             }
         }
         
@@ -347,3 +386,16 @@ def _generate_optimization_report(self, scenario_config, optimal_params, full_re
         except Exception as e:
             self.logger.error(f"Failed to create optimization report: {e}")
             raise
+
+def generate_deferred_report(self):
+    """Generate the deferred optimization report after optimization completes."""
+    if hasattr(self, '_deferred_report_data') and self._deferred_report_data:
+        self.logger.info("📊 Generating deferred optimization report...")
+        try:
+            self._generate_optimization_report(**self._deferred_report_data)
+            # Clear the deferred data
+            delattr(self, '_deferred_report_data')
+        except Exception as e:
+            self.logger.error(f"Failed to generate deferred optimization report: {e}")
+    else:
+        self.logger.debug("No deferred report data available")

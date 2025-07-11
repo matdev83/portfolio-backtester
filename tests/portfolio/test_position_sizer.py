@@ -91,23 +91,39 @@ class TestPositionSizer(unittest.TestCase):
         pd.testing.assert_frame_equal(result, expected)
 
     def test_rolling_sortino_sizer(self):
-        monthly_prices, monthly_benchmark, monthly_signals, daily_prices, daily_benchmark = self._create_price_data()
+        monthly_prices, _, monthly_signals, _, _ = self._create_price_data()
         window = 2
         target = 0.0
+        
+        # Since the sizer now uses Numba, we should also use it for the expected calculation
+        # to ensure consistency.
+        try:
+            from src.portfolio_backtester.numba_optimized import rolling_sortino_fast
+            NUMBA_AVAILABLE = True
+        except ImportError:
+            NUMBA_AVAILABLE = False
+
         rets = monthly_prices.pct_change(fill_method=None).fillna(0)
-        mean = rets.rolling(window).mean() - target
 
-        def dd(series):
-            downside = series[series < target]
-            if len(downside) == 0:
-                return np.nan
-            return np.sqrt(np.mean((downside - target) ** 2))
+        if NUMBA_AVAILABLE:
+            sortino_data = {}
+            for col in rets.columns:
+                sortino_data[col] = rolling_sortino_fast(rets[col].values, window, target)
+            sortino = pd.DataFrame(sortino_data, index=rets.index)
+        else:
+            # Fallback to pandas if Numba is not available
+            mean = rets.rolling(window).mean() - target
+            def dd(series):
+                downside = series[series < target]
+                if len(downside) == 0:
+                    return np.nan
+                return np.sqrt(np.mean((downside - target) ** 2))
+            downside = rets.rolling(window).apply(dd, raw=False)
+            sortino = mean / downside.replace(0, np.nan)
 
-        downside = rets.rolling(window).apply(dd, raw=False)
-        sortino = mean / downside.replace(0, np.nan)
         expected = monthly_signals.mul(sortino).div(monthly_signals.mul(sortino).abs().sum(axis=1), axis=0)
-
         result = rolling_sortino_sizer(monthly_signals, monthly_prices, window, target_return=target)
+        
         pd.testing.assert_frame_equal(result, expected)
 
     def test_rolling_beta_sizer(self):

@@ -154,7 +154,9 @@ class TestSyntheticDataGenerator:
         )
         
         # Should not raise exception
-        synthetic_returns = generator._generate_garch_returns(valid_params, 100)
+        synthetic_returns = generator._generate_garch_returns(
+            valid_params, 100, mean_return=0.001, target_volatility=0.02
+        )
         assert len(synthetic_returns) == 100
     
     def test_fallback_generation(self, sample_config, sample_ohlc_data):

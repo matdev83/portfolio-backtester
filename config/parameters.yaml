@@ -181,6 +181,26 @@ monte_carlo_config:
   # Random seed handling
   random_seed: null  # Set to integer for reproducible generation, null for random
 
+# Parallel Processing Configuration
+parallel_wfo_config:
+  # Enable/disable parallel walk-forward optimization processing
+  enable_parallel: true
+  
+  # Maximum number of worker processes (null = auto-detect based on CPU count - 1)
+  max_workers: null
+  
+  # Minimum number of windows required to enable parallel processing
+  min_windows_for_parallel: 2
+  
+  # Timeout per window evaluation in seconds
+  process_timeout: 300
+  
+  # Memory limit per worker process in MB
+  memory_limit_mb: 1000
+  
+  # Enable automatic fallback to sequential processing on errors
+  enable_fallback: true
+
 # Advanced Reporting Configuration
 advanced_reporting_config:
   # Enable/disable advanced hyperparameter statistical analysis
@@ -191,6 +211,26 @@ advanced_reporting_config:
   
   # Enable/disable comprehensive optimization reports (markdown reports with plots)
   enable_optimization_reports: true  # Enabled by default - creates organized report directories
+  
+  # PERFORMANCE OPTIMIZATION: Control expensive reporting operations during optimization
+  enable_during_optimization: false  # Disable expensive reporting during optimization for speed
+  defer_expensive_plots: true  # Generate expensive plots only after optimization completes
+  defer_parameter_analysis: true  # Defer parameter correlation/sensitivity analysis until after optimization
+  defer_monte_carlo_plots: true  # Defer Monte Carlo robustness plots until after optimization
+  
+  # Control which plots are generated during vs after optimization
+  optimization_time_plots:
+    - "performance_summary"  # Only generate essential performance summary during optimization
+  
+  post_optimization_plots:
+    - "optimization_progress"
+    - "parameter_importance" 
+    - "parameter_correlation"
+    - "parameter_heatmaps"
+    - "parameter_sensitivity"
+    - "parameter_stability"
+    - "monte_carlo_robustness"
+    - "trial_pnl_curves"
 
 OPTIMIZER_PARAMETER_DEFAULTS:
   max_lookback:

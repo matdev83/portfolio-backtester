@@ -18,13 +18,13 @@ class TestDataPreprocessingCache:
     def setup_method(self):
         """Set up test data and cache."""
         # Create test price data
-        dates = pd.date_range('2020-01-01', '2020-12-31', freq='D')
+        # Use a larger dataset to make performance differences more pronounced
+        dates = pd.date_range('2010-01-01', '2023-12-31', freq='D')
         np.random.seed(42)
         
         self.test_data = pd.DataFrame({
-            'AAPL': 100 * np.cumprod(1 + np.random.normal(0.001, 0.02, len(dates))),
-            'MSFT': 200 * np.cumprod(1 + np.random.normal(0.0008, 0.018, len(dates))),
-            'GOOGL': 1500 * np.cumprod(1 + np.random.normal(0.0012, 0.025, len(dates)))
+            f'Asset_{i}': 100 * np.cumprod(1 + np.random.normal(0.0001, 0.02, len(dates)))
+            for i in range(50)  # 50 assets
         }, index=dates)
         
         self.cache = DataPreprocessingCache(max_cache_size_mb=100)

@@ -578,7 +578,9 @@ class LowVolatilityFactorStrategy(BaseStrategy):
             weights = weights * params["leverage"]
         
         # Update previous weights
-        self.w_prev = weights.copy()
+        # PERFORMANCE OPTIMIZATION: Store reference, copy only if strategy modifies weights later
+
+        self.w_prev = weights
         
         # Create result DataFrame
         result = pd.DataFrame(0.0, index=[current_date], columns=valid_assets)

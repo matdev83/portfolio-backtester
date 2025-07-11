@@ -80,6 +80,10 @@ class Backtester:
         # Legacy Monte Carlo mode binding removed
         self.display_results = types.MethodType(display_results, self)
         self._generate_optimization_report = types.MethodType(_generate_optimization_report, self)
+        
+        # Import the deferred report generation method
+        from .backtester_logic.execution import generate_deferred_report
+        self.generate_deferred_report = types.MethodType(generate_deferred_report, self)
 
     def _get_data_source(self):
         ds = self.global_config.get("data_source", "yfinance").lower()
@@ -426,6 +430,26 @@ class Backtester:
 
         return portfolio_rets_net
 
+    def _evaluate_walk_forward_fast(self, trial: Any, scenario_config: dict, windows: list,
+                                      monthly_data_np: np.ndarray, daily_data_np: np.ndarray, rets_full_np: np.ndarray,
+                                      metrics_to_optimize: list, is_multi_objective: bool) -> float | tuple[float, ...]:
+        """
+        Numba-optimized version of walk-forward evaluation.
+        (This is a placeholder for the actual Numba implementation)
+        """
+        # This will be replaced with a fully vectorized/jitted implementation
+        # For now, it will convert back to pandas and call the original method
+        # to maintain functionality during refactoring.
+        
+        # Convert numpy arrays back to pandas DataFrames
+        monthly_data = pd.DataFrame(monthly_data_np) # Simplified conversion
+        daily_data = pd.DataFrame(daily_data_np)
+        rets_full = pd.DataFrame(rets_full_np)
+
+        return self._evaluate_params_walk_forward(trial, scenario_config, windows,
+                                                  monthly_data, daily_data, rets_full,
+                                                  metrics_to_optimize, is_multi_objective)
+
     def _evaluate_params_walk_forward(self, trial: Any, scenario_config: dict, windows: list,
                                       monthly_data, daily_data, rets_full,
                                       metrics_to_optimize: list, is_multi_objective: bool) -> float | tuple[float, ...]:
@@ -594,10 +618,13 @@ class Backtester:
             r_slice = rets_full.loc[tr_start:te_end]
 
             # d_slice is the original daily OHLC data for the current window
-            current_daily_data_ohlc = d_slice.copy()
+            current_daily_data_ohlc = d_slice  # Avoid unnecessary copy for performance
 
             # Stage 1 MC: Apply lightweight synthetic data to test period only (for robustness)
             if mc_adaptive_enabled and trial_synthetic_data is not None and replacement_info is not None:
+                # BUG FIX & PERFORMANCE: Copy only when modifying.
+                # This prevents modifications from leaking into subsequent walk-forward windows.
+                current_daily_data_ohlc = d_slice.copy()
                 # Iterate through selected assets and replace their test period data
                 for asset in replacement_info.selected_assets:
                     if asset in trial_synthetic_data:
@@ -729,14 +756,104 @@ class Backtester:
         # Ensure the index is unique before saving to JSON
         full_pnl_returns = full_pnl_returns[~full_pnl_returns.index.duplicated(keep='first')].sort_index()
 
+        # Store full_pnl_returns as a user attribute for later analysis
+        if trial and hasattr(trial, "set_user_attr"):
+            trial.set_user_attr("full_pnl_returns", full_pnl_returns.to_json())
+
         if is_multi_objective:
-            return tuple(float(v) for v in metric_avgs), full_pnl_returns
+            return tuple(float(v) for v in metric_avgs)
         else:
-            # Store full_pnl_returns as a user attribute if needed for later analysis
-            if trial and hasattr(trial, "set_user_attr"):
-                trial.set_user_attr("full_pnl_returns", full_pnl_returns.to_json()) # Store as JSON string
-            return float(metric_avgs[0]), full_pnl_returns
+            return float(metric_avgs[0])
     
+    def _evaluate_single_window(self, window_config, scenario_config, shared_data):
+        """
+        Evaluate a single WFO window. This method is designed to be called by parallel workers.
+        
+        Args:
+            window_config: Dictionary containing window configuration
+            scenario_config: Scenario configuration
+            shared_data: Shared data needed for evaluation
+            
+        Returns:
+            Tuple of (metrics_array, window_returns)
+        """
+        from .reporting.performance_metrics import calculate_metrics
+        
+        # Extract window parameters
+        window_idx = window_config['window_idx']
+        tr_start = window_config['tr_start']
+        tr_end = window_config['tr_end']
+        te_start = window_config['te_start']
+        te_end = window_config['te_end']
+        
+        # Extract shared data
+        monthly_data = shared_data['monthly_data']
+        daily_data = shared_data['daily_data']
+        rets_full = shared_data['rets_full']
+        trial_synthetic_data = shared_data.get('trial_synthetic_data')
+        replacement_info = shared_data.get('replacement_info')
+        mc_adaptive_enabled = shared_data.get('mc_adaptive_enabled', False)
+        metrics_to_optimize = shared_data['metrics_to_optimize']
+        global_config = shared_data['global_config']
+        
+        try:
+            m_slice = monthly_data.loc[tr_start:tr_end]
+            d_slice = daily_data.loc[tr_start:te_end]
+            r_slice = rets_full.loc[tr_start:te_end]
+
+            # d_slice is the original daily OHLC data for the current window
+            current_daily_data_ohlc = d_slice  # Avoid unnecessary copy for performance
+            
+            # Stage 1 MC: Apply lightweight synthetic data to test period only (for robustness)
+            if mc_adaptive_enabled and trial_synthetic_data is not None and replacement_info is not None:
+                # Need to copy only if we're modifying the data
+                current_daily_data_ohlc = d_slice.copy()
+                
+                # Iterate through selected assets and replace their test period data
+                for asset in replacement_info.selected_assets:
+                    if asset in trial_synthetic_data:
+                        synthetic_ohlc_for_asset = trial_synthetic_data[asset]
+                        
+                        # Get the test period slice for this asset from the synthetic data
+                        window_synthetic_ohlc = synthetic_ohlc_for_asset.loc[te_start:te_end]
+                        
+                        if not window_synthetic_ohlc.empty:
+                            # Replace data in current_daily_data_ohlc for the test period
+                            if isinstance(current_daily_data_ohlc.columns, pd.MultiIndex):
+                                # MultiIndex: (Ticker, Field)
+                                for field in window_synthetic_ohlc.columns:
+                                    if (asset, field) in current_daily_data_ohlc.columns:
+                                        current_daily_data_ohlc.loc[window_synthetic_ohlc.index, (asset, field)] = window_synthetic_ohlc[field]
+                            else:
+                                # Flat columns: Ticker_Field
+                                for field in window_synthetic_ohlc.columns:
+                                    col_name = f"{asset}_{field}"
+                                    if col_name in current_daily_data_ohlc.columns:
+                                        current_daily_data_ohlc.loc[window_synthetic_ohlc.index, col_name] = window_synthetic_ohlc[field]
+                                    elif field == 'Close' and asset in current_daily_data_ohlc.columns:
+                                        current_daily_data_ohlc.loc[window_synthetic_ohlc.index, asset] = window_synthetic_ohlc[field]
+            
+            # Pass the potentially modified daily OHLC data to run_scenario
+            window_returns = self.run_scenario(scenario_config, m_slice, current_daily_data_ohlc, rets_daily=None, verbose=False)
+
+            if window_returns is None or window_returns.empty:
+                return [np.nan] * len(metrics_to_optimize), pd.Series(dtype=float)
+
+            test_rets = window_returns.loc[te_start:te_end]
+            if test_rets.empty:
+                return [np.nan] * len(metrics_to_optimize), pd.Series(dtype=float)
+
+            bench_ser = d_slice[global_config["benchmark"]].loc[te_start:te_end]
+            bench_period_rets = bench_ser.pct_change(fill_method=None).fillna(0)
+            metrics = calculate_metrics(test_rets, bench_period_rets, global_config["benchmark"])
+            current_metrics = [metrics.get(m, np.nan) for m in metrics_to_optimize]
+
+            return current_metrics, window_returns
+            
+        except Exception as e:
+            logger.error(f"Error evaluating window {window_idx}: {e}")
+            return [np.nan] * len(metrics_to_optimize), pd.Series(dtype=float)
+
     def _get_monte_carlo_trial_threshold(self, optimization_mode):
         """
         Get the trial threshold for enabling Monte Carlo based on optimization mode.
@@ -778,9 +895,9 @@ class Backtester:
         # The existing logic for daily_data_std_format seems to prepare this.
         # Ensure daily_data_std_format is a DataFrame before assigning
         if isinstance(daily_data_std_format, pd.Series):
-            self.daily_data_ohlc = daily_data_std_format.to_frame().copy()
+            self.daily_data_ohlc = daily_data_std_format.to_frame()
         else:
-            self.daily_data_ohlc = daily_data_std_format.copy()
+            self.daily_data_ohlc = daily_data_std_format
         
         if self.daily_data_ohlc is not None: # Add explicit check for Pylance
             if logger.isEnabledFor(logging.DEBUG):
@@ -817,6 +934,9 @@ class Backtester:
 
         if daily_closes is None or daily_closes.empty:
             raise ValueError("Daily close prices could not be extracted or are empty.")
+
+        if isinstance(daily_closes, pd.Series):
+            daily_closes = daily_closes.to_frame()
 
         # monthly_closes will be used for determining rebalance dates and for sizers if they need monthly frequency.
         monthly_closes = daily_closes.resample("BME").last()
@@ -858,12 +978,20 @@ class Backtester:
         else:
             if self.logger.isEnabledFor(logging.DEBUG):
                 self.logger.debug("All scenarios completed. Displaying results.")
-            # Only display results for backtest mode - optimization mode handles its own reporting
+            # Display results and generate deferred reports if needed
             if self.args.mode == "backtest":
                 self.display_results(daily_data) # daily_data is available here
             else:
+                # For optimization mode, generate deferred reports if enabled
+                try:
+                    self.generate_deferred_report()
+                except Exception as e:
+                    self.logger.warning(f"Failed to generate deferred report: {e}")
+                
+                # Then display results
+                self.display_results(self.daily_data_ohlc)
                 if self.logger.isEnabledFor(logging.DEBUG):
-                    self.logger.debug("Optimization mode completed. Comprehensive reports already generated.")
+                    self.logger.debug("Optimization mode completed. Reports generated.")
         
 # The following code block was incorrectly placed inside the class in the previous attempt.
 # It should remain at the module level.

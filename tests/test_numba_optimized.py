@@ -12,7 +12,7 @@ from src.portfolio_backtester.numba_optimized import (
     momentum_scores_fast, momentum_scores_fast_vectorized,
     rolling_mean_fast, rolling_std_fast, rolling_sharpe_fast,
     rolling_sortino_fast, rolling_beta_fast, rolling_correlation_fast,
-    true_range_fast, atr_fast, atr_exponential_fast, volatility_adjusted_returns_fast
+    true_range_fast, atr_fast, atr_exponential_fast
 )
 
 
@@ -280,31 +280,6 @@ class TestATROptimizations:
         valid_values = atr_exp_numba[~np.isnan(atr_exp_numba)]
         assert len(valid_values) >= 2
     
-    def test_volatility_adjusted_returns_fast(self):
-        """Test fast volatility-adjusted returns calculation."""
-        # Create test data
-        returns = np.array([0.01, -0.02, 0.015, -0.01, 0.02, -0.005, 0.01, 0.03])
-        atr_values = np.array([2.0, 2.5, 3.0, 2.8, 3.2, 2.9, 3.1, 2.7])
-        lookback_window = 3
-        
-        # Numba calculation
-        adj_returns_numba = volatility_adjusted_returns_fast(returns, atr_values, lookback_window)
-        
-        # Verify structure
-        assert len(adj_returns_numba) == len(returns)
-        
-        # First few values should be NaN (not enough lookback)
-        for i in range(lookback_window):
-            assert np.isnan(adj_returns_numba[i])
-        
-        # Later values should be valid
-        assert not np.isnan(adj_returns_numba[-1])
-        
-        # Verify adjustment is working (returns divided by average ATR)
-        last_return = returns[-1]
-        last_atr_window = atr_values[-lookback_window:]
-        expected_adj = last_return / np.mean(last_atr_window)
-        np.testing.assert_almost_equal(adj_returns_numba[-1], expected_adj, decimal=8)
     
     def test_atr_with_nan_data(self):
         """Test ATR functions handle NaN data correctly."""
