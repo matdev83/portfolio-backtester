@@ -314,7 +314,8 @@ class SyntheticDataValidator:
             
             passed = has_clustering and clustering_preserved
             
-            logger.debug(f"Volatility Clustering for {asset_name}: Orig Lag1={first_lag_orig:.4f}, Synth Lag1={first_lag_synth:.4f}, Diff={clustering_diff:.4f}, Passed={passed}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Volatility Clustering for {asset_name}: Orig Lag1={first_lag_orig:.4f}, Synth Lag1={first_lag_synth:.4f}, Diff={clustering_diff:.4f}, Passed={passed}")
             
             return ValidationResults(
                 test_name="volatility_clustering",
@@ -384,7 +385,8 @@ class SyntheticDataValidator:
             
             passed = relative_diff < tolerance
             
-            logger.debug(f"Rolling Volatility for {asset_name}: Relative Diff={relative_diff:.4f}, Tolerance={tolerance:.4f}, Passed={passed}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Rolling Volatility for {asset_name}: Relative Diff={relative_diff:.4f}, Tolerance={tolerance:.4f}, Passed={passed}")
             
             return ValidationResults(
                 test_name="rolling_volatility",
@@ -443,8 +445,8 @@ class SyntheticDataValidator:
             # Overall pass if either tail index or kurtosis check passes (more lenient)
             passed = passed_tail_index or passed_kurtosis
             
-            logger.debug(f"Fat Tails for {asset_name}: Orig Tail Index={orig_tail_index:.2f}, Synth Tail Index={synth_tail_index:.2f}, Diff={tail_diff:.2f}, Passed Tail Index={passed_tail_index}
-  Orig Kurtosis={orig_kurtosis_val:.2f}, Synth Kurtosis={synth_kurtosis_val:.2f}, Passed Kurtosis={passed_kurtosis}, Overall Passed={passed}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Fat Tails for {asset_name}: Orig Tail Index={orig_tail_index:.2f}, Synth Tail Index={synth_tail_index:.2f}, Diff={tail_diff:.2f}, Passed Tail Index={passed_tail_index}\n  Orig Kurtosis={orig_kurtosis_val:.2f}, Synth Kurtosis={synth_kurtosis_val:.2f}, Passed Kurtosis={passed_kurtosis}, Overall Passed={passed}")
             
             return ValidationResults(
                 test_name="fat_tails",
@@ -500,7 +502,8 @@ class SyntheticDataValidator:
             
             passed = max_percentile_diff < tolerance
             
-            logger.debug(f"Extreme Values for {asset_name}: Max Percentile Diff={max_percentile_diff:.4f}, Tolerance={tolerance:.4f}, Passed={passed}\n  Original Percentiles: {orig_percentiles}\n  Synthetic Percentiles: {synth_percentiles}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Extreme Values for {asset_name}: Max Percentile Diff={max_percentile_diff:.4f}, Tolerance={tolerance:.4f}, Passed={passed}\n  Original Percentiles: {orig_percentiles}\n  Synthetic Percentiles: {synth_percentiles}")
             
             return ValidationResults(
                 test_name="extreme_values",

@@ -58,21 +58,24 @@ EPSILON_FOR_DIVISION = 1e-9  # Small epsilon to prevent division by zero or near
 def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_trials=1):
     """Calculates performance metrics for a given returns series."""
     
-    logger.info(f"calculate_metrics called for {name}")
-    logger.info(f"rets length: {len(rets)}, first few: {rets.head().tolist() if not rets.empty else 'empty'}")
-    logger.info(f"rets has any NaN: {rets.isnull().any() if not rets.empty else 'empty'}")
-    logger.info(f"rets all zero: {(rets == 0).all() if not rets.empty else 'empty'}")
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(f"calculate_metrics called for {name}")
+        logger.info(f"rets length: {len(rets)}, first few: {rets.head().tolist() if not rets.empty else 'empty'}")
+        logger.info(f"rets has any NaN: {rets.isnull().any() if not rets.empty else 'empty'}")
+        logger.info(f"rets all zero: {(rets == 0).all() if not rets.empty else 'empty'}")
 
     # Filter out zero returns to get active trading periods
     # However, first check if the original 'rets' series is effectively all zeros.
     is_all_zero_returns = rets.abs().max() < EPSILON_FOR_DIVISION if not rets.empty else False
     
-    logger.info(f"is_all_zero_returns: {is_all_zero_returns}")
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(f"is_all_zero_returns: {is_all_zero_returns}")
 
     active_rets = rets[rets != 0].dropna()
     active_bench_rets = bench_rets[bench_rets != 0].dropna() # Benchmark can still be active
     
-    logger.info(f"active_rets length: {len(active_rets)}")
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(f"active_rets length: {len(active_rets)}")
 
     # If no active returns, or if all returns were effectively zero.
     if active_rets.empty:
@@ -240,21 +243,26 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
         return annualized_return / annualized_vol
     def mdd(series): 
         if series.empty or series.isnull().all(): 
-            logger.info(f"mdd: series is empty or all null. Length: {len(series)}, all null: {series.isnull().all() if not series.empty else 'N/A'}")
+            if logger.isEnabledFor(logging.INFO):
+                logger.info(f"mdd: series is empty or all null. Length: {len(series)}, all null: {series.isnull().all() if not series.empty else 'N/A'}")
             return np.nan
         
-        logger.info(f"mdd: series length: {len(series)}, first few values: {series.head().tolist()}")
-        logger.info(f"mdd: series has any NaN: {series.isnull().any()}, series min: {series.min()}, series max: {series.max()}")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"mdd: series length: {len(series)}, first few values: {series.head().tolist()}")
+            logger.info(f"mdd: series has any NaN: {series.isnull().any()}, series min: {series.min()}, series max: {series.max()}")
         
         cummax_series = series.cummax()
-        logger.info(f"mdd: cummax min: {cummax_series.min()}, cummax max: {cummax_series.max()}")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"mdd: cummax min: {cummax_series.min()}, cummax max: {cummax_series.max()}")
         
         drawdown_series = (series / cummax_series - 1)
-        logger.info(f"mdd: drawdown min: {drawdown_series.min()}, drawdown max: {drawdown_series.max()}")
-        logger.info(f"mdd: drawdown has any NaN: {drawdown_series.isnull().any()}")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"mdd: drawdown min: {drawdown_series.min()}, drawdown max: {drawdown_series.max()}")
+            logger.info(f"mdd: drawdown has any NaN: {drawdown_series.isnull().any()}")
         
         result = drawdown_series.min()
-        logger.info(f"mdd: final result: {result}")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"mdd: final result: {result}")
         return result
     def calmar(x):
         if x.empty or x.isnull().all():

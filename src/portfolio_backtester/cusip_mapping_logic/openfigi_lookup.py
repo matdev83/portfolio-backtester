@@ -8,7 +8,8 @@ logger = logging.getLogger(__name__)
 
 def lookup_openfigi(api_key: str, ticker: str, *, throttle: float = 1.0) -> Tuple[Optional[str], Optional[str]]:
     if not api_key:
-        logger.debug("OPENFIGI_API_KEY missing – skipping lookup")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("OPENFIGI_API_KEY missing – skipping lookup")
         return None, None
 
     url = "https://api.openfigi.com/v3/mapping"
@@ -28,23 +29,27 @@ def lookup_openfigi(api_key: str, ticker: str, *, throttle: float = 1.0) -> Tupl
                            security_info.get("securityName")
 
                     if cusip and 8 <= len(cusip) <= 9:
-                        logger.debug(f"OpenFIGI found CUSIP {cusip} for ticker {ticker}")
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(f"OpenFIGI found CUSIP {cusip} for ticker {ticker}")
                         time.sleep(throttle)
                         return cusip, name
             elif response_data and isinstance(response_data, list) and "warning" in response_data[0]:
-                logger.debug(f"OpenFIGI warning for {ticker} with payload {payload}: {response_data[0]['warning']}")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"OpenFIGI warning for {ticker} with payload {payload}: {response_data[0]['warning']}")
 
         except requests.RequestException as e:
             logger.warning(f"OpenFIGI API request failed for {ticker} with payload {payload}: {e}")
         except Exception as e:
             logger.error(f"Error processing OpenFIGI response for {ticker} with payload {payload}: {e}")
 
-    logger.debug(f"CUSIP not found via OpenFIGI for ticker {ticker}")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"CUSIP not found via OpenFIGI for ticker {ticker}")
     return None, None
 
 def _query_openfigi_api(api_key: str, url: str, payload: list) -> Optional[list]:
     if not api_key:
-        logger.debug("OPENFIGI_API_KEY missing – skipping API query.")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("OPENFIGI_API_KEY missing – skipping API query.")
         return None
 
     headers = {

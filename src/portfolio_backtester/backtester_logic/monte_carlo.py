@@ -3,15 +3,18 @@ import pandas as pd
 
 def run_monte_carlo_mode(self, scenario_config, monthly_data, daily_data, rets_full):
     logger = self.logger
-    logger.info(f"Running Monte Carlo simulation for scenario: {scenario_config['name']}")
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(f"Running Monte Carlo simulation for scenario: {scenario_config['name']}")
     
-    logger.info("Step 1: Finding optimal parameters...")
+    if logger.isEnabledFor(logging.INFO):
+        logger.info("Step 1: Finding optimal parameters...")
     optimal_params, actual_num_trials = self.run_optimization(scenario_config, monthly_data, daily_data, rets_full)
     
     optimized_scenario = scenario_config.copy()
     optimized_scenario["strategy_params"] = optimal_params
 
-    logger.info("Step 2: Generating test returns for Monte Carlo simulation...")
+    if logger.isEnabledFor(logging.INFO):
+        logger.info("Step 2: Generating test returns for Monte Carlo simulation...")
     train_end_date = pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
     test_data = monthly_data[monthly_data.index > train_end_date]
     test_rets_sliced = rets_full[rets_full.index > train_end_date]
@@ -23,7 +26,8 @@ def run_monte_carlo_mode(self, scenario_config, monthly_data, daily_data, rets_f
         logger.error("Cannot run Monte Carlo simulation because test returns could not be generated.")
         return
 
-    logger.info("Step 3: Running Monte Carlo simulation...")
+    if logger.isEnabledFor(logging.INFO):
+        logger.info("Step 3: Running Monte Carlo simulation...")
     n_simulations = scenario_config.get("mc_simulations", self.args.mc_simulations)
     n_years = scenario_config.get("mc_years", self.args.mc_years)
     mc_sims = run_monte_carlo_simulation(
@@ -32,7 +36,8 @@ def run_monte_carlo_mode(self, scenario_config, monthly_data, daily_data, rets_f
         n_years=n_years
     )
     
-    logger.info("Step 4: Running full backtest with optimal parameters for final report...")
+    if logger.isEnabledFor(logging.INFO):
+        logger.info("Step 4: Running full backtest with optimal parameters for final report...")
     full_rets = self.run_scenario(optimized_scenario, monthly_data, daily_data, rets_full, self.features)
     
     optimized_name = f'{scenario_config["name"]} (Optimized)'
@@ -49,4 +54,5 @@ def run_monte_carlo_mode(self, scenario_config, monthly_data, daily_data, rets_f
         params=scenario_config.get('strategy_params'),
         interactive=getattr(self.args, 'interactive', False)
     )
-    logger.info("Monte Carlo simulation finished.")
+    if logger.isEnabledFor(logging.INFO):
+        logger.info("Monte Carlo simulation finished.")

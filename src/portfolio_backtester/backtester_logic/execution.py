@@ -8,7 +8,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 def run_backtest_mode(self, scenario_config, monthly_data, daily_data, rets_full):
-    self.logger.info(f"Running backtest for scenario: {scenario_config['name']}")
+    if self.logger.isEnabledFor(logging.INFO):
+        self.logger.info(f"Running backtest for scenario: {scenario_config['name']}")
     
     if self.args.study_name:
         try:
@@ -17,7 +18,8 @@ def run_backtest_mode(self, scenario_config, monthly_data, daily_data, rets_full
             optimal_params = scenario_config["strategy_params"].copy()
             optimal_params.update(study.best_params)
             scenario_config["strategy_params"] = optimal_params
-            self.logger.info(f"Loaded best parameters from study '{self.args.study_name}': {optimal_params}")
+            if self.logger.isEnabledFor(logging.INFO):
+                self.logger.info(f"Loaded best parameters from study '{self.args.study_name}': {optimal_params}")
         except KeyError:
             self.logger.warning(f'Study \'{self.args.study_name}\' not found. Using default parameters for scenario \'{scenario_config["name"]}\'.')
         except Exception as e:
@@ -28,7 +30,8 @@ def run_backtest_mode(self, scenario_config, monthly_data, daily_data, rets_full
     self.results[scenario_config["name"]] = {"returns": rets, "display_name": scenario_config["name"], "train_end_date": train_end_date}
 
 def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full):
-    self.logger.info(f"Running optimization for scenario: {scenario_config['name']}")
+    if self.logger.isEnabledFor(logging.INFO):
+        self.logger.info(f"Running optimization for scenario: {scenario_config['name']}")
     
     optimal_params, actual_num_trials, best_trial_obj = self.run_optimization(scenario_config, monthly_data, daily_data, rets_full)
     
@@ -51,7 +54,8 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
     optimized_scenario = scenario_config.copy()
     optimized_scenario["strategy_params"] = optimal_params
     
-    self.logger.info(f"Running full backtest with optimal parameters: {optimal_params}")
+    if self.logger.isEnabledFor(logging.INFO):
+        self.logger.info(f"Running full backtest with optimal parameters: {optimal_params}")
     full_rets = self.run_scenario(optimized_scenario, monthly_data, daily_data, rets_full)
     
     # Initialize optimized_name with default value
@@ -142,7 +146,8 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
                 )
                 
                 if success and adjusted_rets is not None:
-                    self.logger.info("✅ Successfully found constraint-satisfying parameters!")
+                    if self.logger.isEnabledFor(logging.INFO):
+                        self.logger.info("✅ Successfully found constraint-satisfying parameters!")
                     print("✅ Successfully found constraint-satisfying parameters!")
                     optimized_name = f'{scenario_config["name"]} (Constraint-Adjusted)'
                     full_rets = adjusted_rets
@@ -170,7 +175,8 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
                             constraint_status = "VIOLATED"
                             constraint_message = f"All parameter combinations violate constraints. Violations: {', '.join(fallback_violations)}"
                         else:
-                            self.logger.info("✅ Fallback parameters satisfy constraints.")
+                            if self.logger.isEnabledFor(logging.INFO):
+                                self.logger.info("✅ Fallback parameters satisfy constraints.")
                             print("✅ Fallback parameters satisfy constraints.")
                             optimized_name = f'{scenario_config["name"]} (Fallback - Constraints OK)'
                             constraint_status = "FALLBACK_OK"
@@ -185,7 +191,8 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
                         constraint_status = "VIOLATED"
                         constraint_message = f"Optimization failed and fallback failed. Violations: {', '.join(constraint_violations)}"
             else:
-                self.logger.info("✅ All constraints satisfied in final backtest.")
+                if self.logger.isEnabledFor(logging.INFO):
+                    self.logger.info("✅ All constraints satisfied in final backtest.")
                 print("✅ All constraints satisfied in final backtest.")
                 optimized_name = f'{scenario_config["name"]} (Optimized)'
                 constraint_status = "SATISFIED"
@@ -203,7 +210,8 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
         "constraint_violations": constraint_violations if constraint_violations else [],
         "constraints_config": constraints_config
     }
-    self.logger.info(f"Full backtest with optimized parameters completed for {scenario_config['name']}.")
+    if self.logger.isEnabledFor(logging.INFO):
+        self.logger.info(f"Full backtest with optimized parameters completed for {scenario_config['name']}.")
     
     # Generate comprehensive optimization report
     try:
@@ -222,7 +230,8 @@ def _generate_optimization_report(self, scenario_config, optimal_params, full_re
         """Generate comprehensive optimization report with performance analysis."""
         
         strategy_name = scenario_config["name"]
-        self.logger.info(f"Generating comprehensive optimization report for {strategy_name}")
+        if self.logger.isEnabledFor(logging.INFO):
+            self.logger.info(f"Generating comprehensive optimization report for {strategy_name}")
         
         # Calculate performance metrics for the optimized strategy
         if full_rets is not None and not full_rets.empty:
@@ -327,7 +336,8 @@ def _generate_optimization_report(self, scenario_config, optimal_params, full_re
                 additional_info=additional_info
             )
             
-            self.logger.info(f"Comprehensive optimization report generated: {report_path}")
+            if self.logger.isEnabledFor(logging.INFO):
+                self.logger.info(f"Comprehensive optimization report generated: {report_path}")
             print(f"\nOptimization Report Generated: {report_path}")
             print(f"Report directory contains:")
             print(f"   - optimization_report.md (Main report)")

@@ -65,11 +65,13 @@ class YFinanceDataSource(BaseDataSource):
     def get_data(self, tickers: list[str], start_date: str, end_date: str) -> pd.DataFrame:
         """Downloads or reads from cache the price data for a given list of tickers."""
         all_closes = []
-        logger.info(f"Fetching data for {len(tickers)} tickers from {start_date} to {end_date}.")
+        if self.logger.isEnabledFor(logging.INFO):
+            self.logger.info(f"Fetching data for {len(tickers)} tickers from {start_date} to {end_date}.")
 
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir)
-            logger.info(f"Created data directory at: {self.data_dir}")
+            if self.logger.isEnabledFor(logging.INFO):
+                self.logger.info(f"Created data directory at: {self.data_dir}")
 
         with Progress(
             SpinnerColumn(),
@@ -118,5 +120,6 @@ class YFinanceDataSource(BaseDataSource):
             return pd.DataFrame()
 
         result_df = pd.concat(all_closes, axis=1)
-        logger.info("Data fetching complete.")
+        if self.logger.isEnabledFor(logging.INFO):
+            self.logger.info("Data fetching complete.")
         return result_df

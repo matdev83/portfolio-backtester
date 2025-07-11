@@ -198,7 +198,8 @@ class MomentumStrategy(BaseStrategy):
         )
         
         if not valid_assets:
-            logger.warning(f"No assets have sufficient data for {current_date.strftime('%Y-%m-%d')}")
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(f"No assets have sufficient data for {current_date.strftime('%Y-%m-%d')}")
             columns = (all_historical_data.columns.get_level_values(0).unique() 
                       if isinstance(all_historical_data.columns, pd.MultiIndex) 
                       else all_historical_data.columns)

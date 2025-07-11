@@ -43,13 +43,15 @@ class ConstraintHandler:
         if not constraints_config:
             return optimal_params, None, True
         
-        logger.info(f"Attempting to find constraint-satisfying parameters (max {max_attempts} attempts)")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Attempting to find constraint-satisfying parameters (max {max_attempts} attempts)")
         
         # Start with optimal params and iteratively adjust
         current_params = optimal_params.copy()
         
         for attempt in range(max_attempts):
-            logger.info(f"Constraint adjustment attempt {attempt + 1}/{max_attempts}")
+            if logger.isEnabledFor(logging.INFO):
+                logger.info(f"Constraint adjustment attempt {attempt + 1}/{max_attempts}")
             
             # Adjust parameters based on constraint violations
             adjusted_params = self._adjust_parameters_for_constraints(
@@ -76,11 +78,13 @@ class ConstraintHandler:
             test_violations = self._check_constraint_violations(test_metrics, constraints_config)
             
             if not test_violations:
-                logger.info(f"✅ Found constraint-satisfying parameters on attempt {attempt + 1}")
-                logger.info(f"Adjusted parameters: {adjusted_params}")
+                if logger.isEnabledFor(logging.INFO):
+                    logger.info(f"✅ Found constraint-satisfying parameters on attempt {attempt + 1}")
+                    logger.info(f"Adjusted parameters: {adjusted_params}")
                 return adjusted_params, test_rets, True
             else:
-                logger.info(f"Attempt {attempt + 1}: Still have violations: {test_violations}")
+                if logger.isEnabledFor(logging.INFO):
+                    logger.info(f"Attempt {attempt + 1}: Still have violations: {test_violations}")
                 current_params = adjusted_params  # Use as starting point for next iteration
         
         logger.error(f"Failed to find constraint-satisfying parameters after {max_attempts} attempts")
@@ -113,7 +117,8 @@ class ConstraintHandler:
                 reduction_factor = 0.8 ** (attempt + 1)  # 0.8, 0.64, 0.512, etc.
                 new_leverage = max(1.0, current_leverage * reduction_factor)
                 adjusted["leverage"] = new_leverage
-                logger.info(f"Reducing leverage from {current_leverage:.2f} to {new_leverage:.2f}")
+                if logger.isEnabledFor(logging.INFO):
+                    logger.info(f"Reducing leverage from {current_leverage:.2f} to {new_leverage:.2f}")
             else:
                 # If leverage is already 1.0, try other adjustments
                 return self._try_other_adjustments(adjusted, scenario_config, attempt)
@@ -134,7 +139,8 @@ class ConstraintHandler:
             max_fast = min(current_slow - 5, current_fast + 5 + attempt * 2)
             if max_fast > current_fast:
                 adjusted["fast_ema_days"] = max_fast
-                logger.info(f"Increasing fast EMA from {current_fast} to {max_fast} to reduce volatility")
+                if logger.isEnabledFor(logging.INFO):
+                    logger.info(f"Increasing fast EMA from {current_fast} to {max_fast} to reduce volatility")
                 return adjusted
         
         # If no other adjustments possible, return None

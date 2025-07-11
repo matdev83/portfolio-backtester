@@ -1,6 +1,9 @@
 import argparse
 import sys
 import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 from .. import cusip_mapping
 
 def main():
@@ -10,7 +13,8 @@ def main():
     args = parser.parse_args()
 
     if args.update_missing:
-        print("Downloading S&P 500 constituent list from Wikipedia…", file=sys.stderr)
+        if logger.isEnabledFor(logging.INFO):
+            logger.info("Downloading S&P 500 constituent list from Wikipedia...")
         tables = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
         symbols = set(tables[0].iloc[:, 0].tolist())
         symbols.update(tables[1].iloc[:, 1].dropna().tolist())
@@ -18,10 +22,13 @@ def main():
 
         db = cusip_mapping.CusipMappingDB()
         unresolved = [s for s in sorted(symbols) if s not in db._cache]
-        print(f"Total unresolved tickers: {len(unresolved)}", file=sys.stderr)
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Total unresolved tickers: {len(unresolved)}")
         for i, sym in enumerate(unresolved, 1):
             try:
                 cusip, _ = db.resolve(sym, throttle=args.throttle)
-                print(f"[{i}/{len(unresolved)}] {sym} => {cusip}")
+                if logger.isEnabledFor(logging.INFO):
+                    logger.info(f"[{i}/{len(unresolved)}] {sym} => {cusip}")
             except Exception as e:
-                print(f"[{i}/{len(unresolved)}] {sym} FAILED: {e}", file=sys.stderr)
+                if logger.isEnabledFor(logging.ERROR):
+                    logger.error(f"[{i}/{len(unresolved)}] {sym} FAILED: {e}")

@@ -9,6 +9,7 @@ import seaborn as sns # Added for better plotting
 import numpy as np # Added for numerical operations
 import optuna # Added for stability measures plotting
 import pandas as pd # Added for parameter stability plotting
+import logging
 
 from ..reporting.performance_metrics import calculate_metrics
 
@@ -372,14 +373,16 @@ def _plot_stability_measures(self, scenario_name: str, best_trial_obj, optimal_r
                         'value': trial_value
                     })
                 except Exception as e:
-                    logger.debug(f"Failed to extract returns for trial {trial.number}: {e}")
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Failed to extract returns for trial {trial.number}: {e}")
                     continue
         
         if len(trial_returns_data) < 2:
             logger.warning(f"Only {len(trial_returns_data)} trials have stored returns data. Cannot create visualization.")
             return
             
-        logger.info(f"Creating Monte Carlo-style trial P&L visualization with {len(trial_returns_data)} trials...")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Creating Monte Carlo-style trial P&L visualization with {len(trial_returns_data)} trials...")
         
         # Set up the plot
         plt.style.use('seaborn-v0_8-darkgrid')
@@ -475,7 +478,8 @@ Std Dev of Values: {np.std(trial_values):.3f}"""
         fig.savefig(filepath, dpi=300, bbox_inches='tight')
         plt.close(fig)
         
-        logger.info(f"Trial P&L curves plot saved to: {filepath}")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Trial P&L curves plot saved to: {filepath}")
         
         # Check if advanced parameter analysis is enabled
         advanced_reporting_config = self.global_config.get('advanced_reporting_config', {})
@@ -488,7 +492,8 @@ Std Dev of Values: {np.std(trial_values):.3f}"""
     except Exception as e:
         logger.error(f"Error creating trial P&L visualization: {e}")
         import traceback
-        logger.debug(traceback.format_exc())
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(traceback.format_exc())
 
 
 def _plot_parameter_impact_analysis(self, scenario_name: str, best_trial_obj, timestamp: str):
@@ -514,7 +519,8 @@ def _plot_parameter_impact_analysis(self, scenario_name: str, best_trial_obj, ti
             logger.warning(f"Only {len(completed_trials)} completed trials. Need at least 10 for meaningful parameter analysis.")
             return
             
-        logger.info(f"Creating parameter impact analysis with {len(completed_trials)} trials...")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Creating parameter impact analysis with {len(completed_trials)} trials...")
         
         # Extract parameter and performance data
         param_data = []
@@ -559,12 +565,14 @@ def _plot_parameter_impact_analysis(self, scenario_name: str, best_trial_obj, ti
         # Create parameter robustness analysis
         _create_parameter_robustness_analysis(self, df, param_names, scenario_name, timestamp)
         
-        logger.info("Parameter impact analysis completed successfully.")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info("Parameter impact analysis completed successfully.")
         
     except Exception as e:
         logger.error(f"Error creating parameter impact analysis: {e}")
         import traceback
-        logger.debug(traceback.format_exc())
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(traceback.format_exc())
 
 
 def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_config: dict, 
@@ -597,7 +605,8 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
     logger = self.logger
     
     try:
-        logger.info(f"Stage 2 MC: Starting comprehensive stress testing for {scenario_name}...")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Stage 2 MC: Starting comprehensive stress testing for {scenario_name}...")
         
         # Check if synthetic data generation is available
         monte_carlo_config = self.global_config.get('monte_carlo_config', {})
@@ -607,7 +616,8 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
             
         # Check if Stage 2 stress testing is enabled
         if not monte_carlo_config.get('enable_stage2_stress_testing', True):
-            logger.info("Stage 2 MC: Stage 2 stress testing is disabled for faster optimization. Skipping robustness analysis.")
+            if logger.isEnabledFor(logging.INFO):
+                logger.info("Stage 2 MC: Stage 2 stress testing is disabled for faster optimization. Skipping robustness analysis.")
             return
             
         from ..monte_carlo.asset_replacement import AssetReplacementManager
@@ -642,7 +652,8 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
             task = progress.add_task(f"[cyan]Stage 2 Monte Carlo Stress Testing...", total=total_simulations)
             
             for i, replacement_pct in enumerate(replacement_percentages):
-                logger.debug(f"Stage 2 MC: Running simulations with {replacement_pct:.1%} synthetic data replacement...")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"Stage 2 MC: Running simulations with {replacement_pct:.1%} synthetic data replacement...")
                 
                 # Configure asset replacement manager for this level
                 mc_config = monte_carlo_config.copy()
@@ -680,13 +691,15 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                     
                     # Convert daily data to expected format
                     daily_data_dict = {}
-                    logger.debug(f"Daily data columns: {daily_data.columns}")
-                    logger.debug(f"Daily data shape: {daily_data.shape}")
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Daily data columns: {daily_data.columns}")
+                        logger.debug(f"Daily data shape: {daily_data.shape}")
                     
                     if isinstance(daily_data.columns, pd.MultiIndex):
-                        logger.debug(f"MultiIndex levels: {daily_data.columns.names}")
-                        logger.debug(f"Level 0 values: {daily_data.columns.get_level_values(0).unique()}")
-                        logger.debug(f"Level 1 values: {daily_data.columns.get_level_values(1).unique()}")
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(f"MultiIndex levels: {daily_data.columns.names}")
+                            logger.debug(f"Level 0 values: {daily_data.columns.get_level_values(0).unique()}")
+                            logger.debug(f"Level 1 values: {daily_data.columns.get_level_values(1).unique()}")
                         
                         # Handle MultiIndex columns (Ticker, Field) structure
                         for ticker in universe:
@@ -694,7 +707,8 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                                 ticker_data = daily_data.xs(ticker, level=0, axis=1, drop_level=True)
                                 if not ticker_data.empty:
                                     daily_data_dict[ticker] = ticker_data
-                                    logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
+                                    if logger.isEnabledFor(logging.DEBUG):
+                                        logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
                             elif ticker in daily_data.columns.get_level_values(1):  # Check second level
                                 # Handle (Field, Ticker) structure
                                 ticker_columns = [col for col in daily_data.columns if col[1] == ticker]
@@ -702,7 +716,8 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                                     ticker_data = daily_data[ticker_columns]
                                     ticker_data.columns = [col[0] for col in ticker_columns]  # Keep only field names
                                     daily_data_dict[ticker] = ticker_data
-                                    logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
+                                    if logger.isEnabledFor(logging.DEBUG):
+                                        logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
                     else:
                         # Handle simple column structure - assume it's close prices
                         for ticker in universe:
@@ -716,7 +731,8 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                                 daily_data_dict[ticker] = ticker_data
                                 logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
                     
-                    logger.debug(f"Stage 2 MC: Created daily_data_dict with {len(daily_data_dict)} assets")
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Stage 2 MC: Created daily_data_dict with {len(daily_data_dict)} assets")
                     
                     # Generate synthetic data for full historical period
                     # Use all available data for stress testing, but keep minimum historical data for parameter estimation
@@ -729,7 +745,8 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                     test_end = daily_data.index[-1]
                     test_period_days = total_days - test_start_idx
                     
-                    logger.debug(f"Stage 2 MC: Monte Carlo stress test period: {test_start} to {test_end} ({test_period_days} days, full historical data after {min_historical_days} day parameter estimation period)")
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Stage 2 MC: Monte Carlo stress test period: {test_start} to {test_end} ({test_period_days} days, full historical data after {min_historical_days} day parameter estimation period)")
                     synthetic_data, replacement_info = asset_replacement_manager.create_monte_carlo_dataset(
                         original_data=daily_data_dict,
                         universe=universe,
@@ -760,19 +777,22 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                     
                     if sim_returns is not None and not sim_returns.empty:
                         level_results.append(sim_returns)
-                        logger.debug(f"Stage 2 MC: Simulation {sim_num} completed for {replacement_pct:.1%} replacement")
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(f"Stage 2 MC: Simulation {sim_num} completed for {replacement_pct:.1%} replacement")
                         
                 except Exception as e:
                     logger.warning(f"Stage 2 MC: Simulation {sim_num} failed for {replacement_pct:.1%} replacement: {e}")
                     import traceback
-                    logger.debug(traceback.format_exc())
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(traceback.format_exc())
                 finally:
                     # Update progress bar regardless of success/failure
                     progress.advance(task)
             
                 if level_results:
                     simulation_results[replacement_pct] = level_results
-                    logger.info(f"Stage 2 MC: Completed {len(level_results)} simulations for {replacement_pct:.1%} replacement level")
+                    if logger.isEnabledFor(logging.INFO):
+                        logger.info(f"Stage 2 MC: Completed {len(level_results)} simulations for {replacement_pct:.1%} replacement level")
                 else:
                     logger.warning(f"Stage 2 MC: No successful simulations for {replacement_pct:.1%} replacement level")
         
@@ -786,7 +806,8 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
     except Exception as e:
         logger.error(f"Stage 2 MC: Error in Monte Carlo robustness analysis: {e}")
         import traceback
-        logger.debug(traceback.format_exc())
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(traceback.format_exc())
 
 
 def _create_monte_carlo_robustness_plot(self, scenario_name: str, simulation_results: dict, 
@@ -976,12 +997,14 @@ def _create_parameter_heatmaps(self, df: pd.DataFrame, param_names: list, scenar
         fig.savefig(filepath, dpi=300, bbox_inches='tight')
         plt.close(fig)
         
-        logger.info(f"Parameter heatmaps saved to: {filepath}")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Parameter heatmaps saved to: {filepath}")
         
     except Exception as e:
         logger.error(f"Error creating parameter heatmaps: {e}")
         import traceback
-        logger.debug(traceback.format_exc())
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(traceback.format_exc())
 
 
 def _create_parameter_sensitivity_analysis(self, df: pd.DataFrame, param_names: list, scenario_name: str, timestamp: str):
@@ -1067,12 +1090,14 @@ def _create_parameter_sensitivity_analysis(self, df: pd.DataFrame, param_names: 
         fig.savefig(filepath, dpi=300, bbox_inches='tight')
         plt.close(fig)
         
-        logger.info(f"Parameter sensitivity analysis saved to: {filepath}")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Parameter sensitivity analysis saved to: {filepath}")
         
     except Exception as e:
         logger.error(f"Error creating parameter sensitivity analysis: {e}")
         import traceback
-        logger.debug(traceback.format_exc())
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(traceback.format_exc())
 
 
 def _create_parameter_stability_analysis(self, df: pd.DataFrame, param_names: list, scenario_name: str, timestamp: str):
@@ -1177,12 +1202,14 @@ def _create_parameter_stability_analysis(self, df: pd.DataFrame, param_names: li
         fig.savefig(filepath, dpi=300, bbox_inches='tight')
         plt.close(fig)
         
-        logger.info(f"Parameter stability analysis saved to: {filepath}")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Parameter stability analysis saved to: {filepath}")
         
     except Exception as e:
         logger.error(f"Error creating parameter stability analysis: {e}")
         import traceback
-        logger.debug(traceback.format_exc())
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(traceback.format_exc())
 
 
 def _create_parameter_correlation_analysis(self, df: pd.DataFrame, param_names: list, scenario_name: str, timestamp: str):
@@ -1233,12 +1260,14 @@ def _create_parameter_correlation_analysis(self, df: pd.DataFrame, param_names: 
         fig.savefig(filepath, dpi=300, bbox_inches='tight')
         plt.close(fig)
         
-        logger.info(f"Parameter correlation analysis saved to: {filepath}")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Parameter correlation analysis saved to: {filepath}")
         
     except Exception as e:
         logger.error(f"Error creating parameter correlation analysis: {e}")
         import traceback
-        logger.debug(traceback.format_exc())
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(traceback.format_exc())
 
 
 def _create_parameter_importance_ranking(self, df: pd.DataFrame, param_names: list, scenario_name: str, timestamp: str):
@@ -1387,12 +1416,14 @@ def _create_parameter_importance_ranking(self, df: pd.DataFrame, param_names: li
         fig.savefig(filepath, dpi=300, bbox_inches='tight')
         plt.close(fig)
         
-        logger.info(f"Parameter importance analysis saved to: {filepath}")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Parameter importance analysis saved to: {filepath}")
         
     except Exception as e:
         logger.error(f"Error creating parameter importance analysis: {e}")
         import traceback
-        logger.debug(traceback.format_exc())
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(traceback.format_exc())
 
 
 def _create_parameter_robustness_analysis(self, df: pd.DataFrame, param_names: list, scenario_name: str, timestamp: str):
@@ -1550,12 +1581,14 @@ def _create_parameter_robustness_analysis(self, df: pd.DataFrame, param_names: l
         fig.savefig(filepath, dpi=300, bbox_inches='tight')
         plt.close(fig)
         
-        logger.info(f"Parameter robustness analysis saved to: {filepath}")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Parameter robustness analysis saved to: {filepath}")
         
     except Exception as e:
         logger.error(f"Error creating parameter robustness analysis: {e}")
         import traceback
-        logger.debug(traceback.format_exc())
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(traceback.format_exc())
 
 def _display_constraint_violation_warning(self, console: Console):
     """Display a prominent constraint violation warning."""

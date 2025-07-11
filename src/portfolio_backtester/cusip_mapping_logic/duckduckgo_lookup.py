@@ -25,5 +25,6 @@ def lookup_duckduckgo(ticker: str, *, throttle: float = 1.0) -> Tuple[Optional[s
             cusip = hits.pop()
             return cusip, ""
     except Exception as e:
-        logger.debug("DuckDuckGo lookup failed for %s: %s", ticker, e)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("DuckDuckGo lookup failed for %s: %s", ticker, e)
     return None, None

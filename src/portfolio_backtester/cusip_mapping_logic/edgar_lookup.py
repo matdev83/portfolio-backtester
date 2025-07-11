@@ -38,7 +38,8 @@ def _cik_for_ticker(ticker: str) -> Optional[str]:
             _CIK_SEARCH_CACHE[ticker] = cik
             return cik
     except Exception as e:
-        logger.debug("CIK search failed for %s: %s", ticker, e)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("CIK search failed for %s: %s", ticker, e)
     return None
 
 def lookup_edgar(ticker: str, *, throttle: float = 1.0) -> Tuple[Optional[str], Optional[str]]:
@@ -70,5 +71,6 @@ def lookup_edgar(ticker: str, *, throttle: float = 1.0) -> Tuple[Optional[str], 
                     return cusip, ""
         return None, None
     except Exception as e:
-        logger.debug("EDGAR lookup failed for %s: %s", ticker, e)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("EDGAR lookup failed for %s: %s", ticker, e)
         return None, None

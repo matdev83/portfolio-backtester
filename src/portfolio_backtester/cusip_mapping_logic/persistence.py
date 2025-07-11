@@ -10,7 +10,8 @@ def append_to_db(live_db_file: Path, ticker: str, cusip: str, name: str, *, sour
             writer = csv.writer(fh)
             writer.writerow([ticker, cusip, name, source])
     except Exception as e:
-        logger.warning("Could not write to DB: %s", e)
+        if logger.isEnabledFor(logging.WARNING):
+            logger.warning("Could not write to DB: %s", e)
 
 def load_seeds(seed_files: list[Path], cache: dict) -> None:
     for path in seed_files:
@@ -31,7 +32,8 @@ def load_seeds(seed_files: list[Path], cache: dict) -> None:
                     if ticker and cusip and 8 <= len(cusip) <= 9:
                         cache.setdefault(ticker, (cusip, name))
         except Exception as e:
-            logger.debug("Could not read seed %s: %s", path, e)
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Could not read seed %s: %s", path, e)
 
 def load_live_db(live_db_file: Path, cache: dict) -> None:
     try:
@@ -44,4 +46,5 @@ def load_live_db(live_db_file: Path, cache: dict) -> None:
                 if ticker and cusip:
                     cache[ticker] = (cusip, name)
     except Exception as e:
-        logger.debug("Could not read live DB: %s", e)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Could not read live DB: %s", e)

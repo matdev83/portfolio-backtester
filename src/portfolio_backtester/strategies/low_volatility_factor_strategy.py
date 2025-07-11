@@ -454,7 +454,8 @@ class LowVolatilityFactorStrategy(BaseStrategy):
             all_historical_data, benchmark_historical_data, current_date
         )
         if not is_sufficient:
-            logger.warning(f"Insufficient data for {current_date}: {reason}")
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(f"Insufficient data for {current_date}: {reason}")
             columns = (all_historical_data.columns.get_level_values(0).unique() 
                       if isinstance(all_historical_data.columns, pd.MultiIndex) 
                       else all_historical_data.columns)
@@ -466,7 +467,8 @@ class LowVolatilityFactorStrategy(BaseStrategy):
         )
         
         if not valid_assets:
-            logger.warning(f"No assets have sufficient data for {current_date}")
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(f"No assets have sufficient data for {current_date}")
             columns = (all_historical_data.columns.get_level_values(0).unique() 
                       if isinstance(all_historical_data.columns, pd.MultiIndex) 
                       else all_historical_data.columns)
@@ -491,7 +493,8 @@ class LowVolatilityFactorStrategy(BaseStrategy):
         price_data = price_data[price_data.index <= current_date]
         
         if len(price_data) < params["volatility_lookback_days"] // 4:  # Need at least 1/4 of lookback period
-            logger.warning(f"Insufficient price history for volatility calculation at {current_date}")
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(f"Insufficient price history for volatility calculation at {current_date}")
             return pd.DataFrame(0.0, index=[current_date], columns=valid_assets)
         
         # Calculate volatilities
@@ -510,7 +513,8 @@ class LowVolatilityFactorStrategy(BaseStrategy):
             common_stocks = [stock for stock in common_stocks if stock in valid_assets]
             
             if len(common_stocks) < 10:  # Need minimum number of stocks
-                logger.warning(f"Too few stocks with complete data at {current_date}")
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(f"Too few stocks with complete data at {current_date}")
                 return pd.DataFrame(0.0, index=[current_date], columns=valid_assets)
             
             # Filter data to common stocks
@@ -521,7 +525,8 @@ class LowVolatilityFactorStrategy(BaseStrategy):
             common_stocks = [stock for stock in current_volatilities.index if stock in valid_assets]
             
             if len(common_stocks) < 10:  # Need minimum number of stocks
-                logger.warning(f"Too few stocks with complete data at {current_date}")
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(f"Too few stocks with complete data at {current_date}")
                 return pd.DataFrame(0.0, index=[current_date], columns=valid_assets)
             
             # Filter volatilities to common stocks

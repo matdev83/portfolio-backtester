@@ -23,6 +23,7 @@ from .backtester_logic.optimization import run_optimization
 from .backtester_logic.execution import run_backtest_mode, run_optimize_mode, _generate_optimization_report
 from .backtester_logic.monte_carlo import run_monte_carlo_mode
 from .constants import ZERO_RET_EPS
+from .data_cache import get_global_cache
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -52,6 +53,10 @@ class Backtester:
         self.early_stop_patience = getattr(args, "early_stop_patience", 10)
         self.logger = logger
         logger.info("Backtester initialized.")
+        
+        # Initialize data cache for performance optimization
+        self.data_cache = get_global_cache()
+        self.logger.info("Data preprocessing cache initialized")
         
         # Initialize Monte Carlo components if enabled
         self.asset_replacement_manager = None
@@ -714,7 +719,8 @@ class Backtester:
         # Removed benchmark_monthly_closes (strategies will use benchmark_historical_data from daily_data_ohlc)
         # Removed precompute_features call and self.features initialization
 
-        rets_full = daily_closes.pct_change(fill_method=None).fillna(0)
+        # Use data cache for expensive return calculations
+        rets_full = self.data_cache.get_cached_returns(daily_closes, "full_period_returns")
         # Ensure rets_full is a DataFrame, even if it originates from a Series
         self.rets_full = rets_full.to_frame() if isinstance(rets_full, pd.Series) else rets_full # These are daily returns based on daily_closes
 

@@ -389,7 +389,8 @@ class BaseStrategy(ABC):
                     
             except Exception as e:
                 # Skip assets that cause errors in data processing
-                logger.debug(f"Skipping asset {asset} due to data processing error: {e}")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"Skipping asset {asset} due to data processing error: {e}")
                 continue
         
         if len(valid_assets) < len(asset_list):
@@ -398,11 +399,14 @@ class BaseStrategy(ABC):
             
             # Only log if there are significant issues
             if len(valid_assets) == 0:
-                logger.error(f"No assets have sufficient data for {current_date.strftime('%Y-%m-%d')} - all {len(asset_list)} assets excluded")
+                if logger.isEnabledFor(logging.ERROR):
+                    logger.error(f"No assets have sufficient data for {current_date.strftime('%Y-%m-%d')} - all {len(asset_list)} assets excluded")
             elif exclusion_rate > 0.5:  # More than 50% excluded
-                logger.warning(f"High asset exclusion rate: {len(valid_assets)}/{len(asset_list)} assets have sufficient data for {current_date.strftime('%Y-%m-%d')} ({exclusion_rate:.1%} excluded)")
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(f"High asset exclusion rate: {len(valid_assets)}/{len(asset_list)} assets have sufficient data for {current_date.strftime('%Y-%m-%d')} ({exclusion_rate:.1%} excluded)")
                 # Also log at debug level when filtered universe is less than 50% of original
-                logger.debug(f"Filtered universe: {len(valid_assets)}/{len(asset_list)} assets have sufficient data for {current_date.strftime('%Y-%m-%d')} (excluded {excluded_count} assets)")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"Filtered universe: {len(valid_assets)}/{len(asset_list)} assets have sufficient data for {current_date.strftime('%Y-%m-%d')} (excluded {excluded_count} assets)")
             # Remove the else clause - no debug logging for normal filtering (exclusion_rate <= 50%)
         
         return valid_assets

@@ -88,10 +88,12 @@ class StooqDataSource(BaseDataSource):
         """
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir, exist_ok=True)
-            logger.info(f"Created data directory at: {self.data_dir}")
+            if logger.isEnabledFor(logging.INFO):
+                logger.info(f"Created data directory at: {self.data_dir}")
 
         all_ticker_data = []
-        logger.info(f"Fetching data from Stooq for {len(tickers)} tickers from {start_date} to {end_date}.")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Fetching data from Stooq for {len(tickers)} tickers from {start_date} to {end_date}.")
 
         # Map tickers that differ between Yahoo and Stooq so the rest of the
         # codebase (which expects Yahoo symbols like "^GSPC") keeps working.
@@ -149,5 +151,6 @@ class StooqDataSource(BaseDataSource):
 
         # Concatenate all ticker data
         result_df = pd.concat(all_ticker_data, axis=1)
-        logger.info("Data fetching from Stooq complete.")
+        if logger.isEnabledFor(logging.INFO):
+            logger.info("Data fetching from Stooq complete.")
         return result_df 
