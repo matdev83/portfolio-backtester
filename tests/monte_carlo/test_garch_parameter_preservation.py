@@ -11,6 +11,10 @@ import pandas as pd
 from scipy import stats
 import warnings
 
+# Suppress specific warnings for this test module
+warnings.filterwarnings("ignore", "overflow encountered in exp", RuntimeWarning)
+warnings.filterwarnings("ignore", "invalid value encountered in subtract", RuntimeWarning)
+
 from src.portfolio_backtester.monte_carlo.synthetic_data_generator import (
     SyntheticDataGenerator,
     GARCHParameters,
@@ -84,8 +88,11 @@ class TestGARCHParameterPreservation:
             if t < n_periods - 1:
                 variance[t + 1] = omega + alpha * (returns[t] ** 2) + beta * variance[t]
         
-        # Convert to prices
-        prices = 100 * np.exp(np.cumsum(returns))
+        # Convert to prices with overflow protection
+        cumulative_returns = np.cumsum(returns)
+        # Clip extreme values to prevent overflow
+        cumulative_returns = np.clip(cumulative_returns, -10, 10)
+        prices = 100 * np.exp(cumulative_returns)
         dates = pd.date_range('2020-01-01', periods=n_periods, freq='D')
         
         # Create OHLC data

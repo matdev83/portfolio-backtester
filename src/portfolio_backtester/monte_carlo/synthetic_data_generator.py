@@ -200,8 +200,10 @@ class ImprovedSyntheticDataGenerator:
         # Basic statistics - use original returns scale for consistency
         mean_return = returns.mean()
         volatility = returns.std()
-        skewness = returns.skew()
-        kurtosis = returns.kurtosis()
+        skewness_val = returns.skew()
+        kurtosis_val = returns.kurtosis()
+        skewness = skewness_val if isinstance(skewness_val, (float, int)) and not pd.isna(skewness_val) else 0.0
+        kurtosis = kurtosis_val if isinstance(kurtosis_val, (float, int)) and not pd.isna(kurtosis_val) else 3.0
         
         # Use percentage returns only for GARCH fitting
         returns_pct = returns * 100
@@ -252,7 +254,7 @@ class ImprovedSyntheticDataGenerator:
                 kurtosis=kurtosis,
                 autocorr_returns=autocorr_returns,
                 autocorr_squared=autocorr_squared,
-                tail_index=max(kurtosis + 3, 3.0) if not np.isnan(kurtosis) else 5.0,
+                tail_index=max(float(kurtosis) + 3.0, 3.0) if not pd.isna(kurtosis) else 5.0,
                 garch_params=None
             )
     
@@ -276,24 +278,29 @@ class ImprovedSyntheticDataGenerator:
         
         best_model = None
         best_aic = np.inf
+        model = None
         
+        from typing import cast, Literal
         for distribution in distributions_to_try:
+            model = None
             try:
                 # Create and fit GARCH model
-                model = arch_model(
-                    returns, 
-                    vol='Garch', 
-                    p=p, 
-                    q=q, 
-                    dist=distribution,
-                    rescale=False  # We already scaled to percentages
+                dist = cast(Literal['normal', 'gaussian', 't', 'studentst', 'skewstudent', 'skewt', 'ged', 'generalized error'], distribution)
+                model = arch_model( # type: ignore
+                    returns,
+                    vol='GARCH',
+                    p=p,
+                    o=0,  # Use standard GARCH(1,1) instead of GJR-GARCH for better stability
+                    q=q,
+                    dist=dist,
+                    rescale=False
                 )
                 
-                # Fit with robust optimization
+                # Fit with robust optimization (arch package doesn't support bounds parameter)
                 res = model.fit(
                     disp='off',
                     show_warning=False,
-                    options={'maxiter': 1000}
+                    options={'maxiter': 2000, 'ftol': 1e-8}
                 )
                 
                 # Check if fit converged properly
@@ -316,32 +323,57 @@ class ImprovedSyntheticDataGenerator:
         # Extract parameters
         params = best_model.params
         
+        # Get bounds from config for parameter enforcement
+        bounds = self.garch_config.get('bounds', {})
+        omega_bounds = bounds.get('omega', [1e-6, 1.0])
+        alpha_bounds = bounds.get('alpha', [0.01, 0.3])
+        beta_bounds = bounds.get('beta', [0.5, 0.99])
+        nu_bounds = bounds.get('nu', [2.1, 30.0])
+        
+        # Extract and enforce parameter bounds
+        omega = np.clip(params['omega'], omega_bounds[0], omega_bounds[1])
+        alpha = np.clip(params['alpha[1]'] if 'alpha[1]' in params.index else params.get('alpha', 0.1), 
+                       alpha_bounds[0], alpha_bounds[1])
+        beta = np.clip(params['beta[1]'] if 'beta[1]' in params.index else params.get('beta', 0.8),
+                      beta_bounds[0], beta_bounds[1])
+        
+        # Ensure stationarity: alpha + beta < 1
+        if alpha + beta >= 1.0:
+            # Rescale to ensure stationarity while preserving relative magnitudes
+            total = alpha + beta
+            alpha = alpha * 0.95 / total
+            beta = beta * 0.95 / total
+        
         # Get distribution-specific parameters
         nu = None
         lambda_ = None
         if 'nu' in params.index:
-            nu = params['nu']
+            nu = np.clip(params['nu'], nu_bounds[0], nu_bounds[1])
         if 'lambda' in params.index:
             lambda_ = params['lambda']
         
         # Determine distribution type based on model
         dist_type = DistributionType.NORMAL
         try:
-            if hasattr(best_model, 'distribution'):
-                dist_name = best_model.distribution.name
+            if hasattr(best_model, 'model') and hasattr(best_model.model, 'dist_name'):
+                dist_name = best_model.model.distribution.name
                 if 't' in dist_name.lower() or 'student' in dist_name.lower():
                     if 'skew' in dist_name.lower():
                         dist_type = DistributionType.SKEWED_STUDENT_T
                     else:
                         dist_type = DistributionType.STUDENT_T
-        except:
-            # Fallback to normal if we can't determine distribution
-            pass
+                elif 'ged' in dist_name.lower():
+                    dist_type = DistributionType.GED
+                else:
+                    dist_type = DistributionType.NORMAL
+        except Exception as e:
+            logger.warning(f"Could not determine distribution type from model: {e}. Falling back to Normal.")
+            dist_type = DistributionType.NORMAL # Fallback to normal if we can't determine distribution
         
         return GARCHParameters(
-            omega=params['omega'],
-            alpha=params['alpha[1]'] if 'alpha[1]' in params.index else params.get('alpha', 0.1),
-            beta=params['beta[1]'] if 'beta[1]' in params.index else params.get('beta', 0.8),
+            omega=omega,
+            alpha=alpha,
+            beta=beta,
             nu=nu,
             lambda_=lambda_,
             distribution=dist_type,
@@ -366,79 +398,67 @@ class ImprovedSyntheticDataGenerator:
         Returns:
             Array of synthetic returns (in decimal form, not percentage)
         """
-        max_attempts = self.generation_config.get('max_attempts', 3)
+        max_attempts = self.generation_config.get('max_attempts', 5) # Increased attempts
         
-        # This code block is now handled by the primary t-distribution method below
-        # Removed duplicate to avoid confusion
-        
-        # Use modern t-distribution approach as the primary method
-        logger.info(f"Using robust t-distribution generation for {asset_name}")
-        
-        try:
-            from scipy import stats
-            
-            # Use the fitted t-distribution parameters with proper validation
-            df = max(asset_stats.tail_index, 2.1)  # Ensure finite variance
-            df = min(df, 30.0)  # Avoid numerical issues
-            loc = asset_stats.mean_return
-            scale = max(asset_stats.volatility, 1e-6)  # Ensure positive scale
-            
-            logger.info(f"Generating with t-distribution: df={df:.2f}, loc={loc:.6f}, scale={scale:.6f}")
-            
-            # Generate synthetic returns using t-distribution
-            synthetic_returns = stats.t.rvs(
-                df=df, 
-                loc=loc, 
-                scale=scale, 
-                size=length, 
-                random_state=self.rng
-            )
-            
-            # Validate generated returns to prevent extreme values
-            if np.any(np.isnan(synthetic_returns)) or np.any(np.isinf(synthetic_returns)):
-                raise ValueError("Generated NaN or infinite values")
-            
-            # Clip extreme outliers to prevent unrealistic returns
-            max_return = 5 * scale  # Max 5 standard deviations
-            synthetic_returns = np.clip(synthetic_returns, 
-                                      loc - max_return, 
-                                      loc + max_return)
-            
-            # Add simple volatility clustering if autocorrelation exists
-            if asset_stats.autocorr_squared > 0.1:
-                synthetic_returns = self._add_volatility_clustering(synthetic_returns, asset_stats.autocorr_squared)
-            
-            logger.info(f"Generated {length} synthetic returns using t-distribution for {asset_name}")
-            return synthetic_returns
-            
-        except Exception as e:
-            logger.warning(f"T-distribution generation failed for {asset_name}: {e}. Using simple fallback.")
-        
-        # Fallback to simple method only if t-distribution fails
+        # Use modern t-distribution approach as the primary method with retries
         for attempt in range(max_attempts):
             try:
-                # Generate synthetic returns using simple fallback method
-                synthetic_returns_pct = self._generate_fallback_returns(asset_stats, length)
+                from scipy import stats
                 
-                # Convert back to decimal returns
-                synthetic_returns = synthetic_returns_pct / 100.0
+                # Use the fitted t-distribution parameters with proper validation
+                df = max(asset_stats.tail_index, 2.1)  # Ensure finite variance
+                df = min(df, 30.0)  # Avoid numerical issues
+                loc = asset_stats.mean_return
+                scale = max(asset_stats.volatility, 1e-5)  # Ensure positive scale, increased minimum
                 
-                # Validate generated data
-                if self.validation_config.get('enable_validation', False):
-                    if self._validate_synthetic_data(synthetic_returns_pct, asset_stats):
-                        logger.debug(f"Successfully generated synthetic data for {asset_name} (attempt {attempt + 1})")
-                        return synthetic_returns
-                    else:
-                        logger.warning(f"Validation failed for {asset_name} (attempt {attempt + 1})")
-                else:
-                    return synthetic_returns
-                    
+                logger.info(f"DEBUG: Generating with t-distribution (Attempt {attempt + 1}/{max_attempts}): "
+                            f"df={df:.2f}, loc={loc:.6f}, scale={scale:.6f}")
+                
+                # Generate synthetic returns using t-distribution
+                synthetic_returns = stats.t.rvs(
+                    df=df,
+                    loc=loc,
+                    scale=scale,
+                    size=length,
+                    random_state=self.rng
+                )
+                
+                # Validate generated returns to prevent extreme values
+                if np.any(np.isnan(synthetic_returns)) or np.any(np.isinf(synthetic_returns)):
+                    logger.warning(f"Generated NaN or infinite values for {asset_name} (Attempt {attempt + 1}). Retrying.")
+                    raise ValueError("Generated NaN or infinite values")
+                
+                # Clip extreme outliers to prevent unrealistic returns
+                max_return_abs = 5 * scale  # Max 5 standard deviations
+                synthetic_returns = np.clip(synthetic_returns,
+                                          loc - max_return_abs,
+                                          loc + max_return_abs)
+                
+                # Further clip to prevent extremely negative returns that cause numerical issues
+                synthetic_returns = np.clip(synthetic_returns, -0.5, 5.0) # Max -50% daily return, max 500% daily return
+                
+                logger.info(f"DEBUG: Generated synthetic returns (min/max/mean/std) (Attempt {attempt + 1}): "
+                            f"{np.min(synthetic_returns):.6f}/{np.max(synthetic_returns):.6f}/"
+                            f"{np.mean(synthetic_returns):.6f}/{np.std(synthetic_returns):.6f}")
+                
+                # Check for degenerate series (very low volatility)
+                if np.std(synthetic_returns) < 1e-5: # Threshold for very low volatility
+                    logger.warning(f"Degenerate synthetic returns (very low volatility) for {asset_name} (Attempt {attempt + 1}). Retrying.")
+                    continue # Retry generation
+                
+                # Add simple volatility clustering if autocorrelation exists
+                if asset_stats.autocorr_squared > 0.1:
+                    synthetic_returns = self._add_volatility_clustering(synthetic_returns, asset_stats.autocorr_squared)
+                
+                logger.info(f"Successfully generated {length} synthetic returns using t-distribution for {asset_name} (Attempt {attempt + 1})")
+                return synthetic_returns
+                
             except Exception as e:
-                logger.warning(f"Generation attempt {attempt + 1} failed for {asset_name}: {e}")
+                logger.warning(f"T-distribution generation failed for {asset_name} (Attempt {attempt + 1}): {e}. Retrying.")
                 continue
         
-        # Final fallback: simple normal distribution
-        logger.warning(f"All generation attempts failed for {asset_name}. Using fallback method.")
+        # Fallback to simple method if all t-distribution attempts fail
+        logger.warning(f"All t-distribution generation attempts failed for {asset_name}. Using simple fallback.")
         return self._generate_simple_fallback(asset_stats, length)
 
     def _generate_fallback_returns(self, asset_stats: AssetStatistics, length: int) -> np.ndarray:
@@ -559,30 +579,48 @@ class ImprovedSyntheticDataGenerator:
     def _returns_to_prices(self, returns: np.ndarray, initial_price: float) -> np.ndarray:
         """Convert returns to price levels with protection against non-positive prices."""
         logger.debug(f"DEBUG: _returns_to_prices - initial_price: {initial_price:.6f}, returns sample: {returns[:5]}")
+        logger.debug(f"DEBUG: _returns_to_prices - returns (min/max/mean/std): "
+                     f"{np.min(returns):.6f}/{np.max(returns):.6f}/"
+                     f"{np.mean(returns):.6f}/{np.std(returns):.6f}")
         
         # Only clip extreme outliers that would cause mathematical issues
-        # Allow up to -95% single-period returns (more realistic for financial markets)
-        max_negative_return = -0.95  # Maximum -95% return to prevent negative prices
+        # Allow up to -50% single-period returns (more realistic for financial markets)
+        max_negative_return = -0.50  # Maximum -50% return to prevent negative prices
         
         # Only clip the most extreme outliers to preserve volatility
         clipped_returns = np.clip(returns, max_negative_return, 5.0)  # Cap at 500% gain too
         logger.debug(f"DEBUG: _returns_to_prices - clipped_returns sample: {clipped_returns[:5]}")
+        logger.debug(f"DEBUG: _returns_to_prices - clipped_returns (min/max/mean/std): "
+                     f"{np.min(clipped_returns):.6f}/{np.max(clipped_returns):.6f}/"
+                     f"{np.mean(clipped_returns):.6f}/{np.std(clipped_returns):.6f}")
         
         # Convert to price relatives
         price_relatives = 1 + clipped_returns
         logger.debug(f"DEBUG: _returns_to_prices - price_relatives sample: {price_relatives[:5]}")
+        logger.debug(f"DEBUG: _returns_to_prices - price_relatives (min/max/mean/std): "
+                     f"{np.min(price_relatives):.6f}/{np.max(price_relatives):.6f}/"
+                     f"{np.mean(price_relatives):.6f}/{np.std(price_relatives):.6f}")
         
         # Only ensure positive price relatives for the most extreme cases
         price_relatives = np.maximum(price_relatives, 0.05)  # Minimum 5% of previous price
         logger.debug(f"DEBUG: _returns_to_prices - price_relatives (after max): {price_relatives[:5]}")
+        logger.debug(f"DEBUG: _returns_to_prices - price_relatives (after max, min/max/mean/std): "
+                     f"{np.min(price_relatives):.6f}/{np.max(price_relatives):.6f}/"
+                     f"{np.mean(price_relatives):.6f}/{np.std(price_relatives):.6f}")
         
         # Calculate cumulative prices
         prices = initial_price * np.cumprod(price_relatives)
         logger.debug(f"DEBUG: _returns_to_prices - prices sample: {prices[:5]}")
+        logger.debug(f"DEBUG: _returns_to_prices - prices (min/max/mean/std): "
+                     f"{np.min(prices):.6f}/{np.max(prices):.6f}/"
+                     f"{np.mean(prices):.6f}/{np.std(prices):.6f}")
         
         # Minimal safety check - only prevent truly problematic values
-        prices = np.maximum(prices, initial_price * 0.001)  # Minimum 0.1% of initial price
+        prices = np.maximum(prices, initial_price * 1e-6)  # Minimum 0.0001% of initial price (very small positive)
         logger.debug(f"DEBUG: _returns_to_prices - prices (after max): {prices[:5]}")
+        logger.debug(f"DEBUG: _returns_to_prices - prices (after max, min/max/mean/std): "
+                     f"{np.min(prices):.6f}/{np.max(prices):.6f}/"
+                     f"{np.mean(prices):.6f}/{np.std(prices):.6f}")
         
         return prices
     
@@ -834,8 +872,8 @@ class ImprovedSyntheticDataGenerator:
         # Use the passed mean_return parameter
         
         # Add parameter validation to prevent extreme values
-        # Clamp volatility to reasonable bounds
-        volatility_decimal = np.clip(volatility_decimal, 1e-6, 0.5)  # Max 50% daily volatility
+        # Clamp volatility to reasonable bounds, increased minimum
+        volatility_decimal = np.clip(volatility_decimal, 1e-5, 0.5)  # Max 50% daily volatility
         
         # For GARCH processes, we need to simulate the actual GARCH dynamics to preserve clustering
         # Generate GARCH process with proper volatility clustering
@@ -857,15 +895,17 @@ class ImprovedSyntheticDataGenerator:
                 
                 # Clip extreme outliers to prevent unrealistic values
                 max_return = 5 * volatility_decimal  # Max 5 standard deviations
-                synthetic_returns = np.clip(synthetic_returns, 
-                                          mean_return - max_return, 
+                synthetic_returns = np.clip(synthetic_returns,
+                                          mean_return - max_return,
                                           mean_return + max_return)
             else:
                 # Use normal distribution
                 synthetic_returns = rng.normal(mean_return, volatility_decimal, length)
         
-        print(f"DEBUG: Generated returns sample: {synthetic_returns[:5]}")
-        print(f"DEBUG: Generated returns std: {np.std(synthetic_returns):.8f}")
+        logger.debug(f"DEBUG: Generated returns sample: {synthetic_returns[:5]}")
+        logger.debug(f"DEBUG: Generated returns (min/max/mean/std): "
+                     f"{np.min(synthetic_returns):.6f}/{np.max(synthetic_returns):.6f}/"
+                     f"{np.mean(synthetic_returns):.6f}/{np.std(synthetic_returns):.6f}")
         
         return synthetic_returns
     
@@ -882,20 +922,26 @@ class ImprovedSyntheticDataGenerator:
         Returns:
             Array of simulated returns with GARCH dynamics
         """
+        logger.debug(f"DEBUG: _simulate_garch_process - target_volatility: {target_volatility:.6f}, mean_return: {mean_return:.6f}")
+        
         # Initialize arrays
-        returns = np.zeros(length)
-        variances = np.zeros(length)
+        returns: np.ndarray = np.zeros(length)
+        variances: np.ndarray = np.zeros(length)
         
         # Convert parameters to appropriate scale
         omega = garch_params.omega / 10000 if garch_params.omega > 0.01 else garch_params.omega
         alpha = garch_params.alpha
         beta = garch_params.beta
         
+        logger.debug(f"DEBUG: _simulate_garch_process - omega: {omega:.8f}, alpha: {alpha:.6f}, beta: {beta:.6f}")
+        
         # Initialize variance
         if alpha + beta < 0.999:
             initial_variance = omega / (1 - alpha - beta)
+            logger.debug(f"DEBUG: _simulate_garch_process - initial_variance (stationary): {initial_variance:.8f}")
         else:
             initial_variance = target_volatility ** 2
+            logger.debug(f"DEBUG: _simulate_garch_process - initial_variance (non-stationary fallback): {initial_variance:.8f}")
         
         variances[0] = initial_variance
         
@@ -903,14 +949,21 @@ class ImprovedSyntheticDataGenerator:
         if garch_params.nu and garch_params.nu > 2:
             from scipy import stats
             df = max(garch_params.nu, 3.0)
-            innovations = stats.t.rvs(df=df, size=length, random_state=self.rng)
+            innovations: np.ndarray = np.array(stats.t.rvs(df=df, size=length, random_state=self.rng))
+            logger.debug(f"DEBUG: _simulate_garch_process - using Student-t innovations (df={df:.2f})")
         else:
-            innovations = self.rng.standard_normal(length)
+            innovations: np.ndarray = np.array(self.rng.standard_normal(length))
+            logger.debug(f"DEBUG: _simulate_garch_process - using Normal innovations")
+        
+        logger.debug(f"DEBUG: _simulate_garch_process - innovations (min/max/mean/std): "
+                     f"{np.min(innovations):.6f}/{np.max(innovations):.6f}/"
+                     f"{np.mean(innovations):.6f}/{np.std(innovations):.6f}")
         
         # Simulate GARCH process
         for t in range(length):
             # Generate return
             returns[t] = mean_return + innovations[t] * np.sqrt(variances[t])
+            logger.debug(f"DEBUG: _simulate_garch_process - t={t}, return={returns[t]:.6f}, variance={variances[t]:.6f}")
             
             # Update variance for next period
             if t < length - 1:
@@ -918,6 +971,13 @@ class ImprovedSyntheticDataGenerator:
                 # Ensure variance stays positive and reasonable
                 variances[t + 1] = max(variances[t + 1], omega)
                 variances[t + 1] = min(variances[t + 1], target_volatility ** 2 * 100)  # Cap at 100x target
+        
+        logger.debug(f"DEBUG: _simulate_garch_process - final returns (min/max/mean/std): "
+                     f"{np.min(returns):.6f}/{np.max(returns):.6f}/"
+                     f"{np.mean(returns):.6f}/{np.std(returns):.6f}")
+        logger.debug(f"DEBUG: _simulate_garch_process - final variances (min/max/mean/std): "
+                     f"{np.min(variances):.6f}/{np.max(variances):.6f}/"
+                     f"{np.mean(variances):.6f}/{np.std(variances):.6f}")
         
         return returns
     

@@ -143,7 +143,7 @@ class Backtester:
             elif not isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
                 daily_closes_for_rets = price_data_daily_ohlc # Assume it's already close prices
             else:
-                # Attempt to find 'Close' prices in a less structured MultiIndex
+                # Attempt to find 'Close' prices in a less structured MultiIndex or raise error
                 try:
                     if 'Close' in price_data_daily_ohlc.columns.get_level_values(-1):
                         daily_closes_for_rets = price_data_daily_ohlc.xs('Close', level=-1, axis=1)
@@ -182,7 +182,7 @@ class Backtester:
                 asset_hist_data_cols = pd.MultiIndex.from_product([universe_tickers, list(price_data_daily_ohlc.columns.get_level_values('Field').unique())], names=['Ticker', 'Field'])
                 asset_hist_data_cols = [col for col in asset_hist_data_cols if col in price_data_daily_ohlc.columns] # Ensure columns exist
                 all_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, asset_hist_data_cols]
-
+            
                 # For benchmark
                 benchmark_hist_data_cols = pd.MultiIndex.from_product([[benchmark_ticker], list(price_data_daily_ohlc.columns.get_level_values('Field').unique())], names=['Ticker', 'Field'])
                 benchmark_hist_data_cols = [col for col in benchmark_hist_data_cols if col in price_data_daily_ohlc.columns]
@@ -298,7 +298,7 @@ class Backtester:
         if verbose:
             logger.debug(f"Positions sized using {sizer_name}.")
             logger.info(f"Sized signals head:\n{sized_signals.head()}")
-            logger.info(f"Sized signals tail:\n{sized_signals.tail()}")
+            logger.info(f"Sized signals tail:\n{signals.tail()}")
 
         weights_monthly = rebalance(
             sized_signals, scenario_config["rebalance_frequency"]
@@ -435,7 +435,7 @@ class Backtester:
                 _global_progress_tracker['task'], 
                 description=f"[cyan]Trial {trial_num}/{total_trials} running ({len(windows)} windows/trial)..."
             )
-
+        
         # Generate lightweight synthetic data ONCE per trial for Stage 1 MC
         # PERFORMANCE FIX: Only do expensive data preparation if Monte Carlo is actually enabled
         replacement_info = None
@@ -547,18 +547,15 @@ class Backtester:
                 self.logger.warning(f"No returns generated for window {tr_start}-{te_end}. Skipping.")
                 for i in range(len(metrics_to_optimize)):
                     metric_values_per_objective[i].append(np.nan)
-                # Update progress bar after processing this window
                 if _global_progress_tracker:
                     _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
                 continue
 
-            # Store the full window returns for later use in plotting
             all_window_returns.append(window_returns)
 
             test_rets = window_returns.loc[te_start:te_end]
             if test_rets.empty:
                 self.logger.debug(f"Test returns empty for window {tr_start}-{te_end} with params {scenario_config['strategy_params']}.")
-                # Update progress bar before returning
                 if _global_progress_tracker:
                     _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
                 if is_multi_objective:
@@ -618,6 +615,9 @@ class Backtester:
             self.logger.warning(f"No valid windows produced results for params: {scenario_config['strategy_params']}. Returning NaN.")
             return tuple([float("nan")] * len(metrics_to_optimize)) if is_multi_objective else float("nan")
 
+        # Concatenate all window returns into a single series for full P&L curve
+        full_pnl_returns = pd.concat(all_window_returns) if all_window_returns else pd.Series(dtype=float)
+
         if is_multi_objective:
             return tuple(float(v) for v in metric_avgs)
         else:
@@ -628,8 +628,7 @@ class Backtester:
         Get the trial threshold for enabling Monte Carlo based on optimization mode.
         
         Args:
-            optimization_mode: Performance mode ("fast", "balanced", "comprehensive")
-            
+        
         Returns:
             Trial number threshold for enabling Monte Carlo
         """

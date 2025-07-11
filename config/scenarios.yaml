@@ -489,7 +489,7 @@ BACKTEST_SCENARIOS:
         step: 1
       - parameter: "num_holdings"
         min_value: 3 # Small number of holdings
-        max_value: 5 # Small number of holdings
+        max_value: 4 # Small number of holdings
         step: 1
     strategy_params:
       long_only: True
@@ -498,7 +498,8 @@ BACKTEST_SCENARIOS:
       smoothing_lambda: 0.5    # Fixed
       leverage: 1.0            # Fixed
       sma_filter_window: null  # Keep it simple
-    # No mc_simulations for this test scenario to save time
+    mc_simulations: 10 # Enable Monte Carlo for testing with a small number of simulations
+    mc_years: 1 # Small number of years for Monte Carlo
 
   - name: "Test_Genetic_Minimal" # For Genetic Algorithm integration testing
     strategy: "momentum"

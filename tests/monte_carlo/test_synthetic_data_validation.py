@@ -443,7 +443,6 @@ class TestSystemImprovementTargets:
             'random_seed': 42
         }
     
-    @pytest.mark.xfail(reason="Improvement target - may fail with current system")
     def test_ideal_volatility_precision(self, test_config):
         """IMPROVEMENT TARGET: Ideal volatility precision (may fail initially)."""
         generator = SyntheticDataGenerator(test_config)

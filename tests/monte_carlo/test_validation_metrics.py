@@ -115,9 +115,8 @@ class TestSyntheticDataValidator:
     
     def test_initialization(self, sample_config):
         """Test validator initialization."""
-        validator = SyntheticDataValidator(sample_config)
+        validator = SyntheticDataValidator(sample_config['validation_config'])
         
-        assert validator.config == sample_config
         assert validator.validation_config == sample_config['validation_config']
         assert validator.results_history == []
     
@@ -183,7 +182,8 @@ class TestSyntheticDataValidator:
         result = validator._validate_distribution_similarity(original, synthetic, "TEST")
         
         assert result.passed is False
-        assert 'error' in result.details
+        assert result.details is not None
+        assert 'error' in result.details # Ensure 'error' key is present
     
     def test_validate_autocorrelation_structure(self, sample_config):
         """Test autocorrelation structure validation."""
@@ -528,7 +528,10 @@ class TestValidationIntegration:
         
         # Overall quality should be poor
         overall_quality = results['overall_quality']
-        assert overall_quality.details['quality_score'] < 0.7  # Should fail overall
+        if overall_quality.details and 'quality_score' in overall_quality.details:
+            assert overall_quality.details['quality_score'] < 0.7  # Should fail overall
+        else:
+            pytest.fail(f"Overall quality details or quality_score missing: {overall_quality.details}")
     
     def test_validation_summary_multiple_assets(self, realistic_config, realistic_original_data, realistic_synthetic_data):
         """Test validation summary with multiple assets."""
@@ -566,7 +569,10 @@ class TestValidationIntegration:
         
         # Most tests should pass with identical data
         overall_quality = results['overall_quality']
-        assert overall_quality.details['quality_score'] > 0.8  # Should score highly
+        if overall_quality.details and 'quality_score' in overall_quality.details:
+            assert overall_quality.details['quality_score'] > 0.8  # Should score highly
+        else:
+            pytest.fail(f"Overall quality details or quality_score missing: {overall_quality.details}")
     
     def test_edge_case_very_short_data(self, realistic_config):
         """Test validation with very short data series."""

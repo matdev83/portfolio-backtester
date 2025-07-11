@@ -314,6 +314,9 @@ def _plot_performance_summary(self, bench_rets_full: pd.Series, train_end_date: 
     else:
         plt.close(fig)
         logger.info("Performance plots generated and saved.")
+    
+    # Close all figures to prevent memory warnings
+    plt.close('all')
 
 def _plot_stability_measures(self, scenario_name: str, best_trial_obj, optimal_returns: pd.Series):
     """
@@ -596,6 +599,7 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
             return
             
         from ..monte_carlo.asset_replacement import AssetReplacementManager
+        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
         
         # Replacement percentages to test (based on industry best practices for portfolio stress testing)
         replacement_percentages = [0.05, 0.075, 0.10, 0.125, 0.15]  # 5%, 7.5%, 10%, 12.5%, 15%
@@ -611,31 +615,48 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
         # Store results for each replacement level
         simulation_results = {}
         
-        for i, replacement_pct in enumerate(replacement_percentages):
-            logger.info(f"Stage 2 MC: Running simulations with {replacement_pct:.1%} synthetic data replacement...")
+        # Calculate total work for progress bar
+        total_simulations = len(replacement_percentages) * num_simulations_per_level
+        
+        # Create progress bar for Stage 2 Monte Carlo
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+        ) as progress:
+            task = progress.add_task(f"[cyan]Stage 2 Monte Carlo Stress Testing...", total=total_simulations)
             
-            # Configure asset replacement manager for this level
-            mc_config = monte_carlo_config.copy()
-            mc_config['replacement_percentage'] = replacement_pct
-            mc_config['stage1_optimization'] = False  # Full validation for Stage 2
-            
-            # Enable full validation and multiple attempts for Stage 2 stress testing
-            mc_config['generation_config'] = {
-                'buffer_multiplier': 1.2,
-                'max_attempts': 3,
-                'validation_tolerance': 0.3
-            }
-            
-            mc_config['validation_config'] = {
-                'enable_validation': True,
-                'tolerance': 0.4,
-                'ks_test_pvalue_threshold': 0.05,
-                'autocorr_max_deviation': 0.15,
-                'volatility_clustering_threshold': 0.02,
-                'tail_index_tolerance': 0.3
-            }
-            
-            level_results = []
+            for i, replacement_pct in enumerate(replacement_percentages):
+                logger.info(f"Stage 2 MC: Running simulations with {replacement_pct:.1%} synthetic data replacement...")
+                
+                # Configure asset replacement manager for this level
+                mc_config = monte_carlo_config.copy()
+                mc_config['replacement_percentage'] = replacement_pct
+                mc_config['stage1_optimization'] = False  # Full validation for Stage 2
+                
+                # Enable full validation and multiple attempts for Stage 2 stress testing
+                mc_config['generation_config'] = {
+                    'buffer_multiplier': 1.2,
+                    'max_attempts': 3,
+                    'validation_tolerance': 0.3
+                }
+                
+                mc_config['validation_config'] = {
+                    'enable_validation': True,
+                    'tolerance': 0.4,
+                    'ks_test_pvalue_threshold': 0.05,
+                    'autocorr_max_deviation': 0.15,
+                    'volatility_clustering_threshold': 0.02,
+                    'tail_index_tolerance': 0.3
+                }
+                
+                level_results = []
+                
+                # Update progress description for current replacement level
+                progress.update(task, description=f"[cyan]Stage 2 MC: {replacement_pct:.1%} replacement ({i+1}/{len(replacement_percentages)})")
             
             for sim_num in range(num_simulations_per_level):
                 try:
@@ -733,13 +754,15 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                     logger.warning(f"Stage 2 MC: Simulation {sim_num} failed for {replacement_pct:.1%} replacement: {e}")
                     import traceback
                     logger.debug(traceback.format_exc())
-                    continue
+                finally:
+                    # Update progress bar regardless of success/failure
+                    progress.advance(task)
             
-            if level_results:
-                simulation_results[replacement_pct] = level_results
-                logger.info(f"Stage 2 MC: Completed {len(level_results)} simulations for {replacement_pct:.1%} replacement level")
-            else:
-                logger.warning(f"Stage 2 MC: No successful simulations for {replacement_pct:.1%} replacement level")
+                if level_results:
+                    simulation_results[replacement_pct] = level_results
+                    logger.info(f"Stage 2 MC: Completed {len(level_results)} simulations for {replacement_pct:.1%} replacement level")
+                else:
+                    logger.warning(f"Stage 2 MC: No successful simulations for {replacement_pct:.1%} replacement level")
         
         # Create the Monte Carlo plot
         if simulation_results:

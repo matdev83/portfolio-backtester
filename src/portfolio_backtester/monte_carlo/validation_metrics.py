@@ -46,7 +46,7 @@ class SyntheticDataValidator:
             config: Validation configuration dictionary
         """
         self.config = config
-        self.validation_config = config.get('validation_config', {})
+        self.validation_config = config
         self.results_history: List[ValidationResults] = []
     
     def validate_synthetic_data(
@@ -198,7 +198,7 @@ class SyntheticDataValidator:
                 )
             
             # Perform Kolmogorov-Smirnov test
-            ks_statistic, p_value = stats.ks_2samp(orig_clean, synth_clean)
+            ks_statistic, p_value = kstest(orig_clean, synth_clean)
             
             # Check if distributions are similar
             threshold = self.validation_config.get('ks_test_pvalue_threshold', 0.05)
@@ -209,8 +209,8 @@ class SyntheticDataValidator:
             return ValidationResults(
                 test_name="distribution_similarity",
                 passed=passed,
-                p_value=float(p_value),
-                statistic=float(ks_statistic),
+                p_value=p_value,
+                statistic=ks_statistic,
                 critical_value=threshold,
                 details={
                     'test_type': 'Kolmogorov-Smirnov',

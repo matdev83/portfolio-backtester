@@ -107,7 +107,7 @@ wfo_robustness_config:
 # Monte-Carlo Synthetic Data Configuration
 monte_carlo_config:
   # Enable/disable synthetic data generation
-  enable_synthetic_data: false  # Disabled to avoid performance issues during optimization
+  enable_synthetic_data: true
   
   # Performance optimization: enable Monte Carlo during optimization trials for robustness testing
   # Stage 1 MC (during optimization) vs Stage 2 MC (after optimization stress testing)

@@ -43,7 +43,7 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
             "notes": "Optimization process was interrupted by the user."
         }
         return
-
+    
     if optimal_params is None:
         self.logger.error(f"Optimization for {scenario_config['name']} did not yield optimal parameters. Skipping full backtest.")
         return
@@ -73,6 +73,7 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
             else:
                 benchmark_data = self.daily_data_ohlc[benchmark_ticker]
             
+            # Ensure benchmark_data is aligned with full_rets before calculating returns
             benchmark_aligned = benchmark_data.reindex(full_rets.index)
             benchmark_returns = benchmark_aligned.pct_change(fill_method=None).fillna(0)
             
@@ -303,7 +304,7 @@ def _generate_optimization_report(self, scenario_config, optimal_params, full_re
         # Prepare additional information
         additional_info = {
             "num_trials": actual_num_trials,
-            "best_trial_number": getattr(best_trial_obj, 'number', None) if best_trial_obj else None,
+            "best_trial_number": best_trial_obj.number,
             "optimization_time": "Not tracked",  # Could be enhanced to track actual time
             "random_seed": getattr(self, 'random_state', None),
             "constraint_info": {

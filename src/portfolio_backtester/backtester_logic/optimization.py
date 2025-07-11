@@ -83,10 +83,14 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         current_params = _suggest_optuna_params(self, trial, scenario_config["strategy_params"], scenario_config.get("optimize", []))
         trial_scenario_config = scenario_config.copy()
         trial_scenario_config["strategy_params"] = current_params
-        return self._evaluate_params_walk_forward(
+        objective_value, full_pnl_returns = self._evaluate_params_walk_forward(
             trial, trial_scenario_config, windows, monthly_data, daily_data, rets_full,
             metrics_to_optimize, is_multi_objective
         )
+        # Store full_pnl_returns in user_attrs for later retrieval
+        # Convert Timestamp index to string for JSON serialization compatibility
+        trial.set_user_attr("full_pnl_returns", full_pnl_returns.rename(index=str).to_dict())
+        return objective_value
 
     # Calculate total work units: trials × windows per trial
     total_work_units = n_trials * len(windows)
@@ -170,7 +174,7 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     else:
         if not study.best_trial:
              self.logger.error("Single-objective optimization finished without finding a best trial.")
-             return optimal_params, len(study.trials), None
+             return optimal_params, len(study.trials)
 
         best_trial_obj = study.best_trial
         optimal_params.update(best_trial_obj.params)
@@ -202,7 +206,7 @@ def _setup_optuna_study(self, scenario_config, storage, study_name_base: str):
         }
         sampler = optuna.samplers.GridSampler(search_space)
         n_trials_actual = reduce(mul, [len(v) for v in search_space.values()], 1)
-        self.logger.info(f"Using GridSampler with search space: {search_space}. Total trials: {n_trials_actual}")
+        self.logger.info(f"Using GridSampler with search space: {search_space}. Total trials: {n_trials_actual}") # Fixed search_trials -> search_space
     else:
         if is_grid_search and self.n_jobs > 1:
             self.logger.warning("Grid search is not supported with n_jobs > 1. Using TPESampler instead.")
