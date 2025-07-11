@@ -642,7 +642,7 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
             task = progress.add_task(f"[cyan]Stage 2 Monte Carlo Stress Testing...", total=total_simulations)
             
             for i, replacement_pct in enumerate(replacement_percentages):
-                logger.info(f"Stage 2 MC: Running simulations with {replacement_pct:.1%} synthetic data replacement...")
+                logger.debug(f"Stage 2 MC: Running simulations with {replacement_pct:.1%} synthetic data replacement...")
                 
                 # Configure asset replacement manager for this level
                 mc_config = monte_carlo_config.copy()
@@ -680,13 +680,13 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                     
                     # Convert daily data to expected format
                     daily_data_dict = {}
-                    logger.info(f"Daily data columns: {daily_data.columns}")
-                    logger.info(f"Daily data shape: {daily_data.shape}")
+                    logger.debug(f"Daily data columns: {daily_data.columns}")
+                    logger.debug(f"Daily data shape: {daily_data.shape}")
                     
                     if isinstance(daily_data.columns, pd.MultiIndex):
-                        logger.info(f"MultiIndex levels: {daily_data.columns.names}")
-                        logger.info(f"Level 0 values: {daily_data.columns.get_level_values(0).unique()}")
-                        logger.info(f"Level 1 values: {daily_data.columns.get_level_values(1).unique()}")
+                        logger.debug(f"MultiIndex levels: {daily_data.columns.names}")
+                        logger.debug(f"Level 0 values: {daily_data.columns.get_level_values(0).unique()}")
+                        logger.debug(f"Level 1 values: {daily_data.columns.get_level_values(1).unique()}")
                         
                         # Handle MultiIndex columns (Ticker, Field) structure
                         for ticker in universe:
@@ -694,7 +694,7 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                                 ticker_data = daily_data.xs(ticker, level=0, axis=1, drop_level=True)
                                 if not ticker_data.empty:
                                     daily_data_dict[ticker] = ticker_data
-                                    logger.info(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
+                                    logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
                             elif ticker in daily_data.columns.get_level_values(1):  # Check second level
                                 # Handle (Field, Ticker) structure
                                 ticker_columns = [col for col in daily_data.columns if col[1] == ticker]
@@ -702,7 +702,7 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                                     ticker_data = daily_data[ticker_columns]
                                     ticker_data.columns = [col[0] for col in ticker_columns]  # Keep only field names
                                     daily_data_dict[ticker] = ticker_data
-                                    logger.info(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
+                                    logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
                     else:
                         # Handle simple column structure - assume it's close prices
                         for ticker in universe:
@@ -714,9 +714,9 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                                     'Close': daily_data[ticker]
                                 }, index=daily_data.index)
                                 daily_data_dict[ticker] = ticker_data
-                                logger.info(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
+                                logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
                     
-                    logger.info(f"Stage 2 MC: Created daily_data_dict with {len(daily_data_dict)} assets")
+                    logger.debug(f"Stage 2 MC: Created daily_data_dict with {len(daily_data_dict)} assets")
                     
                     # Generate synthetic data for full historical period
                     # Use all available data for stress testing, but keep minimum historical data for parameter estimation
@@ -729,7 +729,7 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                     test_end = daily_data.index[-1]
                     test_period_days = total_days - test_start_idx
                     
-                    logger.info(f"Stage 2 MC: Monte Carlo stress test period: {test_start} to {test_end} ({test_period_days} days, full historical data after {min_historical_days} day parameter estimation period)")
+                    logger.debug(f"Stage 2 MC: Monte Carlo stress test period: {test_start} to {test_end} ({test_period_days} days, full historical data after {min_historical_days} day parameter estimation period)")
                     synthetic_data, replacement_info = asset_replacement_manager.create_monte_carlo_dataset(
                         original_data=daily_data_dict,
                         universe=universe,

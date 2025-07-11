@@ -372,7 +372,7 @@ class GeneticOptimizer:
                      return self.scenario_config["strategy_params"].copy(), num_evaluations
 
                 solution, solution_fitness, _ = self.ga_instance.best_solution(pop_fitness=self.ga_instance.last_generation_fitness)
-                logger.info(f"GA single-objective: Best fitness: {solution_fitness}")
+                logger.debug(f"GA single-objective: Best fitness: {solution_fitness}")
 
             if self.ga_instance.generations_completed > 0 and solution is not None:
                 if save_plot:
@@ -388,7 +388,7 @@ class GeneticOptimizer:
                         
                 optimal_params = self.scenario_config["strategy_params"].copy()
                 optimal_params.update(self._decode_chromosome(solution))
-                logger.info(f"Best parameters found by GA: {optimal_params}")
+                logger.debug(f"Best parameters found by GA: {optimal_params}")
                 print(f"Genetic Optimizer - Best parameters found: {optimal_params}")
                 return optimal_params, num_evaluations
             else:

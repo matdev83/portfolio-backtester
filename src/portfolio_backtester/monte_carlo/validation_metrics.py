@@ -153,10 +153,7 @@ class SyntheticDataValidator:
                 if rel_diff > tolerance:
                     passed = False
             
-            logger.debug(f"Basic Stats for {asset_name}:")
-            logger.debug(f"  Original: {orig_stats}")
-            logger.debug(f"  Synthetic: {synth_stats}")
-            logger.debug(f"  Differences: {differences}")
+            logger.debug(f"Basic Stats for {asset_name}:\n  Original: {orig_stats}\n  Synthetic: {synth_stats}\n  Differences: {differences}")
             
             return ValidationResults(
                 test_name="basic_statistics",
@@ -446,8 +443,8 @@ class SyntheticDataValidator:
             # Overall pass if either tail index or kurtosis check passes (more lenient)
             passed = passed_tail_index or passed_kurtosis
             
-            logger.debug(f"Fat Tails for {asset_name}: Orig Tail Index={orig_tail_index:.2f}, Synth Tail Index={synth_tail_index:.2f}, Diff={tail_diff:.2f}, Passed Tail Index={passed_tail_index}")
-            logger.debug(f"  Orig Kurtosis={orig_kurtosis_val:.2f}, Synth Kurtosis={synth_kurtosis_val:.2f}, Passed Kurtosis={passed_kurtosis}, Overall Passed={passed}")
+            logger.debug(f"Fat Tails for {asset_name}: Orig Tail Index={orig_tail_index:.2f}, Synth Tail Index={synth_tail_index:.2f}, Diff={tail_diff:.2f}, Passed Tail Index={passed_tail_index}
+  Orig Kurtosis={orig_kurtosis_val:.2f}, Synth Kurtosis={synth_kurtosis_val:.2f}, Passed Kurtosis={passed_kurtosis}, Overall Passed={passed}")
             
             return ValidationResults(
                 test_name="fat_tails",
@@ -503,9 +500,7 @@ class SyntheticDataValidator:
             
             passed = max_percentile_diff < tolerance
             
-            logger.debug(f"Extreme Values for {asset_name}: Max Percentile Diff={max_percentile_diff:.4f}, Tolerance={tolerance:.4f}, Passed={passed}")
-            logger.debug(f"  Original Percentiles: {orig_percentiles}")
-            logger.debug(f"  Synthetic Percentiles: {synth_percentiles}")
+            logger.debug(f"Extreme Values for {asset_name}: Max Percentile Diff={max_percentile_diff:.4f}, Tolerance={tolerance:.4f}, Passed={passed}\n  Original Percentiles: {orig_percentiles}\n  Synthetic Percentiles: {synth_percentiles}")
             
             return ValidationResults(
                 test_name="extreme_values",

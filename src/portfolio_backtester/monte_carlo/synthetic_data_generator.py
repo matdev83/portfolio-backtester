@@ -216,7 +216,7 @@ class ImprovedSyntheticDataGenerator:
         tail_index = self._estimate_tail_index(returns_pct)
         
         # Use modern robust t-distribution approach instead of problematic GARCH
-        logger.info("Using robust t-distribution approach for synthetic data generation")
+        logger.debug("Using robust t-distribution approach for synthetic data generation")
         
         # Fit t-distribution to capture fat tails properly
         from scipy import stats
@@ -229,7 +229,7 @@ class ImprovedSyntheticDataGenerator:
             df_fitted = max(df_fitted, 2.1)  # Ensure finite variance
             df_fitted = min(df_fitted, 30.0)  # Avoid numerical issues
             
-            logger.info(f"Fitted t-distribution: df={df_fitted:.2f}, loc={loc_fitted:.6f}, scale={scale_fitted:.6f}")
+            logger.debug(f"Fitted t-distribution: df={df_fitted:.2f}, loc={loc_fitted:.6f}, scale={scale_fitted:.6f}")
             
             # Create enhanced statistics with t-distribution parameters
             return AssetStatistics(
@@ -411,7 +411,7 @@ class ImprovedSyntheticDataGenerator:
                 loc = asset_stats.mean_return
                 scale = max(asset_stats.volatility, 1e-5)  # Ensure positive scale, increased minimum
                 
-                logger.info(f"DEBUG: Generating with t-distribution (Attempt {attempt + 1}/{max_attempts}): "
+                logger.debug(f"DEBUG: Generating with t-distribution (Attempt {attempt + 1}/{max_attempts}): "
                             f"df={df:.2f}, loc={loc:.6f}, scale={scale:.6f}")
                 
                 # Generate synthetic returns using t-distribution
@@ -437,7 +437,7 @@ class ImprovedSyntheticDataGenerator:
                 # Further clip to prevent extremely negative returns that cause numerical issues
                 synthetic_returns = np.clip(synthetic_returns, -0.5, 5.0) # Max -50% daily return, max 500% daily return
                 
-                logger.info(f"DEBUG: Generated synthetic returns (min/max/mean/std) (Attempt {attempt + 1}): "
+                logger.debug(f"DEBUG: Generated synthetic returns (min/max/mean/std) (Attempt {attempt + 1}): "
                             f"{np.min(synthetic_returns):.6f}/{np.max(synthetic_returns):.6f}/"
                             f"{np.mean(synthetic_returns):.6f}/{np.std(synthetic_returns):.6f}")
                 
@@ -450,7 +450,7 @@ class ImprovedSyntheticDataGenerator:
                 if asset_stats.autocorr_squared > 0.1:
                     synthetic_returns = self._add_volatility_clustering(synthetic_returns, asset_stats.autocorr_squared)
                 
-                logger.info(f"Successfully generated {length} synthetic returns using t-distribution for {asset_name} (Attempt {attempt + 1})")
+                logger.debug(f"Successfully generated {length} synthetic returns using t-distribution for {asset_name} (Attempt {attempt + 1})")
                 return synthetic_returns
                 
             except Exception as e:
@@ -831,7 +831,7 @@ class ImprovedSyntheticDataGenerator:
         Returns:
             Array of synthetic returns (in decimal form)
         """
-        logger.info(f"DEBUG: _generate_garch_returns called with omega={garch_params.omega:.6f}")
+        logger.debug(f"DEBUG: _generate_garch_returns called with omega={garch_params.omega:.6f}")
         # CRITICAL: Validate GARCH parameters to prevent extreme values
         # Check for unrealistic omega values that would cause overflow
         if garch_params.omega > 1000:  # Extremely large omega (variance > 1000%)
