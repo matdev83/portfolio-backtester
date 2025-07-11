@@ -170,7 +170,9 @@ class ImprovedSyntheticDataGenerator:
         
         if len(returns) < min_required:
             # Instead of hard error, log warning and use all available data
-            logger.warning(f"Limited historical data: {len(returns)} observations (minimum: {min_required}). Using fallback approach.")
+            if logger.isEnabledFor(logging.WARNING):
+
+                logger.warning(f"Limited historical data: {len(returns)} observations (minimum: {min_required}). Using fallback approach.")
             
             # If we have very little data, raise an error as expected by tests
             if len(returns) < 10:
@@ -178,7 +180,9 @@ class ImprovedSyntheticDataGenerator:
                                f"Minimum required: 10 observations for basic analysis.")
             # If we have some data but not much, use simple statistical approach
             elif len(returns) < 30:
-                logger.warning(f"Very limited data ({len(returns)} observations). Using simple statistical fallback.")
+                if logger.isEnabledFor(logging.WARNING):
+
+                    logger.warning(f"Very limited data ({len(returns)} observations). Using simple statistical fallback.")
                 # Create minimal statistics for fallback generation
                 mean_return = returns.mean() * 100 if len(returns) > 0 else 0.0
                 volatility = returns.std() * 100 if len(returns) > 1 else 1.0
@@ -229,7 +233,10 @@ class ImprovedSyntheticDataGenerator:
             df_fitted = max(df_fitted, 2.1)  # Ensure finite variance
             df_fitted = min(df_fitted, 30.0)  # Avoid numerical issues
             
-            logger.debug(f"Fitted t-distribution: df={df_fitted:.2f}, loc={loc_fitted:.6f}, scale={scale_fitted:.6f}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+            
+                logger.debug(f"Fitted t-distribution: df={df_fitted:.2f}, loc={loc_fitted:.6f}, scale={scale_fitted:.6f}")
             
             # Create enhanced statistics with t-distribution parameters
             return AssetStatistics(
@@ -244,7 +251,9 @@ class ImprovedSyntheticDataGenerator:
             )
             
         except Exception as e:
-            logger.warning(f"T-distribution fitting failed: {e}. Using basic statistics.")
+            if logger.isEnabledFor(logging.WARNING):
+
+                logger.warning(f"T-distribution fitting failed: {e}. Using basic statistics.")
             
             # Final fallback to basic statistics
             return AssetStatistics(
@@ -305,7 +314,9 @@ class ImprovedSyntheticDataGenerator:
                 
                 # Check if fit converged properly
                 if hasattr(res, 'convergence_flag') and res.convergence_flag != 0:
-                    logger.warning(f"GARCH model with {distribution} distribution did not converge")
+                    if logger.isEnabledFor(logging.WARNING):
+
+                        logger.warning(f"GARCH model with {distribution} distribution did not converge")
                     continue
                 
                 # Select best model based on AIC
@@ -314,7 +325,9 @@ class ImprovedSyntheticDataGenerator:
                     best_model = res
                     
             except Exception as e:
-                logger.warning(f"Failed to fit GARCH with {distribution} distribution: {e}")
+                if logger.isEnabledFor(logging.WARNING):
+
+                    logger.warning(f"Failed to fit GARCH with {distribution} distribution: {e}")
                 continue
         
         if best_model is None:
@@ -367,7 +380,9 @@ class ImprovedSyntheticDataGenerator:
                 else:
                     dist_type = DistributionType.NORMAL
         except Exception as e:
-            logger.warning(f"Could not determine distribution type from model: {e}. Falling back to Normal.")
+            if logger.isEnabledFor(logging.WARNING):
+
+                logger.warning(f"Could not determine distribution type from model: {e}. Falling back to Normal.")
             dist_type = DistributionType.NORMAL # Fallback to normal if we can't determine distribution
         
         return GARCHParameters(
@@ -425,7 +440,9 @@ class ImprovedSyntheticDataGenerator:
                 
                 # Validate generated returns to prevent extreme values
                 if np.any(np.isnan(synthetic_returns)) or np.any(np.isinf(synthetic_returns)):
-                    logger.warning(f"Generated NaN or infinite values for {asset_name} (Attempt {attempt + 1}). Retrying.")
+                    if logger.isEnabledFor(logging.WARNING):
+
+                        logger.warning(f"Generated NaN or infinite values for {asset_name} (Attempt {attempt + 1}). Retrying.")
                     raise ValueError("Generated NaN or infinite values")
                 
                 # Clip extreme outliers to prevent unrealistic returns
@@ -443,22 +460,31 @@ class ImprovedSyntheticDataGenerator:
                 
                 # Check for degenerate series (very low volatility)
                 if np.std(synthetic_returns) < 1e-5: # Threshold for very low volatility
-                    logger.warning(f"Degenerate synthetic returns (very low volatility) for {asset_name} (Attempt {attempt + 1}). Retrying.")
+                    if logger.isEnabledFor(logging.WARNING):
+
+                        logger.warning(f"Degenerate synthetic returns (very low volatility) for {asset_name} (Attempt {attempt + 1}). Retrying.")
                     continue # Retry generation
                 
                 # Add simple volatility clustering if autocorrelation exists
                 if asset_stats.autocorr_squared > 0.1:
                     synthetic_returns = self._add_volatility_clustering(synthetic_returns, asset_stats.autocorr_squared)
                 
-                logger.debug(f"Successfully generated {length} synthetic returns using t-distribution for {asset_name} (Attempt {attempt + 1})")
+                if logger.isEnabledFor(logging.DEBUG):
+
+                
+                    logger.debug(f"Successfully generated {length} synthetic returns using t-distribution for {asset_name} (Attempt {attempt + 1})")
                 return synthetic_returns
                 
             except Exception as e:
-                logger.warning(f"T-distribution generation failed for {asset_name} (Attempt {attempt + 1}): {e}. Retrying.")
+                if logger.isEnabledFor(logging.WARNING):
+
+                    logger.warning(f"T-distribution generation failed for {asset_name} (Attempt {attempt + 1}): {e}. Retrying.")
                 continue
         
         # Fallback to simple method if all t-distribution attempts fail
-        logger.warning(f"All t-distribution generation attempts failed for {asset_name}. Using simple fallback.")
+        if logger.isEnabledFor(logging.WARNING):
+
+            logger.warning(f"All t-distribution generation attempts failed for {asset_name}. Using simple fallback.")
         return self._generate_simple_fallback(asset_stats, length)
 
     def _generate_fallback_returns(self, asset_stats: AssetStatistics, length: int) -> np.ndarray:
@@ -578,7 +604,9 @@ class ImprovedSyntheticDataGenerator:
     
     def _returns_to_prices(self, returns: np.ndarray, initial_price: float) -> np.ndarray:
         """Convert returns to price levels with protection against non-positive prices."""
-        logger.debug(f"DEBUG: _returns_to_prices - initial_price: {initial_price:.6f}, returns sample: {returns[:5]}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"DEBUG: _returns_to_prices - initial_price: {initial_price:.6f}, returns sample: {returns[:5]}")
         logger.debug(f"DEBUG: _returns_to_prices - returns (min/max/mean/std): "
                      f"{np.min(returns):.6f}/{np.max(returns):.6f}/"
                      f"{np.mean(returns):.6f}/{np.std(returns):.6f}")
@@ -589,35 +617,45 @@ class ImprovedSyntheticDataGenerator:
         
         # Only clip the most extreme outliers to preserve volatility
         clipped_returns = np.clip(returns, max_negative_return, 5.0)  # Cap at 500% gain too
-        logger.debug(f"DEBUG: _returns_to_prices - clipped_returns sample: {clipped_returns[:5]}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"DEBUG: _returns_to_prices - clipped_returns sample: {clipped_returns[:5]}")
         logger.debug(f"DEBUG: _returns_to_prices - clipped_returns (min/max/mean/std): "
                      f"{np.min(clipped_returns):.6f}/{np.max(clipped_returns):.6f}/"
                      f"{np.mean(clipped_returns):.6f}/{np.std(clipped_returns):.6f}")
         
         # Convert to price relatives
         price_relatives = 1 + clipped_returns
-        logger.debug(f"DEBUG: _returns_to_prices - price_relatives sample: {price_relatives[:5]}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"DEBUG: _returns_to_prices - price_relatives sample: {price_relatives[:5]}")
         logger.debug(f"DEBUG: _returns_to_prices - price_relatives (min/max/mean/std): "
                      f"{np.min(price_relatives):.6f}/{np.max(price_relatives):.6f}/"
                      f"{np.mean(price_relatives):.6f}/{np.std(price_relatives):.6f}")
         
         # Only ensure positive price relatives for the most extreme cases
         price_relatives = np.maximum(price_relatives, 0.05)  # Minimum 5% of previous price
-        logger.debug(f"DEBUG: _returns_to_prices - price_relatives (after max): {price_relatives[:5]}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"DEBUG: _returns_to_prices - price_relatives (after max): {price_relatives[:5]}")
         logger.debug(f"DEBUG: _returns_to_prices - price_relatives (after max, min/max/mean/std): "
                      f"{np.min(price_relatives):.6f}/{np.max(price_relatives):.6f}/"
                      f"{np.mean(price_relatives):.6f}/{np.std(price_relatives):.6f}")
         
         # Calculate cumulative prices
         prices = initial_price * np.cumprod(price_relatives)
-        logger.debug(f"DEBUG: _returns_to_prices - prices sample: {prices[:5]}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"DEBUG: _returns_to_prices - prices sample: {prices[:5]}")
         logger.debug(f"DEBUG: _returns_to_prices - prices (min/max/mean/std): "
                      f"{np.min(prices):.6f}/{np.max(prices):.6f}/"
                      f"{np.mean(prices):.6f}/{np.std(prices):.6f}")
         
         # Minimal safety check - only prevent truly problematic values
         prices = np.maximum(prices, initial_price * 1e-6)  # Minimum 0.0001% of initial price (very small positive)
-        logger.debug(f"DEBUG: _returns_to_prices - prices (after max): {prices[:5]}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"DEBUG: _returns_to_prices - prices (after max): {prices[:5]}")
         logger.debug(f"DEBUG: _returns_to_prices - prices (after max, min/max/mean/std): "
                      f"{np.min(prices):.6f}/{np.max(prices):.6f}/"
                      f"{np.mean(prices):.6f}/{np.std(prices):.6f}")
@@ -740,7 +778,9 @@ class ImprovedSyntheticDataGenerator:
             return passed_checks >= 1
             
         except Exception as e:
-            logger.warning(f"Validation failed with error: {e}")
+            if logger.isEnabledFor(logging.WARNING):
+
+                logger.warning(f"Validation failed with error: {e}")
             # If validation fails due to errors, just accept the data
             return True
     
@@ -773,7 +813,9 @@ class ImprovedSyntheticDataGenerator:
                 logger.warning("DEBUG: Not enough top returns for tail index estimation. Using default tail index.")
                 return 3.0  # Default value
         except Exception as e:
-            logger.warning(f"DEBUG: Tail index estimation failed: {e}. Using default tail index.")
+            if logger.isEnabledFor(logging.WARNING):
+
+                logger.warning(f"DEBUG: Tail index estimation failed: {e}. Using default tail index.")
             return 3.0  # Default value if estimation fails
     
     def _get_fallback_garch_params(self, returns: pd.Series) -> GARCHParameters:
@@ -817,7 +859,9 @@ class ImprovedSyntheticDataGenerator:
         try:
             return self._fit_professional_garch_model(returns)
         except Exception as e:
-            logger.warning(f"Professional GARCH fitting failed: {e}. Using fallback parameters.")
+            if logger.isEnabledFor(logging.WARNING):
+
+                logger.warning(f"Professional GARCH fitting failed: {e}. Using fallback parameters.")
             return self._get_fallback_garch_params(returns)
     
     def _generate_garch_returns(self, garch_params: GARCHParameters, length: int, mean_return: float = 0.0) -> np.ndarray:
@@ -831,11 +875,15 @@ class ImprovedSyntheticDataGenerator:
         Returns:
             Array of synthetic returns (in decimal form)
         """
-        logger.debug(f"DEBUG: _generate_garch_returns called with omega={garch_params.omega:.6f}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"DEBUG: _generate_garch_returns called with omega={garch_params.omega:.6f}")
         # CRITICAL: Validate GARCH parameters to prevent extreme values
         # Check for unrealistic omega values that would cause overflow
         if garch_params.omega > 1000:  # Extremely large omega (variance > 1000%)
-            logger.warning(f"GARCH omega extremely large ({garch_params.omega:.2f}), using fallback volatility")
+            if logger.isEnabledFor(logging.WARNING):
+
+                logger.warning(f"GARCH omega extremely large ({garch_params.omega:.2f}), using fallback volatility")
             # Use a reasonable fallback volatility instead of trying to convert
             volatility_decimal = 0.02  # 2% daily volatility as reasonable default
             omega_decimal = volatility_decimal ** 2  # Set omega_decimal for debug print
@@ -902,7 +950,10 @@ class ImprovedSyntheticDataGenerator:
                 # Use normal distribution
                 synthetic_returns = rng.normal(mean_return, volatility_decimal, length)
         
-        logger.debug(f"DEBUG: Generated returns sample: {synthetic_returns[:5]}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+        
+            logger.debug(f"DEBUG: Generated returns sample: {synthetic_returns[:5]}")
         logger.debug(f"DEBUG: Generated returns (min/max/mean/std): "
                      f"{np.min(synthetic_returns):.6f}/{np.max(synthetic_returns):.6f}/"
                      f"{np.mean(synthetic_returns):.6f}/{np.std(synthetic_returns):.6f}")
@@ -922,7 +973,9 @@ class ImprovedSyntheticDataGenerator:
         Returns:
             Array of simulated returns with GARCH dynamics
         """
-        logger.debug(f"DEBUG: _simulate_garch_process - target_volatility: {target_volatility:.6f}, mean_return: {mean_return:.6f}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"DEBUG: _simulate_garch_process - target_volatility: {target_volatility:.6f}, mean_return: {mean_return:.6f}")
         
         # Initialize arrays
         returns: np.ndarray = np.zeros(length)
@@ -933,15 +986,22 @@ class ImprovedSyntheticDataGenerator:
         alpha = garch_params.alpha
         beta = garch_params.beta
         
-        logger.debug(f"DEBUG: _simulate_garch_process - omega: {omega:.8f}, alpha: {alpha:.6f}, beta: {beta:.6f}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+        
+            logger.debug(f"DEBUG: _simulate_garch_process - omega: {omega:.8f}, alpha: {alpha:.6f}, beta: {beta:.6f}")
         
         # Initialize variance
         if alpha + beta < 0.999:
             initial_variance = omega / (1 - alpha - beta)
-            logger.debug(f"DEBUG: _simulate_garch_process - initial_variance (stationary): {initial_variance:.8f}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"DEBUG: _simulate_garch_process - initial_variance (stationary): {initial_variance:.8f}")
         else:
             initial_variance = target_volatility ** 2
-            logger.debug(f"DEBUG: _simulate_garch_process - initial_variance (non-stationary fallback): {initial_variance:.8f}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"DEBUG: _simulate_garch_process - initial_variance (non-stationary fallback): {initial_variance:.8f}")
         
         variances[0] = initial_variance
         
@@ -950,7 +1010,9 @@ class ImprovedSyntheticDataGenerator:
             from scipy import stats
             df = max(garch_params.nu, 3.0)
             innovations: np.ndarray = np.array(stats.t.rvs(df=df, size=length, random_state=self.rng))
-            logger.debug(f"DEBUG: _simulate_garch_process - using Student-t innovations (df={df:.2f})")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"DEBUG: _simulate_garch_process - using Student-t innovations (df={df:.2f})")
         else:
             innovations: np.ndarray = np.array(self.rng.standard_normal(length))
             logger.debug(f"DEBUG: _simulate_garch_process - using Normal innovations")
@@ -963,7 +1025,9 @@ class ImprovedSyntheticDataGenerator:
         for t in range(length):
             # Generate return
             returns[t] = mean_return + innovations[t] * np.sqrt(variances[t])
-            logger.debug(f"DEBUG: _simulate_garch_process - t={t}, return={returns[t]:.6f}, variance={variances[t]:.6f}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"DEBUG: _simulate_garch_process - t={t}, return={returns[t]:.6f}, variance={variances[t]:.6f}")
             
             # Update variance for next period
             if t < length - 1:
@@ -1006,7 +1070,9 @@ class ImprovedSyntheticDataGenerator:
             return enhanced_returns
             
         except Exception as e:
-            logger.warning(f"Volatility clustering enhancement failed: {e}. Using original returns.")
+            if logger.isEnabledFor(logging.WARNING):
+
+                logger.warning(f"Volatility clustering enhancement failed: {e}. Using original returns.")
             return returns
 
 

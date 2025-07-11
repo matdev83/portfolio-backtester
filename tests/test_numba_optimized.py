@@ -11,7 +11,8 @@ import pandas as pd
 from src.portfolio_backtester.numba_optimized import (
     momentum_scores_fast, momentum_scores_fast_vectorized,
     rolling_mean_fast, rolling_std_fast, rolling_sharpe_fast,
-    rolling_sortino_fast, rolling_beta_fast, rolling_correlation_fast
+    rolling_sortino_fast, rolling_beta_fast, rolling_correlation_fast,
+    true_range_fast, atr_fast, atr_exponential_fast, volatility_adjusted_returns_fast
 )
 
 
@@ -210,6 +211,183 @@ class TestPositionSizerOptimizations:
         for i in range(2, len(constant_data)):
             if not np.isnan(mean_result[i]):
                 np.testing.assert_almost_equal(mean_result[i], 5.0, decimal=10)
+
+
+class TestATROptimizations:
+    """Test Numba-optimized ATR calculations."""
+    
+    def test_true_range_fast(self):
+        """Test fast True Range calculation."""
+        # Create test OHLC data
+        high = np.array([102.0, 105.0, 103.0, 107.0, 104.0])
+        low = np.array([98.0, 101.0, 99.0, 103.0, 100.0])
+        close_prev = np.array([100.0, 102.0, 105.0, 103.0, 107.0])
+        
+        # Numba calculation
+        tr_numba = true_range_fast(high, low, close_prev)
+        
+        # Manual calculation for verification
+        expected_tr = np.array([
+            max(102.0 - 98.0, abs(102.0 - 100.0), abs(98.0 - 100.0)),  # max(4, 2, 2) = 4
+            max(105.0 - 101.0, abs(105.0 - 102.0), abs(101.0 - 102.0)),  # max(4, 3, 1) = 4
+            max(103.0 - 99.0, abs(103.0 - 105.0), abs(99.0 - 105.0)),  # max(4, 2, 6) = 6
+            max(107.0 - 103.0, abs(107.0 - 103.0), abs(103.0 - 103.0)),  # max(4, 4, 0) = 4
+            max(104.0 - 100.0, abs(104.0 - 107.0), abs(100.0 - 107.0))   # max(4, 3, 7) = 7
+        ])
+        
+        np.testing.assert_array_almost_equal(tr_numba, expected_tr, decimal=10)
+    
+    def test_atr_fast(self):
+        """Test fast ATR calculation."""
+        # Create test OHLC data
+        high = np.array([102.0, 105.0, 103.0, 107.0, 104.0, 106.0, 108.0])
+        low = np.array([98.0, 101.0, 99.0, 103.0, 100.0, 102.0, 104.0])
+        close = np.array([100.0, 102.0, 105.0, 103.0, 107.0, 104.0, 106.0])
+        window = 3
+        
+        # Numba calculation
+        atr_numba = atr_fast(high, low, close, window)
+        
+        # Verify structure
+        assert len(atr_numba) == len(high)
+        assert np.isnan(atr_numba[0])  # First value should be NaN
+        assert np.isnan(atr_numba[1])  # Second value should be NaN (not enough data)
+        
+        # Check that we get valid ATR values after sufficient data
+        assert not np.isnan(atr_numba[-1])  # Last value should be valid
+        assert atr_numba[-1] > 0  # ATR should be positive
+    
+    def test_atr_exponential_fast(self):
+        """Test fast exponential ATR calculation."""
+        # Create test OHLC data
+        high = np.array([102.0, 105.0, 103.0, 107.0, 104.0, 106.0, 108.0, 105.0])
+        low = np.array([98.0, 101.0, 99.0, 103.0, 100.0, 102.0, 104.0, 101.0])
+        close = np.array([100.0, 102.0, 105.0, 103.0, 107.0, 104.0, 106.0, 105.0])
+        window = 14
+        
+        # Numba calculation
+        atr_exp_numba = atr_exponential_fast(high, low, close, window)
+        
+        # Verify structure
+        assert len(atr_exp_numba) == len(high)
+        assert np.isnan(atr_exp_numba[0])  # First value should be NaN
+        assert not np.isnan(atr_exp_numba[1])  # Second value should be valid (first TR)
+        
+        # Check exponential smoothing property (later values influenced by earlier)
+        assert atr_exp_numba[-1] > 0  # ATR should be positive
+        
+        # Verify exponential smoothing is working (values should be related)
+        valid_values = atr_exp_numba[~np.isnan(atr_exp_numba)]
+        assert len(valid_values) >= 2
+    
+    def test_volatility_adjusted_returns_fast(self):
+        """Test fast volatility-adjusted returns calculation."""
+        # Create test data
+        returns = np.array([0.01, -0.02, 0.015, -0.01, 0.02, -0.005, 0.01, 0.03])
+        atr_values = np.array([2.0, 2.5, 3.0, 2.8, 3.2, 2.9, 3.1, 2.7])
+        lookback_window = 3
+        
+        # Numba calculation
+        adj_returns_numba = volatility_adjusted_returns_fast(returns, atr_values, lookback_window)
+        
+        # Verify structure
+        assert len(adj_returns_numba) == len(returns)
+        
+        # First few values should be NaN (not enough lookback)
+        for i in range(lookback_window):
+            assert np.isnan(adj_returns_numba[i])
+        
+        # Later values should be valid
+        assert not np.isnan(adj_returns_numba[-1])
+        
+        # Verify adjustment is working (returns divided by average ATR)
+        last_return = returns[-1]
+        last_atr_window = atr_values[-lookback_window:]
+        expected_adj = last_return / np.mean(last_atr_window)
+        np.testing.assert_almost_equal(adj_returns_numba[-1], expected_adj, decimal=8)
+    
+    def test_atr_with_nan_data(self):
+        """Test ATR functions handle NaN data correctly."""
+        # Create data with NaN values
+        high = np.array([102.0, np.nan, 103.0, 107.0, 104.0])
+        low = np.array([98.0, 101.0, np.nan, 103.0, 100.0])
+        close = np.array([100.0, 102.0, 105.0, np.nan, 107.0])
+        close_prev = np.array([99.0, 100.0, 102.0, 105.0, 103.0])  # Previous close for TR
+        
+        # Test True Range with NaN
+        tr_result = true_range_fast(high, low, close_prev)
+        assert len(tr_result) == 5
+        assert np.isnan(tr_result[1])  # Should be NaN due to NaN in high
+        assert np.isnan(tr_result[2])  # Should be NaN due to NaN in low
+        
+        # Test ATR with NaN
+        atr_result = atr_fast(high, low, close, 3)
+        assert len(atr_result) == len(high)
+        # Should handle NaN gracefully without crashing
+    
+    def test_atr_edge_cases(self):
+        """Test ATR functions with edge cases."""
+        # Empty arrays
+        empty_array = np.array([])
+        atr_empty = atr_fast(empty_array, empty_array, empty_array, 3)
+        assert len(atr_empty) == 0
+        
+        # Single element
+        single_high = np.array([100.0])
+        single_low = np.array([95.0])
+        single_close = np.array([98.0])
+        atr_single = atr_fast(single_high, single_low, single_close, 3)
+        assert len(atr_single) == 1
+        assert np.isnan(atr_single[0])  # Not enough data
+        
+        # Two elements (minimum for TR calculation)
+        two_high = np.array([100.0, 102.0])
+        two_low = np.array([95.0, 98.0])
+        two_close = np.array([98.0, 101.0])
+        atr_two = atr_fast(two_high, two_low, two_close, 2)
+        assert len(atr_two) == 2
+        assert np.isnan(atr_two[0])  # First value always NaN
+        # Second value might still be NaN due to window requirement
+        # Just check that function doesn't crash
+    
+    def test_atr_mathematical_properties(self):
+        """Test mathematical properties of ATR calculations."""
+        # ATR should always be positive for valid data
+        high = np.array([102.0, 105.0, 103.0, 107.0, 104.0])
+        low = np.array([98.0, 101.0, 99.0, 103.0, 100.0])
+        close = np.array([100.0, 102.0, 105.0, 103.0, 107.0])
+        
+        atr_result = atr_fast(high, low, close, 3)
+        
+        # All valid ATR values should be positive
+        valid_atr = atr_result[~np.isnan(atr_result)]
+        assert (valid_atr >= 0).all()
+        
+        # ATR should be reasonable relative to price ranges
+        price_range = np.max(high) - np.min(low)
+        max_atr = np.max(valid_atr)
+        assert max_atr <= price_range  # ATR shouldn't exceed total price range
+    
+    def test_atr_vs_pandas_equivalent(self):
+        """Test ATR calculation against pandas equivalent where possible."""
+        # Create test data
+        high = np.array([102.0, 105.0, 103.0, 107.0, 104.0, 106.0, 108.0])
+        low = np.array([98.0, 101.0, 99.0, 103.0, 100.0, 102.0, 104.0])
+        close = np.array([100.0, 102.0, 105.0, 103.0, 107.0, 104.0, 106.0])
+        
+        # Calculate True Range manually for comparison
+        tr_manual = np.full(len(high), np.nan)
+        for i in range(1, len(high)):
+            tr1 = high[i] - low[i]
+            tr2 = abs(high[i] - close[i-1])
+            tr3 = abs(low[i] - close[i-1])
+            tr_manual[i] = max(tr1, tr2, tr3)
+        
+        # Compare with Numba True Range
+        tr_numba = true_range_fast(high[1:], low[1:], close[:-1])
+        
+        # Should match manual calculation
+        np.testing.assert_array_almost_equal(tr_numba, tr_manual[1:], decimal=10)
 
 
 if __name__ == "__main__":

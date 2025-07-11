@@ -70,6 +70,170 @@ def momentum_scores_fast_vectorized(prices_now, prices_then):
 
 
 # =============================================================================
+# ATR (AVERAGE TRUE RANGE) OPTIMIZATIONS
+# =============================================================================
+
+@numba.jit(nopython=True, cache=True)
+def true_range_fast(high, low, close_prev):
+    """
+    Fast True Range calculation using Numba.
+    
+    True Range = max(high - low, abs(high - close_prev), abs(low - close_prev))
+    
+    Args:
+        high: numpy array of high prices
+        low: numpy array of low prices
+        close_prev: numpy array of previous close prices
+        
+    Returns:
+        numpy array of True Range values
+    """
+    n = len(high)
+    tr = np.empty(n)
+    
+    for i in range(n):
+        if np.isnan(high[i]) or np.isnan(low[i]) or np.isnan(close_prev[i]):
+            tr[i] = np.nan
+        else:
+            tr1 = high[i] - low[i]
+            tr2 = abs(high[i] - close_prev[i])
+            tr3 = abs(low[i] - close_prev[i])
+            tr[i] = max(tr1, tr2, tr3)
+    
+    return tr
+
+
+@numba.jit(nopython=True, cache=True)
+def atr_fast(high, low, close, window):
+    """
+    Fast Average True Range calculation using Numba.
+    
+    Args:
+        high: numpy array of high prices
+        low: numpy array of low prices
+        close: numpy array of close prices
+        window: ATR calculation window
+        
+    Returns:
+        numpy array of ATR values
+    """
+    n = len(high)
+    atr = np.full(n, np.nan)
+    
+    if n < 2:
+        return atr
+    
+    # Calculate True Range
+    tr = np.empty(n)
+    tr[0] = np.nan  # First value has no previous close
+    
+    for i in range(1, n):
+        if np.isnan(high[i]) or np.isnan(low[i]) or np.isnan(close[i-1]):
+            tr[i] = np.nan
+        else:
+            tr1 = high[i] - low[i]
+            tr2 = abs(high[i] - close[i-1])
+            tr3 = abs(low[i] - close[i-1])
+            tr[i] = max(tr1, tr2, tr3)
+    
+    # Calculate ATR as rolling mean of True Range
+    for i in range(n):
+        if i >= window:
+            tr_window = tr[i-window+1:i+1]
+            valid_tr = tr_window[~np.isnan(tr_window)]
+            if len(valid_tr) >= window // 2:  # Require at least half the window
+                atr[i] = np.mean(valid_tr)
+    
+    return atr
+
+
+@numba.jit(nopython=True, cache=True)
+def atr_exponential_fast(high, low, close, window):
+    """
+    Fast Exponential Average True Range calculation using Numba.
+    
+    Uses exponential smoothing instead of simple moving average for ATR.
+    
+    Args:
+        high: numpy array of high prices
+        low: numpy array of low prices
+        close: numpy array of close prices
+        window: ATR calculation window (used to derive alpha)
+        
+    Returns:
+        numpy array of exponential ATR values
+    """
+    n = len(high)
+    atr = np.full(n, np.nan)
+    
+    if n < 2:
+        return atr
+    
+    # Calculate smoothing factor
+    alpha = 2.0 / (window + 1)
+    
+    # Calculate first True Range
+    if not (np.isnan(high[1]) or np.isnan(low[1]) or np.isnan(close[0])):
+        tr1 = high[1] - low[1]
+        tr2 = abs(high[1] - close[0])
+        tr3 = abs(low[1] - close[0])
+        first_tr = max(tr1, tr2, tr3)
+        atr[1] = first_tr
+    
+    # Calculate exponential ATR
+    for i in range(2, n):
+        if np.isnan(high[i]) or np.isnan(low[i]) or np.isnan(close[i-1]) or np.isnan(atr[i-1]):
+            atr[i] = np.nan
+        else:
+            # Calculate current True Range
+            tr1 = high[i] - low[i]
+            tr2 = abs(high[i] - close[i-1])
+            tr3 = abs(low[i] - close[i-1])
+            current_tr = max(tr1, tr2, tr3)
+            
+            # Exponential smoothing
+            atr[i] = alpha * current_tr + (1 - alpha) * atr[i-1]
+    
+    return atr
+
+
+@numba.jit(nopython=True, cache=True)
+def volatility_adjusted_returns_fast(returns, atr_values, lookback_window):
+    """
+    Fast volatility-adjusted returns calculation using ATR.
+    
+    Args:
+        returns: numpy array of returns
+        atr_values: numpy array of ATR values
+        lookback_window: window for volatility adjustment
+        
+    Returns:
+        numpy array of volatility-adjusted returns
+    """
+    n = len(returns)
+    adjusted_returns = np.full(n, np.nan)
+    
+    for i in range(lookback_window, n):
+        if not np.isnan(returns[i]) and not np.isnan(atr_values[i]) and atr_values[i] > 1e-10:
+            # Get average ATR over lookback window
+            atr_window = atr_values[i-lookback_window+1:i+1]
+            valid_atr = atr_window[~np.isnan(atr_window)]
+            
+            if len(valid_atr) >= lookback_window // 2:
+                avg_atr = np.mean(valid_atr)
+                if avg_atr > 1e-10:
+                    adjusted_returns[i] = returns[i] / avg_atr
+                else:
+                    adjusted_returns[i] = 0.0
+            else:
+                adjusted_returns[i] = np.nan
+        else:
+            adjusted_returns[i] = np.nan
+    
+    return adjusted_returns
+
+
+# =============================================================================
 # POSITION SIZER ROLLING STATISTICS OPTIMIZATIONS
 # =============================================================================
 

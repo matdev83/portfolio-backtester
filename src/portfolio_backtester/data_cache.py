@@ -50,7 +50,10 @@ class DataPreprocessingCache:
             'size_mb': 0.0
         }
         
-        logger.info(f"Initialized DataPreprocessingCache with max size: {max_cache_size_mb}MB")
+        if logger.isEnabledFor(logging.DEBUG):
+
+        
+            logger.debug(f"Initialized DataPreprocessingCache with max size: {max_cache_size_mb}MB")
     
     def _get_data_hash(self, data: pd.DataFrame, identifier: str = "") -> str:
         """Generate a hash for DataFrame to use as cache key."""
@@ -85,7 +88,9 @@ class DataPreprocessingCache:
         )
         
         if current_size > self.max_cache_size_mb:
-            logger.warning(f"Cache size ({current_size:.1f}MB) exceeds limit ({self.max_cache_size_mb}MB). Clearing cache.")
+            if logger.isEnabledFor(logging.WARNING):
+
+                logger.warning(f"Cache size ({current_size:.1f}MB) exceeds limit ({self.max_cache_size_mb}MB). Clearing cache.")
             self.clear_cache()
     
     def get_cached_returns(self, data: pd.DataFrame, identifier: str = "default") -> pd.DataFrame:
@@ -103,12 +108,16 @@ class DataPreprocessingCache:
         
         if data_hash in self.cached_returns:
             self._cache_stats['hits'] += 1
-            logger.debug(f"Cache HIT for returns: {identifier}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"Cache HIT for returns: {identifier}")
             return self.cached_returns[data_hash]
         
         # Cache miss - compute returns
         self._cache_stats['misses'] += 1
-        logger.debug(f"Cache MISS for returns: {identifier} - computing...")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"Cache MISS for returns: {identifier} - computing...")
         
         returns = data.pct_change(fill_method=None).fillna(0)
         
@@ -134,12 +143,16 @@ class DataPreprocessingCache:
         
         if data_hash in self.date_position_maps:
             self._cache_stats['hits'] += 1
-            logger.debug(f"Cache HIT for date positions: {identifier}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"Cache HIT for date positions: {identifier}")
             return self.date_position_maps[data_hash]
         
         # Cache miss - compute position mapping
         self._cache_stats['misses'] += 1
-        logger.debug(f"Cache MISS for date positions: {identifier} - computing...")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"Cache MISS for date positions: {identifier} - computing...")
         
         position_map = {date: idx for idx, date in enumerate(data.index)}
         
@@ -170,7 +183,9 @@ class DataPreprocessingCache:
         
         if slice_hash in self.cached_slices:
             self._cache_stats['hits'] += 1
-            logger.debug(f"Cache HIT for data slice: {slice_key}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"Cache HIT for data slice: {slice_key}")
             return self.cached_slices[slice_hash]
         
         # Cache miss - compute slice
@@ -218,7 +233,7 @@ class DataPreprocessingCache:
         self.get_rolling_window_indices.cache_clear()
         
         self._cache_stats = {'hits': 0, 'misses': 0, 'size_mb': 0.0}
-        logger.info("Data preprocessing cache cleared")
+        logger.debug("Data preprocessing cache cleared")
     
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache performance statistics."""

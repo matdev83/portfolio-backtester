@@ -1,5 +1,12 @@
 import pandas as pd
 import numpy as np
+
+# Import Numba optimizations with fallback
+try:
+    from ..numba_optimized import atr_fast, atr_exponential_fast, true_range_fast
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
 from ..feature import Feature
 
 
@@ -40,14 +47,28 @@ class ATRFeature(Feature):
                     low = data[(asset, 'Low')]
                     close = data[(asset, 'Close')]
                     
-                    # Calculate True Range
-                    tr1 = high - low
-                    tr2 = abs(high - close.shift(1))
-                    tr3 = abs(low - close.shift(1))
-                    true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+                    # Use Numba optimization if available and data is suitable
+                    if (NUMBA_AVAILABLE and 
+                        len(high) > 1 and 
+                        not high.isna().all() and 
+                        not low.isna().all() and 
+                        not close.isna().all()):
+                        
+                        # Fast path: Use Numba-optimized calculation
+                        atr_values = atr_fast(high.values, low.values, close.values, self.atr_period)
+                        atr = pd.Series(atr_values, index=high.index, name=f'ATR_{asset}')
+                        
+                    else:
+                        # Fallback path: Use pandas calculation
+                        # Calculate True Range
+                        tr1 = high - low
+                        tr2 = abs(high - close.shift(1))
+                        tr3 = abs(low - close.shift(1))
+                        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+                        
+                        # Calculate ATR as rolling mean of True Range
+                        atr = true_range.rolling(window=self.atr_period, min_periods=self.atr_period).mean()
                     
-                    # Calculate ATR as rolling mean of True Range
-                    atr = true_range.rolling(window=self.atr_period, min_periods=self.atr_period).mean()
                     atr_df[asset] = atr
                     
                 except KeyError:

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 
 if TYPE_CHECKING:  # pragma: no cover – static type checkers only
-    from .spy_holdings import get_top_weight_sp500_components  # noqa: F401
+    from .universe_data.spy_holdings import get_top_weight_sp500_components  # noqa: F401
 
 
 _LAZY_ATTRS = {

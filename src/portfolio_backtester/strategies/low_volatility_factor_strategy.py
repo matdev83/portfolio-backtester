@@ -113,6 +113,7 @@ import numpy as np
 import logging
 
 from .base_strategy import BaseStrategy
+from ..data_sources.etf_holdings import ETFHoldingsDataSource
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,7 @@ class LowVolatilityFactorStrategy(BaseStrategy):
         self.portfolio_betas: Dict[str, float] = {}
         self.size_breakpoints: Dict[str, float] = {}
         self.volatility_breakpoints: Dict[str, float] = {}
+        self.etf_holdings_data_source = ETFHoldingsDataSource()
         
         # Default parameters based on the paper
         defaults = {
@@ -212,16 +214,14 @@ class LowVolatilityFactorStrategy(BaseStrategy):
         
         return volatility
 
-    def _calculate_market_caps(self, prices: pd.DataFrame) -> pd.DataFrame:
+    def _calculate_market_caps(self, prices: pd.DataFrame) -> pd.Series | None:
         """
         Calculate market capitalizations.
         
         NOTE: We don't have actual market cap data (shares outstanding).
-        This implementation will skip size sorting and use only volatility sorting.
-        This is more honest than using price as a proxy for market cap.
+        This implementation will return None, indicating that 2x3 sorting
+        based on size is not possible with current data.
         """
-        # Return None to indicate we don't have market cap data
-        # This will trigger volatility-only sorting in _sort_stocks_2x3
         return None
 
     def _get_size_breakpoints(self, market_caps: pd.Series, percentile: float) -> float:
@@ -461,7 +461,7 @@ class LowVolatilityFactorStrategy(BaseStrategy):
                       else all_historical_data.columns)
             return pd.DataFrame(0.0, index=[current_date], columns=columns)
 
-        # Filter universe by data availability
+        # Filter universe by data availability and micro-cap exclusion
         valid_assets = self.filter_universe_by_data_availability(
             all_historical_data, current_date
         )
@@ -469,6 +469,22 @@ class LowVolatilityFactorStrategy(BaseStrategy):
         if not valid_assets:
             if logger.isEnabledFor(logging.WARNING):
                 logger.warning(f"No assets have sufficient data for {current_date}")
+            columns = (all_historical_data.columns.get_level_values(0).unique() 
+                      if isinstance(all_historical_data.columns, pd.MultiIndex) 
+                      else all_historical_data.columns)
+            return pd.DataFrame(0.0, index=[current_date], columns=columns)
+
+        # Exclude micro-cap tickers using IWC holdings
+        micro_cap_tickers = self.etf_holdings_data_source.get_micro_cap_tickers()
+        initial_valid_assets_count = len(valid_assets)
+        valid_assets = [asset for asset in valid_assets if asset not in micro_cap_tickers]
+        if len(valid_assets) < initial_valid_assets_count:
+            if logger.isEnabledFor(logging.INFO):
+                logger.info(f"Excluded {initial_valid_assets_count - len(valid_assets)} micro-cap assets for {current_date}.")
+
+        if not valid_assets:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(f"No assets remain after micro-cap exclusion for {current_date}.")
             columns = (all_historical_data.columns.get_level_values(0).unique() 
                       if isinstance(all_historical_data.columns, pd.MultiIndex) 
                       else all_historical_data.columns)

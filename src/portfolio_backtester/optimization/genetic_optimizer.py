@@ -41,7 +41,9 @@ class GeneticOptimizer:
                                    [scenario_config.get("optimization_metric", "Calmar")]
         self.is_multi_objective = len(self.metrics_to_optimize) > 1
         if self.is_multi_objective:
-            logger.info(f"Multi-objective optimization for: {self.metrics_to_optimize}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"Multi-objective optimization for: {self.metrics_to_optimize}")
 
         self.ga_instance = None
 
@@ -63,7 +65,9 @@ class GeneticOptimizer:
                 
                 # For integer genes, ensure at least one valid value exists
                 if step > 0 and (high - low) < step:
-                    logger.warning(f"Gene {i}: range too small for step size. Adjusting step to 1.")
+                    if logger.isEnabledFor(logging.WARNING):
+
+                        logger.warning(f"Gene {i}: range too small for step size. Adjusting step to 1.")
                     space["step"] = 1
                     
         return gene_space
@@ -159,7 +163,9 @@ class GeneticOptimizer:
                         processed_objectives.append(-val if np.isfinite(val) else np.inf)
                     else:
                         processed_objectives.append(val if np.isfinite(val) else -np.inf)
-                logger.debug(f"Solution {solution_idx} params: {current_params}, objectives: {processed_objectives}")
+                if logger.isEnabledFor(logging.DEBUG):
+
+                    logger.debug(f"Solution {solution_idx} params: {current_params}, objectives: {processed_objectives}")
                 return processed_objectives
             else:
                 # Single objective
@@ -173,11 +179,15 @@ class GeneticOptimizer:
 
                 if direction == "minimize":
                     result = -fitness_value if np.isfinite(fitness_value) else np.inf
-                    logger.debug(f"Solution {solution_idx} params: {current_params}, raw_fitness: {fitness_value}, adjusted_fitness: {result}")
+                    if logger.isEnabledFor(logging.DEBUG):
+
+                        logger.debug(f"Solution {solution_idx} params: {current_params}, raw_fitness: {fitness_value}, adjusted_fitness: {result}")
                     return result
                 else:
                     result = fitness_value if np.isfinite(fitness_value) else -np.inf
-                    logger.debug(f"Solution {solution_idx} params: {current_params}, fitness: {result}")
+                    if logger.isEnabledFor(logging.DEBUG):
+
+                        logger.debug(f"Solution {solution_idx} params: {current_params}, fitness: {result}")
                     return result
 
         except Exception as e:
@@ -246,7 +256,7 @@ class GeneticOptimizer:
         return gene_space, gene_type
 
     def run(self, save_plot=True):
-        logger.info("Setting up Genetic Algorithm...")
+        logger.debug("Setting up Genetic Algorithm...")
         
         # Initialize variables that might be referenced in exception handling
         ga_params_config = self.scenario_config.get("genetic_algorithm_params", {})
@@ -270,12 +280,16 @@ class GeneticOptimizer:
 
             # Ensure minimum population size
             if sol_per_pop < 4:
-                logger.warning(f"Population size {sol_per_pop} too small, setting to 4")
+                if logger.isEnabledFor(logging.WARNING):
+
+                    logger.warning(f"Population size {sol_per_pop} too small, setting to 4")
                 sol_per_pop = 4
             
             if num_parents_mating >= sol_per_pop:
                 num_parents_mating = max(2, sol_per_pop // 2)
-                logger.warning(f"num_parents_mating adjusted to {num_parents_mating}")
+                if logger.isEnabledFor(logging.WARNING):
+
+                    logger.warning(f"num_parents_mating adjusted to {num_parents_mating}")
 
             # PyGAD seed
             pygad_seed = self.random_state if self.random_state is not None else np.random.randint(0, 10000)
@@ -288,7 +302,9 @@ class GeneticOptimizer:
                 def on_gen(ga_instance):
                     try:
                         current_best_fitness = ga_instance.best_solution(pop_fitness=ga_instance.last_generation_fitness)[1]
-                        logger.debug(f"Generation {ga_instance.generations_completed}, Best fitness: {current_best_fitness}")
+                        if logger.isEnabledFor(logging.DEBUG):
+
+                            logger.debug(f"Generation {ga_instance.generations_completed}, Best fitness: {current_best_fitness}")
 
                         if np.isfinite(current_best_fitness) and np.isfinite(self.best_fitness_so_far):
                             if abs(current_best_fitness - self.best_fitness_so_far) < 1e-6:
@@ -303,14 +319,18 @@ class GeneticOptimizer:
                         self.best_fitness_so_far = max(self.best_fitness_so_far, current_best_fitness)
 
                         if self.zero_fitness_streak >= self.backtester.args.early_stop_patience:
-                            logger.info(f"Early stopping GA due to {self.zero_fitness_streak} generations with no improvement.")
+                            if logger.isEnabledFor(logging.DEBUG):
+
+                                logger.debug(f"Early stopping GA due to {self.zero_fitness_streak} generations with no improvement.")
                             return "stop"
 
                         if CENTRAL_INTERRUPTED_FLAG:
                             logger.warning("Genetic Algorithm optimization interrupted by user via central flag.")
                             return "stop"
                     except Exception as e:
-                        logger.warning(f"Error in generation callback: {e}")
+                        if logger.isEnabledFor(logging.WARNING):
+
+                            logger.warning(f"Error in generation callback: {e}")
                         
                 on_generation_callback = on_gen
 
@@ -340,13 +360,13 @@ class GeneticOptimizer:
                     # Check if PyGAD supports NSGA-II
                     import pygad.nsga2 as nsga2_module
                     ga_kwargs["algorithm_type"] = "nsga2"
-                    logger.info("Using NSGA-II algorithm for multi-objective optimization.")
+                    logger.debug("Using NSGA-II algorithm for multi-objective optimization.")
                 except (ImportError, AttributeError):
                     logger.warning("NSGA-II not available in this PyGAD version. Using standard GA with weighted objectives.")
 
             self.ga_instance = pygad.GA(**ga_kwargs)
 
-            logger.info("Running Genetic Algorithm...")
+            logger.debug("Running Genetic Algorithm...")
             self.ga_instance.run()
 
             # Process results
@@ -364,7 +384,9 @@ class GeneticOptimizer:
                 # Select the first solution from the Pareto front
                 solution = pareto_chromosomes[0]
                 solution_fitness = pareto_solutions_fitness[0] if pareto_solutions_fitness else "Unknown"
-                logger.info(f"GA multi-objective: Selected first solution from Pareto front. Fitness: {solution_fitness}")
+                if logger.isEnabledFor(logging.DEBUG):
+
+                    logger.debug(f"GA multi-objective: Selected first solution from Pareto front. Fitness: {solution_fitness}")
             else:
                 # Single objective results
                 if self.ga_instance.best_solution_generation == -1 and not CENTRAL_INTERRUPTED_FLAG:
@@ -372,7 +394,9 @@ class GeneticOptimizer:
                      return self.scenario_config["strategy_params"].copy(), num_evaluations
 
                 solution, solution_fitness, _ = self.ga_instance.best_solution(pop_fitness=self.ga_instance.last_generation_fitness)
-                logger.debug(f"GA single-objective: Best fitness: {solution_fitness}")
+                if logger.isEnabledFor(logging.DEBUG):
+
+                    logger.debug(f"GA single-objective: Best fitness: {solution_fitness}")
 
             if self.ga_instance.generations_completed > 0 and solution is not None:
                 if save_plot:
@@ -382,13 +406,19 @@ class GeneticOptimizer:
                         os.makedirs("plots", exist_ok=True)
                         plot_path = f"plots/ga_fitness_{self.scenario_config['name']}.png"
                         self.ga_instance.plot_fitness(title="GA Fitness Value vs. Generation", save_dir=plot_path)
-                        logger.info(f"GA fitness plot saved to {plot_path}")
+                        if logger.isEnabledFor(logging.DEBUG):
+
+                            logger.debug(f"GA fitness plot saved to {plot_path}")
                     except Exception as e:
-                        logger.warning(f"Could not save GA fitness plot: {e}")
+                        if logger.isEnabledFor(logging.WARNING):
+
+                            logger.warning(f"Could not save GA fitness plot: {e}")
                         
                 optimal_params = self.scenario_config["strategy_params"].copy()
                 optimal_params.update(self._decode_chromosome(solution))
-                logger.debug(f"Best parameters found by GA: {optimal_params}")
+                if logger.isEnabledFor(logging.DEBUG):
+
+                    logger.debug(f"Best parameters found by GA: {optimal_params}")
                 print(f"Genetic Optimizer - Best parameters found: {optimal_params}")
                 return optimal_params, num_evaluations
             else:

@@ -27,7 +27,7 @@ from typing import List, Union
 
 import pandas as pd
 
-from .spy_holdings import get_spy_holdings
+from .universe_data.spy_holdings import get_spy_holdings
 
 # --------------------------------------------------------------------------- #
 # Internal helpers

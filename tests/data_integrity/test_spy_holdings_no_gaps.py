@@ -7,7 +7,7 @@ import pytest
 # pytestmark = pytest.mark.universe # Unskipped
 # pytest.skip("universe test", allow_module_level=True) # Unskipped
 
-import portfolio_backtester.spy_holdings as spy_holdings
+import portfolio_backtester.universe_data.spy_holdings as spy_holdings
 
 
 FILLED_PARQUET = Path("data/spy_holdings_full.parquet")

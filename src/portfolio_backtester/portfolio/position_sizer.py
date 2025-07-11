@@ -190,7 +190,9 @@ def rolling_downside_volatility_sizer(
     downside_vol_monthly = (downside_sq_sum_monthly / window).pow(0.5)
     downside_vol_monthly = pd.DataFrame(downside_vol_monthly, index=signals.index, columns=signals.columns)
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"downside_vol_monthly:\n{downside_vol_monthly}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"downside_vol_monthly:\n{downside_vol_monthly}")
 
     # Calculate initial factor based on target volatility and asset downside volatility
     epsilon = 1e-9
@@ -198,49 +200,65 @@ def rolling_downside_volatility_sizer(
     factor = pd.DataFrame(factor, index=signals.index, columns=signals.columns)
     factor = factor.clip(upper=max_leverage)
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"factor (after clip):\n{factor}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"factor (after clip):\n{factor}")
 
     # Apply factor to signals to get initial sized positions
     sized_initial = signals.mul(factor)
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"sized_initial:\n{sized_initial}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"sized_initial:\n{sized_initial}")
 
     # Now, perform volatility targeting using daily data
     # Expand monthly sized_initial to daily frequency (forward fill)
     daily_weights_from_sized_initial = sized_initial.reindex(daily_prices_for_vol.index, method="ffill")
     daily_weights_from_sized_initial = daily_weights_from_sized_initial.shift(1).fillna(0.0) # Shift to avoid look-ahead bias
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"daily_weights_from_sized_initial:\n{daily_weights_from_sized_initial}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"daily_weights_from_sized_initial:\n{daily_weights_from_sized_initial}")
 
     # Calculate daily returns for the assets
     daily_rets_for_vol = daily_prices_for_vol.pct_change(fill_method=None).fillna(0)
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"daily_rets_for_vol:\n{daily_rets_for_vol}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"daily_rets_for_vol:\n{daily_rets_for_vol}")
 
     # Calculate daily portfolio returns based on initial sized weights
     daily_portfolio_returns_initial = (daily_weights_from_sized_initial * daily_rets_for_vol).sum(axis=1)
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"daily_portfolio_returns_initial:\n{daily_portfolio_returns_initial}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"daily_portfolio_returns_initial:\n{daily_portfolio_returns_initial}")
 
     # Calculate rolling actual portfolio volatility (annualized)
     # Assuming 252 trading days in a year for annualization
     annualization_factor = np.sqrt(252)
     actual_portfolio_vol = daily_portfolio_returns_initial.rolling(window=window*21).std() * annualization_factor # Approx monthly to daily window
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"actual_portfolio_vol:\n{actual_portfolio_vol}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"actual_portfolio_vol:\n{actual_portfolio_vol}")
 
     # Calculate scaling factor to hit target volatility
     # Avoid division by zero or very small numbers for actual_portfolio_vol
     scaling_factor = target_volatility / np.maximum(actual_portfolio_vol, epsilon)
     scaling_factor = scaling_factor.clip(upper=max_leverage) # Cap the scaling factor as well
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"scaling_factor (after clip):\n{scaling_factor}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"scaling_factor (after clip):\n{scaling_factor}")
 
     # Apply the scaling factor to the initial sized positions
     # Need to reindex scaling_factor to match signals index (monthly)
     scaling_factor_monthly = scaling_factor.reindex(signals.index, method="ffill")
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"scaling_factor_monthly:\n{scaling_factor_monthly}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"scaling_factor_monthly:\n{scaling_factor_monthly}")
     
     # Final weights are initial sized signals multiplied by the overall scaling factor
     weights = sized_initial.mul(scaling_factor_monthly, axis=0)
@@ -251,7 +269,9 @@ def rolling_downside_volatility_sizer(
     # Fill any remaining NaNs with 0 (e.g., for periods where no signals or vol could be calculated)
     weights = weights.fillna(0)
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"final weights:\n{weights}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"final weights:\n{weights}")
 
     return weights
 

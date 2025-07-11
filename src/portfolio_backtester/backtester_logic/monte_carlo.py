@@ -1,3 +1,20 @@
+"""
+DEPRECATED: Legacy Monte Carlo Mode
+
+This file contains the legacy Monte Carlo implementation that performs forward-looking
+simulation based on historical statistics. This approach is NOT part of the current
+two-stage Monte Carlo system:
+
+1. Stage 1: Monte Carlo during optimization for parameter robustness testing
+2. Stage 2: Monte Carlo stress testing after optimization with synthetic data
+
+The current implementation is found in:
+- Stage 1: backtester.py (_evaluate_params_walk_forward)
+- Stage 2: backtester_logic/reporting.py (_plot_monte_carlo_robustness_analysis)
+
+This legacy code is kept for reference but should not be used.
+"""
+
 from ..monte_carlo.monte_carlo import run_monte_carlo_simulation, plot_monte_carlo_results
 import pandas as pd
 

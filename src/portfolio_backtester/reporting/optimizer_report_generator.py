@@ -235,9 +235,13 @@ class OptimizerReportGenerator:
                     # Categorize plots by type for better organization
                     plot_type = self._categorize_plot(plot_file.name)
                     moved_plots[plot_type] = plot_file.name
-                    logger.info(f"Moved plot {plot_file.name} to {destination}")
+                    if logger.isEnabledFor(logging.DEBUG):
+
+                        logger.debug(f"Moved plot {plot_file.name} to {destination}")
                 except Exception as e:
-                    logger.warning(f"Failed to move plot {plot_file.name}: {e}")
+                    if logger.isEnabledFor(logging.WARNING):
+
+                        logger.warning(f"Failed to move plot {plot_file.name}: {e}")
         
         return moved_plots
     
@@ -537,7 +541,8 @@ class OptimizerReportGenerator:
                     'title': 'Monte Carlo Robustness Testing',
                     'description': 'Stress testing with progressive synthetic data replacement to assess strategy robustness',
                     'interpretation': '''**How to interpret:**
-- **Different colors**: Each color represents different levels of synthetic data (5%, 7.5%, 10%, etc.)
+- **Thick black line**: Original strategy performance on real data (baseline for comparison)
+- **Different colors**: Each color represents different levels of synthetic data (5%, 7.5%, 10%)
 - **Multiple lines per color**: Multiple simulations at each replacement level
 - **Performance degradation**: How much performance drops as more synthetic data is used
 - **Consistency**: Similar performance across simulations indicates robust strategy
@@ -606,7 +611,10 @@ class OptimizerReportGenerator:
         with open(report_file, 'w', encoding='utf-8') as f:
             f.write(report_content)
         
-        logger.info(f"Generated comprehensive optimization report: {report_file}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+        
+            logger.debug(f"Generated comprehensive optimization report: {report_file}")
         return str(report_file)
     
     def _get_parameter_description(self, param_name: str) -> str:

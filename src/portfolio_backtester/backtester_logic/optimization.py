@@ -22,13 +22,14 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     global _global_progress_tracker
     
     optimizer_type = getattr(self.args, "optimizer", "optuna")
-    self.logger.info(
-        f"Running {optimizer_type} optimization for scenario: {scenario_config['name']} with walk-forward splits."
-    )
+    if self.logger.isEnabledFor(logging.DEBUG):
+        self.logger.debug(
+            f"Running {optimizer_type} optimization for scenario: {scenario_config['name']} with walk-forward splits."
+        )
 
     if optimizer_type == "genetic":
-        if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info("Using Genetic Algorithm Optimizer.")
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug("Using Genetic Algorithm Optimizer.")
         ga_optimizer = GeneticOptimizer(
             scenario_config=scenario_config,
             backtester_instance=self,
@@ -41,8 +42,8 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         optimal_params, num_evaluations = ga_optimizer.run()
         return optimal_params, num_evaluations
 
-    if self.logger.isEnabledFor(logging.INFO):
-        self.logger.info("Using Optuna Optimizer.")
+    if self.logger.isEnabledFor(logging.DEBUG):
+        self.logger.debug("Using Optuna Optimizer.")
     
     # Generate randomized WFO windows
     windows = generate_randomized_wfo_windows(
@@ -58,11 +59,11 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     # Log randomization details
     robustness_config = self.global_config.get("wfo_robustness_config", {})
     if robustness_config.get("enable_window_randomization", False) or robustness_config.get("enable_start_date_randomization", False):
-        if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info(f"Generated {len(windows)} randomized walk-forward windows for robustness testing.")
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Generated {len(windows)} randomized walk-forward windows for robustness testing.")
     else:
-        if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info(f"Generated {len(windows)} standard walk-forward windows.")
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Generated {len(windows)} standard walk-forward windows.")
 
     if self.args.storage_url:
         storage = self.args.storage_url
@@ -148,7 +149,8 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
                 return
 
             if zero_streak > self.early_stop_patience:
-                self.logger.info(f"Early stopping Optuna study due to {self.early_stop_patience} consecutive zero-return trials.")
+                if self.logger.isEnabledFor(logging.DEBUG):
+                    self.logger.debug(f"Early stopping Optuna study due to {self.early_stop_patience} consecutive zero-return trials.")
                 study.stop()
 
         study.optimize(
@@ -173,9 +175,10 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
 
         best_trial_obj = best_trials[0]
         optimal_params.update(best_trial_obj.params)
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Best parameters (from Pareto front, first trial) found on training set: {best_trial_obj.params}")
         if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info(f"Best parameters (from Pareto front, first trial) found on training set: {best_trial_obj.params}")
-        print(f"Optuna Optimizer - Best parameters found: {best_trial_obj.params}")
+            self.logger.info(f"Optuna Optimizer - Best parameters found: {best_trial_obj.params}")
         actual_trial_number_for_dsr = best_trial_obj.number
     else:
         if not study.best_trial:
@@ -184,9 +187,10 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
 
         best_trial_obj = study.best_trial
         optimal_params.update(best_trial_obj.params)
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Best parameters found on training set: {best_trial_obj.params}")
         if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info(f"Best parameters found on training set: {best_trial_obj.params}")
-        print(f"Optuna Optimizer - Best parameters found: {best_trial_obj.params}")
+            self.logger.info(f"Optuna Optimizer - Best parameters found: {best_trial_obj.params}")
         actual_trial_number_for_dsr = study.best_trial.number
     
     # Store the study object in the best_trial_obj for later use in plotting
@@ -213,14 +217,14 @@ def _setup_optuna_study(self, scenario_config, storage, study_name_base: str):
         }
         sampler = optuna.samplers.GridSampler(search_space)
         n_trials_actual = reduce(mul, [len(v) for v in search_space.values()], 1)
-        if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info(f"Using GridSampler with search space: {search_space}. Total trials: {n_trials_actual}") # Fixed search_trials -> search_space
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Using GridSampler with search space: {search_space}. Total trials: {n_trials_actual}") # Fixed search_trials -> search_space
     else:
         if is_grid_search and self.n_jobs > 1:
             self.logger.warning("Grid search is not supported with n_jobs > 1. Using TPESampler instead.")
         sampler = optuna.samplers.TPESampler(seed=self.random_state)
-        if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info(f"Using TPESampler with {n_trials_actual} trials.")
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Using TPESampler with {n_trials_actual} trials.")
 
     if self.args.pruning_enabled:
         pruner = optuna.pruners.MedianPruner(
@@ -228,28 +232,30 @@ def _setup_optuna_study(self, scenario_config, storage, study_name_base: str):
             n_warmup_steps=self.args.pruning_n_warmup_steps,
             interval_steps=self.args.pruning_interval_steps
         )
-        if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info(f"MedianPruner enabled with n_startup_trials={self.args.pruning_n_startup_trials}, n_warmup_steps={self.args.pruning_n_warmup_steps}, interval_steps={self.args.pruning_interval_steps}.")
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"MedianPruner enabled with n_startup_trials={self.args.pruning_n_startup_trials}, n_warmup_steps={self.args.pruning_n_warmup_steps}, interval_steps={self.args.pruning_interval_steps}.")
     else:
         pruner = optuna.pruners.NopPruner()
-        if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info("Pruning disabled (NopPruner used).")
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug("Pruning disabled (NopPruner used).")
 
     if self.args.random_seed is not None:
         try:
             optuna.delete_study(study_name=study_name, storage=storage)
-            if self.logger.isEnabledFor(logging.INFO):
-                self.logger.info(f"Deleted existing Optuna study '{study_name}' for fresh start with random seed.")
+            if self.logger.isEnabledFor(logging.DEBUG):
+                self.logger.debug(f"Deleted existing Optuna study '{study_name}' for fresh start with random seed.")
         except KeyError:
             pass
         except Exception as e:
-            self.logger.warning(f"Could not delete existing Optuna study '{study_name}': {e}")
+            if self.logger.isEnabledFor(logging.WARNING):
+                self.logger.warning(f"Could not delete existing Optuna study '{study_name}': {e}")
 
     optimization_targets_config = scenario_config.get("optimization_targets", [])
     study_directions = [t.get("direction", "maximize").lower() for t in optimization_targets_config] or ["maximize"]
     for i, d in enumerate(study_directions):
         if d not in ["maximize", "minimize"]:
-            self.logger.warning(f"Invalid direction '{d}' for target. Defaulting to 'maximize'.")
+            if self.logger.isEnabledFor(logging.WARNING):
+                self.logger.warning(f"Invalid direction '{d}' for target. Defaulting to 'maximize'.")
             study_directions[i] = "maximize"
 
     study = optuna.create_study(
@@ -279,9 +285,11 @@ def _suggest_optuna_params(self, trial: optuna.trial.Trial, base_params: dict, o
         elif ptype == "categorical":
             choices = spec.get("values", opt_def.get("values"))
             if not choices or not isinstance(choices, list) or len(choices) == 0:
-                self.logger.warning(f"Categorical parameter '{pname}' has no choices defined or choices are invalid. Skipping suggestion.")
+                if self.logger.isEnabledFor(logging.WARNING):
+                    self.logger.warning(f"Categorical parameter '{pname}' has no choices defined or choices are invalid. Skipping suggestion.")
                 continue
             params[pname] = trial.suggest_categorical(pname, choices)
         else:
-            self.logger.warning(f"Unsupported parameter type '{ptype}' for {pname}. Skipping suggestion.")
+            if self.logger.isEnabledFor(logging.WARNING):
+                self.logger.warning(f"Unsupported parameter type '{ptype}' for {pname}. Skipping suggestion.")
     return params

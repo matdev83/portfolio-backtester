@@ -74,8 +74,8 @@ GLOBAL_CONFIG:
 # Walk-Forward Optimization Robustness Configuration
 wfo_robustness_config:
   # Enable/disable randomization features
-  enable_window_randomization: false  # Disabled to avoid processing insufficient data periods
-  enable_start_date_randomization: false  # Disabled to avoid processing insufficient data periods
+  enable_window_randomization: true   # RESTORED: Re-enabled for robustness testing
+  enable_start_date_randomization: true  # RESTORED: Re-enabled for robustness testing
   
   # Window length randomization (in months)
   train_window_randomization:

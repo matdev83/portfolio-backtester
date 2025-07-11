@@ -22,7 +22,9 @@ class YFinanceDataSource(BaseDataSource):
         except NameError:
             SCRIPT_DIR = Path.cwd()
         self.data_dir = SCRIPT_DIR.parent.parent.parent / 'data'
-        logger.debug(f"YFinanceDataSource initialized. Data directory: {self.data_dir}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"YFinanceDataSource initialized. Data directory: {self.data_dir}")
 
     def _load_from_cache(self, file_path: Path, ticker: str) -> pd.DataFrame | None:
         """Attempts to load data from cache. Returns DataFrame if successful, None otherwise."""
@@ -32,16 +34,24 @@ class YFinanceDataSource(BaseDataSource):
                 df.index = pd.to_datetime(df.index, format='%Y-%m-%d', errors='coerce')
                 df = df[~df.index.isnull()]
                 if not isinstance(df.index, pd.DatetimeIndex) or df.empty:
-                    logger.debug(f"Cached file for {ticker} is empty or dates are invalid. Forcing re-download.")
+                    if logger.isEnabledFor(logging.DEBUG):
+
+                        logger.debug(f"Cached file for {ticker} is empty or dates are invalid. Forcing re-download.")
                     return None
                 if df.empty:
-                    logger.debug(f"Cached file for {ticker} is empty. Forcing re-download.")
+                    if logger.isEnabledFor(logging.DEBUG):
+
+                        logger.debug(f"Cached file for {ticker} is empty. Forcing re-download.")
                     return None
                 df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-                logger.debug(f"Loaded {ticker} from cache.")
+                if logger.isEnabledFor(logging.DEBUG):
+
+                    logger.debug(f"Loaded {ticker} from cache.")
                 return df
             except Exception as e:
-                logger.debug(f"Could not load {ticker} from cache ({e}). Cache might be corrupted.")
+                if logger.isEnabledFor(logging.DEBUG):
+
+                    logger.debug(f"Could not load {ticker} from cache ({e}). Cache might be corrupted.")
         return None
 
     def _download_data(self, ticker: str, start_date: str, end_date: str, file_path: Path) -> pd.DataFrame | None:
@@ -54,10 +64,14 @@ class YFinanceDataSource(BaseDataSource):
                 # and 'Close' is the adjusted close.
                 # We save the full OHLCV for potential future use, even if only 'Close' is used now.
                 downloaded_df.to_csv(file_path, index=True)
-                logger.debug(f"Downloaded {ticker} successfully.")
+                if logger.isEnabledFor(logging.DEBUG):
+
+                    logger.debug(f"Downloaded {ticker} successfully.")
                 return downloaded_df
             else:
-                logger.warning(f"Could not download data for {ticker}. DataFrame is empty.")
+                if logger.isEnabledFor(logging.WARNING):
+
+                    logger.warning(f"Could not download data for {ticker}. DataFrame is empty.")
         except Exception as e:
             logger.error(f"Failed to download {ticker}: {e}")
         return None
@@ -66,12 +80,16 @@ class YFinanceDataSource(BaseDataSource):
         """Downloads or reads from cache the price data for a given list of tickers."""
         all_closes = []
         if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info(f"Fetching data for {len(tickers)} tickers from {start_date} to {end_date}.")
+            if self.logger.isEnabledFor(logging.INFO):
+
+                self.logger.info(f"Fetching data for {len(tickers)} tickers from {start_date} to {end_date}.")
 
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir)
             if self.logger.isEnabledFor(logging.INFO):
-                self.logger.info(f"Created data directory at: {self.data_dir}")
+                if self.logger.isEnabledFor(logging.INFO):
+
+                    self.logger.info(f"Created data directory at: {self.data_dir}")
 
         with Progress(
             SpinnerColumn(),
@@ -100,10 +118,14 @@ class YFinanceDataSource(BaseDataSource):
                         close_series = df['Close']
                     # Fallback for unusual cases or if data format from cache/download changes unexpectedly
                     elif 'Adj Close' in df.columns:
-                        logger.warning(f"'Close' column not found for {ticker} despite auto_adjust=True. Using 'Adj Close'.")
+                        if logger.isEnabledFor(logging.WARNING):
+
+                            logger.warning(f"'Close' column not found for {ticker} despite auto_adjust=True. Using 'Adj Close'.")
                         close_series = df['Adj Close']
                     elif ticker in df.columns: # Should not happen with yf.download structure
-                        logger.warning(f"'Close' not found, using column named '{ticker}' for {ticker}.")
+                        if logger.isEnabledFor(logging.WARNING):
+
+                            logger.warning(f"'Close' not found, using column named '{ticker}' for {ticker}.")
                         close_series = df[ticker]
                     else:
                         logger.error(f"Could not find 'Close' or 'Adj Close' column in downloaded/cached data for {ticker}")

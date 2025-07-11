@@ -180,17 +180,17 @@ class TestTwoStageMonteCarlo:
                 )
                 
                 # Test Stage 1 MC during evaluation
-                result = backtester._evaluate_params_walk_forward(
+                objective_value, pnl_returns = backtester._evaluate_params_walk_forward(
                     mock_trial, scenario_config, windows,
                     monthly_data, daily_data, rets_full,
                     ['Sharpe'], False
                 )
-                
+
                 # Verify result
-                assert isinstance(result, float)
+                assert isinstance(objective_value, float)
                 # Allow NaN if no valid windows (which can happen with mock data)
-                if not np.isnan(result):
-                    assert result is not None
+                if not np.isnan(objective_value):
+                    assert objective_value is not None
                 
                 # Verify Monte Carlo was applied (check if run_scenario was called)
                 assert mock_run_scenario.call_count == len(windows)

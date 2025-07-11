@@ -71,7 +71,10 @@ class AssetReplacementManager:
             self.synthetic_generator = ImprovedSyntheticDataGenerator(config)
             logger.debug("Initialized AssetReplacementManager for Stage 2 MC (stress testing mode)")
         
-        logger.info(f"AssetReplacementManager initialized with {config.get('replacement_percentage', 0.1):.1%} replacement rate")
+        if logger.isEnabledFor(logging.INFO):
+
+        
+            logger.info(f"AssetReplacementManager initialized with {config.get('replacement_percentage', 0.1):.1%} replacement rate")
     
     def select_assets_for_replacement(
         self, 
@@ -102,7 +105,9 @@ class AssetReplacementManager:
         selected_assets = set(random.sample(universe, num_to_replace))
         
         # Log the selection
-        logger.info(f"Selected {len(selected_assets)} assets for replacement: {selected_assets}")
+        if logger.isEnabledFor(logging.INFO):
+
+            logger.info(f"Selected {len(selected_assets)} assets for replacement: {selected_assets}")
         
         # Store replacement info
         replacement_info = ReplacementInfo(
@@ -146,7 +151,9 @@ class AssetReplacementManager:
         # Replace data for selected assets
         for asset in assets_to_replace:
             if asset not in original_data:
-                logger.warning(f"Asset {asset} not found in data. Skipping replacement.")
+                if logger.isEnabledFor(logging.WARNING):
+
+                    logger.warning(f"Asset {asset} not found in data. Skipping replacement.")
                 continue
             
             try:
@@ -158,7 +165,9 @@ class AssetReplacementManager:
                 period_data = asset_data.loc[mask]
                 
                 if len(period_data) == 0:
-                    logger.warning(f"No data found for {asset} in period {start_date} to {end_date}")
+                    if logger.isEnabledFor(logging.WARNING):
+
+                        logger.warning(f"No data found for {asset} in period {start_date} to {end_date}")
                     continue
                 
                 # Get historical data for parameter estimation (use data before the replacement period)
@@ -166,14 +175,18 @@ class AssetReplacementManager:
                 historical_data = asset_data.loc[historical_mask]
                 
                 if len(historical_data) < self.config.get('min_historical_observations', 252):
-                    logger.warning(f"Insufficient historical data for {asset}. Using all available data.")
+                    if logger.isEnabledFor(logging.WARNING):
+
+                        logger.warning(f"Insufficient historical data for {asset}. Using all available data.")
                     # Get all data except the period we want to replace
                     non_period_mask = ~mask
                     historical_data = asset_data.loc[non_period_mask]
                     
                     # If still no data, skip this asset
                     if len(historical_data) == 0:
-                        logger.warning(f"No historical data available for {asset}. Skipping synthetic replacement.")
+                        if logger.isEnabledFor(logging.WARNING):
+
+                            logger.warning(f"No historical data available for {asset}. Skipping synthetic replacement.")
                         continue
                 
                 # Generate synthetic data
@@ -210,11 +223,16 @@ class AssetReplacementManager:
                                 modified_data[asset].loc[asset_mask, col] = synthetic_col_converted
                                 
                             except Exception as col_error:
-                                logger.warning(f"Failed to replace column {col} for {asset}: {col_error}")
+                                if logger.isEnabledFor(logging.WARNING):
+
+                                    logger.warning(f"Failed to replace column {col} for {asset}: {col_error}")
                                 # Skip this column if conversion fails
                                 continue
                 
-                logger.info(f"Replaced {len(period_data)} observations for {asset} with synthetic data")
+                if logger.isEnabledFor(logging.INFO):
+
+                
+                    logger.info(f"Replaced {len(period_data)} observations for {asset} with synthetic data")
                 
             except Exception as e:
                 logger.error(f"Failed to replace data for {asset}: {e}")
@@ -272,7 +290,9 @@ class AssetReplacementManager:
         replacement_info = self.replacement_history[-1]
         
         if run_id:
-            logger.info(f"Run {run_id}: Created Monte-Carlo dataset with {len(assets_to_replace)} synthetic assets")
+            if logger.isEnabledFor(logging.INFO):
+
+                logger.info(f"Run {run_id}: Created Monte-Carlo dataset with {len(assets_to_replace)} synthetic assets")
         
         return modified_data, replacement_info
     

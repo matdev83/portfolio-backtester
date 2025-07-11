@@ -89,6 +89,10 @@ python -m src.portfolio_backtester.backtester
   * **Choices:** `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
   * **Default:** `INFO`
 
+#### S&P 500 Universe Data Management
+For instructions on how to manage and update the S&P 500 historical constituent data, please refer to the [S&P 500 Universe Data Management Guide](docs/sp500_universe_management.md).
+All related scripts are located in `src/portfolio_backtester/universe_data/`.
+
 #### Optimization Parameters
 * `--optimizer`: Choose the optimization algorithm
   * **Choices:** `optuna`, `genetic`
@@ -270,12 +274,30 @@ The backtester calculates comprehensive performance metrics:
 
 ### Two-Stage Monte Carlo System
 
+The backtester implements a sophisticated two-stage Monte Carlo system for comprehensive strategy validation:
+
+**Stage 1: Parameter Robustness Testing (During Optimization)**
+- Lightweight synthetic data injection during walk-forward optimization
+- Single replacement percentage (typically 5-10% of universe)
+- Tests parameter stability against slightly modified market conditions
+- Prevents overfitting to specific market regimes
+
+**Stage 2: Strategy Stress Testing (Post-Optimization)**
+- Comprehensive stress testing with multiple replacement levels: **5%, 7.5%, 10%**
+- Smart rounding for small universes (ensures progression: 1, 2, 3 assets when percentages would round to same value)
+- Multiple simulations per replacement level (20+ simulations each)
+- Generates Monte Carlo robustness charts with:
+  - **Thick black line**: Original strategy performance on real data
+  - **Colored lines**: Strategy performance with synthetic data replacement
+  - **Different colors**: Each replacement percentage (5%, 7.5%, 10%)
+  - **Multiple lines per color**: Multiple simulations at each replacement level
+
 ```
 Stage 1 (During Optimization):
 Parameter Trial -> Lightweight MC (5% replacement) -> Robustness Test
 
 Stage 2 (Post-Optimization):
-Optimal Params -> Comprehensive MC (5%-15% levels) -> Stress Analysis & Visualization
+Optimal Params -> Comprehensive MC (5%, 7.5%, 10% levels) -> Stress Analysis & Visualization
 ```
 
 ### WFO Robustness Process

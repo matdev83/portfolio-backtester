@@ -1,1 +1,6 @@
 ticker,cusip,name,source
+AAPL,037833100,Apple Inc.,manual
+MSFT,594918104,Microsoft Corp.,manual
+GOOGL,02079K305,Alphabet Inc. (Class A),manual
+AMZN,023135106,Amazon.com Inc.,manual
+TSLA,88160R101,Tesla Inc.,manual

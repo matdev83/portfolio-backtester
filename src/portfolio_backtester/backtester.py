@@ -16,12 +16,14 @@ from .portfolio.position_sizer import get_position_sizer
 from .portfolio.rebalancing import rebalance
 # from .features.feature_helpers import get_required_features_from_scenarios # Removed
 # from .feature_engineering import precompute_features # Removed
-from .spy_holdings import reset_history_cache, get_top_weight_sp500_components
+from .universe_data.spy_holdings import reset_history_cache, get_top_weight_sp500_components
 from .utils import _resolve_strategy, INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
 from .backtester_logic.reporting import display_results
 from .backtester_logic.optimization import run_optimization
 from .backtester_logic.execution import run_backtest_mode, run_optimize_mode, _generate_optimization_report
-from .backtester_logic.monte_carlo import run_monte_carlo_mode
+# Legacy Monte Carlo mode removed - Monte Carlo is now handled in two stages:
+# Stage 1: During optimization for parameter robustness
+# Stage 2: During results display for strategy stress testing
 from .constants import ZERO_RET_EPS
 from .data_cache import get_global_cache
 
@@ -33,7 +35,9 @@ class Backtester:
         self.global_config = global_config
         self.global_config["optimizer_parameter_defaults"] = OPTIMIZER_PARAMETER_DEFAULTS
         self.scenarios = scenarios
-        logger.debug(f"Backtester initialized with scenario strategy_params: {self.scenarios[0].get('strategy_params')}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"Backtester initialized with scenario strategy_params: {self.scenarios[0].get('strategy_params')}")
         populate_default_optimizations(self.scenarios, OPTIMIZER_PARAMETER_DEFAULTS)
         self.args = args
         self.data_source = self._get_data_source()
@@ -44,19 +48,24 @@ class Backtester:
         self.rets_full: pd.DataFrame | pd.Series | None = None
         if random_state is None:
             self.random_state = np.random.randint(0, 2**31 - 1)
-            logger.info(f"No random seed provided. Using generated seed: {self.random_state}.")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"No random seed provided. Using generated seed: {self.random_state}.")
         else:
             self.random_state = random_state
         np.random.seed(self.random_state)
-        logger.info(f"Numpy random seed set to {self.random_state}.")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"Numpy random seed set to {self.random_state}.")
         self.n_jobs = getattr(args, "n_jobs", 1)
         self.early_stop_patience = getattr(args, "early_stop_patience", 10)
         self.logger = logger
-        logger.info("Backtester initialized.")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Backtester initialized.")
         
         # Initialize data cache for performance optimization
         self.data_cache = get_global_cache()
-        self.logger.info("Data preprocessing cache initialized")
+        self.logger.debug("Data preprocessing cache initialized")
         
         # Initialize Monte Carlo components if enabled
         self.asset_replacement_manager = None
@@ -68,7 +77,7 @@ class Backtester:
         self.run_optimization = types.MethodType(run_optimization, self)
         self.run_backtest_mode = types.MethodType(run_backtest_mode, self)
         self.run_optimize_mode = types.MethodType(run_optimize_mode, self)
-        self.run_monte_carlo_mode = types.MethodType(run_monte_carlo_mode, self)
+        # Legacy Monte Carlo mode binding removed
         self.display_results = types.MethodType(display_results, self)
         self._generate_optimization_report = types.MethodType(_generate_optimization_report, self)
 
@@ -103,7 +112,9 @@ class Backtester:
         strategy_class = getattr(strategies, class_name, None)
         
         if strategy_class:
-            logger.debug(f"Using {class_name} with params: {params}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"Using {class_name} with params: {params}")
             return strategy_class(params)
         else:
             logger.error(f"Unsupported strategy: {strategy_name}")
@@ -120,10 +131,13 @@ class Backtester:
             # Access the synthetic_data_generator instance from the asset_replacement_manager
             self.synthetic_data_generator = self.asset_replacement_manager.synthetic_generator
             
-            self.logger.info("Monte Carlo components initialized successfully")
+            if self.logger.isEnabledFor(logging.DEBUG):
+                self.logger.debug("Monte Carlo components initialized successfully")
             
         except ImportError as e:
-            self.logger.warning(f"Monte Carlo components not available: {e}")
+            if self.logger.isEnabledFor(logging.WARNING):
+
+                self.logger.warning(f"Monte Carlo components not available: {e}")
             self.asset_replacement_manager = None
             self.synthetic_data_generator = None
 
@@ -137,7 +151,9 @@ class Backtester:
         verbose: bool = True,
     ):
         if verbose:
-            logger.info(f"Running scenario: {scenario_config['name']}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"Running scenario: {scenario_config['name']}")
 
         # Ensure rets_daily is calculated based on daily close prices if not provided
         # This requires extracting daily closes from price_data_daily_ohlc
@@ -179,7 +195,9 @@ class Backtester:
 
         for current_rebalance_date in rebalance_dates:
             if verbose:
-                logger.debug(f"Generating signals for date: {current_rebalance_date}")
+                if logger.isEnabledFor(logging.DEBUG):
+
+                    logger.debug(f"Generating signals for date: {current_rebalance_date}")
 
             # Prepare historical data up to the current_rebalance_date
             # For assets in universe
@@ -210,7 +228,9 @@ class Backtester:
             all_monthly_weights.append(current_weights_df)
 
         if not all_monthly_weights:
-            logger.warning(f"No signals generated for scenario {scenario_config['name']}. This might be due to WFO window or other issues.")
+            if logger.isEnabledFor(logging.WARNING):
+
+                logger.warning(f"No signals generated for scenario {scenario_config['name']}. This might be due to WFO window or other issues.")
             # Create an empty DataFrame with expected structure for downstream processing
             signals = pd.DataFrame(columns=universe_tickers, index=rebalance_dates)
         else:
@@ -218,9 +238,21 @@ class Backtester:
             signals = signals.reindex(rebalance_dates).fillna(0.0) # Ensure all rebalance dates are present
 
         if verbose:
-            logger.debug(f"All signals generated for scenario: {scenario_config['name']}")
-            logger.info(f"Signals head:\n{signals.head()}")
-            logger.info(f"Signals tail:\n{signals.tail()}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"All signals generated for scenario: {scenario_config['name']}")
+            if logger.isEnabledFor(logging.INFO):
+
+                if logger.isEnabledFor(logging.DEBUG):
+
+
+                    logger.debug(f"Signals head:\n{signals.head()}")
+            if logger.isEnabledFor(logging.INFO):
+
+                if logger.isEnabledFor(logging.DEBUG):
+
+
+                    logger.debug(f"Signals tail:\n{signals.tail()}")
             if signals.empty:
                  logger.warning("Generated signals DataFrame is empty.")
 
@@ -257,10 +289,19 @@ class Backtester:
                 else:
                     filtered_sizer_params[new_key] = value
 
-        logger.debug(f"Filtered_sizer_params: {filtered_sizer_params}")
-        logger.debug(f"window_param extracted: {window_param}")
-        logger.debug(f"target_return_param extracted: {target_return_param}")
-        logger.debug(f"max_leverage_param extracted: {max_leverage_param}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+
+            logger.debug(f"Filtered_sizer_params: {filtered_sizer_params}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"window_param extracted: {window_param}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"target_return_param extracted: {target_return_param}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"max_leverage_param extracted: {max_leverage_param}")
 
         # Prepare data for sizers: they typically need monthly close prices
         strategy_monthly_closes = price_data_monthly_closes[universe_tickers]
@@ -293,17 +334,34 @@ class Backtester:
         if sizer_name == "rolling_downside_volatility" and max_leverage_param is not None:
             filtered_sizer_params["max_leverage"] = max_leverage_param
 
-        logger.debug(f"Sizer arguments prepared: {sizer_args}")
-        logger.debug(f"Final keyword arguments for sizer: {filtered_sizer_params}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+
+            logger.debug(f"Sizer arguments prepared: {sizer_args}")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            logger.debug(f"Final keyword arguments for sizer: {filtered_sizer_params}")
 
         sized_signals = sizer_func(
             *sizer_args,
             **filtered_sizer_params,
         )
         if verbose:
-            logger.debug(f"Positions sized using {sizer_name}.")
-            logger.info(f"Sized signals head:\n{sized_signals.head()}")
-            logger.info(f"Sized signals tail:\n{signals.tail()}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"Positions sized using {sizer_name}.")
+            if logger.isEnabledFor(logging.INFO):
+
+                if logger.isEnabledFor(logging.DEBUG):
+
+
+                    logger.debug(f"Sized signals head:\n{sized_signals.head()}")
+            if logger.isEnabledFor(logging.INFO):
+
+                if logger.isEnabledFor(logging.DEBUG):
+
+
+                    logger.debug(f"Sized signals tail:\n{signals.tail()}")
 
         weights_monthly = rebalance(
             sized_signals, scenario_config["rebalance_frequency"]
@@ -326,7 +384,9 @@ class Backtester:
         valid_universe_tickers_in_rets = [ticker for ticker in universe_tickers if ticker in aligned_rets_daily.columns]
         if len(valid_universe_tickers_in_rets) < len(universe_tickers):
             missing_tickers = set(universe_tickers) - set(valid_universe_tickers_in_rets)
-            logger.warning(f"Tickers {missing_tickers} not found in aligned_rets_daily columns. Portfolio calculations might be affected.")
+            if logger.isEnabledFor(logging.WARNING):
+
+                logger.warning(f"Tickers {missing_tickers} not found in aligned_rets_daily columns. Portfolio calculations might be affected.")
 
         # Calculate gross returns using only valid tickers present in returns data
         if not valid_universe_tickers_in_rets:
@@ -349,8 +409,19 @@ class Backtester:
         portfolio_rets_net = (daily_portfolio_returns_gross - transaction_costs).fillna(0.0)
 
         if verbose:
-            logger.info(f"Portfolio net returns calculated for {scenario_config['name']}. First few net returns: {portfolio_rets_net.head().to_dict()}")
-            logger.info(f"Net returns index: {portfolio_rets_net.index.min()} to {portfolio_rets_net.index.max()}")
+            if logger.isEnabledFor(logging.INFO):
+
+                if logger.isEnabledFor(logging.DEBUG):
+
+
+                    scenario_name = scenario_config['name']
+                    logger.debug(f"Portfolio net returns calculated for {scenario_name}. First few net returns: {portfolio_rets_net.head().to_dict()}")
+            if logger.isEnabledFor(logging.INFO):
+
+                if logger.isEnabledFor(logging.DEBUG):
+
+
+                    logger.debug(f"Net returns index: {portfolio_rets_net.index.min()} to {portfolio_rets_net.index.max()}")
 
         return portfolio_rets_net
 
@@ -421,11 +492,15 @@ class Backtester:
             }
             
             asset_replacement_manager = AssetReplacementManager(stage1_config)
-            logger.debug(f"Stage 1 MC: Lightweight synthetic data enabled for optimization robustness (mode: {optimization_mode}, trial: {trial_number})")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"Stage 1 MC: Lightweight synthetic data enabled for optimization robustness (mode: {optimization_mode}, trial: {trial_number})")
         elif mc_enabled and not mc_during_optimization:
             logger.debug("Stage 1 MC: Disabled during optimization for performance")
         elif mc_enabled and trial_number < trial_threshold:
-            logger.debug(f"Stage 1 MC: Waiting for trial {trial_threshold} before enabling (current: {trial_number}, mode: {optimization_mode})")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"Stage 1 MC: Waiting for trial {trial_threshold} before enabling (current: {trial_number}, mode: {optimization_mode})")
         else:
             logger.debug("Stage 1 MC: Monte Carlo disabled in configuration")
 
@@ -486,7 +561,9 @@ class Backtester:
                     trial_seed = monte_carlo_config['random_seed'] + getattr(trial, 'number', 0)
                 
                 # Stage 1 MC: Generate lightweight synthetic data for robustness testing
-                logger.debug(f"Stage 1 MC: Generating lightweight synthetic data for trial {getattr(trial, 'number', 0)}")
+                if logger.isEnabledFor(logging.DEBUG):
+
+                    logger.debug(f"Stage 1 MC: Generating lightweight synthetic data for trial {getattr(trial, 'number', 0)}")
                 trial_synthetic_data, replacement_info = asset_replacement_manager.create_monte_carlo_dataset(
                     original_data=daily_data_dict,
                     universe=universe,
@@ -497,7 +574,9 @@ class Backtester:
                 )
                 
                 if replacement_info and replacement_info.selected_assets:
-                    logger.debug(f"Stage 1 MC: Trial {getattr(trial, 'number', 0)} using synthetic data for {len(replacement_info.selected_assets)} assets")
+                    if logger.isEnabledFor(logging.DEBUG):
+
+                        logger.debug(f"Stage 1 MC: Trial {getattr(trial, 'number', 0)} using synthetic data for {len(replacement_info.selected_assets)} assets")
                 
             except Exception as e:
                 logger.error(f"Stage 1 MC: Failed to generate synthetic data for trial {getattr(trial, 'number', 0)}: {e}")
@@ -542,14 +621,20 @@ class Backtester:
                                     elif field == 'Close' and asset in current_daily_data_ohlc.columns: # Fallback for single column per ticker
                                         current_daily_data_ohlc.loc[window_synthetic_ohlc.index, asset] = window_synthetic_ohlc[field]
                                     else:
-                                        logger.warning(f"Could not find column {col_name} or {asset} for synthetic data replacement in current_daily_data_ohlc.")
-                logger.debug(f"Stage 1 MC: Applied synthetic data to current_daily_data_ohlc for window {window_idx+1}")
+                                        if logger.isEnabledFor(logging.WARNING):
+
+                                            logger.warning(f"Could not find column {col_name} or {asset} for synthetic data replacement in current_daily_data_ohlc.")
+                if logger.isEnabledFor(logging.DEBUG):
+
+                    logger.debug(f"Stage 1 MC: Applied synthetic data to current_daily_data_ohlc for window {window_idx+1}")
             
             # Pass the potentially modified daily OHLC data to run_scenario
             window_returns = self.run_scenario(scenario_config, m_slice, current_daily_data_ohlc, rets_daily=None, verbose=False)
 
             if window_returns is None or window_returns.empty:
-                self.logger.warning(f"No returns generated for window {tr_start}-{te_end}. Skipping.")
+                if self.logger.isEnabledFor(logging.WARNING):
+
+                    self.logger.warning(f"No returns generated for window {tr_start}-{te_end}. Skipping.")
                 for i in range(len(metrics_to_optimize)):
                     metric_values_per_objective[i].append(np.nan)
                 if _global_progress_tracker:
@@ -560,7 +645,9 @@ class Backtester:
 
             test_rets = window_returns.loc[te_start:te_end]
             if test_rets.empty:
-                self.logger.debug(f"Test returns empty for window {tr_start}-{te_end} with params {scenario_config['strategy_params']}.")
+                if self.logger.isEnabledFor(logging.DEBUG):
+
+                    self.logger.debug(f"Test returns empty for window {tr_start}-{te_end} with params {scenario_config['strategy_params']}.")
                 if _global_progress_tracker:
                     _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
                 if is_multi_objective:
@@ -571,7 +658,9 @@ class Backtester:
                 if trial and hasattr(trial, "set_user_attr"):
                     trial.set_user_attr("zero_returns", True)
                     if hasattr(trial, "number"):
-                        self.logger.debug(f"Trial {trial.number}, window {window_idx+1}: Marked with zero_returns.")
+                        if self.logger.isEnabledFor(logging.DEBUG):
+
+                            self.logger.debug(f"Trial {trial.number}, window {window_idx+1}: Marked with zero_returns.")
 
             bench_ser = d_slice[self.global_config["benchmark"]].loc[te_start:te_end]
             bench_period_rets = bench_ser.pct_change(fill_method=None).fillna(0)
@@ -593,7 +682,9 @@ class Backtester:
                     if hasattr(trial, "report"):
                         trial.report(current_score, processed_steps_for_pruning)
                     if trial.should_prune():
-                        self.logger.info(f"Trial {getattr(trial, 'number', 'N/A')} pruned at step {processed_steps_for_pruning}")
+                        if self.logger.isEnabledFor(logging.DEBUG):
+
+                            self.logger.debug(f"Trial {getattr(trial, 'number', 'N/A')} pruned at step {processed_steps_for_pruning}")
                         raise optuna.exceptions.TrialPruned()
 
         # Calculate and store stability metrics for this trial
@@ -603,11 +694,17 @@ class Backtester:
                     stability_metrics = calculate_stability_metrics(metric_values_per_objective, metrics_to_optimize, self.global_config)
                     trial.set_user_attr("stability_metrics", stability_metrics)
                     if hasattr(trial, "number"):
-                        self.logger.debug(f"Trial {trial.number} stability metrics: {stability_metrics}")
+                        if self.logger.isEnabledFor(logging.DEBUG):
+
+                            self.logger.debug(f"Trial {trial.number} stability metrics: {stability_metrics}")
                 except Exception as e:
-                    self.logger.warning(f"Failed to calculate stability metrics for trial {getattr(trial, 'number', 'N/A')}: {e}")
+                    if self.logger.isEnabledFor(logging.WARNING):
+
+                        self.logger.warning(f"Failed to calculate stability metrics for trial {getattr(trial, 'number', 'N/A')}: {e}")
             else:
-                self.logger.debug(f"Trial {getattr(trial, 'number', 'N/A')} has no window returns for stability metrics")
+                if self.logger.isEnabledFor(logging.DEBUG):
+
+                    self.logger.debug(f"Trial {getattr(trial, 'number', 'N/A')} has no window returns for stability metrics")
 
         # Store Monte Carlo replacement statistics if available
         if asset_replacement_manager is not None and trial and hasattr(trial, "set_user_attr"):
@@ -617,19 +714,26 @@ class Backtester:
         metric_avgs = [np.nanmean(values) if not all(np.isnan(values)) else np.nan for values in metric_values_per_objective]
 
         if all(np.isnan(np.array(metric_avgs))):
-            self.logger.warning(f"No valid windows produced results for params: {scenario_config['strategy_params']}. Returning NaN.")
+            if self.logger.isEnabledFor(logging.WARNING):
+
+                self.logger.warning(f"No valid windows produced results for params: {scenario_config['strategy_params']}. Returning NaN.")
             full_pnl_returns = pd.Series(dtype=float)
             if is_multi_objective:
-                return tuple([float("nan")] * len(metrics_to_optimize)), full_pnl_returns
+                return tuple([float("nan")] * len(metrics_to_optimize))
             else:
-                return float("nan"), full_pnl_returns
+                return float("nan")
 
         # Concatenate all window returns into a single series for full P&L curve
         full_pnl_returns = pd.concat(all_window_returns) if all_window_returns else pd.Series(dtype=float)
+        # Ensure the index is unique before saving to JSON
+        full_pnl_returns = full_pnl_returns[~full_pnl_returns.index.duplicated(keep='first')].sort_index()
 
         if is_multi_objective:
             return tuple(float(v) for v in metric_avgs), full_pnl_returns
         else:
+            # Store full_pnl_returns as a user attribute if needed for later analysis
+            if trial and hasattr(trial, "set_user_attr"):
+                trial.set_user_attr("full_pnl_returns", full_pnl_returns.to_json()) # Store as JSON string
             return float(metric_avgs[0]), full_pnl_returns
     
     def _get_monte_carlo_trial_threshold(self, optimization_mode):
@@ -649,7 +753,8 @@ class Backtester:
         return thresholds.get(optimization_mode, 10)  # Default to balanced
 
     def run(self):
-        logger.info("Starting backtest data retrieval.")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Starting backtest data retrieval.")
         daily_data = self.data_source.get_data(
             tickers=self.global_config["universe"] + [self.global_config["benchmark"]],
             start_date=self.global_config["start_date"],
@@ -677,13 +782,17 @@ class Backtester:
             self.daily_data_ohlc = daily_data_std_format.copy()
         
         if self.daily_data_ohlc is not None: # Add explicit check for Pylance
-            logger.info(f"Shape of self.daily_data_ohlc: {self.daily_data_ohlc.shape}")
-            logger.debug(f"Columns of self.daily_data_ohlc: {self.daily_data_ohlc.columns}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"Shape of self.daily_data_ohlc: {self.daily_data_ohlc.shape}")
+            if logger.isEnabledFor(logging.DEBUG):
+
+                logger.debug(f"Columns of self.daily_data_ohlc: {self.daily_data_ohlc.columns}")
 
 
         # The section for preparing 'monthly_data_for_features' is no longer needed
         # as features are computed within strategies using daily_data_ohlc.
-        logger.info("Feature pre-computation step removed. Features will be calculated within strategies.")
+        logger.debug("Feature pre-computation step removed. Features will be calculated within strategies.")
 
         # Extract daily closes for return calculations and for monthly resampling if needed by other parts
         daily_closes = None
@@ -713,7 +822,8 @@ class Backtester:
         # Ensure monthly_closes is a DataFrame before assigning
         self.monthly_data = monthly_closes.to_frame() if isinstance(monthly_closes, pd.Series) else monthly_closes # Store monthly closing prices
 
-        logger.info("Backtest data retrieved and prepared (daily OHLC, monthly closes).")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Backtest data retrieved and prepared (daily OHLC, monthly closes).")
 
         # Removed strategy_registry and get_required_features_from_scenarios
         # Removed benchmark_monthly_closes (strategies will use benchmark_historical_data from daily_data_ohlc)
@@ -724,7 +834,7 @@ class Backtester:
         # Ensure rets_full is a DataFrame, even if it originates from a Series
         self.rets_full = rets_full.to_frame() if isinstance(rets_full, pd.Series) else rets_full # These are daily returns based on daily_closes
 
-        # The arguments to run_optimize_mode, run_backtest_mode, run_monte_carlo_mode
+        # The arguments to run_optimize_mode, run_backtest_mode
         # might need adjustment if they directly used self.features or specific monthly data forms
         # that are no longer created.
         # `monthly_closes` is still available as self.monthly_data.
@@ -737,23 +847,22 @@ class Backtester:
             self.run_optimize_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         elif self.args.mode == "backtest":
             self.run_backtest_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
-            # Monte Carlo might need different data inputs or just portfolio returns.
-            # Assuming it primarily works off portfolio returns generated by run_backtest_mode.
-            # For now, keeping its inputs similar, but this might need review based on its internal logic.
-            self.run_monte_carlo_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
+            # Note: Monte Carlo robustness analysis (Stage 2) is automatically performed 
+            # during results display if optimization reports are enabled
         
         # Moved logic from the module level into the class method's finally block
         # This ensures it always runs after backtest/optimization, or upon interruption.
-        if self.args.mode != "monte_carlo":
-            if CENTRAL_INTERRUPTED_FLAG:
-                self.logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
+        if CENTRAL_INTERRUPTED_FLAG:
+            self.logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
+        else:
+            if self.logger.isEnabledFor(logging.DEBUG):
+                self.logger.debug("All scenarios completed. Displaying results.")
+            # Only display results for backtest mode - optimization mode handles its own reporting
+            if self.args.mode == "backtest":
+                self.display_results(daily_data) # daily_data is available here
             else:
-                self.logger.info("All scenarios completed. Displaying results.")
-                # Only display results for backtest mode - optimization mode handles its own reporting
-                if self.args.mode == "backtest":
-                    self.display_results(daily_data) # daily_data is available here
-                else:
-                    self.logger.info("Optimization mode completed. Comprehensive reports already generated.")
+                if self.logger.isEnabledFor(logging.DEBUG):
+                    self.logger.debug("Optimization mode completed. Comprehensive reports already generated.")
         
 # The following code block was incorrectly placed inside the class in the previous attempt.
 # It should remain at the module level.
@@ -764,7 +873,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Run portfolio backtester.")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Set the logging level.")
-    parser.add_argument("--mode", type=str, required=True, choices=["backtest", "optimize", "monte_carlo"], help="Mode to run the backtester in.")
+    parser.add_argument("--mode", type=str, required=True, choices=["backtest", "optimize"], help="Mode to run the backtester in.")
     parser.add_argument("--scenario-name", type=str, help="Name of the scenario to run/optimize from BACKTEST_SCENARIOS. Required for all modes.")
     parser.add_argument("--study-name", type=str, help="Name of the Optuna study to use for optimization or to load best parameters from.")
     parser.add_argument("--storage-url", type=str, help="Optuna storage URL. If not provided, SQLite will be used.")
@@ -828,13 +937,11 @@ if __name__ == "__main__":
         else:
             logger.info("Backtester run completed.")
             # Moved from outside the try-finally block
-            if args.mode != "monte_carlo":
-                if CENTRAL_INTERRUPTED_FLAG:
-                    logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
-                else:
-                    logger.info("All scenarios completed. Displaying results.")
-                    # Only display results for backtest mode - optimization mode handles its own reporting
-                    if args.mode == "backtest":
-                        backtester.display_results(backtester.daily_data_ohlc)
-                    else:
-                        logger.info("Optimization mode completed. Comprehensive reports already generated.")
+            if CENTRAL_INTERRUPTED_FLAG:
+                logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
+            else:
+                logger.info("All scenarios completed. Displaying results.")
+                # Display results for both backtest and optimization modes
+                backtester.display_results(backtester.daily_data_ohlc)
+                if args.mode == "optimize":
+                    logger.info("Optimization mode completed. Performance tables above show results with optimal parameters.")
