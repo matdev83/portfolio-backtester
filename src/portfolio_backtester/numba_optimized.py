@@ -46,6 +46,562 @@ def momentum_scores_fast(prices_now, prices_then):
 
 
 @numba.jit(nopython=True, cache=True)
+def ema_fast(data, window):
+    """
+    Fast exponential moving average calculation using Numba.
+    
+    Args:
+        data: numpy array of values
+        window: EMA window size
+        
+    Returns:
+        numpy array of EMA values
+    """
+    n = len(data)
+    ema = np.full(n, np.nan)
+    alpha = 2.0 / (window + 1.0)
+    
+    # Find the first valid data point to start the EMA
+    first_valid_idx = -1
+    for i in range(n):
+        if not np.isnan(data[i]):
+            first_valid_idx = i
+            break
+            
+    if first_valid_idx == -1:
+        # No valid data, return all NaNs
+        return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
+        
+    # Initial EMA value is the first valid data point
+    ema[first_valid_idx] = data[first_valid_idx]
+    
+    # Calculate subsequent EMA values
+    for i in range(first_valid_idx + 1, n):
+        if not np.isnan(data[i]):
+            # Use previous EMA value for calculation
+            prev_ema = ema[i-1]
+            if np.isnan(prev_ema):
+                # If previous EMA is NaN, find the last valid EMA to continue from
+                # This handles gaps in the data series
+                last_valid_ema_idx = -1
+                for j in range(i - 1, -1, -1):
+                    if not np.isnan(ema[j]):
+                        last_valid_ema_idx = j
+                        break
+                if last_valid_ema_idx != -1:
+                    prev_ema = ema[last_valid_ema_idx]
+                else:
+                    # Should not happen if first_valid_idx is found, but as a safeguard
+                    prev_ema = data[i] # Fallback to current value
+            
+            ema[i] = alpha * data[i] + (1 - alpha) * prev_ema
+        else:
+            # If current data is NaN, carry forward the last valid EMA
+            if i > 0:
+                ema[i] = ema[i-1]
+
+    return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
+
+
+@numba.jit(nopython=True, cache=True)
 def momentum_scores_fast_vectorized(prices_now, prices_then):
     """
     Vectorized version of momentum calculation for better performance.
@@ -67,6 +623,562 @@ def momentum_scores_fast_vectorized(prices_now, prices_then):
     result[valid_mask] = (prices_now[valid_mask] / prices_then[valid_mask]) - 1.0
     
     return result
+
+
+@numba.jit(nopython=True, cache=True)
+def ema_fast(data, window):
+    """
+    Fast exponential moving average calculation using Numba.
+    
+    Args:
+        data: numpy array of values
+        window: EMA window size
+        
+    Returns:
+        numpy array of EMA values
+    """
+    n = len(data)
+    ema = np.full(n, np.nan)
+    alpha = 2.0 / (window + 1.0)
+    
+    # Find the first valid data point to start the EMA
+    first_valid_idx = -1
+    for i in range(n):
+        if not np.isnan(data[i]):
+            first_valid_idx = i
+            break
+            
+    if first_valid_idx == -1:
+        # No valid data, return all NaNs
+        return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
+        
+    # Initial EMA value is the first valid data point
+    ema[first_valid_idx] = data[first_valid_idx]
+    
+    # Calculate subsequent EMA values
+    for i in range(first_valid_idx + 1, n):
+        if not np.isnan(data[i]):
+            # Use previous EMA value for calculation
+            prev_ema = ema[i-1]
+            if np.isnan(prev_ema):
+                # If previous EMA is NaN, find the last valid EMA to continue from
+                # This handles gaps in the data series
+                last_valid_ema_idx = -1
+                for j in range(i - 1, -1, -1):
+                    if not np.isnan(ema[j]):
+                        last_valid_ema_idx = j
+                        break
+                if last_valid_ema_idx != -1:
+                    prev_ema = ema[last_valid_ema_idx]
+                else:
+                    # Should not happen if first_valid_idx is found, but as a safeguard
+                    prev_ema = data[i] # Fallback to current value
+            
+            ema[i] = alpha * data[i] + (1 - alpha) * prev_ema
+        else:
+            # If current data is NaN, carry forward the last valid EMA
+            if i > 0:
+                ema[i] = ema[i-1]
+
+    return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
 
 
 # =============================================================================
@@ -264,6 +1376,562 @@ def rolling_mean_fast(data, window):
 
 
 @numba.jit(nopython=True, cache=True)
+def ema_fast(data, window):
+    """
+    Fast exponential moving average calculation using Numba.
+    
+    Args:
+        data: numpy array of values
+        window: EMA window size
+        
+    Returns:
+        numpy array of EMA values
+    """
+    n = len(data)
+    ema = np.full(n, np.nan)
+    alpha = 2.0 / (window + 1.0)
+    
+    # Find the first valid data point to start the EMA
+    first_valid_idx = -1
+    for i in range(n):
+        if not np.isnan(data[i]):
+            first_valid_idx = i
+            break
+            
+    if first_valid_idx == -1:
+        # No valid data, return all NaNs
+        return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
+        
+    # Initial EMA value is the first valid data point
+    ema[first_valid_idx] = data[first_valid_idx]
+    
+    # Calculate subsequent EMA values
+    for i in range(first_valid_idx + 1, n):
+        if not np.isnan(data[i]):
+            # Use previous EMA value for calculation
+            prev_ema = ema[i-1]
+            if np.isnan(prev_ema):
+                # If previous EMA is NaN, find the last valid EMA to continue from
+                # This handles gaps in the data series
+                last_valid_ema_idx = -1
+                for j in range(i - 1, -1, -1):
+                    if not np.isnan(ema[j]):
+                        last_valid_ema_idx = j
+                        break
+                if last_valid_ema_idx != -1:
+                    prev_ema = ema[last_valid_ema_idx]
+                else:
+                    # Should not happen if first_valid_idx is found, but as a safeguard
+                    prev_ema = data[i] # Fallback to current value
+            
+            ema[i] = alpha * data[i] + (1 - alpha) * prev_ema
+        else:
+            # If current data is NaN, carry forward the last valid EMA
+            if i > 0:
+                ema[i] = ema[i-1]
+
+    return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
+
+
+@numba.jit(nopython=True, cache=True)
 def rolling_std_fast(data, window):
     """
     Fast rolling standard deviation calculation using Numba.
@@ -287,6 +1955,562 @@ def rolling_std_fast(data, window):
                 result[i] = np.std(valid_data)
     
     return result
+
+
+@numba.jit(nopython=True, cache=True)
+def ema_fast(data, window):
+    """
+    Fast exponential moving average calculation using Numba.
+    
+    Args:
+        data: numpy array of values
+        window: EMA window size
+        
+    Returns:
+        numpy array of EMA values
+    """
+    n = len(data)
+    ema = np.full(n, np.nan)
+    alpha = 2.0 / (window + 1.0)
+    
+    # Find the first valid data point to start the EMA
+    first_valid_idx = -1
+    for i in range(n):
+        if not np.isnan(data[i]):
+            first_valid_idx = i
+            break
+            
+    if first_valid_idx == -1:
+        # No valid data, return all NaNs
+        return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
+        
+    # Initial EMA value is the first valid data point
+    ema[first_valid_idx] = data[first_valid_idx]
+    
+    # Calculate subsequent EMA values
+    for i in range(first_valid_idx + 1, n):
+        if not np.isnan(data[i]):
+            # Use previous EMA value for calculation
+            prev_ema = ema[i-1]
+            if np.isnan(prev_ema):
+                # If previous EMA is NaN, find the last valid EMA to continue from
+                # This handles gaps in the data series
+                last_valid_ema_idx = -1
+                for j in range(i - 1, -1, -1):
+                    if not np.isnan(ema[j]):
+                        last_valid_ema_idx = j
+                        break
+                if last_valid_ema_idx != -1:
+                    prev_ema = ema[last_valid_ema_idx]
+                else:
+                    # Should not happen if first_valid_idx is found, but as a safeguard
+                    prev_ema = data[i] # Fallback to current value
+            
+            ema[i] = alpha * data[i] + (1 - alpha) * prev_ema
+        else:
+            # If current data is NaN, carry forward the last valid EMA
+            if i > 0:
+                ema[i] = ema[i-1]
+
+    return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
 
 
 @numba.jit(nopython=True, cache=True)
@@ -318,6 +2542,562 @@ def rolling_sharpe_fast(returns, window):
                     result[i] = 0.0
     
     return result
+
+
+@numba.jit(nopython=True, cache=True)
+def ema_fast(data, window):
+    """
+    Fast exponential moving average calculation using Numba.
+    
+    Args:
+        data: numpy array of values
+        window: EMA window size
+        
+    Returns:
+        numpy array of EMA values
+    """
+    n = len(data)
+    ema = np.full(n, np.nan)
+    alpha = 2.0 / (window + 1.0)
+    
+    # Find the first valid data point to start the EMA
+    first_valid_idx = -1
+    for i in range(n):
+        if not np.isnan(data[i]):
+            first_valid_idx = i
+            break
+            
+    if first_valid_idx == -1:
+        # No valid data, return all NaNs
+        return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
+        
+    # Initial EMA value is the first valid data point
+    ema[first_valid_idx] = data[first_valid_idx]
+    
+    # Calculate subsequent EMA values
+    for i in range(first_valid_idx + 1, n):
+        if not np.isnan(data[i]):
+            # Use previous EMA value for calculation
+            prev_ema = ema[i-1]
+            if np.isnan(prev_ema):
+                # If previous EMA is NaN, find the last valid EMA to continue from
+                # This handles gaps in the data series
+                last_valid_ema_idx = -1
+                for j in range(i - 1, -1, -1):
+                    if not np.isnan(ema[j]):
+                        last_valid_ema_idx = j
+                        break
+                if last_valid_ema_idx != -1:
+                    prev_ema = ema[last_valid_ema_idx]
+                else:
+                    # Should not happen if first_valid_idx is found, but as a safeguard
+                    prev_ema = data[i] # Fallback to current value
+            
+            ema[i] = alpha * data[i] + (1 - alpha) * prev_ema
+        else:
+            # If current data is NaN, carry forward the last valid EMA
+            if i > 0:
+                ema[i] = ema[i-1]
+
+    return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
 
 
 @numba.jit(nopython=True, cache=True)
@@ -360,6 +3140,562 @@ def rolling_sortino_fast(returns, window, target_return=0.0):
 
 
 @numba.jit(nopython=True, cache=True)
+def ema_fast(data, window):
+    """
+    Fast exponential moving average calculation using Numba.
+    
+    Args:
+        data: numpy array of values
+        window: EMA window size
+        
+    Returns:
+        numpy array of EMA values
+    """
+    n = len(data)
+    ema = np.full(n, np.nan)
+    alpha = 2.0 / (window + 1.0)
+    
+    # Find the first valid data point to start the EMA
+    first_valid_idx = -1
+    for i in range(n):
+        if not np.isnan(data[i]):
+            first_valid_idx = i
+            break
+            
+    if first_valid_idx == -1:
+        # No valid data, return all NaNs
+        return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
+        
+    # Initial EMA value is the first valid data point
+    ema[first_valid_idx] = data[first_valid_idx]
+    
+    # Calculate subsequent EMA values
+    for i in range(first_valid_idx + 1, n):
+        if not np.isnan(data[i]):
+            # Use previous EMA value for calculation
+            prev_ema = ema[i-1]
+            if np.isnan(prev_ema):
+                # If previous EMA is NaN, find the last valid EMA to continue from
+                # This handles gaps in the data series
+                last_valid_ema_idx = -1
+                for j in range(i - 1, -1, -1):
+                    if not np.isnan(ema[j]):
+                        last_valid_ema_idx = j
+                        break
+                if last_valid_ema_idx != -1:
+                    prev_ema = ema[last_valid_ema_idx]
+                else:
+                    # Should not happen if first_valid_idx is found, but as a safeguard
+                    prev_ema = data[i] # Fallback to current value
+            
+            ema[i] = alpha * data[i] + (1 - alpha) * prev_ema
+        else:
+            # If current data is NaN, carry forward the last valid EMA
+            if i > 0:
+                ema[i] = ema[i-1]
+
+    return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
+
+
+@numba.jit(nopython=True, cache=True)
 def rolling_beta_fast(asset_returns, benchmark_returns, window):
     """
     Fast rolling beta calculation using Numba.
@@ -395,6 +3731,562 @@ def rolling_beta_fast(asset_returns, benchmark_returns, window):
                     result[i] = 0.0
     
     return result
+
+
+@numba.jit(nopython=True, cache=True)
+def ema_fast(data, window):
+    """
+    Fast exponential moving average calculation using Numba.
+    
+    Args:
+        data: numpy array of values
+        window: EMA window size
+        
+    Returns:
+        numpy array of EMA values
+    """
+    n = len(data)
+    ema = np.full(n, np.nan)
+    alpha = 2.0 / (window + 1.0)
+    
+    # Find the first valid data point to start the EMA
+    first_valid_idx = -1
+    for i in range(n):
+        if not np.isnan(data[i]):
+            first_valid_idx = i
+            break
+            
+    if first_valid_idx == -1:
+        # No valid data, return all NaNs
+        return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
+        
+    # Initial EMA value is the first valid data point
+    ema[first_valid_idx] = data[first_valid_idx]
+    
+    # Calculate subsequent EMA values
+    for i in range(first_valid_idx + 1, n):
+        if not np.isnan(data[i]):
+            # Use previous EMA value for calculation
+            prev_ema = ema[i-1]
+            if np.isnan(prev_ema):
+                # If previous EMA is NaN, find the last valid EMA to continue from
+                # This handles gaps in the data series
+                last_valid_ema_idx = -1
+                for j in range(i - 1, -1, -1):
+                    if not np.isnan(ema[j]):
+                        last_valid_ema_idx = j
+                        break
+                if last_valid_ema_idx != -1:
+                    prev_ema = ema[last_valid_ema_idx]
+                else:
+                    # Should not happen if first_valid_idx is found, but as a safeguard
+                    prev_ema = data[i] # Fallback to current value
+            
+            ema[i] = alpha * data[i] + (1 - alpha) * prev_ema
+        else:
+            # If current data is NaN, carry forward the last valid EMA
+            if i > 0:
+                ema[i] = ema[i-1]
+
+    return ema
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_volatility_fast(prices, window):
+    """
+    Fast rolling volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling volatilities
+    """
+    n = len(prices)
+    volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            volatility[i] = np.std(valid_returns) * np.sqrt(252)
+
+    return volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(asset_prices, benchmark_prices, window):
+    """
+    Fast rolling beta calculation for a portfolio using Numba.
+    
+    Args:
+        asset_prices: numpy array of asset prices
+        benchmark_prices: numpy array of benchmark prices
+        window: rolling window size
+        
+    Returns:
+        float: beta value
+    """
+    n = len(asset_prices)
+    asset_returns = np.full(n, np.nan)
+    benchmark_returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(asset_prices[i]) and not np.isnan(asset_prices[i-1]) and asset_prices[i-1] > 0:
+            asset_returns[i] = (asset_prices[i] / asset_prices[i-1]) - 1
+        if not np.isnan(benchmark_prices[i]) and not np.isnan(benchmark_prices[i-1]) and benchmark_prices[i-1] > 0:
+            benchmark_returns[i] = (benchmark_prices[i] / benchmark_prices[i-1]) - 1
+
+    # Align returns and calculate beta
+    valid_mask = ~np.isnan(asset_returns) & ~np.isnan(benchmark_returns)
+    asset_returns_valid = asset_returns[valid_mask]
+    benchmark_returns_valid = benchmark_returns[valid_mask]
+
+    if len(asset_returns_valid) < window:
+        return 1.0
+
+    recent_asset_returns = asset_returns_valid[-window:]
+    recent_benchmark_returns = benchmark_returns_valid[-window:]
+
+    covariance = np.cov(recent_asset_returns, recent_benchmark_returns)[0, 1]
+    market_variance = np.var(recent_benchmark_returns)
+
+    if market_variance > 0:
+        return covariance / market_variance
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window, annualization_factor):
+    """
+    Fast rolling Sharpe ratio calculation for a portfolio using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        annualization_factor: factor to annualize Sharpe ratio
+        
+    Returns:
+        numpy array of rolling Sharpe ratios
+    """
+    n = len(prices)
+    sharpe_ratios = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling Sharpe ratio
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= window // 2:
+            mean_return = np.mean(valid_returns)
+            std_dev = np.std(valid_returns)
+            if std_dev > 0:
+                sharpe_ratios[i] = (mean_return / std_dev) * np.sqrt(annualization_factor)
+
+    return sharpe_ratios
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha):
+    """
+    Fast Volatility Adjusted Momentum Scores (VAMS) calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        lookback_months: lookback period in months
+        alpha: downside volatility penalty factor
+        
+    Returns:
+        numpy array of VAMS scores
+    """
+    n = len(prices)
+    vams_scores = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate VAMS
+    for i in range(lookback_months, n):
+        window_returns = returns[i-lookback_months+1:i+1]
+        valid_returns = window_returns[~np.isnan(window_returns)]
+        if len(valid_returns) >= lookback_months // 2:
+            momentum = (prices[i] / prices[i-lookback_months]) - 1
+            downside_returns = valid_returns[valid_returns < 0]
+            if len(downside_returns) > 0:
+                downside_volatility = np.std(downside_returns)
+            else:
+                downside_volatility = 0
+            vams_scores[i] = momentum - alpha * downside_volatility
+
+    return vams_scores
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(prices, window):
+    """
+    Fast rolling downside volatility calculation using Numba.
+    
+    Args:
+        prices: numpy array of prices
+        window: rolling window size
+        
+    Returns:
+        numpy array of rolling downside volatilities
+    """
+    n = len(prices)
+    downside_volatility = np.full(n, np.nan)
+    returns = np.full(n, np.nan)
+
+    # Calculate returns
+    for i in range(1, n):
+        if not np.isnan(prices[i]) and not np.isnan(prices[i-1]) and prices[i-1] > 0:
+            returns[i] = (prices[i] / prices[i-1]) - 1
+
+    # Calculate rolling downside volatility
+    for i in range(window, n):
+        window_returns = returns[i-window+1:i+1]
+        downside_returns = window_returns[window_returns < 0]
+        if len(downside_returns) > 0:
+            downside_volatility[i] = np.std(downside_returns)
+
+    return downside_volatility
+
+
+@numba.jit(nopython=True, cache=True)
+def sortino_ratio_fast(returns, target, steps_per_year):
+    """
+    Fast Sortino ratio calculation using Numba.
+    """
+    target_returns = returns - target
+    downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
+    annualized_mean_return = np.mean(returns) * steps_per_year
+    if downside_risk == 0:
+        return np.inf if annualized_mean_return > 0 else 0
+    annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+    return annualized_mean_return / annualized_downside_risk
+
+
+@numba.jit(nopython=True, cache=True)
+def mdd_fast(series):
+    """
+    Fast maximum drawdown calculation using Numba.
+    """
+    cummax = np.maximum.accumulate(series)
+    drawdown = (series / cummax) - 1
+    return np.min(drawdown)
+
+
+@numba.jit(nopython=True, cache=True)
+def drawdown_duration_and_recovery_fast(equity_curve):
+    """
+    Fast drawdown duration and recovery time calculation using Numba.
+    """
+    n = len(equity_curve)
+    running_max = np.empty(n)
+    if n > 0:
+        running_max[0] = equity_curve[0]
+        for i in range(1, n):
+            running_max[i] = max(running_max[i-1], equity_curve[i])
+    drawdown = (equity_curve / running_max) - 1
+
+    drawdown_periods = []
+    recovery_periods = []
+
+    in_drawdown = False
+    drawdown_start = 0
+
+    for i in range(n):
+        if drawdown[i] < 0 and not in_drawdown:
+            in_drawdown = True
+            drawdown_start = i
+        elif drawdown[i] >= 0 and in_drawdown:
+            in_drawdown = False
+            drawdown_periods.append(i - drawdown_start)
+
+            peak_before_dd = running_max[drawdown_start]
+            recovery_found = False
+            for j in range(i, n):
+                if equity_curve[j] >= peak_before_dd:
+                    recovery_periods.append(j - i)
+                    recovery_found = True
+                    break
+            if not recovery_found:
+                recovery_periods.append(n - i)
+
+    if in_drawdown:
+        drawdown_periods.append(n - drawdown_start)
+
+    avg_dd_duration = np.mean(np.array(drawdown_periods)) if drawdown_periods else 0.0
+    avg_recovery_time = np.mean(np.array(recovery_periods)) if recovery_periods else np.nan
+
+    return avg_dd_duration, avg_recovery_time
 
 
 @numba.jit(nopython=True, cache=True)

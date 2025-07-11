@@ -307,39 +307,43 @@ class LowVolatilityFactorStrategy(BaseStrategy):
             if not stocks:
                 betas[portfolio_name] = 1.0
                 continue
-                
-            # Calculate portfolio returns (equal-weighted for simplicity)
-            portfolio_prices = prices[stocks].mean(axis=1)
-            portfolio_returns = portfolio_prices.pct_change(fill_method=None).dropna()
-            market_returns = market_prices.pct_change(fill_method=None).dropna()
             
-            # Align returns
-            common_dates = portfolio_returns.index.intersection(market_returns.index)
-            if len(common_dates) < 12:  # Need at least 12 months
-                betas[portfolio_name] = 1.0
-                continue
-                
-            portfolio_returns = portfolio_returns.loc[common_dates]
-            market_returns = market_returns.loc[common_dates]
-            
-            # Calculate rolling beta (last 36 months)
-            window_size = min(lookback_months, len(portfolio_returns))
-            if window_size < 12:
-                betas[portfolio_name] = 1.0
-                continue
-                
-            recent_port_returns = portfolio_returns.iloc[-window_size:]
-            recent_mkt_returns = market_returns.iloc[-window_size:]
-            
-            # Calculate beta using covariance
-            covariance = np.cov(recent_port_returns, recent_mkt_returns)[0, 1]
-            market_variance = np.var(recent_mkt_returns)
-            
-            if market_variance > 0:
-                beta = covariance / market_variance
+            if NUMBA_AVAILABLE:
+                portfolio_prices = prices[stocks].mean(axis=1)
+                beta = rolling_beta_fast_portfolio(portfolio_prices.values, market_prices.values, lookback_months)
             else:
-                beta = 1.0
+                # Calculate portfolio returns (equal-weighted for simplicity)
+                portfolio_prices = prices[stocks].mean(axis=1)
+                portfolio_returns = portfolio_prices.pct_change(fill_method=None).dropna()
+                market_returns = market_prices.pct_change(fill_method=None).dropna()
                 
+                # Align returns
+                common_dates = portfolio_returns.index.intersection(market_returns.index)
+                if len(common_dates) < 12:  # Need at least 12 months
+                    betas[portfolio_name] = 1.0
+                    continue
+                    
+                portfolio_returns = portfolio_returns.loc[common_dates]
+                market_returns = market_returns.loc[common_dates]
+                
+                # Calculate rolling beta (last 36 months)
+                window_size = min(lookback_months, len(portfolio_returns))
+                if window_size < 12:
+                    betas[portfolio_name] = 1.0
+                    continue
+                    
+                recent_port_returns = portfolio_returns.iloc[-window_size:]
+                recent_mkt_returns = market_returns.iloc[-window_size:]
+                
+                # Calculate beta using covariance
+                covariance = np.cov(recent_port_returns, recent_mkt_returns)[0, 1]
+                market_variance = np.var(recent_mkt_returns)
+                
+                if market_variance > 0:
+                    beta = covariance / market_variance
+                else:
+                    beta = 1.0
+            
             betas[portfolio_name] = beta
             
         return betas

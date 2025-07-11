@@ -80,8 +80,14 @@ class EMAStrategy(BaseStrategy):
                 continue
                 
             # Calculate EMAs up to current date
-            fast_ema = prices.ewm(span=self.fast_ema_days).mean()
-            slow_ema = prices.ewm(span=self.slow_ema_days).mean()
+            if NUMBA_AVAILABLE:
+                fast_ema_values = ema_fast(prices.values, self.fast_ema_days)
+                slow_ema_values = ema_fast(prices.values, self.slow_ema_days)
+                fast_ema = pd.Series(fast_ema_values, index=prices.index)
+                slow_ema = pd.Series(slow_ema_values, index=prices.index)
+            else:
+                fast_ema = prices.ewm(span=self.fast_ema_days).mean()
+                slow_ema = prices.ewm(span=self.slow_ema_days).mean()
             
             # Get EMA values at current date
             if current_date in fast_ema.index and current_date in slow_ema.index:

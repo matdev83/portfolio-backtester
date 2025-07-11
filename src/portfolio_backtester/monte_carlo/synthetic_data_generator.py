@@ -219,53 +219,21 @@ class ImprovedSyntheticDataGenerator:
         # Estimate tail index using Hill estimator
         tail_index = self._estimate_tail_index(returns_pct)
         
-        # Use modern robust t-distribution approach instead of problematic GARCH
-        logger.debug("Using robust t-distribution approach for synthetic data generation")
-        
-        # Fit t-distribution to capture fat tails properly
-        from scipy import stats
-        
-        try:
-            # Fit t-distribution to the returns data (use original scale, not percentage)
-            df_fitted, loc_fitted, scale_fitted = stats.t.fit(returns)
-            
-            # Ensure reasonable parameters
-            df_fitted = max(df_fitted, 2.1)  # Ensure finite variance
-            df_fitted = min(df_fitted, 30.0)  # Avoid numerical issues
-            
-            if logger.isEnabledFor(logging.DEBUG):
+        # Use GARCH model as the primary method
+        logger.debug("Using GARCH model for synthetic data generation")
+        garch_params = self._fit_garch_model(returns_pct)
 
-            
-                logger.debug(f"Fitted t-distribution: df={df_fitted:.2f}, loc={loc_fitted:.6f}, scale={scale_fitted:.6f}")
-            
-            # Create enhanced statistics with t-distribution parameters
-            return AssetStatistics(
-                mean_return=loc_fitted,  # Use fitted location
-                volatility=scale_fitted,  # Use fitted scale
-                skewness=skewness,
-                kurtosis=kurtosis,
-                autocorr_returns=autocorr_returns,
-                autocorr_squared=autocorr_squared,
-                tail_index=df_fitted,  # Use fitted degrees of freedom
-                garch_params=None  # No GARCH - using t-distribution approach
-            )
-            
-        except Exception as e:
-            if logger.isEnabledFor(logging.WARNING):
-
-                logger.warning(f"T-distribution fitting failed: {e}. Using basic statistics.")
-            
-            # Final fallback to basic statistics
-            return AssetStatistics(
-                mean_return=mean_return,
-                volatility=volatility,
-                skewness=skewness,
-                kurtosis=kurtosis,
-                autocorr_returns=autocorr_returns,
-                autocorr_squared=autocorr_squared,
-                tail_index=max(float(kurtosis) + 3.0, 3.0) if not pd.isna(kurtosis) else 5.0,
-                garch_params=None
-            )
+        # Create enhanced statistics with GARCH parameters
+        return AssetStatistics(
+            mean_return=mean_return,
+            volatility=volatility,
+            skewness=skewness,
+            kurtosis=kurtosis,
+            autocorr_returns=autocorr_returns,
+            autocorr_squared=autocorr_squared,
+            tail_index=tail_index,
+            garch_params=garch_params
+        )
     
     def _fit_professional_garch_model(self, returns: pd.Series) -> GARCHParameters:
         """
@@ -415,29 +383,13 @@ class ImprovedSyntheticDataGenerator:
         """
         max_attempts = self.generation_config.get('max_attempts', 5) # Increased attempts
         
-        # Use modern t-distribution approach as the primary method with retries
+        # Use GARCH model as the primary method with retries
         for attempt in range(max_attempts):
             try:
-                from scipy import stats
-                
-                # Use the fitted t-distribution parameters with proper validation
-                df = max(asset_stats.tail_index, 2.1)  # Ensure finite variance
-                df = min(df, 30.0)  # Avoid numerical issues
-                loc = asset_stats.mean_return
-                scale = max(asset_stats.volatility, 1e-5)  # Ensure positive scale, increased minimum
-                
-                logger.debug(f"DEBUG: Generating with t-distribution (Attempt {attempt + 1}/{max_attempts}): "
-                            f"df={df:.2f}, loc={loc:.6f}, scale={scale:.6f}")
-                
-                # Generate synthetic returns using t-distribution
-                synthetic_returns = stats.t.rvs(
-                    df=df,
-                    loc=loc,
-                    scale=scale,
-                    size=length,
-                    random_state=self.rng
+                synthetic_returns = self._generate_garch_returns(
+                    asset_stats.garch_params, length, asset_stats.mean_return
                 )
-                
+
                 # Validate generated returns to prevent extreme values
                 if np.any(np.isnan(synthetic_returns)) or np.any(np.isinf(synthetic_returns)):
                     if logger.isEnabledFor(logging.WARNING):
@@ -446,10 +398,10 @@ class ImprovedSyntheticDataGenerator:
                     raise ValueError("Generated NaN or infinite values")
                 
                 # Clip extreme outliers to prevent unrealistic returns
-                max_return_abs = 5 * scale  # Max 5 standard deviations
+                max_return_abs = 5 * asset_stats.volatility  # Max 5 standard deviations
                 synthetic_returns = np.clip(synthetic_returns,
-                                          loc - max_return_abs,
-                                          loc + max_return_abs)
+                                          asset_stats.mean_return - max_return_abs,
+                                          asset_stats.mean_return + max_return_abs)
                 
                 # Further clip to prevent extremely negative returns that cause numerical issues
                 synthetic_returns = np.clip(synthetic_returns, -0.5, 5.0) # Max -50% daily return, max 500% daily return
@@ -472,13 +424,13 @@ class ImprovedSyntheticDataGenerator:
                 if logger.isEnabledFor(logging.DEBUG):
 
                 
-                    logger.debug(f"Successfully generated {length} synthetic returns using t-distribution for {asset_name} (Attempt {attempt + 1})")
+                    logger.debug(f"Successfully generated {length} synthetic returns using GARCH model for {asset_name} (Attempt {attempt + 1})")
                 return synthetic_returns
                 
             except Exception as e:
                 if logger.isEnabledFor(logging.WARNING):
 
-                    logger.warning(f"T-distribution generation failed for {asset_name} (Attempt {attempt + 1}): {e}. Retrying.")
+                    logger.warning(f"GARCH generation failed for {asset_name} (Attempt {attempt + 1}): {e}. Retrying.")
                 continue
         
         # Fallback to simple method if all t-distribution attempts fail
@@ -993,7 +945,7 @@ class ImprovedSyntheticDataGenerator:
         
         # Initialize variance
         if alpha + beta < 0.999:
-            initial_variance = omega / (1 - alpha - beta)
+            initial_variance = max(target_volatility ** 2, omega / (1 - alpha - beta))
             if logger.isEnabledFor(logging.DEBUG):
 
                 logger.debug(f"DEBUG: _simulate_garch_process - initial_variance (stationary): {initial_variance:.8f}")

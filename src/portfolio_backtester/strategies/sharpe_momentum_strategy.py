@@ -3,6 +3,14 @@ import pandas as pd
 import numpy as np
 
 from .base_strategy import BaseStrategy
+
+# Import Numba optimization with fallback
+try:
+    from ..numba_optimized import rolling_sharpe_fast_portfolio
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
 # Removed SharpeSignalGenerator and feature imports
 
 class SharpeMomentumStrategy(BaseStrategy):
@@ -100,32 +108,38 @@ class SharpeMomentumStrategy(BaseStrategy):
         if daily_closes.empty:
             return pd.Series(dtype=float, index=asset_daily_ohlc.columns.get_level_values(0).unique() if isinstance(asset_daily_ohlc.columns, pd.MultiIndex) else asset_daily_ohlc.columns)
 
-        # Resample to monthly, calculate monthly returns
-        monthly_closes = daily_closes.resample('ME').last()
-        monthly_rets = monthly_closes.pct_change(fill_method=None).fillna(0)
-
-        # Ensure we have enough data for rolling calculation up to current_date's month-end
-        # The monthly_rets will be indexed by month-ends.
         # We need the Sharpe ratio *as of* the month-end corresponding to current_date or just before.
         current_month_end = current_date.to_period('M').to_timestamp('M')
-        relevant_monthly_rets = monthly_rets[monthly_rets.index <= current_month_end]
 
-        if len(relevant_monthly_rets) < rolling_window_months:
-            return pd.Series(0.0, index=daily_closes.columns) # Not enough history for any asset
+        if NUMBA_AVAILABLE:
+            sharpe_ratio_calculated = pd.DataFrame(index=daily_closes.index, columns=daily_closes.columns)
+            for asset in daily_closes.columns:
+                sharpe_ratio_calculated[asset] = rolling_sharpe_fast_portfolio(daily_closes[asset].values, rolling_window_months, annualization_factor)
+        else:
+            # Resample to monthly, calculate monthly returns
+            monthly_closes = daily_closes.resample('ME').last()
+            monthly_rets = monthly_closes.pct_change(fill_method=None).fillna(0)
 
-        rolling_mean = relevant_monthly_rets.rolling(window=rolling_window_months).mean()
-        rolling_std = relevant_monthly_rets.rolling(window=rolling_window_months).std()
+            # Ensure we have enough data for rolling calculation up to current_date's month-end
+            # The monthly_rets will be indexed by month-ends.
+            relevant_monthly_rets = monthly_rets[monthly_rets.index <= current_month_end]
 
-        # Avoid division by zero; replace zero std with NaN, then fill resulting NaN Sharpe with 0
-        sharpe_ratio = (rolling_mean * annualization_factor) / (rolling_std.replace(0, np.nan) * np.sqrt(annualization_factor))
-        # Using np.sqrt(annualization_factor) for std dev based on common practice if returns are already annualized mean
-        # Or, if returns are not annualized in mean, then (mean * ann_factor) / (std * sqrt(ann_factor))
-        # The original code did: (rolling_mean * cal_factor) / (rolling_std * cal_factor).replace(0, np.nan)
-        # where cal_factor was sqrt(12). This implies (mean / std) * sqrt(ann_factor) if mean/std are not annualized.
-        # Let's stick to (mean_monthly_ret * ann_factor) / (std_dev_monthly_ret * sqrt(ann_factor))
-        # This simplifies to (mean_monthly_ret / std_dev_monthly_ret) * sqrt(ann_factor)
+            if len(relevant_monthly_rets) < rolling_window_months:
+                return pd.Series(0.0, index=daily_closes.columns) # Not enough history for any asset
 
-        sharpe_ratio_calculated = (rolling_mean / rolling_std.replace(0, np.nan)) * np.sqrt(annualization_factor)
+            rolling_mean = relevant_monthly_rets.rolling(window=rolling_window_months).mean()
+            rolling_std = relevant_monthly_rets.rolling(window=rolling_window_months).std()
+
+            # Avoid division by zero; replace zero std with NaN, then fill resulting NaN Sharpe with 0
+            sharpe_ratio = (rolling_mean * annualization_factor) / (rolling_std.replace(0, np.nan) * np.sqrt(annualization_factor))
+            # Using np.sqrt(annualization_factor) for std dev based on common practice if returns are already annualized mean
+            # Or, if returns are not annualized in mean, then (mean * ann_factor) / (std * sqrt(ann_factor))
+            # The original code did: (rolling_mean * cal_factor) / (rolling_std * cal_factor).replace(0, np.nan)
+            # where cal_factor was sqrt(12). This implies (mean / std) * sqrt(ann_factor) if mean/std are not annualized.
+            # Let's stick to (mean_monthly_ret * ann_factor) / (std_dev_monthly_ret * sqrt(ann_factor))
+            # This simplifies to (mean_monthly_ret / std_dev_monthly_ret) * sqrt(ann_factor)
+
+            sharpe_ratio_calculated = (rolling_mean / rolling_std.replace(0, np.nan)) * np.sqrt(annualization_factor)
 
 
         # Get the latest calculated Sharpe ratio (for the current_month_end)

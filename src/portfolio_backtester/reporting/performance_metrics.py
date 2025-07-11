@@ -22,6 +22,14 @@ if not hasattr(sp_util, "_lazywhere"):
 import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller
 
+# Import Numba optimization with fallback
+try:
+    from ..numba_optimized import sortino_ratio_fast, mdd_fast, drawdown_duration_and_recovery_fast
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
+
 # -----------------------------------------------------------------------------
 # Helper to derive the appropriate annualisation factor (steps per year) from
 # the return series' timestamp index.  Falls back to a daily assumption if the
@@ -395,66 +403,69 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
         """Calculate average drawdown duration and recovery time."""
         if equity_curve.empty or equity_curve.isnull().all():
             return np.nan, np.nan
+        
+        if NUMBA_AVAILABLE:
+            return drawdown_duration_and_recovery_fast(equity_curve.values)
+        else:
+            # Calculate running maximum and drawdown
+            running_max = equity_curve.cummax()
+            drawdown = (equity_curve / running_max - 1)
             
-        # Calculate running maximum and drawdown
-        running_max = equity_curve.cummax()
-        drawdown = (equity_curve / running_max - 1)
-        
-        # Identify drawdown periods
-        is_drawdown = drawdown < -EPSILON_FOR_DIVISION
-        
-        if not is_drawdown.any():
-            return 0.0, 0.0  # No drawdowns
-        
-        # Find drawdown periods
-        drawdown_periods = []
-        recovery_periods = []
-        
-        in_drawdown = False
-        drawdown_start = None
-        drawdown_end = None
-        
-        for i, (date, dd_val) in enumerate(drawdown.items()):
-            if dd_val < -EPSILON_FOR_DIVISION and not in_drawdown:
-                # Start of drawdown
-                in_drawdown = True
-                drawdown_start = i
-            elif dd_val >= -EPSILON_FOR_DIVISION and in_drawdown:
-                # End of drawdown
-                in_drawdown = False
-                drawdown_end = i - 1
-                
-                if drawdown_start is not None and drawdown_end is not None:
-                    duration = drawdown_end - drawdown_start + 1
-                    drawdown_periods.append(duration)
+            # Identify drawdown periods
+            is_drawdown = drawdown < -EPSILON_FOR_DIVISION
+            
+            if not is_drawdown.any():
+                return 0.0, 0.0  # No drawdowns
+            
+            # Find drawdown periods
+            drawdown_periods = []
+            recovery_periods = []
+            
+            in_drawdown = False
+            drawdown_start = None
+            drawdown_end = None
+            
+            for i, (date, dd_val) in enumerate(drawdown.items()):
+                if dd_val < -EPSILON_FOR_DIVISION and not in_drawdown:
+                    # Start of drawdown
+                    in_drawdown = True
+                    drawdown_start = i
+                elif dd_val >= -EPSILON_FOR_DIVISION and in_drawdown:
+                    # End of drawdown
+                    in_drawdown = False
+                    drawdown_end = i - 1
                     
-                    # Find recovery period (time to reach new high)
-                    peak_before_dd = running_max.iloc[drawdown_start]
-                    recovery_start = drawdown_end + 1
-                    
-                    if recovery_start < len(equity_curve):
-                        recovery_found = False
-                        for j in range(recovery_start, len(equity_curve)):
-                            if equity_curve.iloc[j] >= peak_before_dd:
-                                recovery_time = j - drawdown_end
-                                recovery_periods.append(recovery_time)
-                                recovery_found = True
-                                break
+                    if drawdown_start is not None and drawdown_end is not None:
+                        duration = drawdown_end - drawdown_start + 1
+                        drawdown_periods.append(duration)
                         
-                        if not recovery_found:
-                            # Still in recovery at end of period
-                            recovery_time = len(equity_curve) - 1 - drawdown_end
-                            recovery_periods.append(recovery_time)
-        
-        # Handle case where period ends in drawdown
-        if in_drawdown and drawdown_start is not None:
-            duration = len(drawdown) - drawdown_start
-            drawdown_periods.append(duration)
-        
-        avg_dd_duration = np.mean(drawdown_periods) if drawdown_periods else 0.0
-        avg_recovery_time = np.mean(recovery_periods) if recovery_periods else np.nan
-        
-        return avg_dd_duration, avg_recovery_time
+                        # Find recovery period (time to reach new high)
+                        peak_before_dd = running_max.iloc[drawdown_start]
+                        recovery_start = drawdown_end + 1
+                        
+                        if recovery_start < len(equity_curve):
+                            recovery_found = False
+                            for j in range(recovery_start, len(equity_curve)):
+                                if equity_curve.iloc[j] >= peak_before_dd:
+                                    recovery_time = j - drawdown_end
+                                    recovery_periods.append(recovery_time)
+                                    recovery_found = True
+                                    break
+                            
+                            if not recovery_found:
+                                # Still in recovery at end of period
+                                recovery_time = len(equity_curve) - 1 - drawdown_end
+                                recovery_periods.append(recovery_time)
+            
+            # Handle case where period ends in drawdown
+            if in_drawdown and drawdown_start is not None:
+                duration = len(drawdown) - drawdown_start
+                drawdown_periods.append(duration)
+            
+            avg_dd_duration = np.mean(drawdown_periods) if drawdown_periods else 0.0
+            avg_recovery_time = np.mean(recovery_periods) if recovery_periods else np.nan
+            
+            return avg_dd_duration, avg_recovery_time
 
     common_index = active_rets.index.intersection(active_bench_rets.index)
     rets_aligned, bench_aligned = active_rets.loc[common_index], active_bench_rets.loc[common_index]

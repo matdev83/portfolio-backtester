@@ -96,18 +96,11 @@ def run_monte_carlo_simulation(
     mean_return = monthly_returns.mean()
     std_dev = monthly_returns.std()
 
-    # Prepare an array to hold all simulation results
-    all_sim_results = np.zeros((n_months + 1, n_simulations))
-    all_sim_results[0, :] = initial_capital
-
-    # Run the simulation
-    for i in track(range(n_simulations), description="Running Monte Carlo Simulation..."):
-        portfolio_value = initial_capital
-        for t in range(1, n_months + 1):
-            # Generate a random return based on historical stats
-            random_return = np.random.normal(mean_return, std_dev)
-            portfolio_value *= (1 + random_return)
-            all_sim_results[t, i] = portfolio_value
+    # Vectorized simulation
+    random_returns = np.random.normal(mean_return, std_dev, (n_months, n_simulations))
+    compounded_returns = 1 + random_returns
+    compounded_returns = np.vstack([np.ones(n_simulations), compounded_returns])
+    all_sim_results = initial_capital * np.cumprod(compounded_returns, axis=0)
             
     return pd.DataFrame(all_sim_results)
 

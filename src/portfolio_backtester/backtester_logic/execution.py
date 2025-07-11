@@ -336,13 +336,13 @@ def _generate_optimization_report(self, scenario_config, optimal_params, full_re
                 additional_info=additional_info
             )
             
-            if self.logger.isEnabledFor(logging.DEBUG):
-                self.logger.debug(f"Comprehensive optimization report generated: {report_path}")
-            print(f"\nOptimization Report Generated: {report_path}")
-            print(f"Report directory contains:")
-            print(f"   - optimization_report.md (Main report)")
-            print(f"   - plots/ (All generated visualizations)")
-            print(f"   - data/ (Raw optimization data)")
+            if self.logger.isEnabledFor(logging.INFO):
+                self.logger.info(f"Comprehensive optimization report generated: {report_path}")
+            self.logger.info(f"Optimization Report Generated: {report_path}")
+            self.logger.info(f"Report directory contains:")
+            self.logger.info(f"   - optimization_report.md (Main report)")
+            self.logger.info(f"   - plots/ (All generated visualizations)")
+            self.logger.info(f"   - data/ (Raw optimization data)")
             
         except Exception as e:
             self.logger.error(f"Failed to create optimization report: {e}")

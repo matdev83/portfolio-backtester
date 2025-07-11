@@ -185,9 +185,10 @@ class Backtester:
         universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
         benchmark_ticker = self.global_config["benchmark"]
 
+        rebalance_dates = price_data_monthly_closes.index # Dates for generating signals (typically month-end)
+
         # --- Iterative Signal Generation ---
         all_monthly_weights = []
-        rebalance_dates = price_data_monthly_closes.index # Dates for generating signals (typically month-end)
 
         # WFO dates from scenario_config (optional)
         wfo_start_date = pd.to_datetime(scenario_config.get("wfo_start_date", None))

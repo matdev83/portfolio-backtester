@@ -177,8 +177,7 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         optimal_params.update(best_trial_obj.params)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Best parameters (from Pareto front, first trial) found on training set: {best_trial_obj.params}")
-        if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info(f"Optuna Optimizer - Best parameters found: {best_trial_obj.params}")
+            self.logger.debug(f"Optuna Optimizer - Best parameters found: {best_trial_obj.params}")
         actual_trial_number_for_dsr = best_trial_obj.number
     else:
         if not study.best_trial:
@@ -189,8 +188,7 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         optimal_params.update(best_trial_obj.params)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Best parameters found on training set: {best_trial_obj.params}")
-        if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info(f"Optuna Optimizer - Best parameters found: {best_trial_obj.params}")
+            self.logger.debug(f"Optuna Optimizer - Best parameters found: {best_trial_obj.params}")
         actual_trial_number_for_dsr = study.best_trial.number
     
     # Store the study object in the best_trial_obj for later use in plotting
@@ -218,7 +216,7 @@ def _setup_optuna_study(self, scenario_config, storage, study_name_base: str):
         sampler = optuna.samplers.GridSampler(search_space)
         n_trials_actual = reduce(mul, [len(v) for v in search_space.values()], 1)
         if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"Using GridSampler with search space: {search_space}. Total trials: {n_trials_actual}") # Fixed search_trials -> search_space
+            self.logger.debug(f"Using GridSampler. Total trials: {n_trials_actual}")
     else:
         if is_grid_search and self.n_jobs > 1:
             self.logger.warning("Grid search is not supported with n_jobs > 1. Using TPESampler instead.")
@@ -233,7 +231,7 @@ def _setup_optuna_study(self, scenario_config, storage, study_name_base: str):
             interval_steps=self.args.pruning_interval_steps
         )
         if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"MedianPruner enabled with n_startup_trials={self.args.pruning_n_startup_trials}, n_warmup_steps={self.args.pruning_n_warmup_steps}, interval_steps={self.args.pruning_interval_steps}.")
+            self.logger.debug("MedianPruner enabled.")
     else:
         pruner = optuna.pruners.NopPruner()
         if self.logger.isEnabledFor(logging.DEBUG):

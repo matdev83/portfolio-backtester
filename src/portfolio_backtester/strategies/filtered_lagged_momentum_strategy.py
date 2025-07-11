@@ -4,6 +4,14 @@ import numpy as np
 
 from .base_strategy import BaseStrategy
 
+# Import Numba optimization with fallback
+try:
+    from ..numba_optimized import momentum_scores_fast_vectorized
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
+
 
 class FilteredLaggedMomentumStrategy(BaseStrategy):
     """
@@ -109,14 +117,18 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
         if prices_now is None or prices_then is None:
             return pd.Series(dtype=float, index=asset_prices.columns)
 
-        # Replace 0s or negative prices with NaN
-        prices_then = prices_then.replace(0, np.nan)
-        if prices_then.ndim > 0:
-            prices_then[prices_then < 0] = np.nan
-        elif prices_then < 0:
-            prices_then = np.nan
+        if NUMBA_AVAILABLE:
+            momentum_values = momentum_scores_fast_vectorized(prices_now.values, prices_then.values)
+            momentum_scores = pd.Series(momentum_values, index=prices_now.index)
+        else:
+            # Replace 0s or negative prices with NaN
+            prices_then = prices_then.replace(0, np.nan)
+            if prices_then.ndim > 0:
+                prices_then[prices_then < 0] = np.nan
+            elif prices_then < 0:
+                prices_then = np.nan
 
-        momentum_scores = (prices_now / prices_then) - 1
+            momentum_scores = (prices_now / prices_then) - 1
         return momentum_scores.fillna(0.0)
 
     def generate_signals(

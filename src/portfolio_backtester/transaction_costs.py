@@ -96,41 +96,25 @@ def calculate_detailed_transaction_costs(
     else:
         daily_closes = price_data
     
-    total_costs = pd.Series(0.0, index=turnover.index)
-    commission_costs = pd.Series(0.0, index=turnover.index)
-    slippage_costs = pd.Series(0.0, index=turnover.index)
-    
-    # Calculate costs for each trading day
-    for date in turnover.index:
-        if turnover.loc[date] == 0:
-            continue
-            
-        daily_turnover = turnover.loc[date]
-        trade_value = daily_turnover * portfolio_value
-        
-        # Estimate number of trades (assume rebalancing across positions)
-        weight_changes = weights_daily.loc[date] - weights_daily.shift(1).loc[date]
-        active_positions = (weight_changes.abs() > 1e-6).sum()
-        
-        if active_positions == 0:
-            continue
-            
-        # Commission calculation (simplified)
-        # For retail: typically $1-5 per trade for liquid stocks
-        avg_commission_per_trade = max(commission_min_per_order, trade_value * commission_max_percent / active_positions)
-        total_commission = min(avg_commission_per_trade * active_positions, trade_value * commission_max_percent)
-        commission_cost_fraction = total_commission / portfolio_value
-        
-        # Slippage cost (as percentage of trade value)
-        slippage_cost_fraction = daily_turnover * (slippage_bps / 10000.0)
-        
-        commission_costs.loc[date] = commission_cost_fraction
-        slippage_costs.loc[date] = slippage_cost_fraction
-        total_costs.loc[date] = commission_cost_fraction + slippage_cost_fraction
-    
+    # Vectorized calculation of costs
+    trade_value = turnover * portfolio_value
+    weight_changes = weights_daily.diff().abs()
+    active_positions = (weight_changes > 1e-6).sum(axis=1)
+
+    # Commission calculation (vectorized)
+    avg_commission_per_trade = np.maximum(commission_min_per_order, trade_value * commission_max_percent / active_positions.replace(0, 1))
+    total_commission = np.minimum(avg_commission_per_trade * active_positions, trade_value * commission_max_percent)
+    commission_costs = total_commission / portfolio_value
+
+    # Slippage cost (vectorized)
+    slippage_costs = turnover * (slippage_bps / 10000.0)
+
+    total_costs = commission_costs + slippage_costs
+    total_costs = total_costs.fillna(0)
+
     breakdown = {
-        'commission_costs': commission_costs,
-        'slippage_costs': slippage_costs,
+        'commission_costs': commission_costs.fillna(0),
+        'slippage_costs': slippage_costs.fillna(0),
         'total_costs': total_costs
     }
     

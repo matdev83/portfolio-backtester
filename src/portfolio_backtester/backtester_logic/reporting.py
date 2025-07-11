@@ -13,12 +13,8 @@ import logging
 
 from ..reporting.performance_metrics import calculate_metrics
 
-# Import parallel Monte Carlo processor for Stage 2 speedup
-try:
-    from ..parallel_monte_carlo import ParallelMonteCarloProcessor, _stage2_monte_carlo_simulation
-    PARALLEL_MC_AVAILABLE = True
-except ImportError:
-    PARALLEL_MC_AVAILABLE = False
+# Parallel Monte Carlo has been removed due to complexity and data handling issues
+# Stage 2 Monte Carlo now uses sequential processing only
 
 def display_results(self, daily_data_for_display):
     logger = self.logger
@@ -686,25 +682,15 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
             logger.info(f"Stage 2 MC: Using replacement percentages: {[f'{p:.1%}' for p in replacement_percentages]} "
                        f"(counts: {replacement_counts} out of {universe_size} assets)")
         
-        num_simulations_per_level = 2  # TESTING: Reduced to 2 simulations for faster testing
+        num_simulations_per_level = 10  # Increased to 10 simulations to better assess synthetic data quality
         
-        # CRITICAL OPTIMIZATION: Use parallel processing for Stage 2 Monte Carlo
-        # Each simulation takes 6+ seconds, so parallel processing will provide 5-7x speedup
+        # Use sequential processing only - parallel processing has been removed
+        # due to fundamental data handling issues and complexity
         total_simulations = len(replacement_percentages) * num_simulations_per_level
         if logger.isEnabledFor(logging.DEBUG):
-
-            logger.debug(f"Stage 2 MC: Starting {total_simulations} simulations with parallel processing for massive speedup...")
+            logger.debug(f"Stage 2 MC: Starting {total_simulations} simulations sequentially...")
         
-        # Initialize parallel Monte Carlo processor
-        if PARALLEL_MC_AVAILABLE:
-            parallel_processor = ParallelMonteCarloProcessor(enable_parallel=True)
-            use_parallel = True
-            if logger.isEnabledFor(logging.DEBUG):
-
-                logger.debug(f"Stage 2 MC: Parallel processing enabled with {parallel_processor.max_workers} workers")
-        else:
-            use_parallel = False
-            logger.warning("Stage 2 MC: Parallel processing not available, using sequential processing")
+        use_parallel = False
         
         # Colors for different replacement levels
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']  # Blue, Orange, Green, Red, Purple
@@ -766,20 +752,14 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                 # Pre-convert daily data to expected format (done once instead of 20 times per level)
                 daily_data_dict = {}
                 if logger.isEnabledFor(logging.DEBUG):
-                    if logger.isEnabledFor(logging.DEBUG):
-
-                        logger.debug(f"Daily data columns: {daily_data.columns}")
+                    logger.debug(f"Daily data columns: {daily_data.columns}")
                     logger.debug(f"Daily data shape: {daily_data.shape}")
                 
                 if isinstance(daily_data.columns, pd.MultiIndex):
                     if logger.isEnabledFor(logging.DEBUG):
-                        if logger.isEnabledFor(logging.DEBUG):
-
-                            logger.debug(f"MultiIndex levels: {daily_data.columns.names}")
+                        logger.debug(f"MultiIndex levels: {daily_data.columns.names}")
                         logger.debug(f"Level 0 values: {daily_data.columns.get_level_values(0).unique()}")
-                        if logger.isEnabledFor(logging.DEBUG):
-
-                            logger.debug(f"Level 1 values: {daily_data.columns.get_level_values(1).unique()}")
+                        logger.debug(f"Level 1 values: {daily_data.columns.get_level_values(1).unique()}")
                     
                     # Handle MultiIndex columns (Ticker, Field) structure
                     for ticker in universe:
@@ -788,9 +768,7 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                             if not ticker_data.empty:
                                 daily_data_dict[ticker] = ticker_data
                                 if logger.isEnabledFor(logging.DEBUG):
-                                    if logger.isEnabledFor(logging.DEBUG):
-
-                                        logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
+                                    logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
                         elif ticker in daily_data.columns.get_level_values(1):  # Check second level
                             # Handle (Field, Ticker) structure
                             ticker_columns = [col for col in daily_data.columns if col[1] == ticker]
@@ -799,9 +777,7 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                                 ticker_data.columns = [col[0] for col in ticker_columns]  # Keep only field names
                                 daily_data_dict[ticker] = ticker_data
                                 if logger.isEnabledFor(logging.DEBUG):
-                                    if logger.isEnabledFor(logging.DEBUG):
-
-                                        logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
+                                    logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
                 else:
                     # Handle simple column structure - assume it's close prices
                     for ticker in universe:
@@ -814,209 +790,122 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                             }, index=daily_data.index)
                             daily_data_dict[ticker] = ticker_data
                             if logger.isEnabledFor(logging.DEBUG):
-
                                 logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
                 
                 if logger.isEnabledFor(logging.DEBUG):
-                    if logger.isEnabledFor(logging.DEBUG):
-
-                        logger.debug(f"Stage 2 MC: Created daily_data_dict with {len(daily_data_dict)} assets")
+                    logger.debug(f"Stage 2 MC: Created daily_data_dict with {len(daily_data_dict)} assets")
                 
-                if logger.isEnabledFor(logging.INFO):
-
+                logger.info(f"Stage 2 MC: Pre-processed {len(daily_data_dict)} assets for {replacement_pct:.1%} level")
                 
-                    logger.info(f"Stage 2 MC: Pre-processed {len(daily_data_dict)} assets for {replacement_pct:.1%} level (20x speedup)")
-                
-                # Pre-convert daily data to expected format (done once instead of 10 times per level)
-                daily_data_dict = {}
-                if logger.isEnabledFor(logging.DEBUG):
-                    if logger.isEnabledFor(logging.DEBUG):
-
-                        logger.debug(f"Daily data columns: {daily_data.columns}")
-                    logger.debug(f"Daily data shape: {daily_data.shape}")
-                
-                if isinstance(daily_data.columns, pd.MultiIndex):
-                    if logger.isEnabledFor(logging.DEBUG):
-                        if logger.isEnabledFor(logging.DEBUG):
-
-                            logger.debug(f"MultiIndex levels: {daily_data.columns.names}")
-                        logger.debug(f"Level 0 values: {daily_data.columns.get_level_values(0).unique()}")
-                        if logger.isEnabledFor(logging.DEBUG):
-
-                            logger.debug(f"Level 1 values: {daily_data.columns.get_level_values(1).unique()}")
-                    
-                    # Handle MultiIndex columns (Ticker, Field) structure
-                    for ticker in universe:
-                        if ticker in daily_data.columns.get_level_values(0):  # Check first level
-                            ticker_data = daily_data.xs(ticker, level=0, axis=1, drop_level=True)
-                            if not ticker_data.empty:
-                                daily_data_dict[ticker] = ticker_data
-                                if logger.isEnabledFor(logging.DEBUG):
-                                    if logger.isEnabledFor(logging.DEBUG):
-
-                                        logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
-                        elif ticker in daily_data.columns.get_level_values(1):  # Check second level
-                            # Handle (Field, Ticker) structure
-                            ticker_columns = [col for col in daily_data.columns if col[1] == ticker]
-                            if ticker_columns:
-                                ticker_data = daily_data[ticker_columns]
-                                ticker_data.columns = [col[0] for col in ticker_columns]  # Keep only field names
-                                daily_data_dict[ticker] = ticker_data
-                                if logger.isEnabledFor(logging.DEBUG):
-                                    if logger.isEnabledFor(logging.DEBUG):
-
-                                        logger.debug(f"Stage 2 MC: Added {ticker} data with shape: {ticker_data.shape}")
-                else:
-                    # Handle simple column structure - assume it's close prices
-                    for ticker in universe:
-                        if ticker in daily_data.columns:
-                            ticker_data = pd.DataFrame({
-                                'Open': daily_data[ticker],
-                                'High': daily_data[ticker],
-                                'Low': daily_data[ticker],
-                                'Close': daily_data[ticker]
-                            }, index=daily_data.index)
-                            daily_data_dict[ticker] = ticker_data
-                
-                if logger.isEnabledFor(logging.INFO):
-
-                
-                    logger.info(f"Stage 2 MC: Pre-processed {len(daily_data_dict)} assets for {replacement_pct:.1%} level (10x speedup)")
+                # PERFORMANCE FIX: Removed duplicate daily data preprocessing block
                 
                 # Update progress description for current replacement level
                 progress.update(task, description=f"[cyan]Stage 2 MC: {replacement_pct:.1%} replacement ({i+1}/{len(replacement_percentages)})")
             
-            # PARALLEL PROCESSING: Use parallel execution for massive speedup
-            if use_parallel and num_simulations_per_level >= 3:
-                print(f"DEBUG: PARALLEL PATH TAKEN! use_parallel={use_parallel}, num_sims={num_simulations_per_level}")
-                if logger.isEnabledFor(logging.INFO):
-
-                    logger.info(f"Stage 2 MC: Running {num_simulations_per_level} simulations in PARALLEL for {replacement_pct:.1%}")
-                
-                # Prepare shared data for parallel processing
-                # Prepare minimal shared data (avoid complex objects that can't be pickled)
-                shared_data = {
-                    'daily_data_dict': daily_data_dict,  # This should be simple dict of DataFrames
-                    'optimized_scenario': scenario_config,  # This should be a simple dict
-                    'replacement_pct': replacement_pct  # Add this for worker processes
-                }
-                
-                # Run parallel simulations
-                level_results_dict = parallel_processor.process_monte_carlo_simulations(
-                    [replacement_pct], num_simulations_per_level, _stage2_monte_carlo_simulation, shared_data
-                )
-                level_results = level_results_dict[replacement_pct]
-                
-                if logger.isEnabledFor(logging.INFO):
-
-                
-                    logger.info(f"Stage 2 MC: Completed {num_simulations_per_level} PARALLEL simulations for {replacement_pct:.1%}")
-                
-            else:
-                # Sequential fallback - run multiple simulations
-                for sim_num in range(num_simulations_per_level):
+            # SEQUENTIAL PROCESSING ONLY: Parallel processing has been completely removed
+            # Run multiple simulations sequentially
+            for sim_num in range(num_simulations_per_level):
+                try:
+                    # SIMPLIFIED APPROACH: Generate synthetic returns directly without complex asset replacement
+                    # This ensures we always get visible differences for Monte Carlo stress testing
+                    
+                    # Start with original returns
+                    synthetic_rets = rets_full.copy()
+                    
+                    # Randomly select assets to replace based on replacement percentage
+                    np.random.seed((42 + hash(scenario_name) + int(replacement_pct * 1000) + sim_num) % (2**32 - 1))
+                    universe = scenario_config.get('universe', self.global_config.get('universe', []))
+                    num_to_replace = max(1, int(len(universe) * replacement_pct))
+                    assets_to_replace = np.random.choice(universe, size=num_to_replace, replace=False)
+                    
+                    # For each selected asset, generate meaningfully different synthetic returns
+                    for ticker in assets_to_replace:
+                        if ticker in synthetic_rets.columns:
+                            original_returns = rets_full[ticker].dropna()
+                            if len(original_returns) > 50:  # Need some data to work with
+                                # Create significantly different synthetic data for stress testing
+                                np.random.seed((42 + hash(ticker) + sim_num + int(replacement_pct * 1000)) % (2**32 - 1))
+                                
+                                # Method 1: Bootstrap with replacement and add substantial noise
+                                n_samples = len(original_returns)
+                                bootstrap_indices = np.random.choice(n_samples, size=n_samples, replace=True)
+                                bootstrapped_returns = original_returns.iloc[bootstrap_indices].values
+                                
+                                # Add substantial noise (15-25% of original volatility for real stress testing)
+                                noise_std = original_returns.std() * np.random.uniform(0.15, 0.25)
+                                noise = np.random.normal(0, noise_std, len(bootstrapped_returns))
+                                
+                                # Apply volatility scaling to make it more different
+                                vol_scaling = np.random.uniform(0.8, 1.3)  # Scale volatility by 80%-130%
+                                synthetic_returns = (bootstrapped_returns * vol_scaling) + noise
+                                
+                                # Ensure we maintain the same index
+                                synthetic_rets[ticker] = pd.Series(synthetic_returns, index=original_returns.index)
+                                
+                                if logger.isEnabledFor(logging.DEBUG):
+                                    orig_vol = original_returns.std()
+                                    synth_vol = synthetic_rets[ticker].std()
+                                    orig_mean = original_returns.mean()
+                                    synth_mean = synthetic_rets[ticker].mean()
+                                    logger.debug(f"Stage 2 MC: Generated synthetic returns for {ticker} (vol: {orig_vol:.4f} -> {synth_vol:.4f}, mean: {orig_mean:.4f} -> {synth_mean:.4f})")
+                    
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Stage 2 MC: Replaced {len(assets_to_replace)} assets: {list(assets_to_replace)}")
+                    
+                    # Run scenario with synthetic returns
+                    portfolio_returns = self.run_scenario(
+                        optimized_scenario, 
+                        monthly_data, 
+                        daily_data, 
+                        synthetic_rets, 
+                        verbose=False
+                    )
+                    
+                    level_results.append(portfolio_returns)
+                    logger.info(f"Stage 2 MC: Completed simulation {sim_num + 1}/{num_simulations_per_level} for {replacement_pct:.1%}")
+                    
+                except Exception as e:
+                    logger.error(f"Stage 2 MC simulation {sim_num+1}/{num_simulations_per_level} failed for {replacement_pct:.1%}: {e}")
+                    if logger.isEnabledFor(logging.DEBUG):
+                        import traceback
+                        logger.debug(f"Stage 2 MC simulation traceback: {traceback.format_exc()}")
+                    
+                    # Try to generate a simple fallback synthetic dataset
                     try:
-                        # SIMPLIFIED APPROACH: Generate synthetic returns directly without complex asset replacement
-                        # This ensures we always get visible differences for Monte Carlo stress testing
+                        logger.info(f"Stage 2 MC: Attempting fallback synthetic generation for {replacement_pct:.1%}")
+                        fallback_rets = rets_full.copy()
                         
-                        # Start with original returns
-                        synthetic_rets = rets_full.copy()
-                        
-                        # Randomly select assets to replace based on replacement percentage
-                        np.random.seed((42 + hash(scenario_name) + int(replacement_pct * 1000) + sim_num) % (2**32 - 1))
+                        # Simple fallback: just add random noise to selected assets
+                        np.random.seed((1000 + sim_num + int(replacement_pct * 1000)) % (2**32 - 1))
                         universe = scenario_config.get('universe', self.global_config.get('universe', []))
                         num_to_replace = max(1, int(len(universe) * replacement_pct))
                         assets_to_replace = np.random.choice(universe, size=num_to_replace, replace=False)
                         
-                        # For each selected asset, generate meaningfully different synthetic returns
                         for ticker in assets_to_replace:
-                            if ticker in synthetic_rets.columns:
-                                original_returns = rets_full[ticker].dropna()
-                                if len(original_returns) > 50:  # Need some data to work with
-                                    # Create significantly different synthetic data for stress testing
-                                    np.random.seed((42 + hash(ticker) + sim_num + int(replacement_pct * 1000)) % (2**32 - 1))
-                                    
-                                    # Method 1: Bootstrap with replacement and add substantial noise
-                                    n_samples = len(original_returns)
-                                    bootstrap_indices = np.random.choice(n_samples, size=n_samples, replace=True)
-                                    bootstrapped_returns = original_returns.iloc[bootstrap_indices].values
-                                    
-                                    # Add substantial noise (15-25% of original volatility for real stress testing)
-                                    noise_std = original_returns.std() * np.random.uniform(0.15, 0.25)
-                                    noise = np.random.normal(0, noise_std, len(bootstrapped_returns))
-                                    
-                                    # Apply volatility scaling to make it more different
-                                    vol_scaling = np.random.uniform(0.8, 1.3)  # Scale volatility by 80%-130%
-                                    synthetic_returns = (bootstrapped_returns * vol_scaling) + noise
-                                    
-                                    # Ensure we maintain the same index
-                                    synthetic_rets[ticker] = pd.Series(synthetic_returns, index=original_returns.index)
-                                    
-                                    if logger.isEnabledFor(logging.DEBUG):
-                                        orig_vol = original_returns.std()
-                                        synth_vol = synthetic_rets[ticker].std()
-                                        orig_mean = original_returns.mean()
-                                        synth_mean = synthetic_rets[ticker].mean()
-                                        logger.debug(f"Stage 2 MC: Generated synthetic returns for {ticker} (vol: {orig_vol:.4f} -> {synth_vol:.4f}, mean: {orig_mean:.4f} -> {synth_mean:.4f})")
+                            if ticker in fallback_rets.columns:
+                                original_returns = fallback_rets[ticker].dropna()
+                                if len(original_returns) > 10:
+                                    # Simple noise addition
+                                    noise = np.random.normal(0, original_returns.std() * 0.1, len(original_returns))
+                                    fallback_rets[ticker] = original_returns + noise
                         
-                        if logger.isEnabledFor(logging.DEBUG):
-                            logger.debug(f"Stage 2 MC: Replaced {len(assets_to_replace)} assets: {list(assets_to_replace)}")
-                        
-                        # Run scenario with synthetic returns
+                        # Try to run with fallback data
                         portfolio_returns = self.run_scenario(
                             optimized_scenario, 
                             monthly_data, 
                             daily_data, 
-                            synthetic_rets, 
+                            fallback_rets, 
                             verbose=False
                         )
-                        
                         level_results.append(portfolio_returns)
-                        if logger.isEnabledFor(logging.INFO):
-
-                            logger.info(f"Stage 2 MC: Completed simulation {sim_num + 1}/{num_simulations_per_level} for {replacement_pct:.1%}")
+                        logger.info(f"Stage 2 MC: Fallback simulation succeeded for {replacement_pct:.1%}")
                         
-                    except Exception as e:
-                        logger.error(f"Stage 2 MC simulation {sim_num+1}/{num_simulations_per_level} failed for {replacement_pct:.1%}: {e}")
-                        if logger.isEnabledFor(logging.DEBUG):
-                            import traceback
-                            logger.debug(f"Stage 2 MC simulation traceback: {traceback.format_exc()}")
-                        
-                        # Try to generate a simple fallback synthetic dataset
-                        try:
-                            logger.info(f"Stage 2 MC: Attempting fallback synthetic generation for {replacement_pct:.1%}")
-                            fallback_rets = rets_full.copy()
-                            
-                            # Simple fallback: just add random noise to selected assets
-                            np.random.seed((1000 + sim_num + int(replacement_pct * 1000)) % (2**32 - 1))
-                            universe = scenario_config.get('universe', self.global_config.get('universe', []))
-                            num_to_replace = max(1, int(len(universe) * replacement_pct))
-                            assets_to_replace = np.random.choice(universe, size=num_to_replace, replace=False)
-                            
-                            for ticker in assets_to_replace:
-                                if ticker in fallback_rets.columns:
-                                    original_returns = fallback_rets[ticker].dropna()
-                                    if len(original_returns) > 10:
-                                        # Simple noise addition
-                                        noise = np.random.normal(0, original_returns.std() * 0.1, len(original_returns))
-                                        fallback_rets[ticker] = original_returns + noise
-                            
-                            # Try to run with fallback data
-                            portfolio_returns = self.run_scenario(
-                                optimized_scenario, 
-                                monthly_data, 
-                                daily_data, 
-                                fallback_rets, 
-                                verbose=False
-                            )
-                            level_results.append(portfolio_returns)
-                            logger.info(f"Stage 2 MC: Fallback simulation succeeded for {replacement_pct:.1%}")
-                            
-                        except Exception as fallback_error:
-                            logger.error(f"Stage 2 MC: Fallback simulation also failed for {replacement_pct:.1%}: {fallback_error}")
-                            level_results.append(None)
+                    except Exception as fallback_error:
+                        logger.error(f"Stage 2 MC: Fallback simulation also failed for {replacement_pct:.1%}: {fallback_error}")
+                        level_results.append(None)
 
-                    progress.advance(task)
+                # Update progress bar
+                progress.advance(task)
             
                 if level_results:
                     simulation_results[replacement_pct] = level_results

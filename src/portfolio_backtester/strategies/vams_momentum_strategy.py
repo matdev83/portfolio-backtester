@@ -4,6 +4,14 @@ import numpy as np
 
 from .base_strategy import BaseStrategy
 
+# Import Numba optimization with fallback
+try:
+    from ..numba_optimized import vams_fast
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
+
 
 class VAMSMomentumStrategy(BaseStrategy):
     """Momentum strategy implementation using Volatility Adjusted Momentum Scores (VAMS)."""
@@ -82,54 +90,60 @@ class VAMSMomentumStrategy(BaseStrategy):
         if relevant_prices.empty:
             return pd.Series(dtype=float, index=asset_prices.columns)
 
-        # Get prices for momentum calculation
-        # P_t: current price
-        # P_t-L: price L months ago
-        try:
-            # Extract prices for calculations
-            price_now = relevant_prices.loc[current_date]
-            price_l_months_ago_df = relevant_prices.asof(current_date - pd.DateOffset(months=lookback_months))
-            if price_l_months_ago_df.empty:
-                return pd.Series(dtype=float, index=asset_prices.columns)
-            price_l_months_ago = price_l_months_ago_df.iloc[0] # This should already be a Series
+        if NUMBA_AVAILABLE:
+            vams_scores = pd.DataFrame(index=asset_prices.index, columns=asset_prices.columns)
+            for asset in asset_prices.columns:
+                vams_scores[asset] = vams_fast(asset_prices[asset].values, lookback_months, alpha)
+            return vams_scores.iloc[-1]
+        else:
+            # Get prices for momentum calculation
+            # P_t: current price
+            # P_t-L: price L months ago
+            try:
+                # Extract prices for calculations
+                price_now = relevant_prices.loc[current_date]
+                price_l_months_ago_df = relevant_prices.asof(current_date - pd.DateOffset(months=lookback_months))
+                if price_l_months_ago_df.empty:
+                    return pd.Series(dtype=float, index=asset_prices.columns)
+                price_l_months_ago = price_l_months_ago_df.iloc[0] # This should already be a Series
 
-            # Ensure both are Series before arithmetic operations
-            price_now = price_now.astype(float)
-            price_l_months_ago = price_l_months_ago.astype(float)
+                # Ensure both are Series before arithmetic operations
+                price_now = price_now.astype(float)
+                price_l_months_ago = price_l_months_ago.astype(float)
 
-            # Calculate momentum (simple return)
-            momentum = (price_now / price_l_months_ago) - 1
+                # Calculate momentum (simple return)
+                momentum = (price_now / price_l_months_ago) - 1
 
-            # Calculate downside deviation (simplified for monthly data)
-            # Using monthly returns over the lookback period
-            monthly_returns = relevant_prices.pct_change(fill_method=None).dropna()
-            downside_returns = monthly_returns[monthly_returns < 0].fillna(0) # Only negative returns
-            
-            # Ensure we have enough data for downside deviation (at least lookback_months)
-            if len(downside_returns) < lookback_months:
-                return pd.Series(0.0, index=asset_prices.columns)
+                # Calculate downside deviation (simplified for monthly data)
+                # Using monthly returns over the lookback period
+                monthly_returns = relevant_prices.pct_change(fill_method=None).dropna()
+                downside_returns = monthly_returns[monthly_returns < 0].fillna(0) # Only negative returns
+                
+                # Ensure we have enough data for downside deviation (at least lookback_months)
+                if len(downside_returns) < lookback_months:
+                    return pd.Series(0.0, index=asset_prices.columns)
 
-            # Use rolling standard deviation of downside returns
-            # This is an approximation of downside deviation for simplicity in this context
-            # We need the last value of the rolling window
-            downside_volatility_raw = downside_returns.rolling(window=lookback_months, min_periods=max(1, lookback_months // 2)).std().iloc[-1]
-            
-            # Ensure downside_volatility is a Series with the same index as momentum
-            if isinstance(downside_volatility_raw, pd.Series):
-                downside_volatility = downside_volatility_raw.reindex(momentum.index).fillna(np.inf)
-            elif isinstance(downside_volatility_raw, (float, int, np.number)):
-                downside_volatility = pd.Series([float(downside_volatility_raw)], index=momentum.index).fillna(np.inf)
-            else:
-                # Fallback for unexpected types, default to infinite risk
-                downside_volatility = pd.Series(np.inf, index=momentum.index)
-            
-            # Calculate DPVAMS
-            dpvams_scores = (momentum - alpha * downside_volatility)
-            return pd.Series(dpvams_scores.values, index=dpvams_scores.index).fillna(0.0)
-        except Exception as e:
-            # Log the error for debugging
-            print(f"Error in _calculate_vams_scores for date {current_date}: {e}")
-            return pd.Series(dtype=float, index=asset_prices.columns).fillna(0.0) # Return all zeros on error
+                # Use rolling standard deviation of downside returns
+                # This is an approximation of downside deviation for simplicity in this context
+                # We need the last value of the rolling window
+                downside_volatility_raw = downside_returns.rolling(window=lookback_months, min_periods=max(1, lookback_months // 2)).std().iloc[-1]
+                
+                # Ensure downside_volatility is a Series with the same index as momentum
+                if isinstance(downside_volatility_raw, pd.Series):
+                    downside_volatility = downside_volatility_raw.reindex(momentum.index).fillna(np.inf)
+                elif isinstance(downside_volatility_raw, (float, int, np.number)):
+                    downside_volatility = pd.Series([float(downside_volatility_raw)], index=momentum.index).fillna(np.inf)
+                else:
+                    # Fallback for unexpected types, default to infinite risk
+                    downside_volatility = pd.Series(np.inf, index=momentum.index)
+                
+                # Calculate DPVAMS
+                dpvams_scores = (momentum - alpha * downside_volatility)
+                return pd.Series(dpvams_scores.values, index=dpvams_scores.index).fillna(0.0)
+            except Exception as e:
+                # Log the error for debugging
+                print(f"Error in _calculate_vams_scores for date {current_date}: {e}")
+                return pd.Series(dtype=float, index=asset_prices.columns).fillna(0.0) # Return all zeros on error
 
     def generate_signals(
         self,

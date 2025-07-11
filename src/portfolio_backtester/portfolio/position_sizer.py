@@ -184,11 +184,16 @@ def rolling_downside_volatility_sizer(
     upside moves do not lead to smaller position sizes."""
     
     # Calculate downside volatility for each asset using monthly prices
-    rets_monthly = prices.pct_change(fill_method=None).fillna(0)
-    downside_monthly = rets_monthly.clip(upper=0)
-    downside_sq_sum_monthly = (downside_monthly ** 2).rolling(window).sum()
-    downside_vol_monthly = (downside_sq_sum_monthly / window).pow(0.5)
-    downside_vol_monthly = pd.DataFrame(downside_vol_monthly, index=signals.index, columns=signals.columns)
+    if NUMBA_AVAILABLE and 'rolling_downside_volatility_fast' in globals():
+        downside_vol_monthly = pd.DataFrame(index=prices.index, columns=prices.columns)
+        for col in prices.columns:
+            downside_vol_monthly[col] = rolling_downside_volatility_fast(prices[col].values, window)
+    else:
+        rets_monthly = prices.pct_change(fill_method=None).fillna(0)
+        downside_monthly = rets_monthly.clip(upper=0)
+        downside_sq_sum_monthly = (downside_monthly ** 2).rolling(window).sum()
+        downside_vol_monthly = (downside_sq_sum_monthly / window).pow(0.5)
+        downside_vol_monthly = pd.DataFrame(downside_vol_monthly, index=signals.index, columns=signals.columns)
     if logger.isEnabledFor(logging.DEBUG):
         if logger.isEnabledFor(logging.DEBUG):
 
