@@ -20,6 +20,10 @@ def display_results(self, daily_data_for_display):
     if not self.results:
         logger.warning("No results available to display. Skipping performance report generation.")
         return
+    
+    # Check if optimization reports should be generated
+    advanced_reporting_config = self.global_config.get('advanced_reporting_config', {})
+    enable_optimization_reports = advanced_reporting_config.get('enable_optimization_reports', True)
 
     benchmark_ticker = self.global_config["benchmark"]
     if isinstance(daily_data_for_display.columns, pd.MultiIndex):
@@ -101,30 +105,33 @@ def display_results(self, daily_data_for_display):
     logger.info("Performance tables displayed.")
     _plot_performance_summary(self, bench_rets_full, train_end_date)
 
-    # Plot stability measures if available
-    for name, result_data in self.results.items():
-        if "best_trial_obj" in result_data and result_data["best_trial_obj"] is not None:
-            _plot_stability_measures(self, name, result_data["best_trial_obj"], result_data["returns"])
-            
-            # Create Monte Carlo robustness analysis if we have optimal parameters
-            if "optimal_params" in result_data and result_data["optimal_params"] is not None:
-                # Find the original scenario config
-                scenario_config = None
-                for scenario in self.scenarios:
-                    if scenario["name"] in name:
-                        scenario_config = scenario
-                        break
+    # Plot stability measures if available and optimization reports are enabled
+    if enable_optimization_reports:
+        for name, result_data in self.results.items():
+            if "best_trial_obj" in result_data and result_data["best_trial_obj"] is not None:
+                _plot_stability_measures(self, name, result_data["best_trial_obj"], result_data["returns"])
                 
-                if scenario_config:
-                    _plot_monte_carlo_robustness_analysis(
-                        self, 
-                        name, 
-                        scenario_config, 
-                        result_data["optimal_params"],
-                        self.monthly_data,
-                        daily_data_for_display,
-                        self.rets_full
-                    )
+                # Create Monte Carlo robustness analysis if we have optimal parameters
+                if "optimal_params" in result_data and result_data["optimal_params"] is not None:
+                    # Find the original scenario config
+                    scenario_config = None
+                    for scenario in self.scenarios:
+                        if scenario["name"] in name:
+                            scenario_config = scenario
+                            break
+                    
+                    if scenario_config:
+                        _plot_monte_carlo_robustness_analysis(
+                            self, 
+                            name, 
+                            scenario_config, 
+                            result_data["optimal_params"],
+                            self.monthly_data,
+                            daily_data_for_display,
+                            self.rets_full
+                        )
+    else:
+        logger.info("Optimization reports are disabled. Skipping advanced stability measures and Monte Carlo analysis.")
 
 def _generate_performance_table(self, console: Console, period_returns: dict,
                                   bench_period_rets: pd.Series, title: str,
@@ -470,8 +477,13 @@ Std Dev of Values: {np.std(trial_values):.3f}"""
         
         logger.info(f"Trial P&L curves plot saved to: {filepath}")
         
-        # Now create comprehensive parameter impact visualizations
-        _plot_parameter_impact_analysis(self, scenario_name, best_trial_obj, timestamp)
+        # Check if advanced parameter analysis is enabled
+        advanced_reporting_config = self.global_config.get('advanced_reporting_config', {})
+        if advanced_reporting_config.get('enable_advanced_parameter_analysis', False):
+            # Create comprehensive parameter impact visualizations
+            _plot_parameter_impact_analysis(self, scenario_name, best_trial_obj, timestamp)
+        else:
+            logger.info("Advanced parameter analysis is disabled. Skipping hyperparameter correlation/sensitivity analysis.")
         
     except Exception as e:
         logger.error(f"Error creating trial P&L visualization: {e}")

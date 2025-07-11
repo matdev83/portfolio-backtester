@@ -5,6 +5,16 @@ from typing import Callable, Dict
 
 logger = logging.getLogger(__name__)
 
+# Import Numba optimizations with fallback
+try:
+    from ..numba_optimized import (
+        rolling_mean_fast, rolling_std_fast, rolling_sharpe_fast,
+        rolling_sortino_fast, rolling_beta_fast, rolling_correlation_fast
+    )
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
 def equal_weight_sizer(signals: pd.DataFrame, *_, **__) -> pd.DataFrame:
     """Apply equal weighting to the signals."""
     signal_sums = signals.abs().sum(axis=1)
@@ -21,9 +31,25 @@ def rolling_sharpe_sizer(
     **_,
 ) -> pd.DataFrame:
     rets = prices.pct_change(fill_method=None).fillna(0)
-    mean = rets.rolling(window).mean()
-    std = rets.rolling(window).std()
-    sharpe = mean / std.replace(0, np.nan)
+    
+    # Use Numba optimization if available and data is suitable
+    if NUMBA_AVAILABLE and not rets.empty:
+        # Apply Numba optimization column by column
+        sharpe_data = {}
+        for col in rets.columns:
+            if not rets[col].isna().all():
+                sharpe_values = rolling_sharpe_fast(rets[col].values, window)
+                sharpe_data[col] = sharpe_values
+            else:
+                sharpe_data[col] = np.full(len(rets), np.nan)
+        
+        sharpe = pd.DataFrame(sharpe_data, index=rets.index)
+    else:
+        # Fallback to pandas
+        mean = rets.rolling(window).mean()
+        std = rets.rolling(window).std()
+        sharpe = mean / std.replace(0, np.nan)
+    
     sized = signals.mul(sharpe)
     sized_sums = sized.abs().sum(axis=1)
     result = sized.div(sized_sums, axis=0)
@@ -38,16 +64,32 @@ def rolling_sortino_sizer(
     **_,
 ) -> pd.DataFrame:
     rets = prices.pct_change(fill_method=None).fillna(0)
-    mean = rets.rolling(window).mean() - target_return
+    
+    # Use Numba optimization if available and data is suitable
+    if NUMBA_AVAILABLE and not rets.empty:
+        # Apply Numba optimization column by column
+        sortino_data = {}
+        for col in rets.columns:
+            if not rets[col].isna().all():
+                sortino_values = rolling_sortino_fast(rets[col].values, window, target_return)
+                sortino_data[col] = sortino_values
+            else:
+                sortino_data[col] = np.full(len(rets), np.nan)
+        
+        sortino = pd.DataFrame(sortino_data, index=rets.index)
+    else:
+        # Fallback to pandas
+        mean = rets.rolling(window).mean() - target_return
 
-    def downside(series):
-        d = series[series < target_return]
-        if len(d) == 0:
-            return np.nan
-        return np.sqrt(np.mean((d - target_return) ** 2))
+        def downside(series):
+            d = series[series < target_return]
+            if len(d) == 0:
+                return np.nan
+            return np.sqrt(np.mean((d - target_return) ** 2))
 
-    downside_dev = rets.rolling(window).apply(downside, raw=False)
-    sortino = mean / downside_dev.replace(0, np.nan)
+        downside_dev = rets.rolling(window).apply(downside, raw=False)
+        sortino = mean / downside_dev.replace(0, np.nan)
+    
     sized = signals.mul(sortino)
     sized_sums = sized.abs().sum(axis=1)
     result = sized.div(sized_sums, axis=0)
@@ -63,11 +105,27 @@ def rolling_beta_sizer(
 ) -> pd.DataFrame:
     rets = prices.pct_change(fill_method=None).fillna(0)
     bench_rets = benchmark.pct_change(fill_method=None).fillna(0)
-    beta = pd.DataFrame(index=rets.index, columns=rets.columns)
-    for col in rets.columns:
-        cov = rets[col].rolling(window).cov(bench_rets)
-        var = bench_rets.rolling(window).var()
-        beta[col] = cov / var
+    
+    # Use Numba optimization if available and data is suitable
+    if NUMBA_AVAILABLE and not rets.empty and not bench_rets.isna().all():
+        # Apply Numba optimization column by column
+        beta_data = {}
+        for col in rets.columns:
+            if not rets[col].isna().all():
+                beta_values = rolling_beta_fast(rets[col].values, bench_rets.values, window)
+                beta_data[col] = beta_values
+            else:
+                beta_data[col] = np.full(len(rets), np.nan)
+        
+        beta = pd.DataFrame(beta_data, index=rets.index)
+    else:
+        # Fallback to pandas
+        beta = pd.DataFrame(index=rets.index, columns=rets.columns)
+        for col in rets.columns:
+            cov = rets[col].rolling(window).cov(bench_rets)
+            var = bench_rets.rolling(window).var()
+            beta[col] = cov / var
+    
     factor = 1 / beta.abs().replace(0, np.nan)
     sized = signals.mul(factor)
     sized_sums = sized.abs().sum(axis=1)
@@ -84,9 +142,25 @@ def rolling_benchmark_corr_sizer(
 ) -> pd.DataFrame:
     rets = prices.pct_change(fill_method=None).fillna(0)
     bench_rets = benchmark.pct_change(fill_method=None).fillna(0)
-    corr = pd.DataFrame(index=rets.index, columns=rets.columns)
-    for col in rets.columns:
-        corr[col] = rets[col].rolling(window).corr(bench_rets)
+    
+    # Use Numba optimization if available and data is suitable
+    if NUMBA_AVAILABLE and not rets.empty and not bench_rets.isna().all():
+        # Apply Numba optimization column by column
+        corr_data = {}
+        for col in rets.columns:
+            if not rets[col].isna().all():
+                corr_values = rolling_correlation_fast(rets[col].values, bench_rets.values, window)
+                corr_data[col] = corr_values
+            else:
+                corr_data[col] = np.full(len(rets), np.nan)
+        
+        corr = pd.DataFrame(corr_data, index=rets.index)
+    else:
+        # Fallback to pandas
+        corr = pd.DataFrame(index=rets.index, columns=rets.columns)
+        for col in rets.columns:
+            corr[col] = rets[col].rolling(window).corr(bench_rets)
+    
     factor = 1 / (corr.abs() + 1e-9)
     sized = signals.mul(factor)
     sized_sums = sized.abs().sum(axis=1)

@@ -152,5 +152,6 @@ tests/universe/
 
 .workflows/
 .dev/
+dev/
 data/reports/
 data/reports/*

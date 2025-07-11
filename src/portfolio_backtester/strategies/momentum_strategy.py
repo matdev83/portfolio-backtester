@@ -5,6 +5,13 @@ import numpy as np
 from .base_strategy import BaseStrategy
 # Removed imports for signal_generators, features as they are now internalized
 
+# Import Numba optimization with fallback
+try:
+    from ..numba_optimized import momentum_scores_fast_vectorized
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
 
 class MomentumStrategy(BaseStrategy):
     """
@@ -137,15 +144,27 @@ class MomentumStrategy(BaseStrategy):
         if prices_now is None or prices_then is None: # Not enough historical data
              return pd.Series(dtype=float, index=asset_prices.columns)
 
-        # Replace 0s or negative prices with NaN to avoid division errors or misleading momentum
-        prices_then = prices_then.replace(0, np.nan)
-        if prices_then.ndim > 0 : # If it's a Series (multiple assets)
-            prices_then[prices_then < 0] = np.nan
-        elif prices_then < 0: # scalar
-             prices_then = np.nan
+        # Use Numba optimization if available and data is suitable
+        if (NUMBA_AVAILABLE and 
+            not prices_now.isna().any() and 
+            not prices_then.isna().any() and
+            (prices_then > 0).all()):
+            
+            # Fast path: Use Numba-optimized calculation
+            momentum_values = momentum_scores_fast_vectorized(prices_now.values, prices_then.values)
+            momentum_scores = pd.Series(momentum_values, index=prices_now.index)
+            
+        else:
+            # Fallback path: Use pandas calculation with proper NaN handling
+            # Replace 0s or negative prices with NaN to avoid division errors or misleading momentum
+            prices_then = prices_then.replace(0, np.nan)
+            if prices_then.ndim > 0 : # If it's a Series (multiple assets)
+                prices_then[prices_then < 0] = np.nan
+            elif prices_then < 0: # scalar
+                 prices_then = np.nan
 
+            momentum_scores = (prices_now / prices_then) - 1
 
-        momentum_scores = (prices_now / prices_then) - 1
         return momentum_scores.fillna(0.0) # Fill NaN scores with 0, or handle as per strategy needs
 
 

@@ -613,15 +613,19 @@ class Backtester:
 
         if all(np.isnan(np.array(metric_avgs))):
             self.logger.warning(f"No valid windows produced results for params: {scenario_config['strategy_params']}. Returning NaN.")
-            return tuple([float("nan")] * len(metrics_to_optimize)) if is_multi_objective else float("nan")
+            full_pnl_returns = pd.Series(dtype=float)
+            if is_multi_objective:
+                return tuple([float("nan")] * len(metrics_to_optimize)), full_pnl_returns
+            else:
+                return float("nan"), full_pnl_returns
 
         # Concatenate all window returns into a single series for full P&L curve
         full_pnl_returns = pd.concat(all_window_returns) if all_window_returns else pd.Series(dtype=float)
 
         if is_multi_objective:
-            return tuple(float(v) for v in metric_avgs)
+            return tuple(float(v) for v in metric_avgs), full_pnl_returns
         else:
-            return float(metric_avgs[0])
+            return float(metric_avgs[0]), full_pnl_returns
     
     def _get_monte_carlo_trial_threshold(self, optimization_mode):
         """
@@ -739,7 +743,11 @@ class Backtester:
                 self.logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
             else:
                 self.logger.info("All scenarios completed. Displaying results.")
-                self.display_results(daily_data) # daily_data is available here
+                # Only display results for backtest mode - optimization mode handles its own reporting
+                if self.args.mode == "backtest":
+                    self.display_results(daily_data) # daily_data is available here
+                else:
+                    self.logger.info("Optimization mode completed. Comprehensive reports already generated.")
         
 # The following code block was incorrectly placed inside the class in the previous attempt.
 # It should remain at the module level.
@@ -819,4 +827,8 @@ if __name__ == "__main__":
                     logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
                 else:
                     logger.info("All scenarios completed. Displaying results.")
-                    backtester.display_results(backtester.daily_data_ohlc)
+                    # Only display results for backtest mode - optimization mode handles its own reporting
+                    if args.mode == "backtest":
+                        backtester.display_results(backtester.daily_data_ohlc)
+                    else:
+                        logger.info("Optimization mode completed. Comprehensive reports already generated.")

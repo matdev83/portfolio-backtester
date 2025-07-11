@@ -445,6 +445,13 @@ class OptimizerReportGenerator:
             report_lines.append("The optimization process generated detailed visualizations to support strategy analysis and validation:")
             report_lines.append("")
             
+            # Check if advanced parameter analysis was disabled
+            global_config = optimization_results.get('optimization_metadata', {}).get('global_config', {})
+            advanced_reporting_config = global_config.get('advanced_reporting_config', {})
+            if not advanced_reporting_config.get('enable_advanced_parameter_analysis', False):
+                report_lines.append("📝 **Note:** Advanced hyperparameter statistical analysis (correlation matrices, sensitivity analysis, etc.) is disabled in configuration. Only basic performance visualizations are included.")
+                report_lines.append("")
+            
             # Define plot categories with detailed descriptions and interpretation guides
             plot_categories = {
                 'optimization_progress': {

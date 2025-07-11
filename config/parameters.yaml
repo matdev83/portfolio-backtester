@@ -181,6 +181,17 @@ monte_carlo_config:
   # Random seed handling
   random_seed: null  # Set to integer for reproducible generation, null for random
 
+# Advanced Reporting Configuration
+advanced_reporting_config:
+  # Enable/disable advanced hyperparameter statistical analysis
+  enable_advanced_parameter_analysis: false  # Disabled by default - generates complex correlation/sensitivity reports
+  
+  # Enable/disable regular performance metrics calculation (always keep enabled for basic reporting)
+  enable_performance_metrics: true  # Always enabled - basic performance calculations
+  
+  # Enable/disable comprehensive optimization reports (markdown reports with plots)
+  enable_optimization_reports: true  # Enabled by default - creates organized report directories
+
 OPTIMIZER_PARAMETER_DEFAULTS:
   max_lookback:
     type: "int"

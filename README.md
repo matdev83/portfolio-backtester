@@ -27,13 +27,15 @@ This project is a sophisticated Python-based tool for backtesting portfolio stra
 - **Comprehensive Performance Metrics**: Sharpe, Sortino, Calmar ratios, drawdown analysis
 - **Stability Metrics**: Parameter consistency across walk-forward windows
 - **Trial P&L Visualization**: Monte Carlo-style plots showing optimization trial performance
-- **Parameter Impact Analysis**: Sensitivity, correlation, and importance ranking
+- **Parameter Impact Analysis**: Sensitivity, correlation, and importance ranking (configurable)
 - **Robustness Stress Testing**: Visual analysis of strategy performance under synthetic market conditions
+- **Configurable Reporting**: Advanced hyperparameter analysis can be disabled for faster optimization
 
 ### Enhanced Configuration System
 - **YAML-Based Configuration**: Flexible parameter and scenario management
 - **Robustness Configuration**: Fine-tuned control over WFO randomization
 - **Monte Carlo Configuration**: Detailed control over synthetic data generation
+- **Advanced Reporting Configuration**: Control over statistical analysis generation for faster optimization
 - **Strategy Parameter Defaults**: Centralized optimization parameter management
 
 ## Setup
@@ -210,6 +212,34 @@ monte_carlo_config:
     enable_validation: false  # Disabled during optimization for speed
     tolerance: 0.8
 ```
+
+### Advanced Reporting Configuration
+
+```yaml
+advanced_reporting_config:
+  # Enable/disable advanced hyperparameter statistical analysis
+  enable_advanced_parameter_analysis: false  # Disabled by default for faster optimization
+  
+  # Enable/disable regular performance metrics calculation
+  enable_performance_metrics: true  # Always enabled for basic reporting
+  
+  # Enable/disable comprehensive optimization reports
+  enable_optimization_reports: true  # Enabled by default for organized report directories
+```
+
+**Advanced Parameter Analysis includes:**
+- Parameter correlation matrices
+- Parameter sensitivity analysis  
+- Parameter importance ranking
+- Parameter stability analysis
+- Parameter robustness assessment
+- Parameter performance heatmaps
+
+**When disabled (default):**
+- ✅ **Faster optimization** - No complex statistical plots generated
+- ✅ **Cleaner reports** - Focus on essential performance metrics
+- ✅ **Regular performance metrics** - Sharpe, Calmar, drawdown analysis still included
+- ✅ **Basic visualizations** - Performance plots and trial analysis still generated
 
 ## Performance Metrics
 
