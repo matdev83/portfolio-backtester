@@ -43,15 +43,15 @@ class ConstraintHandler:
         if not constraints_config:
             return optimal_params, None, True
         
-        if logger.isEnabledFor(logging.INFO):
-            logger.info(f"Attempting to find constraint-satisfying parameters (max {max_attempts} attempts)")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Attempting to find constraint-satisfying parameters (max {max_attempts} attempts)")
         
         # Start with optimal params and iteratively adjust
         current_params = optimal_params.copy()
         
         for attempt in range(max_attempts):
-            if logger.isEnabledFor(logging.INFO):
-                logger.info(f"Constraint adjustment attempt {attempt + 1}/{max_attempts}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Constraint adjustment attempt {attempt + 1}/{max_attempts}")
             
             # Adjust parameters based on constraint violations
             adjusted_params = self._adjust_parameters_for_constraints(
@@ -80,11 +80,12 @@ class ConstraintHandler:
             if not test_violations:
                 if logger.isEnabledFor(logging.INFO):
                     logger.info(f"✅ Found constraint-satisfying parameters on attempt {attempt + 1}")
-                    logger.info(f"Adjusted parameters: {adjusted_params}")
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Adjusted parameters: {adjusted_params}")
                 return adjusted_params, test_rets, True
             else:
-                if logger.isEnabledFor(logging.INFO):
-                    logger.info(f"Attempt {attempt + 1}: Still have violations: {test_violations}")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"Attempt {attempt + 1}: Still have violations: {test_violations}")
                 current_params = adjusted_params  # Use as starting point for next iteration
         
         logger.error(f"Failed to find constraint-satisfying parameters after {max_attempts} attempts")
@@ -110,17 +111,25 @@ class ConstraintHandler:
         volatility_too_high = any("Ann. Vol" in v and ">" in v for v in violations)
         
         if volatility_too_high:
-            # Reduce leverage to lower volatility
+            # Reduce leverage to lower volatility; allow dropping below 1.0 if necessary
             current_leverage = adjusted.get("leverage", 1.0)
-            if current_leverage > 1.0:
-                # Reduce leverage progressively
-                reduction_factor = 0.8 ** (attempt + 1)  # 0.8, 0.64, 0.512, etc.
-                new_leverage = max(1.0, current_leverage * reduction_factor)
+
+            # Determine the minimum leverage allowed (default 0.1, but can be overridden in scenario_config)
+            min_leverage_allowed = scenario_config.get("min_leverage_allowed", 0.1)
+
+            # Apply progressive reduction factor each attempt
+            reduction_factor = 0.7 ** (attempt + 1)  # 0.7, 0.49, 0.343, etc.
+            new_leverage = max(min_leverage_allowed, current_leverage * reduction_factor)
+
+            # Only update if leverage actually changes to avoid infinite loops
+            if abs(new_leverage - current_leverage) > 1e-6:
                 adjusted["leverage"] = new_leverage
-                if logger.isEnabledFor(logging.INFO):
-                    logger.info(f"Reducing leverage from {current_leverage:.2f} to {new_leverage:.2f}")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        f"Reducing leverage from {current_leverage:.3f} to {new_leverage:.3f}"
+                    )
             else:
-                # If leverage is already 1.0, try other adjustments
+                # If leverage cannot be reduced further, fall back to other parameter tweaks
                 return self._try_other_adjustments(adjusted, scenario_config, attempt)
         
         return adjusted
@@ -139,8 +148,8 @@ class ConstraintHandler:
             max_fast = min(current_slow - 5, current_fast + 5 + attempt * 2)
             if max_fast > current_fast:
                 adjusted["fast_ema_days"] = max_fast
-                if logger.isEnabledFor(logging.INFO):
-                    logger.info(f"Increasing fast EMA from {current_fast} to {max_fast} to reduce volatility")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"Increasing fast EMA from {current_fast} to {max_fast} to reduce volatility")
                 return adjusted
         
         # If no other adjustments possible, return None

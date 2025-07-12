@@ -10,6 +10,12 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, Set, Optional
 from .base_strategy import BaseStrategy
+# Optional Numba optimisation
+try:
+    from ..numba_optimized import ema_fast
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
 
 
 class EMAStrategy(BaseStrategy):

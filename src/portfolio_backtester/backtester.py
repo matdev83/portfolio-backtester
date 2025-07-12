@@ -67,6 +67,9 @@ class Backtester:
         self.data_cache = get_global_cache()
         self.logger.debug("Data preprocessing cache initialized")
         
+        # Cache for daily date index (used by fast path)
+        self._daily_index_cache = None
+        
         # Initialize Monte Carlo components if enabled
         self.asset_replacement_manager = None
         self.synthetic_data_generator = None
@@ -84,6 +87,8 @@ class Backtester:
         # Import the deferred report generation method
         from .backtester_logic.execution import generate_deferred_report
         self.generate_deferred_report = types.MethodType(generate_deferred_report, self)
+
+    # Duplicate __init__ method removed - keeping the original one above
 
     def _get_data_source(self):
         ds = self.global_config.get("data_source", "yfinance").lower()
@@ -244,20 +249,9 @@ class Backtester:
 
         if verbose:
             if logger.isEnabledFor(logging.DEBUG):
-
                 logger.debug(f"All signals generated for scenario: {scenario_config['name']}")
-            if logger.isEnabledFor(logging.INFO):
-
-                if logger.isEnabledFor(logging.DEBUG):
-
-
-                    logger.debug(f"Signals head:\n{signals.head()}")
-            if logger.isEnabledFor(logging.INFO):
-
-                if logger.isEnabledFor(logging.DEBUG):
-
-
-                    logger.debug(f"Signals tail:\n{signals.tail()}")
+                logger.debug(f"Signals head:\n{signals.head()}")
+                logger.debug(f"Signals tail:\n{signals.tail()}")
             if signals.empty:
                  logger.warning("Generated signals DataFrame is empty.")
 
@@ -340,11 +334,7 @@ class Backtester:
             filtered_sizer_params["max_leverage"] = max_leverage_param
 
         if logger.isEnabledFor(logging.DEBUG):
-
-
             logger.debug(f"Sizer arguments prepared: {sizer_args}")
-        if logger.isEnabledFor(logging.DEBUG):
-
             logger.debug(f"Final keyword arguments for sizer: {filtered_sizer_params}")
 
         sized_signals = sizer_func(
@@ -353,20 +343,9 @@ class Backtester:
         )
         if verbose:
             if logger.isEnabledFor(logging.DEBUG):
-
                 logger.debug(f"Positions sized using {sizer_name}.")
-            if logger.isEnabledFor(logging.INFO):
-
-                if logger.isEnabledFor(logging.DEBUG):
-
-
-                    logger.debug(f"Sized signals head:\n{sized_signals.head()}")
-            if logger.isEnabledFor(logging.INFO):
-
-                if logger.isEnabledFor(logging.DEBUG):
-
-
-                    logger.debug(f"Sized signals tail:\n{signals.tail()}")
+                logger.debug(f"Sized signals head:\n{sized_signals.head()}")
+                logger.debug(f"Sized signals tail:\n{signals.tail()}")
 
         weights_monthly = rebalance(
             sized_signals, scenario_config["rebalance_frequency"]
@@ -414,41 +393,97 @@ class Backtester:
         portfolio_rets_net = (daily_portfolio_returns_gross - transaction_costs).fillna(0.0)
 
         if verbose:
-            if logger.isEnabledFor(logging.INFO):
-
-                if logger.isEnabledFor(logging.DEBUG):
-
-
-                    scenario_name = scenario_config['name']
-                    logger.debug(f"Portfolio net returns calculated for {scenario_name}. First few net returns: {portfolio_rets_net.head().to_dict()}")
-            if logger.isEnabledFor(logging.INFO):
-
-                if logger.isEnabledFor(logging.DEBUG):
-
-
-                    logger.debug(f"Net returns index: {portfolio_rets_net.index.min()} to {portfolio_rets_net.index.max()}")
+            if logger.isEnabledFor(logging.DEBUG):
+                scenario_name = scenario_config['name']
+                logger.debug(f"Portfolio net returns calculated for {scenario_name}. First few net returns: {portfolio_rets_net.head().to_dict()}")
+                logger.debug(f"Net returns index: {portfolio_rets_net.index.min()} to {portfolio_rets_net.index.max()}")
 
         return portfolio_rets_net
 
-    def _evaluate_walk_forward_fast(self, trial: Any, scenario_config: dict, windows: list,
-                                      monthly_data_np: np.ndarray, daily_data_np: np.ndarray, rets_full_np: np.ndarray,
-                                      metrics_to_optimize: list, is_multi_objective: bool) -> float | tuple[float, ...]:
-        """
-        Numba-optimized version of walk-forward evaluation.
-        (This is a placeholder for the actual Numba implementation)
-        """
-        # This will be replaced with a fully vectorized/jitted implementation
-        # For now, it will convert back to pandas and call the original method
-        # to maintain functionality during refactoring.
-        
-        # Convert numpy arrays back to pandas DataFrames
-        monthly_data = pd.DataFrame(monthly_data_np) # Simplified conversion
-        daily_data = pd.DataFrame(daily_data_np)
-        rets_full = pd.DataFrame(rets_full_np)
+    def _evaluate_walk_forward_fast(
+        self,
+        trial: Any,
+        scenario_config: dict,
+        windows: list,
+        monthly_data_np: np.ndarray,
+        daily_data_np: np.ndarray,
+        rets_full_np: np.ndarray,
+        metrics_to_optimize: list,
+        is_multi_objective: bool,
+    ) -> float | tuple[float, ...]:
+        """Optional Numba-accelerated evaluation.
 
-        return self._evaluate_params_walk_forward(trial, scenario_config, windows,
-                                                  monthly_data, daily_data, rets_full,
-                                                  metrics_to_optimize, is_multi_objective)
+        The fast path is activated only when the environment variable
+        ``ENABLE_NUMBA_WALKFORWARD`` is set to ``"1"``.  Otherwise we fall
+        back to the legacy Pandas implementation – guaranteeing identical
+        results while refactoring is in progress.
+        """
+
+        import os
+        from .utils import _df_to_float32_array  # pylint: disable=import-error
+        from . import numba_kernels as _nk  # pylint: disable=import-error
+
+        use_fast = os.environ.get("ENABLE_NUMBA_WALKFORWARD", "0") == "1"
+
+        if not use_fast:
+            # Legacy path – convert back to DataFrames and delegate
+            monthly_data = pd.DataFrame(monthly_data_np)
+            daily_data = pd.DataFrame(daily_data_np)
+            rets_full = pd.DataFrame(rets_full_np)
+            return self._evaluate_params_walk_forward(
+                trial,
+                scenario_config,
+                windows,
+                monthly_data,
+                daily_data,
+                rets_full,
+                metrics_to_optimize,
+                is_multi_objective,
+            )
+
+        # ------------------------------------------------------------------
+        # FAST PATH  (experimental)
+        # ------------------------------------------------------------------
+        try:
+            # Convert to float32 NumPy arrays; assume daily_data_np already holds
+            # daily *portfolio* returns per asset.  We first need aggregate
+            # daily portfolio returns using equal weights (approx) as a proof-
+            # of-concept.
+
+            daily_returns = rets_full_np.astype(np.float32)
+
+            # Aggregate across assets equally – later we will bring in sizer
+            # logic inside the kernel.
+            if daily_returns.size == 0:
+                raise ValueError("Daily returns array is empty – cannot run fast path")
+
+            port_rets = np.nanmean(daily_returns, axis=1).astype(np.float32)
+
+            # Build start/end index arrays for test periods
+            test_starts = np.asarray([np.searchsorted(self._daily_index_cache, te_start) for _, _, te_start, _ in windows], dtype=np.int64)
+            test_ends = np.asarray([np.searchsorted(self._daily_index_cache, te_end) for _, _, _, te_end in windows], dtype=np.int64)
+
+            metrics_mat = _nk.window_mean_std(port_rets, test_starts, test_ends)
+
+            # Currently optimise on mean return (obj 0)
+            avg_metric = float(np.nanmean(metrics_mat[:, 0]))
+            return avg_metric if not is_multi_objective else (avg_metric,)
+
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Fast walk-forward path failed – falling back to legacy: %s", exc)
+            monthly_data = pd.DataFrame(monthly_data_np)
+            daily_data = pd.DataFrame(daily_data_np)
+            rets_full = pd.DataFrame(rets_full_np)
+            return self._evaluate_params_walk_forward(
+                trial,
+                scenario_config,
+                windows,
+                monthly_data,
+                daily_data,
+                rets_full,
+                metrics_to_optimize,
+                is_multi_objective,
+            )
 
     def _evaluate_params_walk_forward(self, trial: Any, scenario_config: dict, windows: list,
                                       monthly_data, daily_data, rets_full,
@@ -869,6 +904,107 @@ class Backtester:
             'comprehensive': 5 # Enable MC after 5 trials for comprehensive mode
         }
         return thresholds.get(optimization_mode, 10)  # Default to balanced
+
+    def evaluate_fast(
+        self,
+        trial: Any,
+        scenario_config: dict,
+        windows: list,
+        monthly_data: pd.DataFrame,
+        daily_data: pd.DataFrame,
+        rets_full: pd.DataFrame,
+        metrics_to_optimize: list,
+        is_multi_objective: bool,
+    ) -> tuple[float | tuple[float, ...], pd.Series]:
+        """Public interface for fast evaluation with Monte-Carlo safeguards.
+        
+        This method ensures Monte-Carlo synthetic data injection (if enabled)
+        occurs before NumPy conversion, then delegates to the fast kernel.
+        Falls back to legacy path if any unsupported features are active.
+        
+        Returns:
+            Tuple of (objective_value, full_pnl_returns) to match legacy interface
+        """
+        import os
+        from .utils import _df_to_float32_array
+        
+        # Check if fast path is enabled
+        use_fast = os.environ.get("ENABLE_NUMBA_WALKFORWARD", "0") == "1"
+        if not use_fast:
+            # Legacy path returns (objective_value, full_pnl_returns)
+            objective_value = self._evaluate_params_walk_forward(
+                trial, scenario_config, windows, monthly_data, daily_data, rets_full,
+                metrics_to_optimize, is_multi_objective
+            )
+            # Extract full_pnl_returns from trial user_attrs if available
+            full_pnl_returns = pd.Series(dtype=float)
+            if trial and hasattr(trial, 'user_attrs') and 'full_pnl_returns' in trial.user_attrs:
+                pnl_dict = trial.user_attrs['full_pnl_returns']
+                if isinstance(pnl_dict, dict):
+                    full_pnl_returns = pd.Series(pnl_dict)
+                    full_pnl_returns.index = pd.to_datetime(full_pnl_returns.index)
+            return objective_value, full_pnl_returns
+        
+        # Check for unsupported features that force legacy path
+        monte_carlo_config = self.global_config.get('monte_carlo_config', {})
+        mc_enabled = monte_carlo_config.get('enable_synthetic_data', False)
+        mc_during_optimization = monte_carlo_config.get('enable_during_optimization', True)
+        
+        robustness_config = self.global_config.get("wfo_robustness_config", {})
+        window_randomization = robustness_config.get("enable_window_randomization", False)
+        start_randomization = robustness_config.get("enable_start_date_randomization", False)
+        
+        # Fall back if Monte-Carlo or randomization features are active
+        if (mc_enabled and mc_during_optimization) or window_randomization or start_randomization:
+            if self.logger.isEnabledFor(logging.DEBUG):
+                self.logger.debug("Fast path disabled due to Monte-Carlo or randomization features - using legacy path")
+            objective_value = self._evaluate_params_walk_forward(
+                trial, scenario_config, windows, monthly_data, daily_data, rets_full,
+                metrics_to_optimize, is_multi_objective
+            )
+            # Extract full_pnl_returns from trial user_attrs if available
+            full_pnl_returns = pd.Series(dtype=float)
+            if trial and hasattr(trial, 'user_attrs') and 'full_pnl_returns' in trial.user_attrs:
+                pnl_dict = trial.user_attrs['full_pnl_returns']
+                if isinstance(pnl_dict, dict):
+                    full_pnl_returns = pd.Series(pnl_dict)
+                    full_pnl_returns.index = pd.to_datetime(full_pnl_returns.index)
+            return objective_value, full_pnl_returns
+        
+        try:
+            # Cache daily index for fast lookups
+            if self._daily_index_cache is None or not daily_data.index.equals(pd.Index(self._daily_index_cache)):
+                self._daily_index_cache = daily_data.index.to_numpy()
+            
+            # Convert DataFrames to NumPy arrays
+            monthly_data_np, _ = _df_to_float32_array(monthly_data)
+            daily_data_np, _ = _df_to_float32_array(daily_data)
+            rets_full_np, _ = _df_to_float32_array(rets_full)
+            
+            objective_value = self._evaluate_walk_forward_fast(
+                trial, scenario_config, windows, monthly_data_np, daily_data_np, rets_full_np,
+                metrics_to_optimize, is_multi_objective
+            )
+            
+            # For now, return empty full_pnl_returns (fast path doesn't compute this yet)
+            full_pnl_returns = pd.Series(dtype=float)
+            
+            return objective_value, full_pnl_returns
+            
+        except Exception as exc:
+            self.logger.error("Fast evaluation failed - falling back to legacy: %s", exc)
+            objective_value = self._evaluate_params_walk_forward(
+                trial, scenario_config, windows, monthly_data, daily_data, rets_full,
+                metrics_to_optimize, is_multi_objective
+            )
+            # Extract full_pnl_returns from trial user_attrs if available
+            full_pnl_returns = pd.Series(dtype=float)
+            if trial and hasattr(trial, 'user_attrs') and 'full_pnl_returns' in trial.user_attrs:
+                pnl_dict = trial.user_attrs['full_pnl_returns']
+                if isinstance(pnl_dict, dict):
+                    full_pnl_returns = pd.Series(pnl_dict)
+                    full_pnl_returns.index = pd.to_datetime(full_pnl_returns.index)
+            return objective_value, full_pnl_returns
 
     def run(self):
         if logger.isEnabledFor(logging.DEBUG):

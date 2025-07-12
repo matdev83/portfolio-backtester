@@ -133,7 +133,7 @@ class GeneticOptimizer:
                 logger.error("Not enough data for walk-forward windows in GeneticOptimizer.")
                 return -np.inf if not self.is_multi_objective else [-np.inf] * len(self.metrics_to_optimize)
 
-            objectives_values = self.backtester._evaluate_params_walk_forward(
+            objectives_values, _ = self.backtester.evaluate_fast(
                 mock_trial,
                 trial_scenario_config,
                 windows,
@@ -164,7 +164,6 @@ class GeneticOptimizer:
                     else:
                         processed_objectives.append(val if np.isfinite(val) else -np.inf)
                 if logger.isEnabledFor(logging.DEBUG):
-
                     logger.debug(f"Solution {solution_idx} params: {current_params}, objectives: {processed_objectives}")
                 return processed_objectives
             else:
@@ -180,13 +179,11 @@ class GeneticOptimizer:
                 if direction == "minimize":
                     result = -fitness_value if np.isfinite(fitness_value) else np.inf
                     if logger.isEnabledFor(logging.DEBUG):
-
                         logger.debug(f"Solution {solution_idx} params: {current_params}, raw_fitness: {fitness_value}, adjusted_fitness: {result}")
                     return result
                 else:
                     result = fitness_value if np.isfinite(fitness_value) else -np.inf
                     if logger.isEnabledFor(logging.DEBUG):
-
                         logger.debug(f"Solution {solution_idx} params: {current_params}, fitness: {result}")
                     return result
 
@@ -281,14 +278,12 @@ class GeneticOptimizer:
             # Ensure minimum population size
             if sol_per_pop < 4:
                 if logger.isEnabledFor(logging.WARNING):
-
                     logger.warning(f"Population size {sol_per_pop} too small, setting to 4")
                 sol_per_pop = 4
             
             if num_parents_mating >= sol_per_pop:
                 num_parents_mating = max(2, sol_per_pop // 2)
                 if logger.isEnabledFor(logging.WARNING):
-
                     logger.warning(f"num_parents_mating adjusted to {num_parents_mating}")
 
             # PyGAD seed
@@ -303,7 +298,6 @@ class GeneticOptimizer:
                     try:
                         current_best_fitness = ga_instance.best_solution(pop_fitness=ga_instance.last_generation_fitness)[1]
                         if logger.isEnabledFor(logging.DEBUG):
-
                             logger.debug(f"Generation {ga_instance.generations_completed}, Best fitness: {current_best_fitness}")
 
                         if np.isfinite(current_best_fitness) and np.isfinite(self.best_fitness_so_far):
@@ -320,7 +314,6 @@ class GeneticOptimizer:
 
                         if self.zero_fitness_streak >= self.backtester.args.early_stop_patience:
                             if logger.isEnabledFor(logging.DEBUG):
-
                                 logger.debug(f"Early stopping GA due to {self.zero_fitness_streak} generations with no improvement.")
                             return "stop"
 
@@ -329,7 +322,6 @@ class GeneticOptimizer:
                             return "stop"
                     except Exception as e:
                         if logger.isEnabledFor(logging.WARNING):
-
                             logger.warning(f"Error in generation callback: {e}")
                         
                 on_generation_callback = on_gen
@@ -385,7 +377,6 @@ class GeneticOptimizer:
                 solution = pareto_chromosomes[0]
                 solution_fitness = pareto_solutions_fitness[0] if pareto_solutions_fitness else "Unknown"
                 if logger.isEnabledFor(logging.DEBUG):
-
                     logger.debug(f"GA multi-objective: Selected first solution from Pareto front. Fitness: {solution_fitness}")
             else:
                 # Single objective results
@@ -395,7 +386,6 @@ class GeneticOptimizer:
 
                 solution, solution_fitness, _ = self.ga_instance.best_solution(pop_fitness=self.ga_instance.last_generation_fitness)
                 if logger.isEnabledFor(logging.DEBUG):
-
                     logger.debug(f"GA single-objective: Best fitness: {solution_fitness}")
 
             if self.ga_instance.generations_completed > 0 and solution is not None:
@@ -407,17 +397,14 @@ class GeneticOptimizer:
                         plot_path = f"plots/ga_fitness_{self.scenario_config['name']}.png"
                         self.ga_instance.plot_fitness(title="GA Fitness Value vs. Generation", save_dir=plot_path)
                         if logger.isEnabledFor(logging.DEBUG):
-
                             logger.debug(f"GA fitness plot saved to {plot_path}")
                     except Exception as e:
                         if logger.isEnabledFor(logging.WARNING):
-
                             logger.warning(f"Could not save GA fitness plot: {e}")
                         
                 optimal_params = self.scenario_config["strategy_params"].copy()
                 optimal_params.update(self._decode_chromosome(solution))
                 if logger.isEnabledFor(logging.DEBUG):
-
                     logger.debug(f"Best parameters found by GA: {optimal_params}")
                 print(f"Genetic Optimizer - Best parameters found: {optimal_params}")
                 return optimal_params, num_evaluations

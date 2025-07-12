@@ -15,11 +15,16 @@ try:
 except ImportError:
     NUMBA_AVAILABLE = False
 
-def equal_weight_sizer(signals: pd.DataFrame, *_, **__) -> pd.DataFrame:
+def equal_weight_sizer(signals: pd.DataFrame, *_, **kwargs) -> pd.DataFrame:
     """Apply equal weighting to the signals."""
     signal_sums = signals.abs().sum(axis=1)
     # Handle case where signal sum is zero to avoid NaN from division by zero
     result = signals.div(signal_sums, axis=0)
+
+    # Apply leverage scaling if provided
+    leverage = kwargs.get("leverage", 1.0)
+    if leverage != 1.0 and not result.empty:
+        result = result * leverage
     # Keep NaN values when all signals are zero (as expected by tests)
     return result
 

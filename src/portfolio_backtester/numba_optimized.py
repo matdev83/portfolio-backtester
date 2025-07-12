@@ -10,6 +10,7 @@ counterparts while providing 5-10x performance improvements.
 
 import numba
 import numpy as np
+from numba import prange
 
 
 @numba.jit(nopython=True, cache=True)
@@ -264,3 +265,273 @@ def rolling_correlation_fast(asset_returns, benchmark_returns, window):
             else:
                 result[i] = 0.0
     return result
+
+
+@numba.jit(nopython=True, cache=True)
+def vams_fast(prices, lookback_months, alpha=0.5):
+    """
+    Compute Volatility Adjusted Momentum Score (DPVAMS) quickly using Numba.
+
+    Parameters
+    ----------
+    prices : np.ndarray
+        1-D array of price values (monthly closes).
+    lookback_months : int
+        Look-back window length in months.
+    alpha : float
+        Downside penalty coefficient in DPVAMS formula.
+
+    Returns
+    -------
+    np.ndarray
+        Array with DPVAMS values (NaN for periods with insufficient history).
+    """
+    n = len(prices)
+    out = np.full(n, np.nan)
+
+    if n == 0 or lookback_months <= 0:
+        return out
+
+    # Pre-compute simple returns (monthly) once
+    rets = np.full(n, np.nan)
+    for i in range(1, n):
+        p_prev = prices[i - 1]
+        p_now = prices[i]
+        if p_prev > 0 and not (np.isnan(p_prev) or np.isnan(p_now)):
+            rets[i] = (p_now / p_prev) - 1.0
+
+    # Rolling loop
+    for i in range(lookback_months, n):
+        p_now = prices[i]
+        p_then = prices[i - lookback_months]
+        if p_then <= 0 or np.isnan(p_now) or np.isnan(p_then):
+            continue
+
+        # Momentum component
+        momentum = (p_now / p_then) - 1.0
+
+        # Downside volatility over window [i-lookback_months+1, i]
+        neg_sum = 0.0
+        neg_sumsq = 0.0
+        count = 0
+        for j in range(i - lookback_months + 1, i + 1):
+            r = rets[j]
+            if not np.isnan(r) and r < 0.0:
+                neg_sum += r
+                neg_sumsq += r * r
+                count += 1
+        if count > 0:
+            mean_neg = neg_sum / count
+            var_neg = (neg_sumsq / count) - (mean_neg * mean_neg)
+            if var_neg < 0.0:
+                var_neg = 0.0
+            downside_vol = np.sqrt(var_neg)
+        else:
+            downside_vol = 0.0
+
+        out[i] = momentum - alpha * downside_vol
+    return out
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_sharpe_fast_portfolio(prices, window_months, annualization_factor=12.0):
+    """
+    Fast rolling Sharpe ratio for a single asset/portfolio using daily prices.
+
+    The function approximates *window_months* by assuming 21 trading days per month.
+    """
+    n = len(prices)
+    out = np.full(n, np.nan)
+    if n == 0 or window_months <= 0:
+        return out
+
+    # Compute daily returns
+    rets = np.full(n, np.nan)
+    for i in range(1, n):
+        prev = prices[i - 1]
+        cur = prices[i]
+        if prev > 0 and not (np.isnan(prev) or np.isnan(cur)):
+            rets[i] = (cur / prev) - 1.0
+
+    window_days = window_months * 21  # Approximate trading days per month
+
+    for i in range(window_days, n):
+        # Accumulate statistics for the window
+        sum_ret = 0.0
+        sum_sq_ret = 0.0
+        count = 0
+        for j in range(i - window_days + 1, i + 1):
+            r = rets[j]
+            if not np.isnan(r):
+                sum_ret += r
+                sum_sq_ret += r * r
+                count += 1
+        if count >= window_days // 2 and count > 1:
+            mean = sum_ret / count
+            var = (sum_sq_ret / count) - (mean * mean)
+            if var > 1e-10:
+                std = np.sqrt(var)
+                out[i] = (mean / std) * np.sqrt(annualization_factor)
+            else:
+                out[i] = 0.0
+    return out
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_beta_fast_portfolio(port_prices, mkt_prices, lookback_months):
+    """
+    Compute trailing beta of a portfolio relative to the market.
+
+    Parameters
+    ----------
+    port_prices : np.ndarray
+        1D price series of the portfolio (monthly closes).
+    mkt_prices : np.ndarray
+        1D price series of the benchmark/market (monthly closes).
+    lookback_months : int
+        Window length in months used for beta estimation.
+
+    Returns
+    -------
+    float
+        Latest beta estimate (NaN if insufficient data, 1.0 fallback).
+    """
+    n = len(port_prices)
+    m = len(mkt_prices)
+    if n == 0 or m == 0:
+        return 1.0
+
+    # Use common length
+    L = n if n < m else m
+    start_idx = 1  # need previous price for return
+
+    # Compute returns arrays aligned to last L observations
+    port_rets = np.full(L - start_idx, np.nan)
+    mkt_rets = np.full(L - start_idx, np.nan)
+    for i in range(start_idx, L):
+        p_prev = port_prices[i - 1]
+        p_cur = port_prices[i]
+        m_prev = mkt_prices[i - 1]
+        m_cur = mkt_prices[i]
+        if p_prev > 0 and m_prev > 0 and not (np.isnan(p_prev) or np.isnan(p_cur) or np.isnan(m_prev) or np.isnan(m_cur)):
+            port_rets[i - start_idx] = (p_cur / p_prev) - 1.0
+            mkt_rets[i - start_idx] = (m_cur / m_prev) - 1.0
+
+    # Determine window
+    window = lookback_months
+    if window > len(port_rets):
+        window = len(port_rets)
+    if window < 3:
+        return 1.0
+
+    # Slice last *window* observations
+    port_window = port_rets[-window:]
+    mkt_window = mkt_rets[-window:]
+
+    # Remove NaNs synchronously
+    valid_count = 0
+    sum_port = 0.0
+    sum_mkt = 0.0
+    for i in range(window):
+        if not (np.isnan(port_window[i]) or np.isnan(mkt_window[i])):
+            valid_count += 1
+            sum_port += port_window[i]
+            sum_mkt += mkt_window[i]
+    if valid_count < window // 2:
+        return 1.0
+
+    mean_port = sum_port / valid_count
+    mean_mkt = sum_mkt / valid_count
+
+    cov = 0.0
+    var_mkt = 0.0
+    for i in range(window):
+        pr = port_window[i]
+        mr = mkt_window[i]
+        if not (np.isnan(pr) or np.isnan(mr)):
+            cov += (pr - mean_port) * (mr - mean_mkt)
+            var_mkt += (mr - mean_mkt) * (mr - mean_mkt)
+
+    if var_mkt > 1e-10:
+        return cov / var_mkt
+    else:
+        return 1.0
+
+
+@numba.jit(nopython=True, parallel=True, cache=True)
+def sharpe_fast(returns_matrix, window, annualization_factor=1.0):
+    """Vectorised rolling Sharpe ratio for a 2-D returns matrix.
+
+    Parameters
+    ----------
+    returns_matrix : np.ndarray[time, assets]
+        Array of asset returns.
+    window : int
+        Rolling window length in observations.
+    annualization_factor : float, optional
+        Factor (e.g. 12 or 252) used to annualise the mean; the standard
+        deviation is scaled by sqrt(annualization_factor).
+
+    Returns
+    -------
+    np.ndarray
+        Matrix of shape (time, assets) with Sharpe ratios (NaN where
+        insufficient observations).
+    """
+    n_time, n_assets = returns_matrix.shape
+    out = np.full((n_time, n_assets), np.nan)
+
+    for a in prange(n_assets):
+        series = returns_matrix[:, a]
+        for t in range(window - 1, n_time):
+            # Collect window data
+            val_count = 0
+            sum_ret = 0.0
+            sum_sq = 0.0
+            for k in range(t - window + 1, t + 1):
+                r = series[k]
+                if not np.isnan(r):
+                    val_count += 1
+                    sum_ret += r
+                    sum_sq += r * r
+            if val_count >= window // 2 and val_count > 1:
+                mean = sum_ret / val_count
+                variance = (sum_sq / val_count) - (mean * mean)
+                if variance > 1e-10:
+                    std = np.sqrt(variance)
+                    out[t, a] = (mean / std) * np.sqrt(annualization_factor)
+                else:
+                    out[t, a] = 0.0
+    return out
+
+
+@numba.jit(nopython=True, parallel=True, cache=True)
+def sortino_fast(returns_matrix, window, target_return=0.0, annualization_factor=1.0):
+    """Vectorised rolling Sortino ratio for 2-D returns matrix."""
+    n_time, n_assets = returns_matrix.shape
+    out = np.full((n_time, n_assets), np.nan)
+
+    for a in prange(n_assets):
+        series = returns_matrix[:, a]
+        for t in range(window - 1, n_time):
+            count = 0
+            sum_ret = 0.0
+            down_sum = 0.0
+            down_sq = 0.0
+            for k in range(t - window + 1, t + 1):
+                r = series[k]
+                if not np.isnan(r):
+                    count += 1
+                    sum_ret += r
+                    if r < target_return:
+                        down_sum += (r - target_return)
+                        diff = r - target_return
+                        down_sq += diff * diff
+            if count >= window // 2 and count > 1:
+                mean_ret = sum_ret / count
+                if down_sq > 1e-10:
+                    downside_std = np.sqrt(down_sq / count)
+                    out[t, a] = ((mean_ret - target_return) / downside_std) * np.sqrt(annualization_factor)
+                else:
+                    out[t, a] = np.nan
+    return out

@@ -90,7 +90,7 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         current_params = _suggest_optuna_params(self, trial, scenario_config["strategy_params"], scenario_config.get("optimize", []))
         trial_scenario_config = scenario_config.copy()
         trial_scenario_config["strategy_params"] = current_params
-        objective_value, full_pnl_returns = self._evaluate_params_walk_forward(
+        objective_value, full_pnl_returns = self.evaluate_fast(
             trial, trial_scenario_config, windows, monthly_data, daily_data, rets_full,
             metrics_to_optimize, is_multi_objective
         )

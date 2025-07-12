@@ -115,6 +115,13 @@ import logging
 from .base_strategy import BaseStrategy
 from ..data_sources.etf_holdings import ETFHoldingsDataSource
 
+# Import Numba optimization with fallback for beta calculation
+try:
+    from ..numba_optimized import rolling_beta_fast_portfolio
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 

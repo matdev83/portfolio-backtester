@@ -157,7 +157,7 @@ def test_get_gene_space_and_types(mock_backtester_instance):
 @patch('portfolio_backtester.optimization.genetic_optimizer.pygad.GA')
 def test_run_single_objective(mock_pygad_ga, mock_backtester_instance):
     # Configure the mock backtester to return a single float
-    mock_backtester_instance._evaluate_params_walk_forward.return_value = [0.8] # Example Sharpe ratio
+    mock_backtester_instance.evaluate_fast.return_value = ([0.8], pd.Series()) # Example Sharpe ratio
 
     optimizer = GeneticOptimizer(
         scenario_config=MOCK_SCENARIO_CONFIG_SINGLE_OBJECTIVE,
@@ -197,15 +197,15 @@ def test_run_single_objective(mock_pygad_ga, mock_backtester_instance):
     # We rely on the mock_backtester_instance._evaluate_params_walk_forward being called.
     # To test fitness_func_wrapper directly:
     fitness_value = optimizer.fitness_func_wrapper(mock_ga_instance, np.array([3,0.4,0]), 0)
-    assert fitness_value == 0.8 # From the return_value of mocked _evaluate_params_walk_forward
-    mock_backtester_instance._evaluate_params_walk_forward.assert_called()
+    assert fitness_value == 0.8 # From the return_value of mocked evaluate_fast
+    mock_backtester_instance.evaluate_fast.assert_called()
 
 
 @patch('portfolio_backtester.optimization.genetic_optimizer.pygad.GA')
 def test_run_multi_objective(mock_pygad_ga, mock_backtester_instance):
     # Configure mock backtester for multi-objective
     # Returns (Sharpe, MaxDD) -> PyGAD fitness will be (Sharpe, -MaxDD)
-    mock_backtester_instance._evaluate_params_walk_forward.return_value = [0.9, 0.15] # (Sharpe, MaxDD)
+    mock_backtester_instance.evaluate_fast.return_value = ([0.9, 0.15], pd.Series()) # (Sharpe, MaxDD)
 
     optimizer = GeneticOptimizer(
         scenario_config=MOCK_SCENARIO_CONFIG_MULTI_OBJECTIVE,
@@ -251,7 +251,7 @@ def test_run_multi_objective(mock_pygad_ga, mock_backtester_instance):
     assert len(fitness_values) == 2
     assert abs(fitness_values[0] - 0.9) < 1e-6  # Sharpe (maximize)
     assert abs(fitness_values[1] - (-0.15)) < 1e-6 # -MaxDD (effectively maximizing -MDD)
-    mock_backtester_instance._evaluate_params_walk_forward.assert_called()
+    mock_backtester_instance.evaluate_fast.assert_called()
 
 
 def test_fitness_func_wrapper_minimization(mock_backtester_instance):
@@ -259,7 +259,7 @@ def test_fitness_func_wrapper_minimization(mock_backtester_instance):
     scenario_minimize["optimization_targets"] = [{"name": "MaxDD", "direction": "minimize"}]
     del scenario_minimize["optimization_metric"] # Remove to use optimization_targets
 
-    mock_backtester_instance._evaluate_params_walk_forward.return_value = [0.2] # MaxDD value
+    mock_backtester_instance.evaluate_fast.return_value = ([0.2], pd.Series()) # MaxDD value
 
     optimizer = GeneticOptimizer(
         scenario_config=scenario_minimize,

@@ -185,8 +185,8 @@ class ImprovedSyntheticDataGenerator:
 
                     logger.warning(f"Very limited data ({len(returns)} observations). Using simple statistical fallback.")
                 # Create minimal statistics for fallback generation
-                mean_return = returns.mean() * 100 if len(returns) > 0 else 0.0
-                volatility = returns.std() * 100 if len(returns) > 1 else 1.0
+                mean_return = returns.mean() if len(returns) > 0 else 0.0
+                volatility = returns.std() if len(returns) > 1 else 1.0
                 
                 return AssetStatistics(
                     mean_return=mean_return,
@@ -430,10 +430,14 @@ class ImprovedSyntheticDataGenerator:
                             f"{np.min(synthetic_returns):.6f}/{np.max(synthetic_returns):.6f}/"
                             f"{np.mean(synthetic_returns):.6f}/{np.std(synthetic_returns):.6f}")
                 
-                # Check for degenerate series (very low volatility)
-                if np.std(synthetic_returns) < 1e-5: # Threshold for very low volatility
+                # Validate quality
+                if not self._validate_synthetic_data(synthetic_returns, asset_stats):
                     if logger.isEnabledFor(logging.WARNING):
+                        logger.warning(f"Synthetic data for {asset_name} failed quality validation (Attempt {attempt + 1}). Retrying.")
+                    continue
 
+                if np.std(synthetic_returns) < 1e-5:  # Threshold for very low volatility
+                    if logger.isEnabledFor(logging.WARNING):
                         logger.warning(f"Degenerate synthetic returns (very low volatility) for {asset_name} (Attempt {attempt + 1}). Retrying.")
                     continue # Retry generation
                 
@@ -526,8 +530,8 @@ class ImprovedSyntheticDataGenerator:
             length
         )
         
-        # Convert to decimal returns
-        return synthetic_returns_pct / 100.0
+        # Modified: keep decimal scaling consistent
+        return synthetic_returns_pct
     
     def generate_synthetic_prices(
         self,

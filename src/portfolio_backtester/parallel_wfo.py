@@ -44,8 +44,9 @@ class ParallelWFOProcessor:
         else:
             self.max_workers = max(1, max_workers)
         
-        logger.info(f"ParallelWFOProcessor initialized: "
-                   f"parallel={enable_parallel}, max_workers={self.max_workers}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"ParallelWFOProcessor initialized: "
+                        f"parallel={enable_parallel}, max_workers={self.max_workers}")
     
     def process_windows_parallel(self, 
                                 windows: List[Dict[str, Any]], 
@@ -123,7 +124,6 @@ class ParallelWFOProcessor:
             
         except Exception as e:
             if logger.isEnabledFor(logging.WARNING):
-
                 logger.warning(f"Parallel processing failed: {e}. Falling back to sequential processing.")
             return self._process_windows_sequential(
                 windows, evaluate_window_func, scenario_config, shared_data
@@ -147,11 +147,7 @@ class ParallelWFOProcessor:
             List of (objective_value, returns) tuples for each window
         """
         if logger.isEnabledFor(logging.DEBUG):
-
-            if logger.isEnabledFor(logging.DEBUG):
-
-
-                logger.debug(f"Processing {len(windows)} WFO windows sequentially")
+            logger.debug(f"Processing {len(windows)} WFO windows sequentially")
         start_time = time.time()
         
         results = []
@@ -160,7 +156,6 @@ class ParallelWFOProcessor:
                 result = evaluate_window_func(window, scenario_config, shared_data)
                 results.append(result)
                 if logger.isEnabledFor(logging.DEBUG):
-
                     logger.debug(f"Sequential window {i} completed successfully")
             except Exception as e:
                 logger.error(f"Sequential window {i} failed: {e}")
@@ -168,7 +163,6 @@ class ParallelWFOProcessor:
         
         elapsed_time = time.time() - start_time
         if logger.isEnabledFor(logging.DEBUG):
-
             logger.debug(f"Sequential WFO processing completed in {elapsed_time:.2f} seconds")
         
         return results

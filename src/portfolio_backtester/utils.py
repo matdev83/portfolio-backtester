@@ -264,3 +264,57 @@ def calculate_stability_metrics(metric_values_per_objective, metrics_to_optimize
     
     return stability_metrics
 
+
+# --------------------------------------------------------------------------- #
+# DataFrame → float32 NumPy helper (for Numba kernels)
+# --------------------------------------------------------------------------- #
+
+def _df_to_float32_array(df: pd.DataFrame, *, field: str | None = None) -> tuple[np.ndarray, list[str]]:
+    """Convert a (potentially Multi-Index) DataFrame to a contiguous
+    ``float32`` NumPy ndarray suitable for Numba kernels.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Price or returns data. Index must be monotonic and unique.
+    field : str | None, default None
+        If *df* has a Multi-Index with levels (Ticker, Field) supply the
+        desired *Field* (e.g. "Close") to extract.  When None the function
+        assumes *df* already has one column per asset.
+
+    Returns
+    -------
+    tuple[np.ndarray, list[str]]
+        A 2-D ``float32`` array of shape (n_periods, n_assets) and the list
+        of tickers in column order.  Missing values are represented as
+        ``np.nan``.
+    """
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("Input must be a pandas DataFrame")
+
+    if not df.index.is_monotonic_increasing:
+        df = df.sort_index()
+
+    # Handle Multi-Index columns (Ticker, Field)
+    if isinstance(df.columns, pd.MultiIndex):
+        if field is None:
+            raise ValueError("Multi-Index DataFrame requires *field* parameter")
+        if 'Field' in df.columns.names:
+            level_name = 'Field'
+        else:
+            # Assume the last level holds the field
+            level_name = df.columns.names[-1]
+        if field not in df.columns.get_level_values(level_name):
+            raise KeyError(f"Field '{field}' not found in DataFrame columns")
+        extracted = df.xs(field, level=level_name, axis=1)
+    else:
+        extracted = df.copy()
+
+    # Ensure column order is deterministic (sorted tickers)
+    tickers = list(extracted.columns)
+    extracted = extracted.astype(np.float32)
+
+    # Pandas to NumPy (contiguous)
+    matrix = np.ascontiguousarray(extracted.values, dtype=np.float32)
+    return matrix, tickers
+

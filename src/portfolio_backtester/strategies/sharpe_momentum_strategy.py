@@ -112,9 +112,23 @@ class SharpeMomentumStrategy(BaseStrategy):
         current_month_end = current_date.to_period('M').to_timestamp('M')
 
         if NUMBA_AVAILABLE:
-            sharpe_ratio_calculated = pd.DataFrame(index=daily_closes.index, columns=daily_closes.columns)
-            for asset in daily_closes.columns:
-                sharpe_ratio_calculated[asset] = rolling_sharpe_fast_portfolio(daily_closes[asset].values, rolling_window_months, annualization_factor)
+            # Vectorised Sharpe calculation using Numba kernel
+            daily_returns = daily_closes.pct_change(fill_method=None)
+            if daily_returns.empty:
+                return pd.Series(0.0, index=daily_closes.columns)
+
+            returns_np = daily_returns.to_numpy(dtype=np.float64)
+            window_days = rolling_window_months * 21  # Approximate trading days per month
+
+            try:
+                from ..numba_optimized import sharpe_fast
+                sharpe_mat = sharpe_fast(returns_np, window_days, annualization_factor=252.0)
+                sharpe_ratio_calculated = pd.DataFrame(sharpe_mat, index=daily_returns.index, columns=daily_returns.columns)
+            except ImportError:
+                # Fallback to per-asset fast function
+                sharpe_ratio_calculated = pd.DataFrame(index=daily_closes.index, columns=daily_closes.columns)
+                for asset in daily_closes.columns:
+                    sharpe_ratio_calculated[asset] = rolling_sharpe_fast_portfolio(daily_closes[asset].values, rolling_window_months, annualization_factor)
         else:
             # Resample to monthly, calculate monthly returns
             monthly_closes = daily_closes.resample('ME').last()
