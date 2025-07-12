@@ -138,9 +138,10 @@ def _load_cusip_mappings() -> None:
 
                 logger.debug(f"DataFrame head from cusip_mappings.csv:\n{df.head()}")
             initial_cache_size = len(_CUSIP_TICKER_CACHE)
-            for _, row in df.iterrows():
-                if pd.notna(row['cusip']) and pd.notna(row['ticker']):
-                    _CUSIP_TICKER_CACHE[str(row['cusip'])] = str(row['ticker'])
+            # Vectorized approach - filter valid rows and convert to dict
+            valid_rows = df.dropna(subset=['cusip', 'ticker'])
+            new_mappings = dict(zip(valid_rows['cusip'].astype(str), valid_rows['ticker'].astype(str)))
+            _CUSIP_TICKER_CACHE.update(new_mappings)
             if logger.isEnabledFor(logging.INFO):
 
                 logger.info(f"Loaded {len(_CUSIP_TICKER_CACHE) - initial_cache_size} new CUSIP mappings from {mappings_path}")

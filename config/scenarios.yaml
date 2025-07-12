@@ -11,7 +11,7 @@ BACKTEST_SCENARIOS:
         direction: "maximize"
     optimization_constraints:
       - metric: "Ann. Vol"
-        max_value: 0.10  # Keep annualized volatility <= 10%
+        max_value: 0.20  # Increased from 0.10 to 0.20 for EMA strategy
     optimize:
       - parameter: "fast_ema_days"
         min_value: 7
@@ -23,12 +23,12 @@ BACKTEST_SCENARIOS:
         step: 32
       - parameter: "leverage"
         min_value: 1.0
-        max_value: 3.0
+        max_value: 2.0  # Reduced from 3.0 to 2.0 for more conservative approach
         step: 0.5
     strategy_params:
       fast_ema_days: 20
       slow_ema_days: 64
-      leverage: 3.0
+      leverage: 1.5  # Reduced from 3.0 to 1.5 as more reasonable default
     mc_simulations: 100
     mc_years: 5
 
@@ -46,7 +46,7 @@ BACKTEST_SCENARIOS:
         direction: "minimize"
     optimization_constraints:
       - metric: "Ann. Vol"
-        max_value: 0.15  # Keep annualized volatility <= 15%
+        max_value: 0.25  # Increased from 0.15 to 0.25 for momentum strategy
     optimize:
       - parameter: "num_holdings"
         min_value: 10

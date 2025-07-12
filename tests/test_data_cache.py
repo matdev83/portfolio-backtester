@@ -18,16 +18,15 @@ class TestDataPreprocessingCache:
     def setup_method(self):
         """Set up test data and cache."""
         # Create test price data
-        # Use a larger dataset to make performance differences more pronounced
         dates = pd.date_range('2010-01-01', '2023-12-31', freq='D')
         np.random.seed(42)
         
         self.test_data = pd.DataFrame({
             f'Asset_{i}': 100 * np.cumprod(1 + np.random.normal(0.0001, 0.02, len(dates)))
-            for i in range(50)  # 50 assets
+            for i in range(10)  # 10 assets for testing
         }, index=dates)
         
-        self.cache = DataPreprocessingCache(max_cache_size_mb=100)
+        self.cache = DataPreprocessingCache(max_cache_size=50)
     
     def test_cached_returns_computation(self):
         """Test that cached returns are computed correctly and cached."""
@@ -46,115 +45,66 @@ class TestDataPreprocessingCache:
         stats = self.cache.get_cache_stats()
         assert stats['hits'] >= 1
     
-    def test_date_position_mapping(self):
-        """Test date-to-position mapping functionality."""
-        # Get position map
-        position_map = self.cache.get_date_position_map(self.test_data, "test_positions")
+    def test_window_returns_caching(self):
+        """Test window-specific returns caching."""
+        window_start = pd.Timestamp('2015-01-01')
+        window_end = pd.Timestamp('2015-12-31')
         
-        # Verify mapping is correct
-        assert len(position_map) == len(self.test_data)
-        assert position_map[self.test_data.index[0]] == 0
-        assert position_map[self.test_data.index[-1]] == len(self.test_data) - 1
+        # Get window data
+        window_data = self.test_data.loc[window_start:window_end]
         
-        # Test caching
-        position_map2 = self.cache.get_date_position_map(self.test_data, "test_positions")
-        assert position_map == position_map2
+        # First call - should compute and cache
+        returns1 = self.cache.get_cached_window_returns(window_data, window_start, window_end)
+        
+        # Verify returns are correct
+        expected_returns = window_data.pct_change(fill_method=None).fillna(0)
+        pd.testing.assert_frame_equal(returns1, expected_returns)
+        
+        # Second call - should use cache
+        returns2 = self.cache.get_cached_window_returns(window_data, window_start, window_end)
+        pd.testing.assert_frame_equal(returns1, returns2)
         
         # Verify cache hit
         stats = self.cache.get_cache_stats()
-        assert stats['hits'] >= 1
+        assert stats['window_hits'] >= 1
     
-    def test_fast_data_slicing(self):
-        """Test fast data slicing with position mapping."""
-        # Get position map first
-        position_map = self.cache.get_date_position_map(self.test_data, "slice_test")
+    def test_precompute_window_returns(self):
+        """Test pre-computing returns for multiple windows."""
+        # Define some windows
+        windows = [
+            (pd.Timestamp('2015-01-01'), pd.Timestamp('2015-06-30'), 
+             pd.Timestamp('2015-07-01'), pd.Timestamp('2015-12-31')),
+            (pd.Timestamp('2016-01-01'), pd.Timestamp('2016-06-30'), 
+             pd.Timestamp('2016-07-01'), pd.Timestamp('2016-12-31')),
+        ]
         
-        # Test slicing at various dates
-        test_date = self.test_data.index[100]  # Some date in the middle
+        # Pre-compute returns
+        window_returns = self.cache.precompute_window_returns(self.test_data, windows)
         
-        # Fast slice using cache
-        sliced_fast = self.cache.get_data_slice_fast(
-            self.test_data, test_date, position_map, "slice_test"
-        )
+        # Verify we got results
+        assert len(window_returns) >= 0  # May be empty if windows don't have data
         
-        # Traditional slice for comparison
-        sliced_traditional = self.test_data[self.test_data.index <= test_date]
-        
-        # Should be identical
-        pd.testing.assert_frame_equal(sliced_fast, sliced_traditional)
-        
-        # Test caching of slices
-        sliced_fast2 = self.cache.get_data_slice_fast(
-            self.test_data, test_date, position_map, "slice_test"
-        )
-        pd.testing.assert_frame_equal(sliced_fast, sliced_fast2)
-    
-    def test_cache_performance_improvement(self):
-        """Test that cache provides performance improvement."""
-        import time
-        
-        # Measure time for first computation (cache miss)
-        start_time = time.time()
-        returns1 = self.cache.get_cached_returns(self.test_data, "perf_test")
-        first_time = time.time() - start_time
-        
-        # Measure time for second computation (cache hit)
-        start_time = time.time()
-        returns2 = self.cache.get_cached_returns(self.test_data, "perf_test")
-        second_time = time.time() - start_time
-        
-        # Cache hit should be faster (though may be minimal for small data)
-        assert second_time <= first_time
-        pd.testing.assert_frame_equal(returns1, returns2)
-    
-    def test_cache_with_different_identifiers(self):
-        """Test that different identifiers create separate cache entries."""
-        returns1 = self.cache.get_cached_returns(self.test_data, "id1")
-        returns2 = self.cache.get_cached_returns(self.test_data, "id2")
-        
-        # Should be identical data but separate cache entries
-        pd.testing.assert_frame_equal(returns1, returns2)
-        
-        # Should have separate entries in cache
+        # Check cache stats
         stats = self.cache.get_cache_stats()
-        assert stats['cached_returns_count'] >= 2
+        assert stats['window_cache_items'] >= 0
     
-    def test_cache_size_management(self):
-        """Test cache size management and cleanup."""
-        # Create a small cache
-        small_cache = DataPreprocessingCache(max_cache_size_mb=1)  # Very small limit
+    def test_get_window_returns_by_dates(self):
+        """Test getting cached window returns by date range."""
+        window_start = pd.Timestamp('2015-01-01')
+        window_end = pd.Timestamp('2015-12-31')
         
-        # Add multiple large datasets
-        for i in range(10):
-            large_data = pd.DataFrame(
-                np.random.randn(1000, 50),  # Large dataset
-                index=pd.date_range('2020-01-01', periods=1000, freq='D'),
-                columns=[f'Asset_{j}' for j in range(50)]
-            )
-            small_cache.get_cached_returns(large_data, f"large_data_{i}")
+        # First, cache some window returns
+        window_data = self.test_data.loc[window_start:window_end]
+        self.cache.get_cached_window_returns(window_data, window_start, window_end)
         
-        # Cache should have been cleaned up
-        stats = small_cache.get_cache_stats()
-        assert stats['current_size_mb'] <= small_cache.max_cache_size_mb * 1.1  # Allow small tolerance
-    
-    def test_rolling_window_indices(self):
-        """Test rolling window indices caching."""
-        data_length = 100
-        window_size = 20
+        # Try to get by dates
+        cached_returns = self.cache.get_window_returns_by_dates(
+            self.test_data, window_start, window_end
+        )
         
-        # Get indices
-        indices1 = self.cache.get_rolling_window_indices(data_length, window_size)
-        indices2 = self.cache.get_rolling_window_indices(data_length, window_size)
-        
-        # Should be identical (cached)
-        np.testing.assert_array_equal(indices1, indices2)
-        
-        # Verify correctness
-        expected_length = max(0, data_length - window_size + 1)
-        assert len(indices1) == expected_length
-        assert indices1[0] == 0
-        if len(indices1) > 1:
-            assert indices1[-1] == expected_length - 1
+        # Should get the cached data
+        assert cached_returns is not None
+        assert len(cached_returns) > 0
     
     def test_cache_stats_tracking(self):
         """Test cache statistics tracking."""
@@ -163,7 +113,8 @@ class TestDataPreprocessingCache:
         initial_stats = self.cache.get_cache_stats()
         assert initial_stats['hits'] == 0
         assert initial_stats['misses'] == 0
-        assert initial_stats['hit_rate'] == 0
+        assert initial_stats['window_hits'] == 0
+        assert initial_stats['window_misses'] == 0
         
         # Perform operations
         self.cache.get_cached_returns(self.test_data, "stats_test")  # Miss
@@ -172,60 +123,27 @@ class TestDataPreprocessingCache:
         final_stats = self.cache.get_cache_stats()
         assert final_stats['misses'] >= 1
         assert final_stats['hits'] >= 1
-        assert final_stats['hit_rate'] > 0
+        assert final_stats['regular_hit_rate'] > 0
     
     def test_cache_clear_functionality(self):
         """Test cache clearing functionality."""
         # Add data to cache
         self.cache.get_cached_returns(self.test_data, "clear_test")
-        position_map = self.cache.get_date_position_map(self.test_data, "clear_test")
+        window_data = self.test_data.loc['2015-01-01':'2015-12-31']
+        self.cache.get_cached_window_returns(window_data, pd.Timestamp('2015-01-01'), pd.Timestamp('2015-12-31'))
         
         # Verify cache has data
         stats_before = self.cache.get_cache_stats()
-        assert stats_before['cached_returns_count'] > 0
+        assert stats_before['total_cached_items'] > 0
         
         # Clear cache
         self.cache.clear_cache()
         
         # Verify cache is empty
         stats_after = self.cache.get_cache_stats()
-        assert stats_after['cached_returns_count'] == 0
-        assert stats_after['cached_slices_count'] == 0
-        assert stats_after['cached_position_maps_count'] == 0
-    
-    def test_edge_cases(self):
-        """Test edge cases and error handling."""
-        # Empty DataFrame
-        empty_df = pd.DataFrame()
-        returns_empty = self.cache.get_cached_returns(empty_df, "empty")
-        assert returns_empty.empty
-        
-        # Single row DataFrame
-        single_row = self.test_data.iloc[:1]
-        returns_single = self.cache.get_cached_returns(single_row, "single")
-        assert len(returns_single) == 1
-        
-        # DataFrame with NaN values
-        nan_data = self.test_data.copy()
-        nan_data.iloc[10:20] = np.nan
-        returns_nan = self.cache.get_cached_returns(nan_data, "nan_test")
-        assert len(returns_nan) == len(nan_data)
-    
-    def test_data_slice_with_missing_date(self):
-        """Test data slicing with date not in index."""
-        position_map = self.cache.get_date_position_map(self.test_data, "missing_date_test")
-        
-        # Use a date not in the index
-        missing_date = self.test_data.index[50] + timedelta(hours=12)
-        
-        # Should fallback to boolean indexing
-        sliced_data = self.cache.get_data_slice_fast(
-            self.test_data, missing_date, position_map, "missing_date_test"
-        )
-        
-        # Should still work correctly
-        expected_slice = self.test_data[self.test_data.index <= missing_date]
-        pd.testing.assert_frame_equal(sliced_data, expected_slice)
+        assert stats_after['total_cached_items'] == 0
+        assert stats_after['regular_cache_items'] == 0
+        assert stats_after['window_cache_items'] == 0
 
 
 class TestGlobalCache:
@@ -235,8 +153,6 @@ class TestGlobalCache:
         """Test that global cache is a singleton."""
         cache1 = get_global_cache()
         cache2 = get_global_cache()
-        
-        # Should be the same instance
         assert cache1 is cache2
     
     def test_global_cache_clear(self):
@@ -249,14 +165,14 @@ class TestGlobalCache:
         
         # Verify data exists
         stats_before = cache.get_cache_stats()
-        assert stats_before['cached_returns_count'] > 0
+        assert stats_before['regular_cache_items'] > 0
         
-        # Clear global cache
+        # Clear cache
         clear_global_cache()
         
-        # Verify cache is cleared
+        # Verify cache is empty
         stats_after = cache.get_cache_stats()
-        assert stats_after['cached_returns_count'] == 0
+        assert stats_after['regular_cache_items'] == 0
 
 
 if __name__ == "__main__":

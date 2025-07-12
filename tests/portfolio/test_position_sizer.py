@@ -95,32 +95,19 @@ class TestPositionSizer(unittest.TestCase):
         window = 2
         target = 0.0
         
-        # Since the sizer now uses Numba, we should also use it for the expected calculation
-        # to ensure consistency.
-        try:
-            from src.portfolio_backtester.numba_optimized import rolling_sortino_fast
-            NUMBA_AVAILABLE = True
-        except ImportError:
-            NUMBA_AVAILABLE = False
-
+        # Use the original implementation logic to calculate expected values
         rets = monthly_prices.pct_change(fill_method=None).fillna(0)
+        mean = rets.rolling(window).mean() - target
 
-        if NUMBA_AVAILABLE:
-            sortino_data = {}
-            for col in rets.columns:
-                sortino_data[col] = rolling_sortino_fast(rets[col].values, window, target)
-            sortino = pd.DataFrame(sortino_data, index=rets.index)
-        else:
-            # Fallback to pandas if Numba is not available
-            mean = rets.rolling(window).mean() - target
-            def dd(series):
-                downside = series[series < target]
-                if len(downside) == 0:
-                    return np.nan
-                return np.sqrt(np.mean((downside - target) ** 2))
-            downside = rets.rolling(window).apply(dd, raw=False)
-            sortino = mean / downside.replace(0, np.nan)
+        def downside(series):
+            d = series[series < target]
+            if len(d) == 0:
+                return np.nan
+            return np.sqrt(np.mean((d - target) ** 2))
 
+        downside_dev = rets.rolling(window).apply(downside, raw=False)
+        sortino = mean / downside_dev.replace(0, np.nan)
+        
         expected = monthly_signals.mul(sortino).div(monthly_signals.mul(sortino).abs().sum(axis=1), axis=0)
         result = rolling_sortino_sizer(monthly_signals, monthly_prices, window, target_return=target)
         

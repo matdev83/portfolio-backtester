@@ -23,75 +23,88 @@ logger = logging.getLogger(__name__)
 
 class DataPreprocessingCache:
     """
-    Cache for expensive data preprocessing operations.
+    Cache for expensive data preprocessing operations like return calculations.
     
-    This cache stores computed results for:
-    - Return calculations
-    - Date-based data slicing
-    - Index mappings
-    - Rolling statistics
+    This cache helps avoid redundant calculations during optimization by storing
+    computed results and reusing them when the same data is requested again.
     """
     
-    def __init__(self, max_cache_size_mb: int = 500):
+    def __init__(self, max_cache_size: int = 100):
         """
-        Initialize the data preprocessing cache.
+        Initialize the data cache.
         
         Args:
-            max_cache_size_mb: Maximum cache size in megabytes
+            max_cache_size: Maximum number of cached items before cleanup
         """
-        self.max_cache_size_mb = max_cache_size_mb
+        self.max_cache_size = max_cache_size
         self.cached_returns: Dict[str, pd.DataFrame] = {}
-        self.cached_slices: Dict[str, pd.DataFrame] = {}
-        self.date_position_maps: Dict[str, Dict[pd.Timestamp, int]] = {}
+        self.cached_window_returns: Dict[str, pd.DataFrame] = {}  # New: window-specific returns
         self.data_hashes: Dict[str, str] = {}
         self._cache_stats = {
             'hits': 0,
             'misses': 0,
-            'size_mb': 0.0
+            'window_hits': 0,
+            'window_misses': 0
         }
-        
-        if logger.isEnabledFor(logging.DEBUG):
-
-        
-            logger.debug(f"Initialized DataPreprocessingCache with max size: {max_cache_size_mb}MB")
     
-    def _get_data_hash(self, data: pd.DataFrame, identifier: str = "") -> str:
-        """Generate a hash for DataFrame to use as cache key."""
-        # Handle empty DataFrame
-        if len(data) == 0:
-            hash_input = f"{identifier}_empty_{data.shape}"
-        else:
-            # Use shape, index range, and sample values for hash
-            hash_input = f"{identifier}_{data.shape}_{data.index[0]}_{data.index[-1]}"
-            # Sample a few values for hash uniqueness
-            sample_values = data.iloc[::max(1, len(data)//10)].values.flatten()[:10]
-            hash_input += f"_{hash(tuple(sample_values))}"
+    def _get_data_hash(self, data: pd.DataFrame, identifier: str) -> str:
+        """
+        Generate a hash for DataFrame to use as cache key.
         
-        return hashlib.md5(hash_input.encode()).hexdigest()[:16]
+        Args:
+            data: DataFrame to hash
+            identifier: Additional identifier for uniqueness
+            
+        Returns:
+            Hash string for the data
+        """
+        # Create a hash based on data shape, index, columns, and sample values
+        hash_input = f"{identifier}_{data.shape}_{data.index.min()}_{data.index.max()}"
+        hash_input += f"_{list(data.columns)}_{data.iloc[0, 0] if not data.empty else 'empty'}"
+        
+        if len(data) > 1:
+            hash_input += f"_{data.iloc[-1, 0]}"
+        
+        return hashlib.md5(hash_input.encode()).hexdigest()
     
-    def _estimate_size_mb(self, obj: Any) -> float:
-        """Estimate memory size of object in MB."""
-        if isinstance(obj, pd.DataFrame):
-            return obj.memory_usage(deep=True).sum() / (1024 * 1024)
-        elif isinstance(obj, pd.Series):
-            return obj.memory_usage(deep=True) / (1024 * 1024)
-        elif isinstance(obj, dict):
-            return sum(self._estimate_size_mb(v) for v in obj.values())
-        else:
-            return 0.001  # Minimal size for other objects
+    def _get_window_hash(self, data: pd.DataFrame, window_start: pd.Timestamp, window_end: pd.Timestamp) -> str:
+        """
+        Generate a hash for window-specific data.
+        
+        Args:
+            data: DataFrame to hash
+            window_start: Start of the window
+            window_end: End of the window
+            
+        Returns:
+            Hash string for the windowed data
+        """
+        hash_input = f"window_{window_start}_{window_end}_{data.shape}"
+        hash_input += f"_{list(data.columns)}_{data.iloc[0, 0] if not data.empty else 'empty'}"
+        
+        if len(data) > 1:
+            hash_input += f"_{data.iloc[-1, 0]}"
+        
+        return hashlib.md5(hash_input.encode()).hexdigest()
     
     def _cleanup_cache_if_needed(self):
-        """Remove oldest entries if cache size exceeds limit."""
-        current_size = sum(
-            self._estimate_size_mb(cache) 
-            for cache in [self.cached_returns, self.cached_slices, self.date_position_maps]
-        )
-        
-        if current_size > self.max_cache_size_mb:
-            if logger.isEnabledFor(logging.WARNING):
-
-                logger.warning(f"Cache size ({current_size:.1f}MB) exceeds limit ({self.max_cache_size_mb}MB). Clearing cache.")
-            self.clear_cache()
+        """Remove oldest entries if cache exceeds max size."""
+        total_items = len(self.cached_returns) + len(self.cached_window_returns)
+        if total_items > self.max_cache_size:
+            # Remove oldest entries (simplified - remove half)
+            items_to_remove = total_items - self.max_cache_size // 2
+            
+            # Remove from regular cache first
+            keys_to_remove = list(self.cached_returns.keys())[:items_to_remove // 2]
+            for key in keys_to_remove:
+                del self.cached_returns[key]
+            
+            # Remove from window cache
+            remaining_to_remove = items_to_remove - len(keys_to_remove)
+            if remaining_to_remove > 0:
+                window_keys_to_remove = list(self.cached_window_returns.keys())[:remaining_to_remove]
+                for key in window_keys_to_remove:
+                    del self.cached_window_returns[key]
     
     def get_cached_returns(self, data: pd.DataFrame, identifier: str = "default") -> pd.DataFrame:
         """
@@ -109,14 +122,12 @@ class DataPreprocessingCache:
         if data_hash in self.cached_returns:
             self._cache_stats['hits'] += 1
             if logger.isEnabledFor(logging.DEBUG):
-
                 logger.debug(f"Cache HIT for returns: {identifier}")
             return self.cached_returns[data_hash]
         
         # Cache miss - compute returns
         self._cache_stats['misses'] += 1
         if logger.isEnabledFor(logging.DEBUG):
-
             logger.debug(f"Cache MISS for returns: {identifier} - computing...")
         
         returns = data.pct_change(fill_method=None).fillna(0)
@@ -128,146 +139,168 @@ class DataPreprocessingCache:
         self._cleanup_cache_if_needed()
         return returns
     
-    def get_date_position_map(self, data: pd.DataFrame, identifier: str = "default") -> Dict[pd.Timestamp, int]:
+    def get_cached_window_returns(
+        self, 
+        data: pd.DataFrame, 
+        window_start: pd.Timestamp, 
+        window_end: pd.Timestamp
+    ) -> pd.DataFrame:
         """
-        Get cached date-to-position mapping for fast data slicing.
+        Get cached return calculations for a specific window or compute and cache them.
         
         Args:
-            data: DataFrame with DatetimeIndex
-            identifier: Unique identifier for this dataset
+            data: Price data DataFrame for the window
+            window_start: Start of the window
+            window_end: End of the window
             
         Returns:
-            Dictionary mapping dates to integer positions
+            DataFrame of returns (pct_change) for the window
         """
-        data_hash = self._get_data_hash(data, f"positions_{identifier}")
+        window_hash = self._get_window_hash(data, window_start, window_end)
         
-        if data_hash in self.date_position_maps:
-            self._cache_stats['hits'] += 1
+        if window_hash in self.cached_window_returns:
+            self._cache_stats['window_hits'] += 1
             if logger.isEnabledFor(logging.DEBUG):
-
-                logger.debug(f"Cache HIT for date positions: {identifier}")
-            return self.date_position_maps[data_hash]
+                logger.debug(f"Cache HIT for window returns: {window_start} to {window_end}")
+            return self.cached_window_returns[window_hash]
         
-        # Cache miss - compute position mapping
-        self._cache_stats['misses'] += 1
+        # Cache miss - compute returns
+        self._cache_stats['window_misses'] += 1
         if logger.isEnabledFor(logging.DEBUG):
-
-            logger.debug(f"Cache MISS for date positions: {identifier} - computing...")
+            logger.debug(f"Cache MISS for window returns: {window_start} to {window_end} - computing...")
         
-        position_map = {date: idx for idx, date in enumerate(data.index)}
+        returns = data.pct_change(fill_method=None).fillna(0)
         
         # Store in cache
-        self.date_position_maps[data_hash] = position_map
-        self.data_hashes[f"positions_{identifier}"] = data_hash
+        self.cached_window_returns[window_hash] = returns
         
-        return position_map
+        self._cleanup_cache_if_needed()
+        return returns
     
-    def get_data_slice_fast(self, data: pd.DataFrame, end_date: pd.Timestamp, 
-                           position_map: Optional[Dict[pd.Timestamp, int]] = None,
-                           identifier: str = "default") -> pd.DataFrame:
+    def precompute_window_returns(
+        self, 
+        daily_data: pd.DataFrame, 
+        windows: list
+    ) -> Dict[str, pd.DataFrame]:
         """
-        Get data slice up to end_date using fast integer indexing.
+        Pre-compute returns for all windows and cache them.
         
         Args:
-            data: Source DataFrame
-            end_date: End date for slice
-            position_map: Pre-computed position mapping (optional)
-            identifier: Unique identifier for caching
+            daily_data: Full daily price data
+            windows: List of (tr_start, tr_end, te_start, te_end) tuples
             
         Returns:
-            Sliced DataFrame
+            Dictionary mapping window hashes to return DataFrames
         """
-        # Create cache key
-        slice_key = f"{identifier}_{end_date}_{data.shape[0]}"
-        slice_hash = hashlib.md5(slice_key.encode()).hexdigest()[:16]
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Pre-computing returns for {len(windows)} windows")
         
-        if slice_hash in self.cached_slices:
-            self._cache_stats['hits'] += 1
-            if logger.isEnabledFor(logging.DEBUG):
-
-                logger.debug(f"Cache HIT for data slice: {slice_key}")
-            return self.cached_slices[slice_hash]
+        window_returns = {}
         
-        # Cache miss - compute slice
-        self._cache_stats['misses'] += 1
+        for window_idx, (tr_start, tr_end, te_start, te_end) in enumerate(windows):
+            # Get the full window data (training + test)
+            window_data = daily_data.loc[tr_start:te_end]
+            
+            if window_data.empty:
+                continue
+            
+            # Extract close prices for return calculation
+            if isinstance(window_data.columns, pd.MultiIndex) and 'Close' in window_data.columns.get_level_values(1):
+                close_prices = window_data.xs('Close', level='Field', axis=1)
+            elif not isinstance(window_data.columns, pd.MultiIndex):
+                close_prices = window_data
+            else:
+                # Try to find Close prices in less structured MultiIndex
+                try:
+                    if 'Close' in window_data.columns.get_level_values(-1):
+                        close_prices = window_data.xs('Close', level=-1, axis=1)
+                    else:
+                        if logger.isEnabledFor(logging.WARNING):
+                            logger.warning(f"Could not extract Close prices for window {window_idx}")
+                        continue
+                except Exception as e:
+                    if logger.isEnabledFor(logging.WARNING):
+                        logger.warning(f"Error extracting Close prices for window {window_idx}: {e}")
+                    continue
+            
+            # Cache the returns for this window
+            window_returns_df = self.get_cached_window_returns(close_prices, tr_start, te_end)
+            window_hash = self._get_window_hash(close_prices, tr_start, te_end)
+            window_returns[window_hash] = window_returns_df
         
-        if position_map is None:
-            position_map = self.get_date_position_map(data, identifier)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Pre-computed returns for {len(window_returns)} windows")
         
-        if end_date in position_map:
-            end_idx = position_map[end_date]
-            sliced_data = data.iloc[:end_idx + 1]
+        return window_returns
+    
+    def get_window_returns_by_dates(
+        self, 
+        daily_data: pd.DataFrame,
+        window_start: pd.Timestamp, 
+        window_end: pd.Timestamp
+    ) -> Optional[pd.DataFrame]:
+        """
+        Get cached window returns by date range.
+        
+        Args:
+            daily_data: Full daily price data
+            window_start: Start of the window
+            window_end: End of the window
+            
+        Returns:
+            DataFrame of returns for the window, or None if not cached
+        """
+        window_data = daily_data.loc[window_start:window_end]
+        
+        if window_data.empty:
+            return None
+        
+        # Extract close prices
+        if isinstance(window_data.columns, pd.MultiIndex) and 'Close' in window_data.columns.get_level_values(1):
+            close_prices = window_data.xs('Close', level='Field', axis=1)
+        elif not isinstance(window_data.columns, pd.MultiIndex):
+            close_prices = window_data
         else:
-            # Fallback to boolean indexing if date not found
-            sliced_data = data[data.index <= end_date]
+            try:
+                if 'Close' in window_data.columns.get_level_values(-1):
+                    close_prices = window_data.xs('Close', level=-1, axis=1)
+                else:
+                    return None
+            except Exception:
+                return None
         
-        # Store in cache (only if reasonable size)
-        if self._estimate_size_mb(sliced_data) < 50:  # Don't cache very large slices
-            self.cached_slices[slice_hash] = sliced_data
-            self._cleanup_cache_if_needed()
-        
-        return sliced_data
-    
-    @lru_cache(maxsize=128)
-    def get_rolling_window_indices(self, data_length: int, window_size: int) -> np.ndarray:
-        """
-        Get pre-computed indices for rolling window operations.
-        
-        Args:
-            data_length: Length of the data series
-            window_size: Size of rolling window
-            
-        Returns:
-            Array of start indices for each rolling window
-        """
-        return np.arange(max(0, data_length - window_size + 1))
-    
-    def clear_cache(self):
-        """Clear all cached data."""
-        self.cached_returns.clear()
-        self.cached_slices.clear()
-        self.date_position_maps.clear()
-        self.data_hashes.clear()
-        
-        # Reset LRU cache
-        self.get_rolling_window_indices.cache_clear()
-        
-        self._cache_stats = {'hits': 0, 'misses': 0, 'size_mb': 0.0}
-        logger.debug("Data preprocessing cache cleared")
+        window_hash = self._get_window_hash(close_prices, window_start, window_end)
+        return self.cached_window_returns.get(window_hash)
     
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache performance statistics."""
         total_requests = self._cache_stats['hits'] + self._cache_stats['misses']
-        hit_rate = self._cache_stats['hits'] / total_requests if total_requests > 0 else 0
-        
-        current_size = sum(
-            self._estimate_size_mb(cache) 
-            for cache in [self.cached_returns, self.cached_slices, self.date_position_maps]
-        )
+        window_requests = self._cache_stats['window_hits'] + self._cache_stats['window_misses']
         
         return {
-            'hits': self._cache_stats['hits'],
-            'misses': self._cache_stats['misses'],
-            'hit_rate': hit_rate,
+            'total_cached_items': len(self.cached_returns) + len(self.cached_window_returns),
+            'regular_cache_items': len(self.cached_returns),
+            'window_cache_items': len(self.cached_window_returns),
+            'regular_hit_rate': self._cache_stats['hits'] / max(1, total_requests),
+            'window_hit_rate': self._cache_stats['window_hits'] / max(1, window_requests),
             'total_requests': total_requests,
-            'current_size_mb': current_size,
-            'max_size_mb': self.max_cache_size_mb,
-            'cached_returns_count': len(self.cached_returns),
-            'cached_slices_count': len(self.cached_slices),
-            'cached_position_maps_count': len(self.date_position_maps)
+            'window_requests': window_requests,
+            **self._cache_stats
         }
     
-    def log_cache_stats(self):
-        """Log current cache statistics."""
-        stats = self.get_cache_stats()
-        logger.info(
-            f"Cache Stats - Hit Rate: {stats['hit_rate']:.2%} "
-            f"({stats['hits']}/{stats['total_requests']}) | "
-            f"Size: {stats['current_size_mb']:.1f}MB/{stats['max_size_mb']}MB | "
-            f"Entries: Returns={stats['cached_returns_count']}, "
-            f"Slices={stats['cached_slices_count']}, "
-            f"Maps={stats['cached_position_maps_count']}"
-        )
+    def clear_cache(self):
+        """Clear all cached data."""
+        self.cached_returns.clear()
+        self.cached_window_returns.clear()
+        self.data_hashes.clear()
+        self._cache_stats = {
+            'hits': 0,
+            'misses': 0,
+            'window_hits': 0,
+            'window_misses': 0
+        }
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Data cache cleared")
 
 
 # Global cache instance

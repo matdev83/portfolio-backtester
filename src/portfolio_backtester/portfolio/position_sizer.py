@@ -9,7 +9,9 @@ logger = logging.getLogger(__name__)
 try:
     from ..numba_optimized import (
         rolling_mean_fast, rolling_std_fast, rolling_sharpe_fast,
-        rolling_sortino_fast, rolling_beta_fast, rolling_correlation_fast
+        rolling_sortino_fast, rolling_beta_fast, rolling_correlation_fast,
+        rolling_sharpe_batch, rolling_sortino_batch, rolling_beta_batch,
+        rolling_correlation_batch, rolling_downside_volatility_batch
     )
     NUMBA_AVAILABLE = True
 except ImportError:
@@ -37,23 +39,27 @@ def rolling_sharpe_sizer(
 ) -> pd.DataFrame:
     rets = prices.pct_change(fill_method=None).fillna(0)
     
-    # Use Numba optimization if available and data is suitable
+    # Use batched Numba optimization if available
     if NUMBA_AVAILABLE and not rets.empty:
-        # Apply Numba optimization column by column
-        sharpe_data = {}
-        for col in rets.columns:
-            if not rets[col].isna().all():
-                sharpe_values = rolling_sharpe_fast(rets[col].values, window)
-                sharpe_data[col] = sharpe_values
-            else:
-                sharpe_data[col] = np.full(len(rets), np.nan)
+        # Convert to numpy array for batch processing
+        returns_matrix = rets.values  # shape: (time, assets)
         
-        sharpe = pd.DataFrame(sharpe_data, index=rets.index)
+        # Calculate Sharpe ratios for all assets at once
+        sharpe_matrix = rolling_sharpe_batch(returns_matrix, window, annualization_factor=1.0)
+        
+        # Convert back to DataFrame
+        sharpe = pd.DataFrame(sharpe_matrix, index=rets.index, columns=rets.columns)
     else:
-        # Fallback to pandas
-        mean = rets.rolling(window).mean()
-        std = rets.rolling(window).std()
-        sharpe = mean / std.replace(0, np.nan)
+        # Fallback to original implementation
+        sharpe = pd.DataFrame(index=rets.index, columns=rets.columns)
+        for col in rets.columns:
+            if NUMBA_AVAILABLE and not rets[col].isna().all():
+                sharpe_values = rolling_sharpe_fast(rets[col].values, window, 1.0)
+                sharpe[col] = sharpe_values
+            else:
+                mean_rets = rets[col].rolling(window).mean()
+                std_rets = rets[col].rolling(window).std()
+                sharpe[col] = mean_rets / std_rets.replace(0, np.nan)
     
     sized = signals.mul(sharpe)
     sized_sums = sized.abs().sum(axis=1)
@@ -70,30 +76,33 @@ def rolling_sortino_sizer(
 ) -> pd.DataFrame:
     rets = prices.pct_change(fill_method=None).fillna(0)
     
-    # Use Numba optimization if available and data is suitable
+    # Use batched Numba optimization if available
     if NUMBA_AVAILABLE and not rets.empty:
-        # Apply Numba optimization column by column
-        sortino_data = {}
-        for col in rets.columns:
-            if not rets[col].isna().all():
-                sortino_values = rolling_sortino_fast(rets[col].values, window, target_return)
-                sortino_data[col] = sortino_values
-            else:
-                sortino_data[col] = np.full(len(rets), np.nan)
+        # Convert to numpy array for batch processing
+        returns_matrix = rets.values  # shape: (time, assets)
         
-        sortino = pd.DataFrame(sortino_data, index=rets.index)
+        # Calculate Sortino ratios for all assets at once
+        sortino_matrix = rolling_sortino_batch(returns_matrix, window, target_return, annualization_factor=1.0)
+        
+        # Convert back to DataFrame
+        sortino = pd.DataFrame(sortino_matrix, index=rets.index, columns=rets.columns)
     else:
-        # Fallback to pandas
-        mean = rets.rolling(window).mean() - target_return
-
-        def downside(series):
-            d = series[series < target_return]
-            if len(d) == 0:
-                return np.nan
-            return np.sqrt(np.mean((d - target_return) ** 2))
-
-        downside_dev = rets.rolling(window).apply(downside, raw=False)
-        sortino = mean / downside_dev.replace(0, np.nan)
+        # Fallback to original implementation
+        sortino = pd.DataFrame(index=rets.index, columns=rets.columns)
+        for col in rets.columns:
+            if NUMBA_AVAILABLE and not rets[col].isna().all():
+                sortino_values = rolling_sortino_fast(rets[col].values, window, target_return, 1.0)
+                sortino[col] = sortino_values
+            else:
+                def downside(series):
+                    downside_returns = series[series < target_return]
+                    if len(downside_returns) == 0:
+                        return 1e-9
+                    return np.sqrt(np.mean((downside_returns - target_return) ** 2))
+                
+                mean_rets = rets[col].rolling(window).mean()
+                downside_dev = rets[col].rolling(window).apply(downside, raw=False)
+                sortino[col] = (mean_rets - target_return) / downside_dev.replace(0, np.nan)
     
     sized = signals.mul(sortino)
     sized_sums = sized.abs().sum(axis=1)
@@ -111,25 +120,28 @@ def rolling_beta_sizer(
     rets = prices.pct_change(fill_method=None).fillna(0)
     bench_rets = benchmark.pct_change(fill_method=None).fillna(0)
     
-    # Use Numba optimization if available and data is suitable
+    # Use batched Numba optimization if available
     if NUMBA_AVAILABLE and not rets.empty and not bench_rets.isna().all():
-        # Apply Numba optimization column by column
-        beta_data = {}
-        for col in rets.columns:
-            if not rets[col].isna().all():
-                beta_values = rolling_beta_fast(rets[col].values, bench_rets.values, window)
-                beta_data[col] = beta_values
-            else:
-                beta_data[col] = np.full(len(rets), np.nan)
+        # Convert to numpy arrays for batch processing
+        returns_matrix = rets.values  # shape: (time, assets)
+        benchmark_returns = bench_rets.values  # shape: (time,)
         
-        beta = pd.DataFrame(beta_data, index=rets.index)
+        # Calculate betas for all assets at once
+        beta_matrix = rolling_beta_batch(returns_matrix, benchmark_returns, window)
+        
+        # Convert back to DataFrame
+        beta = pd.DataFrame(beta_matrix, index=rets.index, columns=rets.columns)
     else:
-        # Fallback to pandas
+        # Fallback to original implementation
         beta = pd.DataFrame(index=rets.index, columns=rets.columns)
         for col in rets.columns:
-            cov = rets[col].rolling(window).cov(bench_rets)
-            var = bench_rets.rolling(window).var()
-            beta[col] = cov / var
+            if NUMBA_AVAILABLE and not rets[col].isna().all():
+                beta_values = rolling_beta_fast(rets[col].values, bench_rets.values, window)
+                beta[col] = beta_values
+            else:
+                cov = rets[col].rolling(window).cov(bench_rets)
+                var = bench_rets.rolling(window).var()
+                beta[col] = cov / var
     
     factor = 1 / beta.abs().replace(0, np.nan)
     sized = signals.mul(factor)
@@ -148,23 +160,26 @@ def rolling_benchmark_corr_sizer(
     rets = prices.pct_change(fill_method=None).fillna(0)
     bench_rets = benchmark.pct_change(fill_method=None).fillna(0)
     
-    # Use Numba optimization if available and data is suitable
+    # Use batched Numba optimization if available
     if NUMBA_AVAILABLE and not rets.empty and not bench_rets.isna().all():
-        # Apply Numba optimization column by column
-        corr_data = {}
-        for col in rets.columns:
-            if not rets[col].isna().all():
-                corr_values = rolling_correlation_fast(rets[col].values, bench_rets.values, window)
-                corr_data[col] = corr_values
-            else:
-                corr_data[col] = np.full(len(rets), np.nan)
+        # Convert to numpy arrays for batch processing
+        returns_matrix = rets.values  # shape: (time, assets)
+        benchmark_returns = bench_rets.values  # shape: (time,)
         
-        corr = pd.DataFrame(corr_data, index=rets.index)
+        # Calculate correlations for all assets at once
+        corr_matrix = rolling_correlation_batch(returns_matrix, benchmark_returns, window)
+        
+        # Convert back to DataFrame
+        corr = pd.DataFrame(corr_matrix, index=rets.index, columns=rets.columns)
     else:
-        # Fallback to pandas
+        # Fallback to original implementation
         corr = pd.DataFrame(index=rets.index, columns=rets.columns)
         for col in rets.columns:
-            corr[col] = rets[col].rolling(window).corr(bench_rets)
+            if NUMBA_AVAILABLE and not rets[col].isna().all():
+                corr_values = rolling_correlation_fast(rets[col].values, bench_rets.values, window)
+                corr[col] = corr_values
+            else:
+                corr[col] = rets[col].rolling(window).corr(bench_rets)
     
     factor = 1 / (corr.abs() + 1e-9)
     sized = signals.mul(factor)
