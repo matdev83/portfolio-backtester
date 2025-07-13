@@ -1,5 +1,6 @@
 GLOBAL_CONFIG:
-  data_source: "stooq"
+  data_source: "hybrid"
+  prefer_stooq: true  # Use Stooq as primary source, yfinance as fallback
   universe:
     - "AAPL"
     - "AMZN"

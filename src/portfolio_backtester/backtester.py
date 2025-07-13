@@ -92,7 +92,7 @@ class Backtester:
     # Duplicate __init__ method removed - keeping the original one above
 
     def _get_data_source(self):
-        ds = self.global_config.get("data_source", "yfinance").lower()
+        ds = self.global_config.get("data_source", "hybrid").lower()
         if ds == "stooq":
             logger.debug("Using StooqDataSource.")
             from .data_sources.stooq_data_source import StooqDataSource
@@ -101,6 +101,11 @@ class Backtester:
             logger.debug("Using YFinanceDataSource.")
             from .data_sources.yfinance_data_source import YFinanceDataSource
             return YFinanceDataSource()
+        elif ds == "hybrid":
+            logger.debug("Using HybridDataSource with fail-tolerance workflow.")
+            from .data_sources.hybrid_data_source import HybridDataSource
+            prefer_stooq = self.global_config.get("prefer_stooq", True)
+            return HybridDataSource(prefer_stooq=prefer_stooq)
         else:
             logger.error(f"Unsupported data source: {self.global_config['data_source']}")
             raise ValueError(f"Unsupported data source: {self.global_config['data_source']}")

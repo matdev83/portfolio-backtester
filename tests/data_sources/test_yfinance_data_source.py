@@ -39,7 +39,7 @@ class TestYFinanceDataSource(unittest.TestCase):
 
         result_df = self.data_source.get_data(tickers, start_date, end_date)
 
-        mock_yfinance_download.assert_called_once_with('TEST', start=start_date, end=end_date, auto_adjust=False, progress=False)
+        mock_yfinance_download.assert_called_once_with('TEST', start=start_date, end=end_date, auto_adjust=True, progress=False)
         self.assertFalse(result_df.empty)
         self.assertIn('TEST', result_df.columns)
         self.assertEqual(result_df['TEST'].iloc[0], 100) # Should pick 'Close'

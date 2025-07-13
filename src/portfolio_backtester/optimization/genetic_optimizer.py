@@ -202,7 +202,7 @@ class GeneticOptimizer:
         for spec in self.optimization_params_spec:
             pname = spec["parameter"]
             opt_def = self.global_config.get("optimizer_parameter_defaults", {}).get(pname, {})
-            ptype = opt_def.get("type", spec.get("type"))
+            ptype = spec.get("type", opt_def.get("type"))
 
             low = spec.get("min_value", opt_def.get("low"))
             high = spec.get("max_value", opt_def.get("high"))

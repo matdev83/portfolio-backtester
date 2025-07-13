@@ -39,6 +39,13 @@ This project is a sophisticated Python-based tool for backtesting portfolio stra
 - **Advanced Reporting Configuration**: Control over statistical analysis generation for faster optimization
 - **Strategy Parameter Defaults**: Centralized optimization parameter management
 
+### Fail-Tolerance Data Gathering
+- **Hybrid Data Source**: Automatic failover between Stooq and yfinance data sources
+- **Data Validation**: Comprehensive validation of downloaded data quality
+- **Format Normalization**: Consistent MultiIndex output regardless of source
+- **Failure Tracking**: Detailed reporting of data source failures and successes
+- **Configurable Preferences**: Choose primary data source (Stooq or yfinance)
+
 ## Setup
 
 1. **Create a virtual environment:**
@@ -198,6 +205,29 @@ monte_carlo_config:
   min_historical_observations: 200    # Minimum data for parameter estimation
   
   garch_config:
+```
+
+### Data Source Configuration
+
+The system supports multiple data sources with automatic failover:
+
+```yaml
+GLOBAL_CONFIG:
+  data_source: "hybrid"        # Options: "hybrid", "stooq", "yfinance"
+  prefer_stooq: true          # For hybrid mode: use Stooq as primary source
+```
+
+#### Data Source Options:
+- **`hybrid`** (Recommended): Uses Stooq as primary source with yfinance fallback
+- **`stooq`**: Uses only Stooq data source
+- **`yfinance`**: Uses only yfinance data source
+
+The hybrid data source provides:
+- Automatic failover when primary source fails
+- Comprehensive data validation and quality checks
+- Consistent MultiIndex format regardless of source
+- Detailed failure reporting and statistics
+- Configurable cache expiration (default: 24 hours)
     model_type: "GARCH"
     p: 1
     q: 1

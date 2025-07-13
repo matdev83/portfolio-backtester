@@ -39,7 +39,8 @@ dependencies = [
     "PyYAML",
     "setuptools",
     "arch>=7.0.0",  # Professional GARCH modeling package
-    "numba>=0.58.0"  # JIT compilation for performance optimization
+    "numba>=0.58.0",  # JIT compilation for performance optimization
+    "pandas-market-calendars>=4.0.0"  # Trading calendar support
 ]
 
 [project.optional-dependencies]

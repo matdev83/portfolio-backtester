@@ -165,10 +165,10 @@ class TestBacktester(unittest.TestCase):
         self.assertEqual(backtester.data_source, mock_instance)
         mock_yfinance_data_source_class.assert_called_once_with()
 
-    @patch('src.portfolio_backtester.data_sources.yfinance_data_source.YFinanceDataSource') # Default
-    def test_get_data_source_default_to_yfinance(self, mock_yfinance_data_source_class):
+    @patch('src.portfolio_backtester.data_sources.hybrid_data_source.HybridDataSource') # Default
+    def test_get_data_source_default_to_hybrid(self, mock_hybrid_data_source_class):
         mock_instance = MagicMock()
-        mock_yfinance_data_source_class.return_value = mock_instance
+        mock_hybrid_data_source_class.return_value = mock_instance
 
         config = self.global_config.copy()
         if "data_source" in config: # Ensure it's not set for this test
@@ -178,7 +178,22 @@ class TestBacktester(unittest.TestCase):
             backtester = Backtester(config, self.scenarios, args)
 
         self.assertEqual(backtester.data_source, mock_instance)
-        mock_yfinance_data_source_class.assert_called_once_with()
+        mock_hybrid_data_source_class.assert_called_once_with(prefer_stooq=True)
+
+    @patch('src.portfolio_backtester.data_sources.hybrid_data_source.HybridDataSource')
+    def test_get_data_source_hybrid(self, mock_hybrid_data_source_class):
+        mock_instance = MagicMock()
+        mock_hybrid_data_source_class.return_value = mock_instance
+
+        config = self.global_config.copy()
+        config["data_source"] = "hybrid"
+        config["prefer_stooq"] = False
+        args = self.MockArgs()
+        with patch('src.portfolio_backtester.backtester.np.random.seed'):
+            backtester = Backtester(config, self.scenarios, args)
+
+        self.assertEqual(backtester.data_source, mock_instance)
+        mock_hybrid_data_source_class.assert_called_once_with(prefer_stooq=False)
 
     def test_get_data_source_unsupported(self):
         config = self.global_config.copy()
