@@ -302,6 +302,7 @@ class TestGeneticOptimizerWithWalkForward:
         args.storage_url = None
         args.study_name = "test_study"
         args.optuna_timeout_sec = None
+        args.timeout = None
 
 
         # Mocking the full Backtester is complex, so we use a real one but

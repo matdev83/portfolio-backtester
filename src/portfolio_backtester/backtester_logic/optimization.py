@@ -19,6 +19,8 @@ _global_progress_tracker = None
 
 
 
+from ..optimization.trial_evaluator import TrialEvaluator
+
 def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full):
     global _global_progress_tracker
     
@@ -40,7 +42,17 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
             rets_full=rets_full,
             random_state=self.random_state
         )
-        optimal_params, num_evaluations = ga_optimizer.run()
+        ga_result = ga_optimizer.run()
+        if isinstance(ga_result, tuple):
+            if len(ga_result) == 3:
+                optimal_params, num_evaluations, best_trial_obj = ga_result
+            elif len(ga_result) == 2:
+                optimal_params, num_evaluations = ga_result
+                best_trial_obj = None
+            else:
+                raise ValueError("GeneticOptimizer.run() returned unexpected number of elements")
+        else:
+            raise ValueError("GeneticOptimizer.run() did not return a tuple")
         return optimal_params, num_evaluations
 
     if self.logger.isEnabledFor(logging.DEBUG):
@@ -86,18 +98,10 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
                           [scenario_config.get("optimization_metric", "Calmar")]
     is_multi_objective = len(metrics_to_optimize) > 1
 
+    evaluator = TrialEvaluator(self, scenario_config, monthly_data, daily_data, rets_full, metrics_to_optimize, is_multi_objective, windows)
+
     def objective(trial: optuna.trial.Trial):
-        current_params = _suggest_optuna_params(self, trial, scenario_config["strategy_params"], scenario_config.get("optimize", []))
-        trial_scenario_config = scenario_config.copy()
-        trial_scenario_config["strategy_params"] = current_params
-        objective_value, full_pnl_returns = self.evaluate_fast(
-            trial, trial_scenario_config, windows, monthly_data, daily_data, rets_full,
-            metrics_to_optimize, is_multi_objective
-        )
-        # Store full_pnl_returns in user_attrs for later retrieval
-        # Convert Timestamp index to string for JSON serialization compatibility
-        trial.set_user_attr("full_pnl_returns", full_pnl_returns.rename(index=str).to_dict())
-        return objective_value
+        return evaluator.evaluate(trial)
 
     # Calculate total work units: trials × windows per trial
     total_work_units = n_trials * len(windows)
@@ -158,7 +162,6 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
             objective,
             n_trials=n_trials,
             timeout=self.args.optuna_timeout_sec,
-            n_jobs=self.n_jobs,
             callbacks=[callback]
         )
         
@@ -265,30 +268,4 @@ def _setup_optuna_study(self, scenario_config, storage, study_name_base: str):
     )
     return study, n_trials_actual
 
-def _suggest_optuna_params(self, trial: optuna.trial.Trial, base_params: dict, opt_specs: list):
-    params = base_params.copy()
-    for spec in opt_specs:
-        pname = spec["parameter"]
-        opt_def = self.global_config.get("optimizer_parameter_defaults", {}).get(pname, {})
-        ptype = opt_def.get("type", spec.get("type"))
 
-        low = spec.get("min_value", opt_def.get("low"))
-        high = spec.get("max_value", opt_def.get("high"))
-        step = spec.get("step", opt_def.get("step", 1 if ptype == "int" else None))
-        log = spec.get("log", opt_def.get("log", False))
-
-        if ptype == "int":
-            params[pname] = trial.suggest_int(pname, int(low), int(high), step=int(step) if step else 1)
-        elif ptype == "float":
-            params[pname] = trial.suggest_float(pname, float(low), float(high), step=float(step) if step else None, log=log)
-        elif ptype == "categorical":
-            choices = spec.get("values", opt_def.get("values"))
-            if not choices or not isinstance(choices, list) or len(choices) == 0:
-                if self.logger.isEnabledFor(logging.WARNING):
-                    self.logger.warning(f"Categorical parameter '{pname}' has no choices defined or choices are invalid. Skipping suggestion.")
-                continue
-            params[pname] = trial.suggest_categorical(pname, choices)
-        else:
-            if self.logger.isEnabledFor(logging.WARNING):
-                self.logger.warning(f"Unsupported parameter type '{ptype}' for {pname}. Skipping suggestion.")
-    return params

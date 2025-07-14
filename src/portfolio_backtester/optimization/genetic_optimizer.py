@@ -22,6 +22,8 @@ except ImportError:
     CENTRAL_INTERRUPTED_FLAG = False
 
 
+from ..optimization.trial_evaluator import TrialEvaluator
+
 class GeneticOptimizer:
     def __init__(self, scenario_config, backtester_instance, global_config, monthly_data, daily_data, rets_full, random_state=None):
         self.scenario_config = scenario_config
@@ -133,16 +135,8 @@ class GeneticOptimizer:
                 logger.error("Not enough data for walk-forward windows in GeneticOptimizer.")
                 return -np.inf if not self.is_multi_objective else [-np.inf] * len(self.metrics_to_optimize)
 
-            objectives_values, _ = self.backtester.evaluate_fast(
-                mock_trial,
-                trial_scenario_config,
-                windows,
-                self.monthly_data,
-                self.daily_data,
-                self.rets_full,
-                self.metrics_to_optimize,
-                self.is_multi_objective
-            )
+            evaluator = TrialEvaluator(self.backtester, self.scenario_config, self.monthly_data, self.daily_data, self.rets_full, self.metrics_to_optimize, self.is_multi_objective, windows)
+            objectives_values = evaluator.evaluate(mock_trial)
 
             if self.is_multi_objective:
                 # PyGAD's NSGA-II expects a list/tuple of objective values.
@@ -154,15 +148,19 @@ class GeneticOptimizer:
                 elif len(directions) != len(self.metrics_to_optimize):
                      directions = ["maximize"] * len(self.metrics_to_optimize)
 
-                # Ensure objectives_values is iterable
-                if not isinstance(objectives_values, (list, tuple)):
-                    objectives_values = [objectives_values]
+                # Ensure objectives_values is a flat list of scalars
+                if isinstance(objectives_values, np.ndarray):
+                    objectives_iter = objectives_values.flatten().tolist()
+                elif not isinstance(objectives_values, (list, tuple)):
+                    objectives_iter = [objectives_values]
+                else:
+                    objectives_iter = list(objectives_values)
 
-                for i, val in enumerate(objectives_values):
+                for i, val in enumerate(objectives_iter):
                     if directions[i] == "minimize":
-                        processed_objectives.append(-val if np.isfinite(val) else np.inf)
+                        processed_objectives.append(float(-val) if np.isfinite(val) else np.inf)
                     else:
-                        processed_objectives.append(val if np.isfinite(val) else -np.inf)
+                        processed_objectives.append(float(val) if np.isfinite(val) else -np.inf)
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(f"Solution {solution_idx} params: {current_params}, objectives: {processed_objectives}")
                 return processed_objectives
@@ -373,11 +371,13 @@ class GeneticOptimizer:
                     logger.error("GA (multi-objective): No solutions found on Pareto front.")
                     return self.scenario_config["strategy_params"].copy(), num_evaluations
 
-                # Select the first solution from the Pareto front
+                # Select the first solution from the Pareto front as representative
                 solution = pareto_chromosomes[0]
                 solution_fitness = pareto_solutions_fitness[0] if pareto_solutions_fitness else "Unknown"
                 if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"GA multi-objective: Selected first solution from Pareto front. Fitness: {solution_fitness}")
+                    logger.debug(
+                        f"GA multi-objective: Selected first solution from Pareto front. Fitness: {solution_fitness}"
+                    )
             else:
                 # Single objective results
                 if self.ga_instance.best_solution_generation == -1 and not CENTRAL_INTERRUPTED_FLAG:
@@ -395,7 +395,24 @@ class GeneticOptimizer:
                         import os
                         os.makedirs("plots", exist_ok=True)
                         plot_path = f"plots/ga_fitness_{self.scenario_config['name']}.png"
+
+                        # Switch to non-interactive backend when interactive mode is disabled
+                        try:
+                            import matplotlib
+                            if not getattr(self.backtester.args, "interactive", False):
+                                matplotlib.use("Agg", force=True)
+                        except Exception as e:
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug(f"Could not set matplotlib backend: {e}")
+
                         self.ga_instance.plot_fitness(title="GA Fitness Value vs. Generation", save_dir=plot_path)
+
+                        # Close the figure to free resources and avoid blocking even in Agg backend
+                        try:
+                            import matplotlib.pyplot as plt
+                            plt.close('all')
+                        except Exception:
+                            pass
                         if logger.isEnabledFor(logging.DEBUG):
                             logger.debug(f"GA fitness plot saved to {plot_path}")
                     except Exception as e:
@@ -410,7 +427,7 @@ class GeneticOptimizer:
                 return optimal_params, num_evaluations
             else:
                 logger.warning("GA: No valid solution to decode, returning default parameters.")
-                return self.scenario_config["strategy_params"].copy(), num_evaluations
+                return self.scenario_config["strategy_params"].copy(), 0
 
         except Exception as e:
             logger.error(f"Error during GA optimization: {e}")

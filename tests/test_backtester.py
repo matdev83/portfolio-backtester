@@ -32,6 +32,7 @@ class TestBacktester(unittest.TestCase):
             self.mc_simulations: int = 1000 # Add default for MC
             self.mc_years: int = 10 # Add default for MC
             self.interactive: bool = False # Add default for interactive
+            self.timeout: Optional[int] = None
 
     def setUp(self):
         """Set up a mock backtester and data for testing."""

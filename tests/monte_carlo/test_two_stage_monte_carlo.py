@@ -169,6 +169,7 @@ class TestTwoStageMonteCarlo:
         # Mock backtester
         args = Mock()
         args.pruning_enabled = False
+        args.timeout = None
         
         with patch.object(Backtester, '_get_data_source', return_value=Mock()):
             backtester = Backtester(global_config, [scenario_config], args)

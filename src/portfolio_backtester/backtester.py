@@ -9,6 +9,7 @@ import sys
 from typing import Dict, Any
 import types
 import optuna
+import time
 from .config_loader import GLOBAL_CONFIG, BACKTEST_SCENARIOS, OPTIMIZER_PARAMETER_DEFAULTS
 from .config_initializer import populate_default_optimizations
 from . import strategies
@@ -30,6 +31,21 @@ from .data_cache import get_global_cache
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+class TimeoutManager:
+    def __init__(self, timeout_seconds):
+        self.timeout = timeout_seconds
+        self.start_time = time.time()
+
+    def check_timeout(self):
+        if self.timeout is None:
+            return False
+        elapsed_time = time.time() - self.start_time
+        if elapsed_time > self.timeout:
+            logger.warning(f"Timeout of {self.timeout} seconds exceeded. Elapsed time: {elapsed_time:.2f} seconds.")
+            print(f"Warning: Timeout of {self.timeout} seconds exceeded.")
+            return True
+        return False
+
 class Backtester:
     def __init__(self, global_config, scenarios, args, random_state=None):
         self.global_config = global_config
@@ -39,6 +55,7 @@ class Backtester:
             logger.debug(f"Backtester initialized with scenario strategy_params: {self.scenarios[0].get('strategy_params')}")
         populate_default_optimizations(self.scenarios, OPTIMIZER_PARAMETER_DEFAULTS)
         self.args = args
+        self.timeout_manager = TimeoutManager(args.timeout)
         self.data_source = self._get_data_source()
         self.results = {}
         # self.features: Dict[str, pd.DataFrame | pd.Series] | None = None # Removed
@@ -88,6 +105,10 @@ class Backtester:
         # Import the deferred report generation method
         from .backtester_logic.execution import generate_deferred_report
         self.generate_deferred_report = types.MethodType(generate_deferred_report, self)
+
+    @property
+    def has_timed_out(self):
+        return self.timeout_manager.check_timeout()
 
     # Duplicate __init__ method removed - keeping the original one above
 
@@ -225,6 +246,9 @@ class Backtester:
         wfo_end_date = pd.to_datetime(scenario_config.get("wfo_end_date", None))
 
         for current_rebalance_date in rebalance_dates:
+            if self.has_timed_out:
+                logger.warning("Timeout reached during scenario run. Halting signal generation.")
+                break
             if verbose:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(f"Generating signals for date: {current_rebalance_date}")
@@ -679,6 +703,9 @@ class Backtester:
                 replacement_info = None
 
         for window_idx, (tr_start, tr_end, te_start, te_end) in enumerate(windows):
+            if self.has_timed_out:
+                logger.warning("Timeout reached during walk-forward evaluation. Stopping further windows.")
+                break
             if CENTRAL_INTERRUPTED_FLAG:
                 self.logger.warning("Evaluation interrupted by user via central flag.")
                 break
@@ -1044,6 +1071,9 @@ class Backtester:
             return objective_value, full_pnl_returns
 
     def run(self):
+        if self.has_timed_out:
+            logger.warning("Timeout reached before starting the backtest run.")
+            return
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Starting backtest data retrieval.")
         daily_data = self.data_source.get_data(
@@ -1200,6 +1230,7 @@ if __name__ == "__main__":
     parser.add_argument("--mc-simulations", type=int, default=1000, help="Number of simulations for Monte Carlo analysis.")
     parser.add_argument("--mc-years", type=int, default=10, help="Number of years to project in Monte Carlo analysis.")
     parser.add_argument("--interactive", action="store_true", help="Show plots interactively (blocks execution). Default: off, only saves plots.")
+    parser.add_argument("--timeout", type=int, default=None, help="Global timeout in seconds for the entire run.")
     args = parser.parse_args()
 
     logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))

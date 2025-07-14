@@ -323,23 +323,24 @@ class ImprovedSyntheticDataGenerator:
         # Get bounds from config for parameter enforcement
         bounds = self.garch_config.get('bounds', {})
         cfg_omega_bounds = bounds.get('omega', [1e-6, 1.0])
-        # Enforce a safer upper cap to avoid exploding unconditional variance
-        omega_upper_cap = 0.002
+        # Use more lenient bounds to preserve parameter accuracy
+        omega_upper_cap = 0.01  # Increased from 0.002 to allow more realistic omega values
         omega_bounds = [cfg_omega_bounds[0], min(cfg_omega_bounds[1], omega_upper_cap)]
         alpha_bounds = bounds.get('alpha', [0.01, 0.3])
         beta_bounds = bounds.get('beta', [0.5, 0.99])
         nu_bounds = bounds.get('nu', [2.1, 30.0])
         gamma_bounds = bounds.get('gamma', [0.0, 1.0])
 
-        # Extract and enforce parameter bounds
-        omega = np.clip(params['omega'], omega_bounds[0], omega_bounds[1])
+        # Extract parameters with minimal adjustment
+        omega_raw = float(params.get('omega', 0.0001))
+        omega = np.clip(omega_raw, omega_bounds[0], omega_bounds[1])
         alpha = np.clip(params['alpha[1]'] if 'alpha[1]' in params.index else params.get('alpha', 0.1),
                        alpha_bounds[0], alpha_bounds[1])
         beta = np.clip(params['beta[1]'] if 'beta[1]' in params.index else params.get('beta', 0.8),
                        beta_bounds[0], beta_bounds[1])
-        # Prevent unrealistically low beta values that break persistence estimation
-        if beta < 0.65:
-            beta = 0.65
+        # Allow more realistic beta values
+        if beta < 0.5:  # Reduced from 0.65
+            beta = 0.5
         gamma = np.clip(params['gamma[1]'] if 'gamma[1]' in params.index else 0.0,
                        gamma_bounds[0], gamma_bounds[1])
         
@@ -347,10 +348,55 @@ class ImprovedSyntheticDataGenerator:
         if alpha + beta + gamma / 2.0 >= 1.0:
             # Rescale to ensure stationarity while preserving relative magnitudes
             total = alpha + beta + gamma / 2.0
-            scale_factor = 0.95 / total
+            scale_factor = 0.99 / total  # Increased from 0.95
             alpha *= scale_factor
             beta *= scale_factor
             gamma *= scale_factor
+
+        # Minimal omega adjustment - preserve original estimation accuracy
+        sample_var_raw = float(np.var(returns, ddof=1))
+        try:
+            persistence = alpha + beta + gamma / 2.0
+            if persistence < 0.999:  # Only meaningful when the process is stationary
+                if sample_var_raw > 0:
+                    implied_var = omega / (1 - persistence)
+                    # Very gentle scaling to preserve estimation accuracy
+                    scaling_factor = np.clip(sample_var_raw / implied_var, 0.8, 1.2)
+                    omega *= scaling_factor
+        except Exception as _:
+            # If any issue arises, keep original omega – robustness first
+            pass
+
+        # Allow higher persistence for realistic financial data
+        total_persistence = alpha + beta + gamma / 2.0
+        if total_persistence > 0.95:  # Increased from 0.9
+            scale_persist = 0.95 / total_persistence
+            alpha *= scale_persist
+            beta *= scale_persist
+            gamma *= scale_persist
+            # Re-scale omega accordingly to keep unconditional variance roughly unchanged
+            try:
+                omega *= scale_persist
+            except Exception:
+                pass
+
+        # Allow beta to be more realistic
+        if beta < 0.6:  # Reduced from 0.7
+            beta = 0.6
+
+        # Final gentle adjustment for unconditional variance preservation
+        try:
+            final_persistence = alpha + beta + gamma / 2.0
+            if final_persistence < 0.999:
+                sample_var_final = sample_var_raw
+                implied_var_final = omega / (1 - final_persistence)
+                if sample_var_final > 0 and implied_var_final > 0:
+                    # Very gentle final adjustment
+                    omega *= np.clip(sample_var_final / implied_var_final, 0.9, 1.1)
+        except Exception:
+            pass
+
+        # Remove absolute clamp to allow realistic volatility levels
         
         # Get distribution-specific parameters
         nu = None
@@ -398,19 +444,9 @@ class ImprovedSyntheticDataGenerator:
         asset_name: str = "Unknown"
     ) -> np.ndarray:
         """
-        Generate synthetic returns using fitted GARCH model.
-        
-        Args:
-            asset_stats: Statistical properties of the asset
-            length: Length of synthetic series to generate
-            asset_name: Name of asset for logging
-            
-        Returns:
-            Array of synthetic returns (in decimal form, not percentage)
+        Generate synthetic returns using fitted GARCH model with limited retries.
         """
-        max_attempts = self.generation_config.get('max_attempts', 5) # Increased attempts
-        
-        # Use GARCH model as the primary method with retries
+        max_attempts = self.generation_config.get('max_attempts', 5)
         for attempt in range(max_attempts):
             try:
                 if asset_stats.garch_params is None:
@@ -466,9 +502,13 @@ class ImprovedSyntheticDataGenerator:
                 continue
         
         # Fallback to simple method if all t-distribution attempts fail
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                f"Synthetic data generation failed after {max_attempts} attempts for {asset_name}. "
+                "Using simple fallback method.")
         if logger.isEnabledFor(logging.WARNING):
-
-            logger.warning(f"All t-distribution generation attempts failed for {asset_name}. Using simple fallback.")
+            logger.warning(
+                f"All t-distribution generation attempts failed for {asset_name}. Using simple fallback.")
         return self._generate_simple_fallback(asset_stats, length)
 
     def _generate_fallback_returns(self, asset_stats: AssetStatistics, length: int) -> np.ndarray:
@@ -844,47 +884,59 @@ class ImprovedSyntheticDataGenerator:
     
     def _fit_garch_model(self, returns: pd.Series) -> GARCHParameters:
         """
-        Fit GARCH model to returns data. This is a wrapper around the professional fitting method.
-        
+        Fit GARCH model to returns data with a limited number of retry attempts.
+        If professional fitting fails after the allowed retries, fall back to
+        heuristic parameters.
+
         Args:
             returns: Return series (can be in decimal or percentage terms)
-            
+
         Returns:
-            GARCHParameters object with fitted parameters, with omega scaled to the input returns.
+            GARCHParameters object with fitted parameters.
         """
+        # ------------------------------------------------------------------
+        # Detect scale of the input series (decimal vs percentage)
+        # ------------------------------------------------------------------
         was_scaled = False
-        # Heuristic to check if returns are in decimal and convert to percentage
-        # for numerical stability in GARCH fitting.
-        # A standard deviation check is a reliable way to infer the scale.
-        if returns.std() < 0.1:  # Typical daily % returns std is > 0.5
+        if returns.std() < 0.1:  # Heuristic threshold for percentage vs decimal
             returns_for_fitting = returns * 100
             was_scaled = True
             logger.debug("Input returns appear to be in decimal form. Scaling by 100 for GARCH fitting.")
         else:
             returns_for_fitting = returns
 
-        try:
-            # The professional model expects percentage returns
-            garch_params = self._fit_professional_garch_model(returns_for_fitting)
-            
-            # If we scaled the returns, we need to scale back omega.
-            # alpha, beta, gamma, nu, lambda are scale-invariant.
-            if was_scaled:
-                garch_params.omega /= 10000
-                logger.debug(f"Rescaled omega back to decimal scale: {garch_params.omega}")
-                # Reapply lower bound to avoid extremely small omega values
-                if garch_params.omega < 1e-6:
-                    garch_params.omega = 1e-6
+        # ------------------------------------------------------------------
+        # Retry logic – try professional fitting up to N times before fallback
+        # ------------------------------------------------------------------
+        max_fit_attempts: int = self.garch_config.get("max_fit_attempts", 5)
+        for attempt in range(max_fit_attempts):
+            try:
+                garch_params = self._fit_professional_garch_model(returns_for_fitting)
 
-            return garch_params
+                # Rescale omega back to decimal scale if we scaled the input series
+                if was_scaled:
+                    garch_params.omega /= 10000
+                    if garch_params.omega < 1e-6:
+                        garch_params.omega = 1e-6
+                    logger.debug(f"Rescaled omega back to decimal scale: {garch_params.omega}")
 
-        except Exception as e:
-            if logger.isEnabledFor(logging.WARNING):
+                return garch_params  # SUCCESS ------------------------------------------------
 
-                logger.warning(f"Professional GARCH fitting failed: {e}. Using fallback parameters.")
-            
-            # Fallback should use the original returns to calculate vol for correct scale
-            return self._get_fallback_garch_params(returns)
+            except Exception as e:
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(
+                        f"Professional GARCH fitting failed (Attempt {attempt + 1}/{max_fit_attempts}): {e}")
+                # Let the loop retry until max attempts are exhausted
+                continue
+
+        # ------------------------------------------------------------------
+        # All attempts failed – fall back to heuristic parameters
+        # ------------------------------------------------------------------
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                f"Unable to fit professional GARCH model after {max_fit_attempts} attempts. "
+                "Using fallback GARCH parameters.")
+        return self._get_fallback_garch_params(returns)
     
     def _generate_garch_returns(self, garch_params: GARCHParameters, length: int, mean_return: float, target_volatility: float) -> np.ndarray:
         """
