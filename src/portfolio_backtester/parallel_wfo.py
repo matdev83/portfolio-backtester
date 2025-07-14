@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 import logging
 from typing import Dict, Any, List, Tuple, Optional
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 import multiprocessing as mp
 import pickle
 import time
@@ -27,15 +27,17 @@ class ParallelWFOProcessor:
     CPU cores to significantly speed up optimization processes.
     """
     
-    def __init__(self, max_workers: Optional[int] = None, enable_parallel: bool = True):
+    def __init__(self, max_workers: Optional[int] = None, enable_parallel: bool = True, process_timeout: int = 300):
         """
         Initialize the parallel WFO processor.
         
         Args:
             max_workers: Maximum number of worker processes (default: CPU count - 1)
             enable_parallel: Whether to enable parallel processing
+            process_timeout: Timeout for a single window evaluation in seconds
         """
         self.enable_parallel = enable_parallel
+        self.process_timeout = process_timeout
         
         if max_workers is None:
             # Use CPU count - 1 to leave one core for the main process
@@ -103,11 +105,14 @@ class ParallelWFOProcessor:
                 for future in as_completed(future_to_window):
                     window_idx, window = future_to_window[future]
                     try:
-                        result = future.result()
+                        result = future.result(timeout=self.process_timeout)
                         window_results[window_idx] = result
                         if logger.isEnabledFor(logging.DEBUG):
 
                             logger.debug(f"Window {window_idx} completed successfully")
+                    except TimeoutError:
+                        logger.error(f"Window {window_idx} timed out after {self.process_timeout} seconds")
+                        window_results[window_idx] = (float('nan'), pd.Series(dtype=float))
                     except Exception as e:
                         logger.error(f"Window {window_idx} failed: {e}")
                         # Use fallback result for failed windows
@@ -249,13 +254,15 @@ def create_parallel_wfo_processor(config: Dict[str, Any]) -> ParallelWFOProcesso
     
     enable_parallel = parallel_config.get('enable_parallel', True)
     max_workers = parallel_config.get('max_workers', None)
+    process_timeout = parallel_config.get('process_timeout', 300)
     
     # Disable parallel processing for small numbers of windows
     min_windows_for_parallel = parallel_config.get('min_windows_for_parallel', 2)
     
     processor = ParallelWFOProcessor(
         max_workers=max_workers,
-        enable_parallel=enable_parallel
+        enable_parallel=enable_parallel,
+        process_timeout=process_timeout
     )
     
     processor.min_windows_for_parallel = min_windows_for_parallel

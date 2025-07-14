@@ -5,27 +5,16 @@ This module provides advanced Monte-Carlo capabilities for portfolio backtesting
 including synthetic data generation using GARCH models with heavy-tailed distributions.
 """
 
+from .asset_replacement import AssetReplacementManager
 from .synthetic_data_generator import (
     SyntheticDataGenerator,
-    GARCHParameters,
-    AssetStatistics,
-    DistributionType
+    GARCHParameters as SyntheticGARCHParameters, # Alias to avoid conflicts
+    AssetStatistics as SyntheticAssetStatistics
 )
-
-from .asset_replacement import (
-    AssetReplacementManager,
-    ReplacementInfo
-)
-
-# Re-export existing monte_carlo functionality
-from .monte_carlo import MonteCarloSimulator
 
 __all__ = [
-    'SyntheticDataGenerator',
-    'GARCHParameters', 
-    'AssetStatistics',
-    'DistributionType',
-    'AssetReplacementManager',
-    'ReplacementInfo',
-    'MonteCarloSimulator'
+    "AssetReplacementManager",
+    "SyntheticDataGenerator",
+    "SyntheticGARCHParameters",
+    "SyntheticAssetStatistics"
 ] 

@@ -17,30 +17,29 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "yfinance",
     "pandas",
     "numpy",
-    "matplotlib",
     "scipy",
-    "statsmodels",
-    "rich",
-    "requests",
+    "pygad",
+    "optuna",
+    "matplotlib",
+    "seaborn",
+    "yfinance",
     "lxml",
-    "tqdm",
-    "python-edgar",
+    "requests",
+    "beautifulsoup4",
+    "scikit-learn",
+    "statsmodels",
+    "numba",
+    "rich",
+    "pandas-market-calendars",
+    "pyyaml",
+    "pandas_datareader",
     "openpyxl",
-    "xlrd==2.0.1",
-    "pyarrow",
-    "optuna>=4.4",
-    "pygad>=3.2.0", # Added pygad
-    "pandas-datareader",
-    "pytest-cov",
-    "httpx",
-    "PyYAML",
-    "setuptools",
-    "arch>=7.0.0",  # Professional GARCH modeling package
-    "numba>=0.58.0",  # JIT compilation for performance optimization
-    "pandas-market-calendars>=4.0.0"  # Trading calendar support
+    "plotly",
+    "kaleido",
+    "stooq",
+    "parameterized"
 ]
 
 [project.optional-dependencies]

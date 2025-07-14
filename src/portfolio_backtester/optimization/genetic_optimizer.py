@@ -2,6 +2,7 @@ import pygad
 import numpy as np
 import logging # Import logging
 import optuna
+import time
 # _evaluate_params_walk_forward is now a method of the Backtester class
 from ..utils import generate_randomized_wfo_windows
 
@@ -52,6 +53,9 @@ class GeneticOptimizer:
         # Early stopping variables
         self.zero_fitness_streak = 0
         self.best_fitness_so_far = -np.inf
+
+        # Timeout variables
+        self.start_time = None
 
     def _validate_gene_space(self, gene_space):
         """Validate gene space to prevent PyGAD errors."""
@@ -287,13 +291,22 @@ class GeneticOptimizer:
             # PyGAD seed
             pygad_seed = self.random_state if self.random_state is not None else np.random.randint(0, 10000)
 
+            self.start_time = time.time()
+
             on_generation_callback = None
-            if self.backtester.args.early_stop_patience > 0:
+            if self.backtester.args.early_stop_patience > 0 or self.backtester.args.timeout is not None:
                 self.zero_fitness_streak = 0
                 self.best_fitness_so_far = -np.inf
 
                 def on_gen(ga_instance):
                     try:
+                        # Timeout check
+                        if self.backtester.args.timeout is not None:
+                            elapsed_time = time.time() - self.start_time
+                            if elapsed_time > self.backtester.args.timeout:
+                                logger.warning(f"Genetic Algorithm optimization timed out after {elapsed_time:.2f} seconds.")
+                                return "stop"
+
                         current_best_fitness = ga_instance.best_solution(pop_fitness=ga_instance.last_generation_fitness)[1]
                         if logger.isEnabledFor(logging.DEBUG):
                             logger.debug(f"Generation {ga_instance.generations_completed}, Best fitness: {current_best_fitness}")
@@ -310,7 +323,7 @@ class GeneticOptimizer:
 
                         self.best_fitness_so_far = max(self.best_fitness_so_far, current_best_fitness)
 
-                        if self.zero_fitness_streak >= self.backtester.args.early_stop_patience:
+                        if self.backtester.args.early_stop_patience > 0 and self.zero_fitness_streak >= self.backtester.args.early_stop_patience:
                             if logger.isEnabledFor(logging.DEBUG):
                                 logger.debug(f"Early stopping GA due to {self.zero_fitness_streak} generations with no improvement.")
                             return "stop"
@@ -341,8 +354,8 @@ class GeneticOptimizer:
             }
 
             # Add parallel processing if available
-            if self.backtester.n_jobs > 1:
-                ga_kwargs["parallel_processing"] = ['thread', self.backtester.n_jobs]
+            #if self.backtester.n_jobs > 1:
+            #    ga_kwargs["parallel_processing"] = ['thread', self.backtester.n_jobs]
 
             # For multi-objective optimization, try to use NSGA-II if available
             if self.is_multi_objective:

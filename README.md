@@ -107,7 +107,7 @@ All related scripts are located in `src/portfolio_backtester/universe_data/`.
   * **Default:** `optuna`
 * `--optuna-trials`: Maximum trials per optimization
   * **Default:** `200`
-* `--optuna-timeout-sec`: Time budget per optimization (seconds)
+* `--timeout`: Time budget per optimization (seconds)
   * **Default:** `None` (no timeout)
 * `--n-jobs`: Parallel worker processes
   * **Default:** `8` (`-1` means all cores)

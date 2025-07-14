@@ -235,8 +235,8 @@ class AssetReplacementManager:
             logger.warning("Asset replacement should NOT be used in training phase!")
             return original_data
         
-        # Create a copy of the original data
-        modified_data = deepcopy(original_data)
+        # Create a deep copy of the original dataset to avoid modifying it in place
+        modified_data = {k: v.copy(deep=True) for k, v in original_data.items()}
         
         # Replace data for selected assets
         for asset in assets_to_replace:

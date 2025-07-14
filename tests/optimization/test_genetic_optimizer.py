@@ -274,7 +274,7 @@ def test_fitness_func_wrapper_minimization(mock_backtester_instance):
     raw_fitness_value = optimizer.fitness_func_wrapper(MagicMock(), np.array([3,0.4,0]), 0)
     # Ensure it's a single float for this test case
     fitness_value = raw_fitness_value[0] if isinstance(raw_fitness_value, (list, tuple)) else raw_fitness_value
-    assert abs(float(fitness_value) - (-0.2)) < 1e-6
+    assert abs(float(fitness_value[0]) - (-0.2)) < 1e-6
 
 def test_get_ga_optimizer_parameter_defaults():
     defaults = get_ga_optimizer_parameter_defaults()
