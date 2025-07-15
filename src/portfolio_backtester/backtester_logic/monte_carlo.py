@@ -15,8 +15,14 @@ The current implementation is found in:
 This legacy code is kept for reference but should not be used.
 """
 
-from ..monte_carlo.monte_carlo import run_monte_carlo_simulation, plot_monte_carlo_results
+import logging
+
 import pandas as pd
+
+from ..monte_carlo.monte_carlo import (
+    plot_monte_carlo_results,
+    run_monte_carlo_simulation,
+)
 
 def run_monte_carlo_mode(self, scenario_config, monthly_data, daily_data, rets_full):
     logger = self.logger

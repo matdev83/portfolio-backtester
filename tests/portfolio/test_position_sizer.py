@@ -2,7 +2,6 @@
 import unittest
 import pandas as pd
 import numpy as np
-from scipy.stats import spearmanr
 from pandas import DataFrame, Series # Added for type hinting
 from typing import Tuple # Added for type hinting
 

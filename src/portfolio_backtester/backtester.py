@@ -1,32 +1,31 @@
-import setuptools
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-import pandas as pd
-import numpy as np
-import logging
 import argparse
+import logging
 import sys
-from typing import Dict, Any
-import types
-import optuna
 import time
-from .config_loader import GLOBAL_CONFIG, BACKTEST_SCENARIOS, OPTIMIZER_PARAMETER_DEFAULTS
-from .config_initializer import populate_default_optimizations
+import types
+import warnings
+from typing import Any
+
+import numpy as np
+import optuna
+import pandas as pd
+
 from . import strategies
+from .backtester_logic.execution import (
+    _generate_optimization_report,
+    run_backtest_mode,
+    run_optimize_mode,
+)
+from .backtester_logic.optimization import run_optimization
+from .backtester_logic.reporting import display_results
+from .config_initializer import populate_default_optimizations
+from .config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+from .data_cache import get_global_cache
 from .portfolio.position_sizer import get_position_sizer
 from .portfolio.rebalancing import rebalance
-# from .features.feature_helpers import get_required_features_from_scenarios # Removed
-# from .feature_engineering import precompute_features # Removed
-from .universe_data.spy_holdings import reset_history_cache, get_top_weight_sp500_components
-from .utils import _resolve_strategy, INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
-from .backtester_logic.reporting import display_results
-from .backtester_logic.optimization import run_optimization
-from .backtester_logic.execution import run_backtest_mode, run_optimize_mode, _generate_optimization_report
-# Legacy Monte Carlo mode removed - Monte Carlo is now handled in two stages:
-# Stage 1: During optimization for parameter robustness
-# Stage 2: During results display for strategy stress testing
-from .constants import ZERO_RET_EPS
-from .data_cache import get_global_cache
+from .utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -142,6 +141,8 @@ class Backtester:
             class_name = "VAMSNoDownsideStrategy"
         elif strategy_name == "ema_crossover":
             class_name = "EMAStrategy"
+        elif strategy_name == "ema_ro_ro":
+            class_name = "EMARoRoStrategy"
         else:
             class_name = "".join(word.capitalize() for word in strategy_name.split('_')) + "Strategy"
         
@@ -459,7 +460,6 @@ class Backtester:
         """
 
         import os
-        from .utils import _df_to_float32_array  # pylint: disable=import-error
         from . import numba_kernels as _nk  # pylint: disable=import-error
 
         use_fast = os.environ.get("ENABLE_NUMBA_WALKFORWARD", "0") == "1"
@@ -562,7 +562,6 @@ class Backtester:
         
         # Import here to avoid circular imports
         from .backtester_logic.optimization import _global_progress_tracker
-        from .reporting.performance_metrics import calculate_metrics
         from .utils import calculate_stability_metrics, INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
         
         metric_values_per_objective = [[] for _ in metrics_to_optimize]
@@ -712,7 +711,6 @@ class Backtester:
 
             m_slice = monthly_data.loc[tr_start:tr_end]
             d_slice = daily_data.loc[tr_start:te_end]
-            r_slice = rets_full.loc[tr_start:te_end]
 
             # d_slice is the original daily OHLC data for the current window
             current_daily_data_ohlc = d_slice  # Use view by default for performance
@@ -839,21 +837,39 @@ class Backtester:
             replacement_stats = asset_replacement_manager.get_replacement_statistics()
             trial.set_user_attr("monte_carlo_replacement_stats", replacement_stats)
 
-        metric_avgs = [np.nanmean(values) if not all(np.isnan(values)) else np.nan for values in metric_values_per_objective]
+        # --- STATISTICALLY ROBUST METRIC CALCULATION ---
+        # Instead of averaging metrics from each window (which is flawed),
+        # we now stitch together the out-of-sample returns from all test periods
+        # into a single equity curve and calculate the metrics on that curve.
+        # This provides a much more realistic assessment of strategy performance.
+        
+        # Concatenate all window returns into a single series for the full P&L curve
+        if all_window_returns:
+            full_pnl_returns = pd.concat(all_window_returns).sort_index()
+            # Ensure the index is unique before saving to JSON
+            full_pnl_returns = full_pnl_returns[~full_pnl_returns.index.duplicated(keep='first')]
+            
+            # Calculate benchmark returns for the exact same period as the strategy
+            bench_ser = daily_data[self.global_config["benchmark"]].loc[full_pnl_returns.index]
+            bench_period_rets = bench_ser.pct_change(fill_method=None).fillna(0)
+            
+            # Calculate final metrics on the single, stitched equity curve
+            final_metrics = calculate_metrics(full_pnl_returns, bench_period_rets, self.global_config["benchmark"])
+            metric_avgs = [final_metrics.get(m, np.nan) for m in metrics_to_optimize]
+
+        else:
+            # If there are no returns, all metrics are NaN
+            full_pnl_returns = pd.Series(dtype=float)
+            metric_avgs = [np.nan for _ in metrics_to_optimize]
+
 
         if all(np.isnan(np.array(metric_avgs))):
             if logger.isEnabledFor(logging.WARNING):
                 logger.warning(f"No valid windows produced results for params: {scenario_config['strategy_params']}. Returning NaN.")
-            full_pnl_returns = pd.Series(dtype=float)
             if is_multi_objective:
                 return tuple([float("nan")] * len(metrics_to_optimize))
             else:
                 return float("nan")
-
-        # Concatenate all window returns into a single series for full P&L curve
-        full_pnl_returns = pd.concat(all_window_returns) if all_window_returns else pd.Series(dtype=float)
-        # Ensure the index is unique before saving to JSON
-        full_pnl_returns = full_pnl_returns[~full_pnl_returns.index.duplicated(keep='first')].sort_index()
 
         # Store full_pnl_returns as a user attribute for later analysis
         if trial and hasattr(trial, "set_user_attr"):
@@ -898,7 +914,6 @@ class Backtester:
         try:
             m_slice = monthly_data.loc[tr_start:tr_end]
             d_slice = daily_data.loc[tr_start:te_end]
-            r_slice = rets_full.loc[tr_start:te_end]
 
             # d_slice is the original daily OHLC data for the current window
             current_daily_data_ohlc = d_slice  # Avoid unnecessary copy for performance
@@ -963,11 +978,11 @@ class Backtester:
             Trial number threshold for enabling Monte Carlo
         """
         thresholds = {
-            'fast': 20,        # Enable MC after 20 trials for fast mode
-            'balanced': 10,    # Enable MC after 10 trials for balanced mode  
-            'comprehensive': 5 # Enable MC after 5 trials for comprehensive mode
+            'fast': 20,
+            'balanced': 10,    
+            'comprehensive': 5
         }
-        return thresholds.get(optimization_mode, 10)  # Default to balanced
+        return thresholds.get(optimization_mode, 10)
 
     def evaluate_fast(
         self,
@@ -980,27 +995,16 @@ class Backtester:
         metrics_to_optimize: list,
         is_multi_objective: bool,
     ) -> tuple[float | tuple[float, ...], pd.Series]:
-        """Public interface for fast evaluation with Monte-Carlo safeguards.
-        
-        This method ensures Monte-Carlo synthetic data injection (if enabled)
-        occurs before NumPy conversion, then delegates to the fast kernel.
-        Falls back to legacy path if any unsupported features are active.
-        
-        Returns:
-            Tuple of (objective_value, full_pnl_returns) to match legacy interface
-        """
+        """Public interface for fast evaluation with Monte-Carlo safeguards."""
         import os
         from .utils import _df_to_float32_array
         
-        # Check if fast path is enabled
         use_fast = os.environ.get("ENABLE_NUMBA_WALKFORWARD", "0") == "1"
         if not use_fast:
-            # Legacy path returns (objective_value, full_pnl_returns)
             objective_value = self._evaluate_params_walk_forward(
                 trial, scenario_config, windows, monthly_data, daily_data, rets_full,
                 metrics_to_optimize, is_multi_objective
             )
-            # Extract full_pnl_returns from trial user_attrs if available
             full_pnl_returns = pd.Series(dtype=float)
             if trial and hasattr(trial, 'user_attrs') and 'full_pnl_returns' in trial.user_attrs:
                 pnl_dict = trial.user_attrs['full_pnl_returns']
@@ -1009,7 +1013,6 @@ class Backtester:
                     full_pnl_returns.index = pd.to_datetime(full_pnl_returns.index)
             return objective_value, full_pnl_returns
         
-        # Check for unsupported features that force legacy path
         monte_carlo_config = self.global_config.get('monte_carlo_config', {})
         mc_enabled = monte_carlo_config.get('enable_synthetic_data', False)
         mc_during_optimization = monte_carlo_config.get('enable_during_optimization', True)
@@ -1018,7 +1021,6 @@ class Backtester:
         window_randomization = robustness_config.get("enable_window_randomization", False)
         start_randomization = robustness_config.get("enable_start_date_randomization", False)
         
-        # Fall back if Monte-Carlo or randomization features are active
         if (mc_enabled and mc_during_optimization) or window_randomization or start_randomization:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug("Fast path disabled due to Monte-Carlo or randomization features - using legacy path")
@@ -1026,7 +1028,6 @@ class Backtester:
                 trial, scenario_config, windows, monthly_data, daily_data, rets_full,
                 metrics_to_optimize, is_multi_objective
             )
-            # Extract full_pnl_returns from trial user_attrs if available
             full_pnl_returns = pd.Series(dtype=float)
             if trial and hasattr(trial, 'user_attrs') and 'full_pnl_returns' in trial.user_attrs:
                 pnl_dict = trial.user_attrs['full_pnl_returns']
@@ -1036,11 +1037,9 @@ class Backtester:
             return objective_value, full_pnl_returns
         
         try:
-            # Cache daily index for fast lookups
             if self._daily_index_cache is None or not daily_data.index.equals(pd.Index(self._daily_index_cache)):
                 self._daily_index_cache = daily_data.index.to_numpy()
             
-            # Convert DataFrames to NumPy arrays
             monthly_data_np, _ = _df_to_float32_array(monthly_data)
             daily_data_np, _ = _df_to_float32_array(daily_data)
             rets_full_np, _ = _df_to_float32_array(rets_full)
@@ -1050,7 +1049,6 @@ class Backtester:
                 metrics_to_optimize, is_multi_objective
             )
             
-            # For now, return empty full_pnl_returns (fast path doesn't compute this yet)
             full_pnl_returns = pd.Series(dtype=float)
             
             return objective_value, full_pnl_returns
@@ -1061,7 +1059,6 @@ class Backtester:
                 trial, scenario_config, windows, monthly_data, daily_data, rets_full,
                 metrics_to_optimize, is_multi_objective
             )
-            # Extract full_pnl_returns from trial user_attrs if available
             full_pnl_returns = pd.Series(dtype=float)
             if trial and hasattr(trial, 'user_attrs') and 'full_pnl_returns' in trial.user_attrs:
                 pnl_dict = trial.user_attrs['full_pnl_returns']
@@ -1093,41 +1090,31 @@ class Backtester:
         else:
             daily_data_std_format = daily_data
 
-        # Ensure self.daily_data_ohlc is set up correctly.
-        # It should contain daily OHLCV data for all universe tickers and the benchmark.
-        # The existing logic for daily_data_std_format seems to prepare this.
-        # Ensure daily_data_std_format is a DataFrame before assigning
         if isinstance(daily_data_std_format, pd.Series):
             self.daily_data_ohlc = daily_data_std_format.to_frame()
         else:
             self.daily_data_ohlc = daily_data_std_format
         
-        if self.daily_data_ohlc is not None: # Add explicit check for Pylance
+        if self.daily_data_ohlc is not None:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Shape of self.daily_data_ohlc: {self.daily_data_ohlc.shape}")
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Columns of self.daily_data_ohlc: {self.daily_data_ohlc.columns}")
 
 
-        # The section for preparing 'monthly_data_for_features' is no longer needed
-        # as features are computed within strategies using daily_data_ohlc.
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Feature pre-computation step removed. Features will be calculated within strategies.")
 
-        # Extract daily closes for return calculations and for monthly resampling if needed by other parts
         daily_closes = None
-        if self.daily_data_ohlc is not None: # Ensure self.daily_data_ohlc is not None
+        if self.daily_data_ohlc is not None:
             if isinstance(self.daily_data_ohlc.columns, pd.MultiIndex) and \
                'Close' in self.daily_data_ohlc.columns.get_level_values(1):
-                # Assuming 'Ticker' is level 0 and 'Field' is level 1
                 daily_closes = self.daily_data_ohlc.xs('Close', level='Field', axis=1)
             elif not isinstance(self.daily_data_ohlc.columns, pd.MultiIndex):
-                # If daily_data_ohlc is just close prices (older format or specific data source output)
                 daily_closes = self.daily_data_ohlc
             else:
-                # Attempt to find 'Close' prices in a less structured MultiIndex or raise error
                 try:
-                    if 'Close' in self.daily_data_ohlc.columns.get_level_values(-1): # Check last level for 'Close'
+                    if 'Close' in self.daily_data_ohlc.columns.get_level_values(-1):
                         daily_closes = self.daily_data_ohlc.xs('Close', level=-1, axis=1)
                     else:
                         raise ValueError("Could not reliably extract 'Close' prices from self.daily_data_ohlc due to unrecognized column structure.")
@@ -1140,66 +1127,44 @@ class Backtester:
         if isinstance(daily_closes, pd.Series):
             daily_closes = daily_closes.to_frame()
 
-        # monthly_closes will be used for determining rebalance dates and for sizers if they need monthly frequency.
         monthly_closes = daily_closes.resample("BME").last()
-        # Ensure monthly_closes is a DataFrame before assigning
-        self.monthly_data = monthly_closes.to_frame() if isinstance(monthly_closes, pd.Series) else monthly_closes # Store monthly closing prices
+        self.monthly_data = monthly_closes.to_frame() if isinstance(monthly_closes, pd.Series) else monthly_closes
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Backtest data retrieved and prepared (daily OHLC, monthly closes).")
 
-        # Removed strategy_registry and get_required_features_from_scenarios
-        # Removed benchmark_monthly_closes (strategies will use benchmark_historical_data from daily_data_ohlc)
-        # Removed precompute_features call and self.features initialization
-
-        # Use data cache for expensive return calculations
         rets_full = self.data_cache.get_cached_returns(daily_closes, "full_period_returns")
-        # Ensure rets_full is a DataFrame, even if it originates from a Series
-        self.rets_full = rets_full.to_frame() if isinstance(rets_full, pd.Series) else rets_full # These are daily returns based on daily_closes
-
-        # The arguments to run_optimize_mode, run_backtest_mode
-        # might need adjustment if they directly used self.features or specific monthly data forms
-        # that are no longer created.
-        # `monthly_closes` is still available as self.monthly_data.
-        # `daily_closes` is available.
-        # `rets_full` (daily returns) is available.
-        # `self.daily_data_ohlc` (full daily OHLCV) is the primary data source for strategies now.
+        self.rets_full = rets_full.to_frame() if isinstance(rets_full, pd.Series) else rets_full
 
         if self.args.mode == "optimize":
-            # Pass self.daily_data_ohlc for strategies, monthly_closes for other potential uses by optimizer/scenario runner
             self.run_optimize_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         elif self.args.mode == "backtest":
             self.run_backtest_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
-            # Note: Monte Carlo robustness analysis (Stage 2) is automatically performed 
-            # during results display if optimization reports are enabled
         
-        # Moved logic from the module level into the class method's finally block
-        # This ensures it always runs after backtest/optimization, or upon interruption.
         if CENTRAL_INTERRUPTED_FLAG:
             self.logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
         else:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug("All scenarios completed. Displaying results.")
-            # Display results and generate deferred reports if needed
             if self.args.mode == "backtest":
-                self.display_results(daily_data) # daily_data is available here
+                self.display_results(daily_data)
             else:
-                # For optimization mode, generate deferred reports if enabled
                 try:
                     self.generate_deferred_report()
                 except Exception as e:
                     self.logger.warning(f"Failed to generate deferred report: {e}")
                 
-                # Then display results
                 self.display_results(self.daily_data_ohlc)
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug("Optimization mode completed. Reports generated.")
-        
-# The following code block was incorrectly placed inside the class in the previous attempt.
-# It should remain at the module level.
-from .utils import register_signal_handler as register_central_signal_handler
+
 
 if __name__ == "__main__":
+    from .utils import register_signal_handler as register_central_signal_handler
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+        
     register_central_signal_handler()
 
     parser = argparse.ArgumentParser(description="Run portfolio backtester.")
@@ -1235,12 +1200,31 @@ if __name__ == "__main__":
 
     logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
 
+    # Load configuration with graceful error handling
     import src.portfolio_backtester.config_loader as config_loader_module
-    config_loader_module.load_config()
-
-    GLOBAL_CONFIG_RELOADED = config_loader_module.GLOBAL_CONFIG
-    BACKTEST_SCENARIOS_RELOADED = config_loader_module.BACKTEST_SCENARIOS
-    OPTIMIZER_PARAMETER_DEFAULTS_RELOADED = config_loader_module.OPTIMIZER_PARAMETER_DEFAULTS
+    from src.portfolio_backtester.config_loader import ConfigurationError
+    
+    try:
+        config_loader_module.load_config()
+        GLOBAL_CONFIG_RELOADED = config_loader_module.GLOBAL_CONFIG
+        BACKTEST_SCENARIOS_RELOADED = config_loader_module.BACKTEST_SCENARIOS
+        OPTIMIZER_PARAMETER_DEFAULTS_RELOADED = config_loader_module.OPTIMIZER_PARAMETER_DEFAULTS
+        
+        logger.info("Configuration loaded successfully")
+        
+    except ConfigurationError as e:
+        logger.error("Configuration validation failed!")
+        print(f"\n❌ Configuration Error: {e}", file=sys.stderr)
+        print("\nTo validate your configuration files, run:", file=sys.stderr)
+        print("  python -m src.portfolio_backtester.config_loader --validate", file=sys.stderr)
+        print("  python -m src.portfolio_backtester.yaml_lint --config-check", file=sys.stderr)
+        sys.exit(1)
+        
+    except Exception as e:
+        logger.error(f"Unexpected error loading configuration: {e}")
+        print(f"\n❌ Unexpected configuration error: {e}", file=sys.stderr)
+        print("Please check your configuration files for syntax errors.", file=sys.stderr)
+        sys.exit(1)
 
     if args.mode == "optimize" and args.scenario_name is None:
         parser.error("--scenario-name is required for 'optimize' mode.")
@@ -1268,12 +1252,10 @@ if __name__ == "__main__":
             sys.exit(130)
         else:
             logger.info("Backtester run completed.")
-            # Moved from outside the try-finally block
             if CENTRAL_INTERRUPTED_FLAG:
                 logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
             else:
                 logger.info("All scenarios completed. Displaying results.")
-                # Display results for both backtest and optimization modes
                 backtester.display_results(backtester.daily_data_ohlc)
                 if args.mode == "optimize":
                     logger.info("Optimization mode completed. Performance tables above show results with optimal parameters.")

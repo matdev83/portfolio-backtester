@@ -1,12 +1,12 @@
 import unittest
-from unittest.mock import patch, MagicMock
-import pandas as pd
-import numpy as np
-import pytest
-from typing import Optional # Import Optional
+from typing import Optional  # Import Optional
+from unittest.mock import MagicMock, patch
 
-from src.portfolio_backtester.backtester import Backtester, _resolve_strategy
-from src.portfolio_backtester.config_loader import GLOBAL_CONFIG, BACKTEST_SCENARIOS
+import numpy as np
+import pandas as pd
+
+from src.portfolio_backtester.backtester import Backtester
+from src.portfolio_backtester.config_loader import GLOBAL_CONFIG
 # from src.portfolio_backtester.features.feature_helpers import get_required_features_from_scenarios # Removed
 # from src.portfolio_backtester.feature_engineering import precompute_features # Removed
 

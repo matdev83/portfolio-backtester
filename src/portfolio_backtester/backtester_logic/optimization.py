@@ -1,25 +1,25 @@
-import optuna
+import logging
 import os
-import random
-import numpy as np
 from functools import reduce
 from operator import mul
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
+
+import optuna
 from rich.console import Console
-import pandas as pd
-import logging
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
-from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG, generate_randomized_wfo_windows
 from ..optimization.genetic_optimizer import GeneticOptimizer
-from ..parallel_wfo import create_parallel_wfo_processor
-# _evaluate_params_walk_forward is now a method of the Backtester class
-
-# Global progress tracker for window-level updates
-_global_progress_tracker = None
-
-
-
 from ..optimization.trial_evaluator import TrialEvaluator
+from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG, generate_randomized_wfo_windows
+
+# Global progress tracker for optimization
+_global_progress_tracker = None
 
 def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full):
     global _global_progress_tracker
@@ -83,7 +83,12 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     else:
         journal_dir = "optuna_journal"
         os.makedirs(journal_dir, exist_ok=True)
-        db_path = os.path.join(journal_dir, f"{self.args.study_name or scenario_config['name']}.log")
+        
+        # Sanitize study name for use in file path
+        sanitized_study_name = self.args.study_name or scenario_config['name']
+        sanitized_study_name = "".join(c for c in sanitized_study_name if c.isalnum() or c in ('_', '-')).rstrip()
+        
+        db_path = os.path.join(journal_dir, f"{sanitized_study_name}.log")
         from optuna.storages import JournalStorage
         from optuna.storages.journal import JournalFileBackend, JournalFileOpenLock
         storage = JournalStorage(JournalFileBackend(file_path=db_path, lock_obj=JournalFileOpenLock(db_path)))
@@ -267,5 +272,3 @@ def _setup_optuna_study(self, scenario_config, storage, study_name_base: str):
         load_if_exists=(self.args.random_seed is None)
     )
     return study, n_trials_actual
-
-

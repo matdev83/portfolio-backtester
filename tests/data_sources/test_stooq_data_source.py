@@ -1,16 +1,17 @@
-import unittest
-import pandas as pd
 import os
 import shutil
 import time
+import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+import pandas as pd
 import pytest
+
+from src.portfolio_backtester.data_sources.stooq_data_source import StooqDataSource
 
 pytestmark = pytest.mark.network
 pytest.skip("network test", allow_module_level=True)
-
-from src.portfolio_backtester.data_sources.stooq_data_source import StooqDataSource
 
 
 class TestStooqDataSource(unittest.TestCase):

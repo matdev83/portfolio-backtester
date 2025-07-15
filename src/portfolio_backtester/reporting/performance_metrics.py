@@ -1,26 +1,14 @@
-import pandas as pd
-import numpy as np
 import logging
-from scipy.stats import skew, kurtosis, norm, linregress
-from typing import Tuple # Import Tuple for type hinting
+
+import numpy as np
+import pandas as pd
 import scipy._lib._util as sp_util
-
-logger = logging.getLogger(__name__)
-
-if not hasattr(sp_util, "_lazywhere"):
-    def _lazywhere(cond, arrays, func, fillvalue=np.nan, out=None):
-        arrays = tuple(np.asarray(a) for a in arrays)
-        if out is None:
-            out = np.full_like(arrays[0], fillvalue, dtype=float)
-        mask = cond(*arrays)
-        if mask.any():
-            out[mask] = func(*[a[mask] for a in arrays])
-        return out
-
-    sp_util._lazywhere = _lazywhere
-
 import statsmodels.api as sm
+from scipy.stats import kurtosis, linregress, norm, skew
 from statsmodels.tsa.stattools import adfuller
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 # Import Numba optimization with fallback
 try:
@@ -481,13 +469,13 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
     try:
         bench_std_val = bench_aligned.std()
         bench_std = float(bench_std_val) if pd.notna(bench_std_val) else 0.0
-    except:
+    except Exception:
         bench_std = 0.0
         
     try:
         rets_std_val = rets_aligned.std()
         rets_std = float(rets_std_val) if pd.notna(rets_std_val) else 0.0
-    except:
+    except Exception:
         rets_std = 0.0
     
     if len(rets_aligned) < 2 or len(bench_aligned) < 2 or abs(bench_std) < EPSILON_FOR_DIVISION or abs(rets_std) < EPSILON_FOR_DIVISION:

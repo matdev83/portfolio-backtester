@@ -112,7 +112,7 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
                 # Add highly visible constraint violation warnings
                 violation_banner = "=" * 80
                 self.logger.error(f"\n{violation_banner}")
-                self.logger.error(f"🚨 CONSTRAINT VIOLATION DETECTED! 🚨")
+                self.logger.error("🚨 CONSTRAINT VIOLATION DETECTED! 🚨")
                 self.logger.error(f"{violation_banner}")
                 self.logger.error(f"Final backtest violates {len(constraint_violations)} constraint(s)!")
                 self.logger.error("Attempting to find constraint-satisfying parameters...")
@@ -122,9 +122,9 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
                 
                 # Also print to console for immediate visibility
                 print(f"\n{violation_banner}")
-                print(f"🚨 CONSTRAINT VIOLATION DETECTED! 🚨")
+                print("🚨 CONSTRAINT VIOLATION DETECTED! 🚨")
                 print(f"{violation_banner}")
-                print(f"❌ Optimization failed to satisfy constraints:")
+                print("❌ Optimization failed to satisfy constraints:")
                 for i, violation in enumerate(constraint_violations, 1):
                     print(f"   {i}. {violation}")
                 print(f"{violation_banner}")
@@ -383,10 +383,10 @@ def _generate_optimization_report(self, scenario_config, optimal_params, full_re
             if self.logger.isEnabledFor(logging.INFO):
                 self.logger.info(f"Comprehensive optimization report generated: {report_path}")
             self.logger.info(f"Optimization Report Generated: {report_path}")
-            self.logger.info(f"Report directory contains:")
-            self.logger.info(f"   - optimization_report.md (Main report)")
-            self.logger.info(f"   - plots/ (All generated visualizations)")
-            self.logger.info(f"   - data/ (Raw optimization data)")
+            self.logger.info("Report directory contains:")
+            self.logger.info("   - optimization_report.md (Main report)")
+            self.logger.info("   - plots/ (All generated visualizations)")
+            self.logger.info("   - data/ (Raw optimization data)")
             
         except Exception as e:
             self.logger.error(f"Failed to create optimization report: {e}")

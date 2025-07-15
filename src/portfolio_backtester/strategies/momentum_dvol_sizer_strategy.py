@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-"""Momentum strategy using downside volatility for position sizing."""
-
 from .momentum_strategy import MomentumStrategy
+
+"""Momentum strategy using downside volatility for position sizing."""
 
 
 class MomentumDvolSizerStrategy(MomentumStrategy):

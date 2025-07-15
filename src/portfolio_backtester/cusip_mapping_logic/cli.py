@@ -1,9 +1,8 @@
 import argparse
-import sys
-import pandas as pd
 import logging
 
-logger = logging.getLogger(__name__)
+import pandas as pd
+
 from .. import cusip_mapping
 
 def main():

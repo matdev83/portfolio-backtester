@@ -8,11 +8,9 @@ statistical tests, distribution comparisons, and stylized facts validation.
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional
 import logging
-from scipy import stats
-from scipy.stats import kstest, jarque_bera, anderson
-import warnings
+from scipy.stats import kstest
 from dataclasses import dataclass
 
 # Set up logging
@@ -599,25 +597,25 @@ class SyntheticDataValidator:
             k = min(k, len(sorted_data) - 1)
             
             if k <= 0:
-                logger.warning(f"Not enough data points for Hill estimator after filtering. Returning default 3.0.")
+                logger.warning("Not enough data points for Hill estimator after filtering. Returning default 3.0.")
                 return 3.0
             
             # Hill estimator
             # Ensure sorted_data[k] is not zero to avoid division by zero in log
             if sorted_data[k] == 0:
-                logger.warning(f"Value at k-th position is zero in Hill estimator. Returning default 3.0.")
+                logger.warning("Value at k-th position is zero in Hill estimator. Returning default 3.0.")
                 return 3.0
             
             log_ratios = np.log(sorted_data[:k] / sorted_data[k])
             
             # Handle cases where log_ratios might contain inf or NaN
             if np.any(np.isinf(log_ratios)) or np.any(np.isnan(log_ratios)):
-                logger.warning(f"Invalid log ratios in Hill estimator. Returning default 3.0.")
+                logger.warning("Invalid log ratios in Hill estimator. Returning default 3.0.")
                 return 3.0
             
             mean_log_ratios = np.mean(log_ratios)
             if mean_log_ratios == 0:
-                logger.warning(f"Mean log ratios is zero in Hill estimator. Returning default 3.0.")
+                logger.warning("Mean log ratios is zero in Hill estimator. Returning default 3.0.")
                 return 3.0
             
             tail_index = 1.0 / mean_log_ratios

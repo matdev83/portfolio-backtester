@@ -39,12 +39,6 @@ def calculate_realistic_transaction_costs(
         pd.Series: Daily transaction costs as fraction of portfolio value
     """
     
-    # Get parameters from config with realistic defaults
-    commission_per_share = global_config.get("ibkr_commission_per_share", 0.005)
-    commission_min_per_order = global_config.get("ibkr_commission_min_per_order", 1.0)
-    commission_max_percent = global_config.get("ibkr_commission_max_percent_of_trade", 0.005)
-    slippage_bps = global_config.get("slippage_bps", 2.5)  # 2.5 bps for liquid large caps
-    
     # For highly liquid S&P 500 top 100 stocks, use conservative estimates
     # Total cost typically 12-15 bps for retail traders
     total_cost_bps = 13.0  # Conservative estimate: commission + slippage + spread
@@ -85,9 +79,6 @@ def calculate_detailed_transaction_costs(
     """
     
     # Get parameters
-    commission_per_share = global_config.get("ibkr_commission_per_share", 0.005)
-    commission_min_per_order = global_config.get("ibkr_commission_min_per_order", 1.0)
-    commission_max_percent = global_config.get("ibkr_commission_max_percent_of_trade", 0.005)
     slippage_bps = global_config.get("slippage_bps", 2.5)
     
     # Extract daily close prices for share calculations

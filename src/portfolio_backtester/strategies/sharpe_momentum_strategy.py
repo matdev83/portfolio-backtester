@@ -1,6 +1,7 @@
-from typing import Optional, Dict, Any
-import pandas as pd
+from typing import Any, Dict, Optional
+
 import numpy as np
+import pandas as pd
 
 from .base_strategy import BaseStrategy
 
@@ -145,7 +146,6 @@ class SharpeMomentumStrategy(BaseStrategy):
             rolling_std = relevant_monthly_rets.rolling(window=rolling_window_months).std()
 
             # Avoid division by zero; replace zero std with NaN, then fill resulting NaN Sharpe with 0
-            sharpe_ratio = (rolling_mean * annualization_factor) / (rolling_std.replace(0, np.nan) * np.sqrt(annualization_factor))
             # Using np.sqrt(annualization_factor) for std dev based on common practice if returns are already annualized mean
             # Or, if returns are not annualized in mean, then (mean * ann_factor) / (std * sqrt(ann_factor))
             # The original code did: (rolling_mean * cal_factor) / (rolling_std * cal_factor).replace(0, np.nan)
@@ -233,7 +233,8 @@ class SharpeMomentumStrategy(BaseStrategy):
             for asset in current_universe_tickers:
                 if not current_prices_for_assets_at_date.empty and asset in current_prices_for_assets_at_date.index:
                     asset_current_price = current_prices_for_assets_at_date[asset]
-                    if pd.isna(asset_current_price): continue
+                    if pd.isna(asset_current_price):
+                        continue
 
                     if (self.w_prev.get(asset, 0) == 0 and w_target_pre_filter.get(asset, 0) != 0) or \
                        (np.sign(self.w_prev.get(asset, 0)) != np.sign(w_target_pre_filter.get(asset, 0)) and w_target_pre_filter.get(asset, 0) != 0):

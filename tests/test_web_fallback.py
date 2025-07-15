@@ -3,7 +3,7 @@ import pytest
 from src.portfolio_backtester.cusip_mapping import CusipMappingDB
 
 # Skip if no Internet (quick head request to duckduckgo); if fails, test skipped
-import requests, socket
+import socket
 
 def _has_net():
     try:

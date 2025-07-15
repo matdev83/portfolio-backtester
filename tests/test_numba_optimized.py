@@ -5,14 +5,19 @@ These tests ensure mathematical equivalence between Numba-optimized functions
 and their pandas counterparts, with comprehensive edge case coverage.
 """
 
-import pytest
 import numpy as np
-import pandas as pd
+import pytest
+
 from src.portfolio_backtester.numba_optimized import (
-    momentum_scores_fast, momentum_scores_fast_vectorized,
-    rolling_mean_fast, rolling_std_fast, rolling_sharpe_fast,
-    rolling_sortino_fast, rolling_beta_fast, rolling_correlation_fast,
-    true_range_fast, atr_fast, atr_exponential_fast
+    atr_exponential_fast,
+    atr_fast,
+    momentum_scores_fast,
+    momentum_scores_fast_vectorized,
+    rolling_beta_fast,
+    rolling_mean_fast,
+    rolling_sharpe_fast,
+    rolling_std_fast,
+    true_range_fast,
 )
 
 

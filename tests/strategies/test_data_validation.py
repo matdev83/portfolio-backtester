@@ -8,7 +8,7 @@ and handle insufficient historical data gracefully.
 import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from src.portfolio_backtester.strategies import (
     MomentumStrategy,

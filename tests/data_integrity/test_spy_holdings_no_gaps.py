@@ -1,5 +1,4 @@
 import pandas as pd
-import datetime as dt
 from pathlib import Path
 
 import pytest

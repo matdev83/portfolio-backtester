@@ -11,8 +11,6 @@ This module tests the WFO robustness features including:
 import pytest
 import numpy as np
 import pandas as pd
-from unittest.mock import Mock, patch
-import random
 
 from src.portfolio_backtester.utils import generate_randomized_wfo_windows, calculate_stability_metrics
 

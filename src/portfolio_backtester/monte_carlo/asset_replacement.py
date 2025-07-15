@@ -9,13 +9,13 @@ during the optimization process. It ensures that:
 4. Original data is preserved for training phases
 """
 
+import logging
+import random
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Set, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Set, Tuple, Optional, Any
-import logging
-from dataclasses import dataclass
-import random
-from copy import deepcopy
 
 from .synthetic_data_generator import SyntheticDataGenerator
 
@@ -58,8 +58,7 @@ class AssetReplacementManager:
         self._full_data_cache: Dict[str, pd.DataFrame] = {}  # Cache for full historical data
         
         # Initialize synthetic data generator with improved version
-        from .synthetic_data_generator import ImprovedSyntheticDataGenerator
-        self.synthetic_generator = ImprovedSyntheticDataGenerator(config)
+        self.synthetic_generator = SyntheticDataGenerator(config)
         
         # Performance optimization for Stage 1 MC (during optimization)
         # Reduce validation and use faster generation methods
@@ -73,10 +72,10 @@ class AssetReplacementManager:
                 'max_attempts': 1,  # Single attempt for speed
                 'validation_tolerance': 1.0  # Very lenient
             }
-            self.synthetic_generator = ImprovedSyntheticDataGenerator(optimized_config)
+            self.synthetic_generator = SyntheticDataGenerator(optimized_config)
             logger.debug("Initialized AssetReplacementManager for Stage 1 MC (optimization mode)")
         else:
-            self.synthetic_generator = ImprovedSyntheticDataGenerator(config)
+            self.synthetic_generator = SyntheticDataGenerator(config)
             logger.debug("Initialized AssetReplacementManager for Stage 2 MC (stress testing mode)")
         
         if logger.isEnabledFor(logging.INFO):

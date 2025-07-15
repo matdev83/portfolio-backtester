@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-import pandas as pd
-import numpy as np
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Callable, Optional
 
-logger = logging.getLogger(__name__)
+import numpy as np
+import pandas as pd
 
-# Removed Feature and BenchmarkSMA imports as features are now internal
-# from ..features.base import Feature
-# from ..features.benchmark_sma import BenchmarkSMA
 from ..portfolio.position_sizer import get_position_sizer
+
 # Removed BaseSignalGenerator as it's being phased out
 # from ..signal_generators import BaseSignalGenerator
 from ..roro_signals import BaseRoRoSignal
-from .stop_loss import BaseStopLoss, NoStopLoss, AtrBasedStopLoss
+from .stop_loss import AtrBasedStopLoss, BaseStopLoss, NoStopLoss
+
+logger = logging.getLogger(__name__)
 
 
 class BaseStrategy(ABC):

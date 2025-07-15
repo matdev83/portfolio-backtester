@@ -46,6 +46,52 @@ This project is a sophisticated Python-based tool for backtesting portfolio stra
 - **Failure Tracking**: Detailed reporting of data source failures and successes
 - **Configurable Preferences**: Choose primary data source (Stooq or yfinance)
 
+## Execution Flow
+
+The following diagrams illustrate the execution flow of the backtester in its different modes.
+
+### Optimization Mode (`--mode optimize`)
+
+```mermaid
+graph TD
+    A[Start Optimization] --> B{Run Optuna/Genetic Algorithm};
+    B --> C{Select Trial Parameters};
+    C --> D[Run Walk-Forward Optimization];
+    D --> E{For Each WFO Window};
+    E --> F[Train on Historical Data];
+    F --> G[Test on Data with Stage 1 MC];
+    G --> H{Calculate Window Metrics};
+    H --> E;
+    E --> I[Aggregate Window Metrics];
+    I --> J{Update Optimizer};
+    J --> B;
+    B --> K[End Optimization];
+    K --> L[Select Best Parameters];
+    L --> M[Run Stage 2 MC Stress Test];
+    M --> N[Generate Final Report];
+```
+
+### Backtest Mode (`--mode backtest`)
+
+```mermaid
+graph TD
+    A[Start Backtest] --> B{Load Scenario Parameters};
+    B --> C[Run Full-Period Backtest];
+    C --> D[Use Historical Data];
+    D --> E{Calculate Performance Metrics};
+    E --> F[Run Stage 2 MC Stress Test];
+    F --> G[Generate Final Report];
+```
+
+### Monte Carlo Mode (`--mode monte_carlo`)
+
+```mermaid
+graph TD
+    A[Start Monte Carlo] --> B{Load Scenario Parameters};
+    B --> C[Run Stage 2 MC Stress Test];
+    C --> D[Generate Final Report];
+```
+
 ## Setup
 
 1. **Create a virtual environment:**

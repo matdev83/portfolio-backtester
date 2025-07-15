@@ -1,4 +1,3 @@
-import os
 import pytest
 
 from src.portfolio_backtester.cusip_mapping import CusipMappingDB, OPENFIGI_API_KEY

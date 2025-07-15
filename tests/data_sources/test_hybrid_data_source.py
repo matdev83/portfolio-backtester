@@ -1,13 +1,13 @@
-import unittest
-import pandas as pd
-import numpy as np
 import os
 import shutil
-import time
-from pathlib import Path
-from unittest.mock import patch, MagicMock, call
-import pytest
+import unittest
 from datetime import datetime, timedelta
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import numpy as np
+import pandas as pd
+import pytest
 from pandas.tseries.offsets import BDay
 
 from src.portfolio_backtester.data_sources.hybrid_data_source import HybridDataSource
@@ -29,6 +29,7 @@ class TestHybridDataSource(unittest.TestCase):
         self.data_source.stooq_source.data_dir = self.test_data_dir
         self.data_source.yfinance_source.data_dir = self.test_data_dir
         self.data_source.data_dir = self.test_data_dir
+        self.data_source._negative_cache.clear()
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -236,6 +237,7 @@ class TestHybridDataSource(unittest.TestCase):
         
         # Create hybrid data source and replace the instances
         ds = HybridDataSource(prefer_stooq=True)
+        ds._negative_cache.clear()
         ds.stooq_source = mock_stooq_instance
         ds.yfinance_source = mock_yfinance_instance
         
@@ -264,6 +266,7 @@ class TestHybridDataSource(unittest.TestCase):
         
         # Create hybrid data source and replace the instances
         ds = HybridDataSource(prefer_stooq=True)
+        ds._negative_cache.clear()
         ds.stooq_source = mock_stooq_instance
         ds.yfinance_source = mock_yfinance_instance
         
@@ -295,6 +298,7 @@ class TestHybridDataSource(unittest.TestCase):
         
         # Create hybrid data source and replace the instances
         ds = HybridDataSource(prefer_stooq=True)
+        ds._negative_cache.clear()
         ds.stooq_source = mock_stooq_instance
         ds.yfinance_source = mock_yfinance_instance
         
@@ -328,6 +332,7 @@ class TestHybridDataSource(unittest.TestCase):
         
         # Create hybrid data source and replace the instances
         ds = HybridDataSource(prefer_stooq=True)
+        ds._negative_cache.clear()
         ds.stooq_source = mock_stooq_instance
         ds.yfinance_source = mock_yfinance_instance
         
@@ -355,6 +360,7 @@ class TestHybridDataSource(unittest.TestCase):
         
         # Create hybrid data source and replace the instances
         ds = HybridDataSource(prefer_stooq=False)
+        ds._negative_cache.clear()
         ds.stooq_source = mock_stooq_instance
         ds.yfinance_source = mock_yfinance_instance
         
@@ -491,6 +497,7 @@ class TestHybridDataSource(unittest.TestCase):
         
         # Create hybrid data source and replace the instances
         ds = HybridDataSource(prefer_stooq=True)
+        ds._negative_cache.clear()
         ds.stooq_source = mock_stooq_instance
         ds.yfinance_source = mock_yfinance_instance
         

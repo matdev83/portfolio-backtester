@@ -1,16 +1,22 @@
-from typing import Optional, Dict, Any
-import pandas as pd
+import logging
+from typing import Any, Dict, Optional
+
 import numpy as np
+import pandas as pd
 
 from .base_strategy import BaseStrategy
+
 # Removed imports for signal_generators, features as they are now internalized
 
 # Import Numba optimization with fallback
 try:
     from ..numba_optimized import momentum_scores_fast_vectorized
+
     NUMBA_AVAILABLE = True
 except ImportError:
     NUMBA_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 class MomentumStrategy(BaseStrategy):

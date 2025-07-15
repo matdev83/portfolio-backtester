@@ -11,9 +11,7 @@ This module tests the integration of all new backtesting features:
 import pytest
 import numpy as np
 import pandas as pd
-from unittest.mock import Mock, patch, MagicMock
-import tempfile
-import os
+from unittest.mock import Mock, patch
 
 from src.portfolio_backtester.backtester import Backtester
 from src.portfolio_backtester.utils import generate_randomized_wfo_windows

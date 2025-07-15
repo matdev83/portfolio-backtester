@@ -7,7 +7,6 @@
 # because the sub-module is no longer imported automatically.
 # ---------------------------------------------------------------------------
 
-from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
 

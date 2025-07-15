@@ -1,15 +1,14 @@
-import matplotlib.pyplot as plt
-import os
-import pandas as pd
-from rich.console import Console
-from rich.table import Table
+import logging
 import os
 from datetime import datetime
-import seaborn as sns # Added for better plotting
-import numpy as np # Added for numerical operations
-import optuna # Added for stability measures plotting
-import pandas as pd # Added for parameter stability plotting
-import logging
+
+import matplotlib.pyplot as plt
+import numpy as np  # Added for numerical operations
+import optuna  # Added for stability measures plotting
+import pandas as pd
+import seaborn as sns  # Added for better plotting
+from rich.console import Console
+from rich.table import Table
 
 from ..reporting.performance_metrics import calculate_metrics
 
@@ -28,92 +27,6 @@ def display_results(self, daily_data_for_display):
     # Check if optimization reports should be generated
     advanced_reporting_config = self.global_config.get('advanced_reporting_config', {})
     enable_optimization_reports = advanced_reporting_config.get('enable_optimization_reports', True)
-
-    benchmark_ticker = self.global_config["benchmark"]
-    if isinstance(daily_data_for_display.columns, pd.MultiIndex):
-        if benchmark_ticker in daily_data_for_display.columns.get_level_values(0):
-            if ('Close' in daily_data_for_display[benchmark_ticker].columns):
-                bench_prices = daily_data_for_display[(benchmark_ticker, 'Close')]
-            elif ('Adj Close' in daily_data_for_display[benchmark_ticker].columns):
-                 bench_prices = daily_data_for_display[(benchmark_ticker, 'Adj Close')]
-            else:
-                logger.error(f"Could not find 'Close' or 'Adj Close' for benchmark {benchmark_ticker} in multi-indexed data.")
-                bench_prices = pd.Series(dtype=float)
-        elif benchmark_ticker in daily_data_for_display.columns.get_level_values(1):
-            if ('Close', benchmark_ticker) in daily_data_for_display.columns:
-                bench_prices = daily_data_for_display[('Close', benchmark_ticker)]
-            elif ('Adj Close', benchmark_ticker) in daily_data_for_display.columns:
-                bench_prices = daily_data_for_display[('Adj Close', benchmark_ticker)]
-            else:
-                logger.error(f"Could not find ('Close'/'Adj Close', {benchmark_ticker}) in multi-indexed data.")
-                bench_prices = pd.Series(dtype=float)
-        else:
-            logger.error(f"Benchmark ticker {benchmark_ticker} not found in multi-indexed columns.")
-            bench_prices = pd.Series(dtype=float)
-    else:
-        if benchmark_ticker in daily_data_for_display.columns:
-            bench_prices = daily_data_for_display[benchmark_ticker]
-        else:
-            logger.error(f"Benchmark ticker {benchmark_ticker} not found in single-level column data.")
-            bench_prices = pd.Series(dtype=float)
-
-    bench_rets_full = bench_prices.pct_change(fill_method=None).fillna(0)
-
-    first_result_key = list(self.results.keys())[0]
-    train_end_date = self.results[first_result_key].get("train_end_date")
-
-    periods_data = []
-    num_trials_full = {name: res.get("num_trials_for_dsr", 1) for name, res in self.results.items()}
-
-    if train_end_date:
-        periods_data.append({
-            "title": "In-Sample Performance (Net of Costs)",
-            "returns_map": {name: res["returns"][res["returns"].index <= train_end_date] for name, res in self.results.items()},
-            "bench_returns": bench_rets_full[bench_rets_full.index <= train_end_date],
-            "num_trials_map": {name: 1 for name in self.results.keys()}
-        })
-        periods_data.append({
-            "title": "Out-of-Sample Performance (Net of Costs)",
-            "returns_map": {name: res["returns"][res["returns"].index > train_end_date] for name, res in self.results.items()},
-            "bench_returns": bench_rets_full[bench_rets_full.index > train_end_date],
-            "num_trials_map": num_trials_full
-        })
-
-    periods_data.append({
-        "title": "Full Period Performance (Net of Costs)",
-        "returns_map": {name: res["returns"] for name, res in self.results.items()},
-        "bench_returns": bench_rets_full,
-        "num_trials_map": num_trials_full
-    })
-
-    # Check for constraint violations and display warnings
-    constraint_violations_found = False
-    for name, result_data in self.results.items():
-        if result_data.get("constraint_status") == "VIOLATED":
-            constraint_violations_found = True
-            break
-    
-    if constraint_violations_found:
-        _display_constraint_violation_warning(self, console)
-    
-    for period_data in periods_data:
-        _generate_performance_table(
-            self,
-            console,
-            period_data["returns_map"],
-            period_data["bench_returns"],
-            period_data["title"],
-            period_data["num_trials_map"]
-        )
-    
-    logger.info("Performance tables displayed.")
-    _plot_performance_summary(self, bench_rets_full, train_end_date)
-
-    # Plot stability measures if available and optimization reports are enabled
-    # Check performance optimization settings
-    advanced_reporting_config = self.global_config.get('advanced_reporting_config', {})
-    enable_during_optimization = advanced_reporting_config.get('enable_during_optimization', False)
-    defer_expensive_plots = advanced_reporting_config.get('defer_expensive_plots', True)
     
     if enable_optimization_reports:
         for name, result_data in self.results.items():
@@ -316,7 +229,7 @@ def _plot_performance_summary(self, bench_rets_full: pd.Series, train_end_date: 
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_filename = self.args.scenario_name if self.args.scenario_name else list(self.results.keys())[0]
-    scenario_name_for_filename = base_filename.replace(" ", "_").replace("(", "").replace(")", "")
+    scenario_name_for_filename = base_filename.replace(" ", "_").replace("(", "").replace(")", "").replace('"', "")
 
     filename = f"performance_summary_{scenario_name_for_filename}_{timestamp}.png"
     filepath = os.path.join(plots_dir, filename)
@@ -631,7 +544,6 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
     try:
         # Import strategy class for parallel processing
         from ..strategies.momentum_strategy import MomentumStrategy
-        strategy_class = MomentumStrategy  # Use MomentumStrategy directly for now
         
         if logger.isEnabledFor(logging.INFO):
             if logger.isEnabledFor(logging.INFO):
@@ -687,15 +599,13 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
             logger.info(f"Stage 2 MC: Using replacement percentages: {[f'{p:.1%}' for p in replacement_percentages]} "
                        f"(counts: {replacement_counts} out of {universe_size} assets)")
         
-        num_simulations_per_level = 10  # Increased to 10 simulations to better assess synthetic data quality
+        num_simulations_per_level = monte_carlo_config.get('num_simulations_per_level', 10)
         
         # Use sequential processing only - parallel processing has been removed
         # due to fundamental data handling issues and complexity
         total_simulations = len(replacement_percentages) * num_simulations_per_level
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Stage 2 MC: Starting {total_simulations} simulations sequentially...")
-        
-        use_parallel = False
         
         # Colors for different replacement levels
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']  # Blue, Orange, Green, Red, Purple
@@ -719,7 +629,7 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
             TimeElapsedColumn(),
             TimeRemainingColumn(),
         ) as progress:
-            task = progress.add_task(f"[cyan]Stage 2 Monte Carlo Stress Testing...", total=total_simulations)
+            task = progress.add_task("[cyan]Stage 2 Monte Carlo Stress Testing...", total=total_simulations)
             
             for i, replacement_pct in enumerate(replacement_percentages):
                 if logger.isEnabledFor(logging.DEBUG):
@@ -752,7 +662,6 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
                 # CRITICAL OPTIMIZATION 1: Pre-process data once per replacement level instead of per simulation
                 # This moves expensive operations outside the inner loop for 20x speedup
                 universe = scenario_config.get('universe', self.global_config.get('universe', []))
-                asset_replacement_manager = AssetReplacementManager(mc_config)
                 
                 # Pre-convert daily data to expected format (done once instead of 20 times per level)
                 daily_data_dict = {}
@@ -939,7 +848,7 @@ def _plot_monte_carlo_robustness_analysis(self, scenario_name: str, scenario_con
             )
             
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Stage 2 MC: Generated original strategy returns for comparison line")
+                logger.debug("Stage 2 MC: Generated original strategy returns for comparison line")
                 
         except Exception as e:
             if logger.isEnabledFor(logging.WARNING):
@@ -1040,7 +949,7 @@ def _create_monte_carlo_robustness_plot(self, scenario_name: str, simulation_res
                    color='black', linewidth=3.0, label='Original Strategy (Real Data)', zorder=10)
             
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Stage 2 MC: Added original strategy line to plot")
+                logger.debug("Stage 2 MC: Added original strategy line to plot")
         
         # Formatting
         ax.set_title(f"Monte Carlo Robustness Analysis: {scenario_name}\n"
@@ -1100,7 +1009,7 @@ def _create_monte_carlo_robustness_plot(self, scenario_name: str, simulation_res
 
         
             logger.info(f"Monte Carlo robustness plot saved to: {filepath}")
-        logger.debug(f"Monte Carlo plot will be moved to optimization report directory by the report system")
+        logger.debug("Monte Carlo plot will be moved to optimization report directory by the report system")
         
     except Exception as e:
         logger.error(f"Error creating Monte Carlo robustness plot: {e}")
@@ -1172,7 +1081,7 @@ def _create_parameter_heatmaps(self, df: pd.DataFrame, param_names: list, scenar
                 pivot_data = df.groupby([param1_values, param2_values], observed=True)['objective_value'].mean().unstack(fill_value=np.nan)
                 
                 # Create heatmap
-                im = sns.heatmap(pivot_data, annot=True, fmt='.3f', cmap='viridis', 
+                sns.heatmap(pivot_data, annot=True, fmt='.3f', cmap='viridis', 
                                ax=ax, cbar_kws={'label': 'Objective Value'})
                 
                 ax.set_title(f'{param1} vs {param2}', fontsize=12, fontweight='bold')
@@ -1390,7 +1299,7 @@ def _create_parameter_stability_analysis(self, df: pd.DataFrame, param_names: li
         # Use first two most important parameters for 2D plot
         if len(param_names) >= 2:
             param1, param2 = param_names[0], param_names[1]
-            scatter = ax3.scatter(df[param1], df[param2], c=colors, alpha=0.6, s=50)
+            ax3.scatter(df[param1], df[param2], c=colors, alpha=0.6, s=50)
             ax3.set_xlabel(param1, fontsize=12)
             ax3.set_ylabel(param2, fontsize=12)
             ax3.set_title('Parameter Stability Regions', fontsize=12, fontweight='bold')
@@ -1516,7 +1425,6 @@ def _create_parameter_importance_ranking(self, df: pd.DataFrame, param_names: li
             
             # Mutual information approximation (binned correlation)
             try:
-                from scipy.stats import entropy
                 # Bin the parameter values
                 param_binned = pd.cut(df[param], bins=min(10, len(df[param].unique())), duplicates='drop')
                 obj_binned = pd.cut(df['objective_value'], bins=10, duplicates='drop')
@@ -1534,7 +1442,7 @@ def _create_parameter_importance_ranking(self, df: pd.DataFrame, param_names: li
                                 mutual_info += p_xy * np.log2(p_xy / (p_x * p_y))
                 
                 mutual_info = max(0, mutual_info)  # Ensure non-negative
-            except:
+            except Exception:
                 mutual_info = 0
             
             importance_metrics[param] = {
@@ -1581,7 +1489,7 @@ def _create_parameter_importance_ranking(self, df: pd.DataFrame, param_names: li
         
         # 2. Correlation importance
         correlations = [importance_metrics[param]['correlation'] for param in params]
-        bars2 = ax2.bar(range(len(params)), correlations, color='steelblue', alpha=0.8)
+        ax2.bar(range(len(params)), correlations, color='steelblue', alpha=0.8)
         ax2.set_xlabel('Parameters', fontsize=12)
         ax2.set_ylabel('Absolute Correlation', fontsize=12)
         ax2.set_title('Parameter Importance by Correlation', fontsize=14, fontweight='bold')
@@ -1591,7 +1499,7 @@ def _create_parameter_importance_ranking(self, df: pd.DataFrame, param_names: li
         
         # 3. Variance importance
         variances = [importance_metrics[param]['variance'] for param in params]
-        bars3 = ax3.bar(range(len(params)), variances, color='orange', alpha=0.8)
+        ax3.bar(range(len(params)), variances, color='orange', alpha=0.8)
         ax3.set_xlabel('Parameters', fontsize=12)
         ax3.set_ylabel('Normalized Variance', fontsize=12)
         ax3.set_title('Parameter Importance by Variance', fontsize=14, fontweight='bold')
@@ -1692,7 +1600,7 @@ def _create_parameter_robustness_analysis(self, df: pd.DataFrame, param_names: l
             plt.colorbar(contour, ax=ax1, label='Objective Value')
             
             # Overlay scatter points
-            scatter = ax1.scatter(x, y, c=z, cmap='viridis', s=30, alpha=0.6, edgecolors='black', linewidth=0.5)
+            ax1.scatter(x, y, c=z, cmap='viridis', s=30, alpha=0.6, edgecolors='black', linewidth=0.5)
             
             # Add robustness regions
             ax1.contour(Xi, Yi, Zi, levels=[high_performance], colors='red', linewidths=2, linestyles='--')
@@ -1718,7 +1626,6 @@ def _create_parameter_robustness_analysis(self, df: pd.DataFrame, param_names: l
             
             # Sort by parameter value
             sorted_indices = np.argsort(param_values)
-            sorted_param = param_values[sorted_indices]
             sorted_obj = obj_values[sorted_indices]
             
             # Calculate rolling standard deviation
@@ -1780,7 +1687,7 @@ def _create_parameter_robustness_analysis(self, df: pd.DataFrame, param_names: l
             
             ax3.set_xlabel('Performance Quantiles', fontsize=12)
             ax3.set_ylabel(f'{param_to_analyze} Stability (Std Dev)', fontsize=12)
-            ax3.set_title(f'Parameter Stability Across Performance Levels', fontsize=12, fontweight='bold')
+            ax3.set_title('Parameter Stability Across Performance Levels', fontsize=12, fontweight='bold')
             ax3.set_xticks(range(len(quantile_labels)))
             ax3.set_xticklabels(quantile_labels, rotation=45, ha='right')
             ax3.grid(True, alpha=0.3)

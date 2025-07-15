@@ -6,9 +6,8 @@ by adjusting parameters to meet specified constraints.
 """
 
 import pandas as pd
-import numpy as np
 import logging
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from ..reporting.performance_metrics import calculate_metrics
 
 logger = logging.getLogger(__name__)

@@ -1,16 +1,7 @@
 import unittest
-from unittest.mock import patch, MagicMock, mock_open
-import yaml
-from pathlib import Path
+from unittest.mock import mock_open, patch
 
-# Temporarily add src to sys.path to allow direct import for testing
-# This is often handled by test runners or project structure, but useful for isolated testing
-import sys
-# sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
-
-# Now import the module to be tested
-from src.portfolio_backtester import config_loader
-from src.portfolio_backtester import config_initializer
+from src.portfolio_backtester import config_initializer, config_loader
 from src.portfolio_backtester.strategies.base_strategy import BaseStrategy
 
 # Define mock content for YAML files
@@ -127,7 +118,7 @@ class TestConfigLoader(unittest.TestCase):
         with patch('builtins.open', new_callable=mock_open) as mock_open_obj:
 
             # Configure mock_open_obj to return different content based on the file path
-            def side_effect_open(file_path, mode):
+            def side_effect_open(file_path, mode, encoding=None):
                 if file_path == config_loader.PARAMETERS_FILE:
                     return mock_open(read_data=params_yaml_str).return_value
                 elif file_path == config_loader.SCENARIOS_FILE:
@@ -161,7 +152,7 @@ class TestConfigLoader(unittest.TestCase):
 
         # Test case 1: PARAMETERS_FILE is missing
         self.mock_exists.side_effect = [False, True] # PARAMETERS_FILE.exists() -> False, SCENARIOS_FILE.exists() -> True (though not reached)
-        with self.assertRaisesRegex(FileNotFoundError, "Parameters file not found"):
+        with self.assertRaisesRegex(config_loader.ConfigurationError, "Invalid parameters.yaml file"):
             config_loader.load_config() # populate_default_optimizations is not called if load_config fails
         self.assertEqual(self.mock_exists.call_count, 1) # Called for PARAMETERS_FILE
 
@@ -169,7 +160,7 @@ class TestConfigLoader(unittest.TestCase):
         self.mock_exists.reset_mock()
         # Test case 2: SCENARIOS_FILE is missing
         self.mock_exists.side_effect = [True, False] # PARAMETERS_FILE.exists() -> True, SCENARIOS_FILE.exists() -> False
-        with self.assertRaisesRegex(FileNotFoundError, "Scenarios file not found"):
+        with self.assertRaisesRegex(config_loader.ConfigurationError, "Invalid scenarios.yaml file"):
             config_loader.load_config()
         self.assertEqual(self.mock_exists.call_count, 2) # Called for PARAMETERS_FILE then SCENARIOS_FILE
 
@@ -233,7 +224,7 @@ BACKTEST_SCENARIOS:
     strategy_params: {}
 """
         with patch('builtins.open', new_callable=mock_open) as mock_file:
-            def side_effect_open(file_path, mode):
+            def side_effect_open(file_path, mode, encoding=None):
                 if file_path == config_loader.PARAMETERS_FILE:
                     return mock_open(read_data=MOCK_PARAMS_YAML_CONTENT).return_value
                 elif file_path == config_loader.SCENARIOS_FILE:

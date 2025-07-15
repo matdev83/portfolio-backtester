@@ -1,6 +1,8 @@
 import logging
-import numpy as np
+import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
+
+import numpy as np
 
 class TrialEvaluator:
     """Shared evaluation engine used by both Optuna and Genetic optimizers.
@@ -101,6 +103,8 @@ class TrialEvaluator:
         # ------------------------------------------------------------------
         # Decide whether to use multiprocessing or fall back to serial execution.
         use_multiprocessing = True
+        if sys.platform == "win32":
+            use_multiprocessing = False
 
         # Avoid multiprocessing when the backtester is a unittest.mock object (tests) – it cannot be pickled.
         try:
@@ -175,4 +179,3 @@ class TrialEvaluator:
                 pass
 
         return aggregate_objective
-

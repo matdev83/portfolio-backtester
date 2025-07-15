@@ -16,14 +16,12 @@ import io
 import os
 import re
 import time
-import zipfile
 from pathlib import Path
 import logging
 from typing import Optional, Union, List
 
 import pandas as pd
 import requests
-from lxml import etree
 from tqdm import tqdm
 try:  # EdgarTools ≥4.3.0 provides set_identity
     from edgar import set_identity, Company
@@ -172,7 +170,6 @@ def _fetch_sec_company_tickers() -> None:
         sec_url = "https://www.sec.gov/files/company_tickers.json"
         response = requests.get(sec_url, headers=HEADERS_SEC, timeout=10)
         response.raise_for_status()
-        company_data = response.json()
         # This part is tricky as SEC data doesn't directly map CUSIPs.
         # For now, we rely on the static map and log misses.
         # A more advanced approach would involve cross-referencing CIKs or names,
@@ -846,7 +843,6 @@ def build_history(start: pd.Timestamp, end: pd.Timestamp, *, ignore_cache: bool 
     return hist
 
 # --------------------------------------------------------------------------- #
-from portfolio_backtester.utils import register_signal_handler, INTERRUPTED # Import centralized handler and flag
 
 # CLI
 # --------------------------------------------------------------------------- #

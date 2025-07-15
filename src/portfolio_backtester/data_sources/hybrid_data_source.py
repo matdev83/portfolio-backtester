@@ -1,13 +1,20 @@
-import setuptools  # Ensure setuptools is imported before pandas_datareader
-import os
-import time
 import logging
+import pickle
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Set, Optional, Tuple
-import pandas as pd
+from typing import Dict, List, Set, Tuple
+
 import numpy as np
+import pandas as pd
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from .base_data_source import BaseDataSource
 from .stooq_data_source import StooqDataSource
@@ -26,16 +33,18 @@ class HybridDataSource(BaseDataSource):
     4. Provides comprehensive error handling and reporting
     """
 
-    def __init__(self, cache_expiry_hours: int = 24, prefer_stooq: bool = True) -> None:
+    def __init__(self, cache_expiry_hours: int = 24, prefer_stooq: bool = True, negative_cache_timeout_hours: int = 4) -> None:
         """
         Initialize the hybrid data source.
         
         Args:
             cache_expiry_hours: Hours before cached data expires
             prefer_stooq: Whether to prefer Stooq over yfinance (default: True)
+            negative_cache_timeout_hours: Hours before a negative cache entry expires (default: 4)
         """
         self.cache_expiry_hours = cache_expiry_hours
         self.prefer_stooq = prefer_stooq
+        self.negative_cache_timeout = timedelta(hours=negative_cache_timeout_hours)
         
         # Initialize both data sources
         self.stooq_source = StooqDataSource(cache_expiry_hours=cache_expiry_hours)
@@ -47,14 +56,45 @@ class HybridDataSource(BaseDataSource):
         except NameError:
             SCRIPT_DIR = Path.cwd()
         self.data_dir = SCRIPT_DIR.parent.parent.parent / "data"
+        self.cache_dir = SCRIPT_DIR.parent.parent.parent / "cache"
+        self.negative_cache_file = self.cache_dir / "negative_cache.pkl"
         
         # Track which tickers failed from which sources
         self.failed_tickers: Dict[str, Set[str]] = {
             'stooq': set(),
             'yfinance': set()
         }
+        self._negative_cache: Dict[str, Dict[Tuple[str, str], datetime]] = {}
+        self._load_negative_cache()
         
-        logger.debug(f"HybridDataSource initialized. Data directory: {self.data_dir}, prefer_stooq: {prefer_stooq}")
+        logger.debug(f"HybridDataSource initialized. Data directory: {self.data_dir}, prefer_stooq: {self.prefer_stooq}")
+
+    def _load_negative_cache(self):
+        """Loads the negative cache from a file, removing expired entries."""
+        if self.negative_cache_file.exists():
+            try:
+                with open(self.negative_cache_file, 'rb') as f:
+                    self._negative_cache = pickle.load(f)
+                
+                # Remove expired entries
+                now = datetime.now()
+                for ticker, entries in list(self._negative_cache.items()):
+                    for date_range, timestamp in list(entries.items()):
+                        if now - timestamp > self.negative_cache_timeout:
+                            del self._negative_cache[ticker][date_range]
+                    if not self._negative_cache[ticker]:
+                        del self._negative_cache[ticker]
+                
+                logger.info(f"Loaded negative cache with {len(self._negative_cache)} entries.")
+
+            except (pickle.UnpicklingError, EOFError):
+                logger.warning("Could not load negative cache file. Starting with an empty cache.")
+                self._negative_cache = {}
+
+    def _save_negative_cache(self):
+        """Saves the negative cache to a file."""
+        with open(self.negative_cache_file, 'wb') as f:
+            pickle.dump(self._negative_cache, f)
 
     def _is_data_valid(self, df: pd.DataFrame, ticker: str, min_rows: int = 3) -> bool:
         """
@@ -157,7 +197,7 @@ class HybridDataSource(BaseDataSource):
                 return df
             else:
                 # Fallback: convert to MultiIndex if somehow it's not
-                logger.warning(f"Stooq data not in expected MultiIndex format, converting...")
+                logger.warning("Stooq data not in expected MultiIndex format, converting...")
                 return self._convert_to_multiindex(df, tickers)
         
         elif source == 'yfinance':
@@ -287,22 +327,29 @@ class HybridDataSource(BaseDataSource):
             return pd.DataFrame(), [], tickers
 
     def get_data(self, tickers: List[str], start_date: str, end_date: str) -> pd.DataFrame:
-        """
-        Fetch data using fail-tolerance workflow: Stooq first, then yfinance fallback.
-        
-        Args:
-            tickers: List of ticker symbols
-            start_date: Start date string (YYYY-MM-DD)
-            end_date: End date string (YYYY-MM-DD)
-            
-        Returns:
-            DataFrame with MultiIndex columns (Ticker, Field)
-        """
         if not tickers:
             logger.warning("No tickers provided")
             return pd.DataFrame()
+
+        # Filter out tickers that are in the negative cache for the given date range
+        tickers_to_fetch = []
+        cached_count = 0
+        now = datetime.now()
+        for t in tickers:
+            if t in self._negative_cache and (start_date, end_date) in self._negative_cache[t]:
+                if now - self._negative_cache[t][(start_date, end_date)] < self.negative_cache_timeout:
+                    cached_count += 1
+                    continue
+            tickers_to_fetch.append(t)
+
+        if cached_count > 0:
+            logger.info(f"Skipping {cached_count} tickers found in negative cache for the range {start_date}-{end_date}.")
+
+        if not tickers_to_fetch:
+            logger.info("All requested tickers were in the negative cache for this range. No new data to fetch.")
+            return pd.DataFrame()
         
-        logger.info(f"Fetching data for {len(tickers)} tickers from {start_date} to {end_date}")
+        logger.info(f"Fetching data for {len(tickers_to_fetch)} tickers from {start_date} to {end_date}")
         
         # Reset failure tracking
         self.failed_tickers = {'stooq': set(), 'yfinance': set()}
@@ -316,7 +363,6 @@ class HybridDataSource(BaseDataSource):
             fallback_source = 'stooq'
         
         all_data_frames = []
-        remaining_tickers = tickers.copy()
         
         with Progress(
             SpinnerColumn(),
@@ -329,10 +375,10 @@ class HybridDataSource(BaseDataSource):
         ) as progress:
             
             # Step 1: Try primary source
-            primary_task = progress.add_task(f"[green]Fetching from {primary_source}...", total=len(tickers))
+            primary_task = progress.add_task(f"[green]Fetching from {primary_source}...", total=len(tickers_to_fetch))
             
             primary_data, primary_successful, primary_failed = self._fetch_from_source(
-                primary_source, remaining_tickers, start_date, end_date
+                primary_source, tickers_to_fetch, start_date, end_date
             )
             
             if not primary_data.empty:
@@ -369,14 +415,21 @@ class HybridDataSource(BaseDataSource):
         
         # Report final results
         total_failed = len(self.failed_tickers['stooq'] & self.failed_tickers['yfinance'])
-        total_successful = len(tickers) - total_failed
+        total_successful = len(tickers_to_fetch) - total_failed
         
-        logger.info(f"Data fetching complete: {total_successful}/{len(tickers)} tickers successful")
+        logger.info(f"Data fetching complete: {total_successful}/{len(tickers_to_fetch)} tickers successful")
         
         if total_failed > 0:
             completely_failed = self.failed_tickers['stooq'] & self.failed_tickers['yfinance']
             logger.warning(f"Failed to fetch data for {total_failed} tickers: {list(completely_failed)}")
-        
+            # Update negative cache
+            for ticker in completely_failed:
+                if ticker not in self._negative_cache:
+                    self._negative_cache[ticker] = {}
+                self._negative_cache[ticker][(start_date, end_date)] = datetime.now()
+            self._save_negative_cache()
+            logger.debug(f"Updated negative cache with {len(completely_failed)} tickers for the range {start_date}-{end_date}. Total size: {len(self._negative_cache)}")
+
         # Log source usage statistics
         stooq_only = len(self.failed_tickers['yfinance'] - self.failed_tickers['stooq'])
         yfinance_only = len(self.failed_tickers['stooq'] - self.failed_tickers['yfinance'])

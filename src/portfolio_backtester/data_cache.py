@@ -12,10 +12,8 @@ The cache significantly reduces redundant calculations during WFO optimization.
 """
 
 import pandas as pd
-import numpy as np
 import hashlib
-from typing import Dict, Optional, Tuple, Any
-from functools import lru_cache
+from typing import Dict, Optional, Any
 import logging
 
 logger = logging.getLogger(__name__)

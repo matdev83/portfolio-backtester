@@ -3,9 +3,8 @@ import requests
 import logging
 from pathlib import Path
 import os
-import time
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List
 
 logger = logging.getLogger(__name__)
 

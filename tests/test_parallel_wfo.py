@@ -5,14 +5,17 @@ These tests ensure the parallel WFO processor works correctly and provides
 performance benefits while maintaining mathematical correctness.
 """
 
-import pytest
-import pandas as pd
-import numpy as np
 import time
-from unittest.mock import Mock, patch
+
+import numpy as np
+import pandas as pd
+import pytest
+
 from src.portfolio_backtester.parallel_wfo import (
-    ParallelWFOProcessor, create_parallel_wfo_processor, 
-    DEFAULT_PARALLEL_WFO_CONFIG, _evaluate_window_worker
+    DEFAULT_PARALLEL_WFO_CONFIG,
+    ParallelWFOProcessor,
+    _evaluate_window_worker,
+    create_parallel_wfo_processor,
 )
 
 
@@ -500,7 +503,7 @@ class TestParallelWFOIntegration:
             metrics, returns = result
             assert isinstance(metrics, list)
             assert isinstance(returns, pd.Series)
-        except Exception as e:
+        except Exception:
             # Method exists but may fail due to missing data - that's ok for this test
             assert hasattr(backtester, '_evaluate_single_window')
 

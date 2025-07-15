@@ -21,15 +21,13 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-from matplotlib.patches import Rectangle
 import seaborn as sns
 from scipy import stats
-from typing import Dict, List, Optional, Tuple, Union
-import warnings
+from typing import Dict, List, Optional
 import logging
 from pathlib import Path
 
-from .synthetic_data_generator import ImprovedSyntheticDataGenerator
+from .synthetic_data_generator import SyntheticDataGenerator
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -54,7 +52,7 @@ class SyntheticDataVisualInspector:
             config: Configuration dictionary for data generation
         """
         self.config = config
-        self.generator = ImprovedSyntheticDataGenerator(config)
+        self.generator = SyntheticDataGenerator(config)
         
         # Set up plotting parameters
         self.figsize = (15, 10)
@@ -192,9 +190,6 @@ class SyntheticDataVisualInspector:
             synth_returns = synth_df['Close'].pct_change(fill_method=None).dropna()
             synth_returns_list.append(synth_returns)
         
-        # Combine all synthetic returns
-        synth_returns_combined = pd.concat(synth_returns_list, axis=1)
-        
         # Statistical analysis
         analysis = {
             'ticker': ticker,
@@ -282,7 +277,7 @@ class SyntheticDataVisualInspector:
                     'critical_values': ad_crit,
                     'significance_level': ad_sig
                 }
-            except:
+            except Exception:
                 path_tests['anderson_darling'] = None
             
             # Mann-Whitney U test (for location)

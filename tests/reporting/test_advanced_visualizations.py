@@ -11,12 +11,9 @@ This module tests the advanced reporting and visualization features including:
 import pytest
 import numpy as np
 import pandas as pd
-from unittest.mock import Mock, patch, MagicMock
-import tempfile
-import os
+from unittest.mock import Mock, patch
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for testing
-import matplotlib.pyplot as plt
 
 from src.portfolio_backtester.backtester import Backtester
 from src.portfolio_backtester.backtester_logic import reporting

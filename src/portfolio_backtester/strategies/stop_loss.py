@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Dict, Any # Removed Set, added Dict, Any
-import pandas as pd
+from typing import TYPE_CHECKING, Any, Dict, Set
+
 import numpy as np
+import pandas as pd
 
 if TYPE_CHECKING:
-    # from ..features.base import Feature # No longer needed
+    from ..features.base import Feature # No longer needed
     # from ..features.atr import ATRFeature # No longer needed
-    from ..strategies.base_strategy import BaseStrategy # For type hinting if needed
+    pass # For type hinting if needed
 
 class BaseStopLoss(ABC):
     """

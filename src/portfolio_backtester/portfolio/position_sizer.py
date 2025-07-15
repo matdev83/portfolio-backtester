@@ -1,17 +1,18 @@
-import pandas as pd
-import numpy as np
 import logging
 from typing import Callable, Dict
+
+import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 # Import Numba optimizations with fallback
 try:
     from ..numba_optimized import (
-        rolling_mean_fast, rolling_std_fast, rolling_sharpe_fast,
+        rolling_sharpe_fast,
         rolling_sortino_fast, rolling_beta_fast, rolling_correlation_fast,
         rolling_sharpe_batch, rolling_sortino_batch, rolling_beta_batch,
-        rolling_correlation_batch, rolling_downside_volatility_batch
+        rolling_correlation_batch, rolling_downside_volatility_fast
     )
     NUMBA_AVAILABLE = True
 except ImportError:
@@ -204,7 +205,7 @@ def rolling_downside_volatility_sizer(
     upside moves do not lead to smaller position sizes."""
     
     # Calculate downside volatility for each asset using monthly prices
-    if NUMBA_AVAILABLE and 'rolling_downside_volatility_fast' in globals():
+    if NUMBA_AVAILABLE:
         downside_vol_monthly = pd.DataFrame(index=prices.index, columns=prices.columns)
         for col in prices.columns:
             downside_vol_monthly[col] = rolling_downside_volatility_fast(prices[col].values, window)

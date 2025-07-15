@@ -21,8 +21,8 @@ for *date* is missing we fall back **only** to the most recent **earlier**
 trading day, never to the future.
 """
 
-from functools import lru_cache
 import datetime as dt
+from functools import lru_cache
 from typing import List, Union
 
 import pandas as pd

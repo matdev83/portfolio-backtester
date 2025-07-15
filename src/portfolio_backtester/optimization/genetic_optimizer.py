@@ -1,29 +1,16 @@
-import pygad
-import numpy as np
-import logging # Import logging
-import optuna
+import logging
 import time
+
+import numpy as np
+import optuna
+import pygad
+
 # _evaluate_params_walk_forward is now a method of the Backtester class
+from ..optimization.trial_evaluator import TrialEvaluator
 from ..utils import generate_randomized_wfo_windows
 
-# Setup logger for this module
+# Set up logger
 logger = logging.getLogger(__name__)
-
-# Assuming utils.py is in the parent directory relative to optimization directory
-# For example, if utils.py is in src/portfolio_backtester/ and this is src/portfolio_backtester/optimization/
-# Adjust the import path as necessary based on your project structure and how it's run.
-# If this file is run as part of the package, `from ..utils import INTERRUPTED` should work.
-try:
-    from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
-except ImportError:
-    # Fallback if running standalone or structure is different
-    # This is not ideal for production, implies a structure issue or direct script execution
-    # For robustness in development, we can define a local flag.
-    logger.warning("Could not import CENTRAL_INTERRUPTED_FLAG from ..utils. Using a local dummy flag for GeneticOptimizer.")
-    CENTRAL_INTERRUPTED_FLAG = False
-
-
-from ..optimization.trial_evaluator import TrialEvaluator
 
 class GeneticOptimizer:
     def __init__(self, scenario_config, backtester_instance, global_config, monthly_data, daily_data, rets_full, random_state=None):

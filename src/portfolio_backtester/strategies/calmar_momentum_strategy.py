@@ -1,4 +1,4 @@
-from typing import Set, Dict, Any, Optional
+from typing import Dict, Any, Optional
 import pandas as pd
 import numpy as np # Added for np.nan
 from ..features.calmar_ratio import CalmarRatio # Updated import
@@ -145,7 +145,8 @@ class CalmarMomentumStrategy(BaseStrategy):
             for asset in current_universe_tickers:
                 if not current_prices_for_assets_at_date.empty and asset in current_prices_for_assets_at_date.index:
                     asset_current_price = current_prices_for_assets_at_date[asset]
-                    if pd.isna(asset_current_price): continue
+                    if pd.isna(asset_current_price):
+                        continue
 
                     if (self.w_prev.get(asset, 0) == 0 and w_target_pre_filter.get(asset, 0) != 0) or \
                        (np.sign(self.w_prev.get(asset, 0)) != np.sign(w_target_pre_filter.get(asset, 0)) and w_target_pre_filter.get(asset, 0) != 0):

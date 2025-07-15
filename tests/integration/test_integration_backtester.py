@@ -7,8 +7,6 @@ from pathlib import Path
 from PIL import Image # For image validation
 import tempfile
 import sys
-import pandas as pd # Added import
-import numpy as np # Added import
 
 # Directory to store plots generated during tests
 PLOTS_DIR = Path("plots")
@@ -136,7 +134,7 @@ def check_for_errors_and_warnings(stdout_filepath: Path, stderr_filepath: Path, 
                 if is_ga_test_context and "ERROR - 'a' cannot be empty unless no samples are taken" in line_in_stderr: pass
                 else: offending_stderr_lines.append(line_in_stderr); break
 
-    assert not offending_stderr_lines, f"Critical error keywords in stderr:\n" + "\n".join(offending_stderr_lines) + "\n\nFull stderr:\n" + full_stderr_content
+    assert not offending_stderr_lines, "Critical error keywords in stderr:\n" + "\n".join(offending_stderr_lines) + "\n\nFull stderr:\n" + full_stderr_content
 
     stdout_error_patterns = ["Traceback (most recent call last):", "Exception:", "Error:", "CRITICAL -", "ERROR -"]
     warning_lines = []
@@ -159,7 +157,7 @@ def check_for_errors_and_warnings(stdout_filepath: Path, stderr_filepath: Path, 
         "Unsupported parameter type", "pkg_resources is deprecated", "Metric line matched but value group was None"
     ]
     critical_warning_lines = [l for l in warning_lines if not any(sub in l for sub in allowed_warning_substrings)]
-    assert not critical_warning_lines, f"Excessive/critical warnings in stdout:\n" + "\n".join(critical_warning_lines)
+    assert not critical_warning_lines, "Excessive/critical warnings in stdout:\n" + "\n".join(critical_warning_lines)
 
 ZERO_TOLERANCE = 1e-7
 INSANE_RETURN_THRESHOLD = 20000.0

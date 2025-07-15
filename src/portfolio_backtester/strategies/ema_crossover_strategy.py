@@ -6,9 +6,10 @@ This strategy uses exponential moving average crossovers to generate buy/sell si
 - Exit signal: Fast EMA crosses below Slow EMA
 """
 
+from typing import Optional, Set
+
 import pandas as pd
-import numpy as np
-from typing import Dict, Any, Set, Optional
+
 from .base_strategy import BaseStrategy
 # Optional Numba optimisation
 try:

@@ -5,13 +5,14 @@ This module contains JIT-compiled functions that provide significant speedups
 for computationally intensive operations in the backtesting pipeline.
 """
 
+import logging
 import os
+
 import numpy as np
-import pandas as pd
 
 try:
     import numba
-    from numba import jit, prange
+    from numba import prange
     NUMBA_AVAILABLE = True
     
     # Configure Numba threading for optimal performance
@@ -81,9 +82,31 @@ def create_jitted_rolling_fn(stat_func, func_name, annualization_factor=1.0):
 rolling_mean_fast = create_jitted_rolling_fn(np.mean, 'rolling_mean_fast')
 rolling_std_fast = create_jitted_rolling_fn(np.std, 'rolling_std_fast')
 rolling_volatility_fast = create_jitted_rolling_fn(np.std, 'rolling_volatility_fast', np.sqrt(252))
-rolling_downside_volatility_fast = create_jitted_rolling_fn(
-    lambda x: np.std(x[x < 0]), 'rolling_downside_volatility_fast'
-)
+
+@numba.jit(nopython=True, cache=True)
+def rolling_downside_volatility_fast(data, window):
+    """Calculate rolling downside volatility using only negative returns."""
+    n = len(data)
+    result = np.full(n, np.nan)
+    
+    for i in range(window - 1, n):
+        window_data = data[i - window + 1:i + 1]
+        valid_data = window_data[~np.isnan(window_data)]
+        
+        if len(valid_data) >= window // 2:
+            # Calculate returns from prices
+            if len(valid_data) > 1:
+                returns = np.diff(valid_data) / valid_data[:-1]
+                # Only use negative returns for downside volatility
+                downside_returns = returns[returns < 0]
+                if len(downside_returns) > 0:
+                    result[i] = np.std(downside_returns)
+                else:
+                    result[i] = 0.0
+            else:
+                result[i] = 0.0
+    
+    return result
 
 
 @numba.jit(nopython=True, cache=True)

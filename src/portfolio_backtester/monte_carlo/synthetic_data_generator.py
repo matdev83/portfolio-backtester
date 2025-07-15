@@ -9,7 +9,7 @@ complex libraries.
 import numpy as np
 import pandas as pd
 import logging
-from typing import Dict, Optional
+from typing import Dict
 from dataclasses import dataclass
 
 # Set up logging

@@ -107,13 +107,14 @@ Strategy Variants:
 4. Net Long-Market (Long-Only): Focuses only on low-volatility stocks
 """
 
-from typing import Optional, Dict, Any
-import pandas as pd
-import numpy as np
 import logging
+from typing import Any, Dict, Optional
 
-from .base_strategy import BaseStrategy
+import numpy as np
+import pandas as pd
+
 from ..data_sources.etf_holdings import ETFHoldingsDataSource
+from .base_strategy import BaseStrategy
 
 # Import Numba optimization with fallback for beta calculation
 try:

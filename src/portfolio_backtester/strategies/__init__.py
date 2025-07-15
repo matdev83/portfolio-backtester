@@ -11,6 +11,7 @@ from .vams_no_downside_strategy import VAMSNoDownsideStrategy
 from .momentum_dvol_sizer_strategy import MomentumDvolSizerStrategy
 from .filtered_lagged_momentum_strategy import FilteredLaggedMomentumStrategy
 from .ema_crossover_strategy import EMAStrategy
+from .ema_roro_strategy import EMARoRoStrategy
 from .low_volatility_factor_strategy import LowVolatilityFactorStrategy
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "MomentumDvolSizerStrategy",
     "FilteredLaggedMomentumStrategy",
     "EMAStrategy",
+    "EMARoRoStrategy",
     "LowVolatilityFactorStrategy",
 ]
 
@@ -32,8 +34,8 @@ __all__ = [
 # Dynamic discovery helper
 # --------------------------------------------------------------------
 
-import inspect
 import importlib
+import inspect
 import pkgutil
 import re
 from typing import Dict, List
