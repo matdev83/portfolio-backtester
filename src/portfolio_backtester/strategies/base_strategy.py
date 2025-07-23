@@ -84,6 +84,13 @@ class BaseStrategy(ABC):
         default_universe = global_config.get("universe", [])
         return [(ticker, 1.0) for ticker in default_universe]
 
+    def get_non_universe_data_requirements(self) -> list[str]:
+        """
+        Returns a list of tickers that are not part of the trading universe
+        but are required for the strategy's calculations.
+        """
+        return []
+
 
     # ------------------------------------------------------------------ #
     # Optimiser-introspection hook                                       #
@@ -148,6 +155,7 @@ class BaseStrategy(ABC):
         self,
         all_historical_data: pd.DataFrame, # Full historical data for universe assets
         benchmark_historical_data: pd.DataFrame, # Full historical data for benchmark
+        non_universe_historical_data: pd.DataFrame, # Full historical data for non-universe assets
         current_date: pd.Timestamp, # The current date for signal generation
         start_date: Optional[pd.Timestamp] = None, # Optional start date for WFO window
         end_date: Optional[pd.Timestamp] = None, # Optional end date for WFO window
@@ -161,6 +169,7 @@ class BaseStrategy(ABC):
                                  in the strategy's universe, up to and including current_date.
             benchmark_historical_data: DataFrame with historical OHLCV data for the benchmark,
                                        up to and including current_date.
+            non_universe_historical_data: DataFrame with historical OHLCV data for non-universe assets.
             current_date: The specific date for which signals are to be generated.
                           Calculations should not use data beyond this date.
             start_date: If provided, signals should only be generated on or after this date.

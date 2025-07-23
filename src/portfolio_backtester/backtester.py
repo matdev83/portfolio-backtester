@@ -270,11 +270,22 @@ class Backtester:
                 benchmark_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, [benchmark_ticker]]
 
 
+            non_universe_tickers = strategy.get_non_universe_data_requirements()
+            non_universe_historical_data_for_strat = pd.DataFrame()
+            if non_universe_tickers:
+                if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and 'Ticker' in price_data_daily_ohlc.columns.names:
+                    non_universe_hist_data_cols = pd.MultiIndex.from_product([non_universe_tickers, list(price_data_daily_ohlc.columns.get_level_values('Field').unique())], names=['Ticker', 'Field'])
+                    non_universe_hist_data_cols = [col for col in non_universe_hist_data_cols if col in price_data_daily_ohlc.columns]
+                    non_universe_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, non_universe_hist_data_cols]
+                else:
+                    non_universe_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, non_universe_tickers]
+
             # Call strategy's generate_signals
             # The strategy itself will handle WFO start/end date filtering if current_rebalance_date is outside.
             current_weights_df = strategy.generate_signals(
                 all_historical_data=all_historical_data_for_strat,
                 benchmark_historical_data=benchmark_historical_data_for_strat,
+                non_universe_historical_data=non_universe_historical_data_for_strat,
                 current_date=current_rebalance_date,
                 start_date=wfo_start_date,
                 end_date=wfo_end_date
@@ -1073,10 +1084,22 @@ class Backtester:
             return
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Starting backtest data retrieval.")
+
+        # Get all required tickers
+        all_tickers = set(self.global_config["universe"])
+        all_tickers.add(self.global_config["benchmark"])
+
+        for scenario_config in self.scenarios:
+            strategy = self._get_strategy(
+                scenario_config["strategy"], scenario_config["strategy_params"]
+            )
+            non_universe_tickers = strategy.get_non_universe_data_requirements()
+            all_tickers.update(non_universe_tickers)
+
         daily_data = self.data_source.get_data(
-            tickers=self.global_config["universe"] + [self.global_config["benchmark"]],
+            tickers=list(all_tickers),
             start_date=self.global_config["start_date"],
-            end_date=self.global_config["end_date"]
+            end_date=self.global_config["end_date"],
         )
 
         if daily_data is None or daily_data.empty:
