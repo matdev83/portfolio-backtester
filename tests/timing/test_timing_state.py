@@ -87,12 +87,10 @@ class TestTimingState:
         date1 = pd.Timestamp('2023-01-01')
         date2 = pd.Timestamp('2023-01-02')
         
-        # Set up initial positions
-        state.last_weights = pd.Series([0.5, 0.5], index=['A', 'B'])
-        state.position_entry_dates['A'] = date1
-        state.position_entry_dates['B'] = date1
-        state.position_entry_prices['A'] = 100.0
-        state.position_entry_prices['B'] = 200.0
+        # Set up initial positions using the enhanced method
+        initial_weights = pd.Series([0.5, 0.5], index=['A', 'B'])
+        initial_prices = pd.Series([100.0, 200.0], index=['A', 'B'])
+        state.update_positions(date1, initial_weights, initial_prices)
         
         # Close position A, keep position B
         new_weights = pd.Series([0.0, 1.0], index=['A', 'B'])
@@ -100,13 +98,19 @@ class TestTimingState:
         
         state.update_positions(date2, new_weights, prices)
         
-        # Position A should be closed
+        # Position A should be closed (removed from enhanced tracking)
+        assert 'A' not in state.positions
         assert 'A' not in state.position_entry_dates
         assert 'A' not in state.position_entry_prices
         
         # Position B should remain
+        assert 'B' in state.positions
         assert state.position_entry_dates['B'] == date1
         assert state.position_entry_prices['B'] == 200.0
+        
+        # Position A should be in history
+        assert len(state.position_history) == 1
+        assert state.position_history[0]['asset'] == 'A'
     
     def test_update_positions_mixed_changes(self):
         """Test position updates with mixed changes."""
@@ -114,12 +118,10 @@ class TestTimingState:
         date1 = pd.Timestamp('2023-01-01')
         date2 = pd.Timestamp('2023-01-02')
         
-        # Set up initial positions
-        state.last_weights = pd.Series([0.5, 0.5, 0.0], index=['A', 'B', 'C'])
-        state.position_entry_dates['A'] = date1
-        state.position_entry_dates['B'] = date1
-        state.position_entry_prices['A'] = 100.0
-        state.position_entry_prices['B'] = 200.0
+        # Set up initial positions using the enhanced method
+        initial_weights = pd.Series([0.5, 0.5], index=['A', 'B'])
+        initial_prices = pd.Series([100.0, 200.0], index=['A', 'B'])
+        state.update_positions(date1, initial_weights, initial_prices)
         
         # Close A, keep B, add C
         new_weights = pd.Series([0.0, 0.3, 0.7], index=['A', 'B', 'C'])
@@ -128,16 +130,23 @@ class TestTimingState:
         state.update_positions(date2, new_weights, prices)
         
         # Position A should be closed
+        assert 'A' not in state.positions
         assert 'A' not in state.position_entry_dates
         assert 'A' not in state.position_entry_prices
         
         # Position B should remain unchanged
+        assert 'B' in state.positions
         assert state.position_entry_dates['B'] == date1
         assert state.position_entry_prices['B'] == 200.0
         
         # Position C should be new
+        assert 'C' in state.positions
         assert state.position_entry_dates['C'] == date2
         assert state.position_entry_prices['C'] == 50.0
+        
+        # Position A should be in history
+        assert len(state.position_history) == 1
+        assert state.position_history[0]['asset'] == 'A'
     
     def test_get_position_holding_days(self):
         """Test position holding days calculation."""
@@ -189,6 +198,8 @@ class TestTimingState:
         assert state.position_entry_dates['A'] == date
         assert state.position_entry_prices['A'] == 100.0
         
-        # Position B should have entry date but no price
+        # Position B should have entry date and NaN price (enhanced implementation stores NaN)
         assert state.position_entry_dates['B'] == date
-        assert 'B' not in state.position_entry_prices
+        # Enhanced implementation stores the NaN price, so we check for its presence
+        assert 'B' in state.position_entry_prices
+        assert pd.isna(state.position_entry_prices['B'])

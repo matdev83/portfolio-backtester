@@ -109,7 +109,20 @@ class SignalBasedTiming(TimingController):
             return True
         
         # Otherwise, allow signal generation (strategy will make final decision)
-        return True
+        decision = True
+
+        if self.config.get('enable_logging', False):
+            from .timing_logger import log_signal_generation
+            if self._is_within_min_holding_period(current_date):
+                reason = 'within min_holding_period'
+            elif self._should_force_rebalance(current_date):
+                reason = 'forced by max_holding_period'
+            else:
+                reason = 'scheduled scan date'
+            log_signal_generation(strategy_context.__class__.__name__, current_date, decision, reason,
+                                  controller='SignalBasedTiming')
+
+        return decision
     
     def _is_within_min_holding_period(self, current_date: pd.Timestamp) -> bool:
         """Check if we're within the minimum holding period since last signal."""

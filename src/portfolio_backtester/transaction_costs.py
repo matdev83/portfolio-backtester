@@ -13,7 +13,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def calculate_realistic_transaction_costs(
+def calculate_simple_transaction_costs(
     turnover: pd.Series,
     weights_daily: pd.DataFrame,
     price_data: pd.DataFrame,
@@ -52,7 +52,7 @@ def calculate_realistic_transaction_costs(
     return transaction_costs
 
 
-def calculate_detailed_transaction_costs(
+def calculate_realistic_transaction_costs(
     turnover: pd.Series,
     weights_daily: pd.DataFrame,
     price_data: pd.DataFrame,
@@ -80,6 +80,9 @@ def calculate_detailed_transaction_costs(
     
     # Get parameters
     slippage_bps = global_config.get("slippage_bps", 2.5)
+    commission_min_per_order = global_config.get("commission_min_per_order", 1.0)
+    commission_per_share = global_config.get("commission_per_share", 0.005)
+    commission_max_percent = global_config.get("commission_max_percent", 0.005)
     
     # Extract daily close prices for share calculations
     if isinstance(price_data.columns, pd.MultiIndex):
@@ -90,11 +93,11 @@ def calculate_detailed_transaction_costs(
     # Vectorized calculation of costs
     trade_value = turnover * portfolio_value
     weight_changes = weights_daily.diff().abs()
-    active_positions = (weight_changes > 1e-6).sum(axis=1)
-
-    # Commission calculation (vectorized)
-    avg_commission_per_trade = np.maximum(commission_min_per_order, trade_value * commission_max_percent / active_positions.replace(0, 1))
-    total_commission = np.minimum(avg_commission_per_trade * active_positions, trade_value * commission_max_percent)
+    shares_traded = (weight_changes * portfolio_value) / daily_closes
+    commission_per_trade = shares_traded * commission_per_share
+    commission_per_trade = np.maximum(commission_per_trade, commission_min_per_order)
+    commission_per_trade = np.minimum(commission_per_trade, (trade_value * commission_max_percent).values.reshape(-1, 1))
+    total_commission = commission_per_trade.sum(axis=1)
     commission_costs = total_commission / portfolio_value
 
     # Slippage cost (vectorized)

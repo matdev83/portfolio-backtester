@@ -53,7 +53,7 @@ def load_config():
         # Extract configuration sections with validation
         GLOBAL_CONFIG = params_data.get("GLOBAL_CONFIG", {})
         if not GLOBAL_CONFIG:
-            logger.warning("GLOBAL_CONFIG section is missing or empty in parameters.yaml")
+            raise ConfigurationError("'GLOBAL_CONFIG' section is missing or empty in parameters.yaml.")
         
         # Add Monte Carlo and WFO robustness configurations to global config
         GLOBAL_CONFIG["monte_carlo_config"] = params_data.get("monte_carlo_config", {})
@@ -62,7 +62,7 @@ def load_config():
         # Load optimizer parameter defaults
         OPTIMIZER_PARAMETER_DEFAULTS = params_data.get("OPTIMIZER_PARAMETER_DEFAULTS", {})
         if not OPTIMIZER_PARAMETER_DEFAULTS:
-            logger.warning("OPTIMIZER_PARAMETER_DEFAULTS section is missing or empty in parameters.yaml")
+            raise ConfigurationError("'OPTIMIZER_PARAMETER_DEFAULTS' section is missing or empty in parameters.yaml.")
         
         # Update with GA defaults, allowing GA defaults to be overridden by parameters.yaml if specified there
         try:
@@ -92,7 +92,7 @@ def load_config():
         # Extract scenarios with validation
         BACKTEST_SCENARIOS = scenarios_data.get("BACKTEST_SCENARIOS", [])
         if not BACKTEST_SCENARIOS:
-            logger.warning("BACKTEST_SCENARIOS section is missing or empty in scenarios.yaml")
+            raise ConfigurationError("'BACKTEST_SCENARIOS' section is missing or empty in scenarios.yaml.")
         
         logger.info(f"Successfully loaded configuration: {len(BACKTEST_SCENARIOS)} scenarios found")
         

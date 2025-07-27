@@ -215,7 +215,7 @@ def test_optimize_mode_optuna_minimal():
         "--optuna-trials", "2", "--n-jobs", "1", "--study-name", study_name,
         "--log-level", "INFO", "--random-seed", "42"
     ]
-    journal_log_path = PROJECT_ROOT / "optuna_journal" / f"{study_name}_walk_forward_seed_42.log"
+    journal_log_path = PROJECT_ROOT / "data" / "optuna_journal" / f"{study_name}_walk_forward_seed_42.log"
     if journal_log_path.exists(): os.remove(journal_log_path)
     sqlite_db_path = PROJECT_ROOT / "optuna_studies.db"
     if sqlite_db_path.exists():
@@ -331,7 +331,7 @@ def remove_optuna_db_and_journal():
     if db_path.exists():
         try: os.remove(db_path)
         except OSError as e: print(f"Warning: Could not remove {db_path}: {e}")
-    journal_dir = PROJECT_ROOT / "optuna_journal"
+    journal_dir = PROJECT_ROOT / "data" / "optuna_journal"
     if journal_dir.exists():
         for f_path in journal_dir.glob("*.log"):
             try: os.remove(f_path)

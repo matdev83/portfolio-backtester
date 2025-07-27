@@ -102,4 +102,13 @@ class TimeBasedTiming(TimingController):
         strategy_context: 'BaseStrategy'
     ) -> bool:
         """For time-based timing, signals are only generated on rebalance dates."""
-        return current_date in self.timing_state.scheduled_dates
+        decision = current_date in self.timing_state.scheduled_dates
+
+        # Optional logging
+        if self.config.get('enable_logging', False):
+            from .timing_logger import log_signal_generation
+            reason = 'scheduled rebalance date' if decision else 'not on rebalance schedule'
+            log_signal_generation(strategy_context.__class__.__name__, current_date, decision, reason,
+                                  controller='TimeBasedTiming')
+
+        return decision

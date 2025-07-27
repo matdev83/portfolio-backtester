@@ -81,7 +81,7 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     if self.args.storage_url:
         storage = self.args.storage_url
     else:
-        journal_dir = "optuna_journal"
+        journal_dir = "data/optuna_journal"
         os.makedirs(journal_dir, exist_ok=True)
         
         # Sanitize study name for use in file path

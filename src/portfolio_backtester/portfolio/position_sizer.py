@@ -311,6 +311,16 @@ SIZER_REGISTRY: Dict[str, Callable] = {
     "rolling_downside_volatility": rolling_downside_volatility_sizer,
 }
 
+SIZER_PARAM_MAPPING = {
+    "sizer_sharpe_window": "window",
+    "sizer_sortino_window": "window",
+    "sizer_beta_window": "window",
+    "sizer_corr_window": "window",
+    "sizer_dvol_window": "window",
+    "sizer_target_return": "target_return",
+    "sizer_max_leverage": "max_leverage",
+}
+
 
 def get_position_sizer(name: str) -> Callable:
     try:

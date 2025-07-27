@@ -174,6 +174,16 @@ def migrate_legacy_config_with_strategy(strategy_config: Dict[str, Any], strateg
     
     # Add timing_config to the strategy configuration
     config['timing_config'] = timing_config
+
+    # Remove legacy timing-related keys to avoid duplication
+    legacy_keys = [
+        'rebalance_frequency', 'rebalance_offset',
+        'scan_frequency', 'min_holding_period', 'max_holding_period',
+        'daily_signals', 'signal_based'
+    ]
+    for k in legacy_keys:
+        if k in config:
+            del config[k]
     
     # Log migration for debugging
     logger.debug(f"Migrated legacy config to timing mode: {timing_mode}")
@@ -216,6 +226,16 @@ def migrate_legacy_config(strategy_config: Dict[str, Any]) -> Dict[str, Any]:
     
     # Add timing_config to the strategy configuration
     config['timing_config'] = timing_config
+
+    # Remove legacy timing-related keys to avoid duplication (same list as above)
+    legacy_keys = [
+        'rebalance_frequency', 'rebalance_offset',
+        'scan_frequency', 'min_holding_period', 'max_holding_period',
+        'daily_signals', 'signal_based'
+    ]
+    for k in legacy_keys:
+        if k in config:
+            del config[k]
     
     # Log migration for debugging
     logger.debug(f"Migrated legacy config to timing mode: {timing_mode}")

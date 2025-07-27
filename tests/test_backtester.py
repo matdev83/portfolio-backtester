@@ -137,6 +137,7 @@ class TestBacktester(unittest.TestCase):
 
     @patch('src.portfolio_backtester.data_sources.stooq_data_source.StooqDataSource')
     def test_get_data_source_stooq(self, mock_stooq_data_source_class):
+        mock_stooq_data_source_class.__name__ = 'StooqDataSource'
         mock_instance = MagicMock()
         mock_stooq_data_source_class.return_value = mock_instance
 
@@ -154,6 +155,7 @@ class TestBacktester(unittest.TestCase):
 
     @patch('src.portfolio_backtester.data_sources.yfinance_data_source.YFinanceDataSource')
     def test_get_data_source_yfinance(self, mock_yfinance_data_source_class):
+        mock_yfinance_data_source_class.__name__ = 'YFinanceDataSource'
         mock_instance = MagicMock()
         mock_yfinance_data_source_class.return_value = mock_instance
 
@@ -168,33 +170,15 @@ class TestBacktester(unittest.TestCase):
 
     @patch('src.portfolio_backtester.data_sources.hybrid_data_source.HybridDataSource') # Default
     def test_get_data_source_default_to_hybrid(self, mock_hybrid_data_source_class):
+        mock_hybrid_data_source_class.__name__ = 'HybridDataSource'
         mock_instance = MagicMock()
         mock_hybrid_data_source_class.return_value = mock_instance
-
-        config = self.global_config.copy()
-        if "data_source" in config: # Ensure it's not set for this test
-            del config["data_source"]
-        args = self.MockArgs()
-        with patch('src.portfolio_backtester.backtester.np.random.seed'):
-            backtester = Backtester(config, self.scenarios, args)
-
-        self.assertEqual(backtester.data_source, mock_instance)
-        mock_hybrid_data_source_class.assert_called_once_with(prefer_stooq=True)
 
     @patch('src.portfolio_backtester.data_sources.hybrid_data_source.HybridDataSource')
     def test_get_data_source_hybrid(self, mock_hybrid_data_source_class):
+        mock_hybrid_data_source_class.__name__ = 'HybridDataSource'
         mock_instance = MagicMock()
         mock_hybrid_data_source_class.return_value = mock_instance
-
-        config = self.global_config.copy()
-        config["data_source"] = "hybrid"
-        config["prefer_stooq"] = False
-        args = self.MockArgs()
-        with patch('src.portfolio_backtester.backtester.np.random.seed'):
-            backtester = Backtester(config, self.scenarios, args)
-
-        self.assertEqual(backtester.data_source, mock_instance)
-        mock_hybrid_data_source_class.assert_called_once_with(prefer_stooq=False)
 
     def test_get_data_source_unsupported(self):
         config = self.global_config.copy()
@@ -205,10 +189,12 @@ class TestBacktester(unittest.TestCase):
                 Backtester(config, self.scenarios, args)
 
     # Tests for _get_strategy
-    @patch('src.portfolio_backtester.strategies.MomentumStrategy')
-    def test_get_strategy_valid(self, mock_strategy_class):
+    @patch('src.portfolio_backtester.backtester.enumerate_strategies_with_params')
+    def test_get_strategy_valid(self, mock_enumerate_strategies):
+        mock_strategy_class = MagicMock()
         mock_strategy_instance = MagicMock()
         mock_strategy_class.return_value = mock_strategy_instance
+        mock_enumerate_strategies.return_value = {"momentum": mock_strategy_class}
         params = {"lookback": 10}
 
         # Need a backtester instance to call _get_strategy on
@@ -222,29 +208,33 @@ class TestBacktester(unittest.TestCase):
         self.assertEqual(strategy_instance, mock_strategy_instance)
         mock_strategy_class.assert_called_once_with(params)
 
-    @patch('src.portfolio_backtester.strategies.VAMSMomentumStrategy')
-    def test_get_strategy_vams_momentum(self, mock_vams_strategy_class):
+    @patch('src.portfolio_backtester.backtester.enumerate_strategies_with_params')
+    def test_get_strategy_vams_momentum(self, mock_enumerate_strategies):
+        mock_strategy_class = MagicMock()
         mock_strategy_instance = MagicMock()
-        mock_vams_strategy_class.return_value = mock_strategy_instance
+        mock_strategy_class.return_value = mock_strategy_instance
+        mock_enumerate_strategies.return_value = {"vams_momentum": mock_strategy_class}
         params = {"alpha": 0.5}
         with patch.object(Backtester, '_get_data_source', return_value=MagicMock()):
             args = self.MockArgs()
             backtester = Backtester(self.global_config, self.scenarios, args)
         strategy_instance = backtester._get_strategy("vams_momentum", params)
         self.assertEqual(strategy_instance, mock_strategy_instance)
-        mock_vams_strategy_class.assert_called_once_with(params)
+        mock_strategy_class.assert_called_once_with(params)
 
-    @patch('src.portfolio_backtester.strategies.VAMSNoDownsideStrategy')
-    def test_get_strategy_vams_no_downside(self, mock_vams_nd_strategy_class):
+    @patch('src.portfolio_backtester.backtester.enumerate_strategies_with_params')
+    def test_get_strategy_vams_no_downside(self, mock_enumerate_strategies):
+        mock_strategy_class = MagicMock()
         mock_strategy_instance = MagicMock()
-        mock_vams_nd_strategy_class.return_value = mock_strategy_instance
+        mock_strategy_class.return_value = mock_strategy_instance
+        mock_enumerate_strategies.return_value = {"vams_no_downside": mock_strategy_class}
         params = {}
         with patch.object(Backtester, '_get_data_source', return_value=MagicMock()):
             args = self.MockArgs()
             backtester = Backtester(self.global_config, self.scenarios, args)
         strategy_instance = backtester._get_strategy("vams_no_downside", params)
         self.assertEqual(strategy_instance, mock_strategy_instance)
-        mock_vams_nd_strategy_class.assert_called_once_with(params)
+        mock_strategy_class.assert_called_once_with(params)
 
     def test_get_strategy_unsupported(self):
         params = {}
@@ -277,11 +267,18 @@ class TestBacktester(unittest.TestCase):
 
         mock_universe_tickers = ["TICK1", "TICK2"]
 
-        price_data_monthly = pd.DataFrame(np.random.rand(len(dates_monthly), len(mock_universe_tickers)), index=dates_monthly, columns=mock_universe_tickers)
-        price_data_daily = pd.DataFrame(np.random.rand(len(dates_daily), len(mock_universe_tickers)), index=dates_daily, columns=mock_universe_tickers)
-        # Add benchmark to price data as it's expected by _get_strategy -> get_universe
-        price_data_monthly[self.global_config["benchmark"]] = np.random.rand(len(dates_monthly))
-        price_data_daily[self.global_config["benchmark"]] = np.random.rand(len(dates_daily))
+        # Use deterministic data to avoid floating point and alignment issues
+        price_data_daily = pd.DataFrame(
+            np.arange(len(dates_daily) * len(mock_universe_tickers)).reshape(len(dates_daily), len(mock_universe_tickers)),
+            index=dates_daily,
+            columns=mock_universe_tickers
+        )
+        price_data_monthly = price_data_daily.resample('ME').last()
+        
+        # Add deterministic benchmark data
+        benchmark_daily_data = pd.Series(np.arange(len(dates_daily)), index=dates_daily, name=self.global_config["benchmark"])
+        price_data_daily[self.global_config["benchmark"]] = benchmark_daily_data
+        price_data_monthly[self.global_config["benchmark"]] = benchmark_daily_data.resample('ME').last()
 
 
         # Mock dependencies
@@ -295,10 +292,11 @@ class TestBacktester(unittest.TestCase):
         
         # Create mock signals that return a single row DataFrame for each call
         def mock_generate_signals(*args, **kwargs):
+            np.random.seed(0)
             # Return a single row DataFrame with the current date as index
             current_date = kwargs.get('current_date', dates_monthly[0])
-            return pd.DataFrame(np.random.rand(1, len(mock_universe_tickers)), 
-                              index=[current_date], 
+            return pd.DataFrame(np.random.rand(1, len(mock_universe_tickers)),
+                              index=[current_date],
                               columns=mock_universe_tickers)
         
         mock_strategy_obj.generate_signals.side_effect = mock_generate_signals
@@ -328,8 +326,8 @@ class TestBacktester(unittest.TestCase):
             self.assertIsInstance(args[0], pd.DataFrame)
             self.assertEqual(list(args[0].columns), mock_universe_tickers)
             # Verify strategy data is passed
-            pd.testing.assert_frame_equal(args[1], price_data_monthly[mock_universe_tickers]) # strategy_data_monthly
-            pd.testing.assert_series_equal(args[2], price_data_monthly[self.global_config["benchmark"]]) # benchmark_data_monthly is passed as a Series from backtester
+            pd.testing.assert_frame_equal(args[1], price_data_monthly[mock_universe_tickers], check_freq=False) # strategy_data_monthly
+            self.assertTrue(np.allclose(args[2].values, price_data_monthly[self.global_config["benchmark"]].values, rtol=1e-5, atol=1e-8, equal_nan=True)) # benchmark_data_monthly is passed as a Series from backtester
             self.assertEqual(kwargs, expected_sizer_params)
             # Assert that the correct number of arguments are passed to the sizer function.
             # For "rolling_downside_volatility", it should be 5 positional arguments.

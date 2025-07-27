@@ -1,0 +1,201 @@
+# Timing Configuration Examples
+# This file contains examples of different timing configurations for the portfolio backtester
+
+# Example 1: Basic Time-Based Strategy (Monthly Rebalancing)
+basic_monthly_strategy:
+  strategy_params:
+    lookback_period: 252
+    num_holdings: 10
+  timing_config:
+    mode: time_based
+    rebalance_frequency: M  # Monthly
+    rebalance_offset: 0     # No offset
+    enable_logging: false
+    log_level: INFO
+
+# Example 2: Quarterly Rebalancing with Offset
+quarterly_strategy:
+  strategy_params:
+    lookback_period: 126
+    num_holdings: 15
+  timing_config:
+    mode: time_based
+    rebalance_frequency: Q  # Quarterly
+    rebalance_offset: 5     # 5 days after quarter start
+    enable_logging: true
+    log_level: DEBUG
+
+# Example 3: Signal-Based Strategy (Daily Scanning)
+daily_signal_strategy:
+  strategy_params:
+    rsi_period: 2
+    rsi_threshold: 30.0
+  timing_config:
+    mode: signal_based
+    scan_frequency: D           # Daily scanning
+    min_holding_period: 1       # Hold for at least 1 day
+    max_holding_period: 5       # Exit after 5 days maximum
+    enable_logging: true
+    log_level: INFO
+
+# Example 4: Signal-Based Strategy with Unlimited Holding
+momentum_signal_strategy:
+  strategy_params:
+    momentum_period: 20
+    momentum_threshold: 0.05
+  timing_config:
+    mode: signal_based
+    scan_frequency: W           # Weekly scanning
+    min_holding_period: 7       # Hold for at least 1 week
+    max_holding_period: null    # No maximum holding period
+    enable_logging: false
+
+# Example 5: Custom Adaptive Timing Controller
+adaptive_strategy:
+  strategy_params:
+    lookback_period: 252
+    num_holdings: 8
+  timing_config:
+    mode: custom
+    custom_controller_class: adaptive_timing  # Registered alias
+    custom_controller_params:
+      volatility_threshold: 0.02
+      base_frequency: M
+      high_vol_frequency: W
+      low_vol_frequency: Q
+    enable_logging: true
+    log_level: DEBUG
+
+# Example 6: Custom Momentum Timing Controller
+momentum_custom_strategy:
+  strategy_params:
+    lookback_period: 60
+    num_holdings: 12
+  timing_config:
+    mode: custom
+    custom_controller_class: momentum_timing  # Registered alias
+    custom_controller_params:
+      momentum_period: 20
+    enable_logging: true
+    log_level: INFO
+
+# Example 7: Fully Qualified Custom Controller Class
+external_custom_strategy:
+  strategy_params:
+    custom_param: 42
+  timing_config:
+    mode: custom
+    custom_controller_class: my_strategies.timing.MyCustomTimingController
+    custom_controller_params:
+      param1: value1
+      param2: 123
+      param3: true
+    enable_logging: true
+    log_level: WARNING
+
+# Example 8: High-Frequency Strategy (Daily Rebalancing)
+high_frequency_strategy:
+  strategy_params:
+    short_period: 5
+    long_period: 20
+  timing_config:
+    mode: time_based
+    rebalance_frequency: D  # Daily rebalancing
+    rebalance_offset: 0
+    enable_logging: false   # Disable logging for performance
+
+# Example 9: Conservative Strategy (Annual Rebalancing)
+conservative_strategy:
+  strategy_params:
+    lookback_period: 756    # 3 years
+    num_holdings: 5
+  timing_config:
+    mode: time_based
+    rebalance_frequency: A  # Annual rebalancing
+    rebalance_offset: 0
+    enable_logging: true
+    log_level: INFO
+
+# Example 10: UVXY-Style Signal Strategy
+uvxy_style_strategy:
+  strategy_params:
+    rsi_period: 2
+    rsi_threshold: 30.0
+    long_only: false
+  timing_config:
+    mode: signal_based
+    scan_frequency: D           # Daily scanning for signals
+    min_holding_period: 1       # Minimum 1 day hold
+    max_holding_period: 1       # Maximum 1 day hold (forced exit)
+    enable_logging: true
+    log_level: DEBUG
+
+# Example 11: Multi-Timeframe Strategy
+multi_timeframe_strategy:
+  strategy_params:
+    fast_period: 10
+    slow_period: 50
+    signal_threshold: 0.02
+  timing_config:
+    mode: signal_based
+    scan_frequency: D           # Daily signal scanning
+    min_holding_period: 3       # Hold for at least 3 days
+    max_holding_period: 21      # Exit after 21 days maximum
+    enable_logging: true
+    log_level: INFO
+
+# Example 12: Legacy Configuration (Auto-Migration)
+legacy_strategy:
+  strategy_params:
+    lookback_period: 252
+    num_holdings: 10
+    rebalance_frequency: M      # This will be auto-migrated to timing_config
+  # No timing_config - will be automatically created from legacy parameters
+
+# Global Timing Configuration (Applied to all strategies if not overridden)
+global_timing_config:
+  enable_logging: false         # Global logging setting
+  log_level: INFO              # Global log level
+  log_file: logs/timing.log    # Optional log file
+
+# Advanced Configuration Examples
+
+# Example 13: Performance-Optimized Configuration
+performance_optimized:
+  strategy_params:
+    lookback_period: 252
+    num_holdings: 20
+  timing_config:
+    mode: time_based
+    rebalance_frequency: M
+    enable_logging: false       # Disabled for performance
+    # No custom parameters for maximum speed
+
+# Example 14: Debug-Heavy Configuration
+debug_configuration:
+  strategy_params:
+    test_param: 1
+  timing_config:
+    mode: signal_based
+    scan_frequency: D
+    min_holding_period: 1
+    max_holding_period: 10
+    enable_logging: true
+    log_level: DEBUG           # Maximum verbosity
+    # This will log every timing decision and state change
+
+# Example 15: Hybrid Strategy Configuration
+hybrid_strategy:
+  strategy_params:
+    primary_signal: momentum
+    secondary_signal: mean_reversion
+    signal_weight: 0.7
+  timing_config:
+    mode: custom
+    custom_controller_class: hybrid_timing_controller
+    custom_controller_params:
+      primary_frequency: W
+      secondary_frequency: M
+      signal_combination_method: weighted_average
+    enable_logging: true
+    log_level: INFO

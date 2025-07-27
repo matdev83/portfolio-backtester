@@ -101,7 +101,7 @@ def enumerate_strategies_with_params() -> Dict[str, List[str]]:  # pragma: no co
         )
 
     # 2. Collect subclasses (recursively)
-    discovered: Dict[str, List[str]] = {}
+    discovered: Dict[str, type] = {}
     pending = list(BaseStrategy.__subclasses__())
     visited: set[type] = set()
 
@@ -116,11 +116,7 @@ def enumerate_strategies_with_params() -> Dict[str, List[str]]:  # pragma: no co
             continue
 
         strategy_key = _camel_to_snake(cls.__name__)
-        try:
-            params = sorted(cls.tunable_parameters())  # type: ignore[attr-defined]
-        except Exception:
-            params = []
-        discovered[strategy_key] = params
+        discovered[strategy_key] = cls
 
     return discovered
 
