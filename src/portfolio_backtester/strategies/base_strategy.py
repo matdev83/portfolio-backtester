@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Callable, Optional
+from typing import Callable, Optional, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -13,6 +13,9 @@ from ..portfolio.position_sizer import get_position_sizer
 # from ..signal_generators import BaseSignalGenerator
 from ..roro_signals import BaseRoRoSignal
 from .stop_loss import AtrBasedStopLoss, BaseStopLoss, NoStopLoss
+
+if TYPE_CHECKING:
+    from ..timing.timing_controller import TimingController
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +37,75 @@ class BaseStrategy(ABC):
         self._roro_signal_instance: BaseRoRoSignal | None = None
         self._stop_loss_handler_instance: BaseStopLoss | None = None
         self.entry_prices: pd.Series | None = None
+        self._timing_controller: Optional[TimingController] = None
+        self._initialize_timing_controller()
 
+
+    # ------------------------------------------------------------------ #
+    # Timing Controller Integration
+    # ------------------------------------------------------------------ #
+    
+    def _initialize_timing_controller(self):
+        """Initialize the appropriate timing controller based on configuration."""
+        # Import here to avoid circular imports
+        from ..timing.time_based_timing import TimeBasedTiming
+        from ..timing.signal_based_timing import SignalBasedTiming
+        from ..timing.backward_compatibility import ensure_backward_compatibility_with_strategy
+        
+        try:
+            # Ensure backward compatibility and migrate legacy configuration
+            # Pass strategy instance for method override detection
+            migrated_config = ensure_backward_compatibility_with_strategy(self.strategy_config, self)
+            
+            # Update strategy config with migrated version
+            self.strategy_config = migrated_config
+            
+            # Get timing configuration (guaranteed to exist after migration)
+            timing_config = self.strategy_config['timing_config']
+            timing_mode = timing_config.get('mode', 'time_based')
+            
+            # Initialize appropriate timing controller
+            if timing_mode == 'time_based':
+                self._timing_controller = TimeBasedTiming(timing_config)
+            elif timing_mode == 'signal_based':
+                self._timing_controller = SignalBasedTiming(timing_config)
+            else:
+                # Support custom timing controllers
+                custom_class = timing_config.get('custom_class')
+                if custom_class:
+                    self._timing_controller = custom_class(timing_config)
+                else:
+                    # Default to time-based for backward compatibility
+                    logger.warning(f"Unknown timing mode '{timing_mode}', defaulting to time_based")
+                    default_config = {'mode': 'time_based', 'rebalance_frequency': 'M'}
+                    self._timing_controller = TimeBasedTiming(default_config)
+                    
+        except Exception as e:
+            # Fallback to time-based timing if initialization fails
+            logger.error(f"Failed to initialize timing controller: {e}")
+            logger.info("Falling back to time-based timing with monthly frequency")
+            fallback_config = {'mode': 'time_based', 'rebalance_frequency': 'M'}
+            self._timing_controller = TimeBasedTiming(fallback_config)
+            
+            # Update strategy config with fallback timing config
+            self.strategy_config['timing_config'] = fallback_config
+    
+    def get_timing_controller(self) -> 'TimingController':
+        """Get the timing controller for this strategy."""
+        if self._timing_controller is None:
+            self._initialize_timing_controller()
+        return self._timing_controller
+    
+    def supports_daily_signals(self) -> bool:
+        """
+        Determine if strategy supports daily signals based on timing controller.
+        This method maintains backward compatibility while using the new timing system.
+        """
+        # Import here to avoid circular imports
+        from ..timing.signal_based_timing import SignalBasedTiming
+        
+        timing_controller = self.get_timing_controller()
+        return isinstance(timing_controller, SignalBasedTiming)
 
     # ------------------------------------------------------------------ #
     # Hooks to override in subclasses

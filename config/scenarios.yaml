@@ -860,6 +860,59 @@ BACKTEST_SCENARIOS:
     mc_simulations: 100
     mc_years: 5
 
+  - name: "Momentum_Beta_Filtered"
+    strategy: "momentum_beta_filtered"
+    rebalance_frequency: "ME"
+    position_sizer: "equal_weight"
+    transaction_costs_bps: 10
+    train_window_months: 36  # Use same 3-year train window as other momentum variants
+    test_window_months: 48   # 4-year test window for robustness
+    strategy_params:
+      # Core momentum settings
+      lookback_months: 12
+      long_only: false           # allow shorts opened by the strategy
+      # Beta-filter parameters (all configurable / optimisable)
+      beta_lookback_days: 21
+      num_high_beta_to_exclude: 1
+      rsi_length: 2
+      rsi_overbought: 90
+    mc_simulations: 100
+    mc_years: 5
+
+  - name: "UVXY_RSI_Strategy"
+    description: "UVXY short strategy based on SPY RSI(2) signals - Daily signal-driven, no rebalancing"
+    strategy: "uvxy_rsi"
+    rebalance_frequency: "D"  # Daily to ensure all trading days are processed
+    position_sizer: "equal_weight"
+    transaction_costs_bps: 5
+    train_window_months: 12
+    test_window_months: 12
+    optimization_targets:
+      - name: "Sharpe"
+        direction: "maximize"
+    optimize:
+      - parameter: "rsi_threshold"
+        min_value: 20.0
+        max_value: 40.0
+        step: 2.5
+      - parameter: "rsi_period"
+        min_value: 2
+        max_value: 5
+        step: 1
+    strategy_params:
+      rsi_period: 2
+      rsi_threshold: 30.0
+      price_column_asset: "Close"
+      price_column_benchmark: "Close"
+      long_only: false
+      leverage: 1.0
+      smoothing_lambda: 0.0  # No smoothing - pure signal-driven
+      shorting_fee_bps: 25
+      # Override rebalancing behavior
+      rebalance_frequency: "daily"  # Force daily processing
+    mc_simulations: 100
+    mc_years: 3
+
 # Low-Volatility Factor Strategy Scenarios
 # Based on SSRN-5295002 paper by Soebhag, Baltussen, and van Vliet (2025)
 
@@ -956,4 +1009,3 @@ LowVolatilityFactor_Aggressive:
     shorting_fee_annual: 0.01
     leverage: 1.5  # Higher leverage
     smoothing_lambda: 0.3  # Less smoothing
-    price_column: "Close"

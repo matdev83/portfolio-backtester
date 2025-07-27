@@ -67,7 +67,7 @@ python src/portfolio_backtester/universe_data/spy_holdings.py --start 2004-01-01
 **Important Notes:**
 
 *   The `--out` parameter specifies the output filename for the aggregated history. It is recommended to always use `spy_holdings_full.parquet` to maintain a single, comprehensive history file.
-*   The script will automatically handle caching of intermediate SSGA and SEC data in the `cache/` directory.
+*   The script will automatically handle caching of intermediate SSGA and SEC data in the `data/cache/` directory.
 *   The `--update` flag is implicitly handled by the script's logic when `spy_holdings_full.parquet` already exists.
 *   The `--rebuild` flag (e.g., `python src/portfolio_backtester/universe_data/spy_holdings.py --rebuild --out spy_holdings_full.parquet`) will force a rebuild of `spy_holdings_full.parquet` starting from the Kaggle data, then fetching all subsequent data. Use this if you suspect data corruption or want to re-aggregate everything.
 

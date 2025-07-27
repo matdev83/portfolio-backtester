@@ -155,3 +155,7 @@ tests/universe/
 dev/
 data/reports/
 data/reports/*
+.kiro/
+.cursor/
+GEMINI.md
+.agent.md

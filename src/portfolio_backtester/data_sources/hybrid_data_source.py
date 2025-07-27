@@ -56,7 +56,7 @@ class HybridDataSource(BaseDataSource):
         except NameError:
             SCRIPT_DIR = Path.cwd()
         self.data_dir = SCRIPT_DIR.parent.parent.parent / "data"
-        self.cache_dir = SCRIPT_DIR.parent.parent.parent / "cache"
+        self.cache_dir = self.data_dir / "cache"
         self.negative_cache_file = self.cache_dir / "negative_cache.pkl"
         
         # Track which tickers failed from which sources
@@ -172,6 +172,152 @@ class HybridDataSource(BaseDataSource):
         
         logger.debug(f"Data validation passed for {ticker}: {len(df)} rows, {nan_ratio:.1%} NaN ratio")
         return True
+
+    def _repair_uvxy_data(self, df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+        """
+        Special repair logic for UVXY data to fix reverse split adjustment inconsistencies.
+        
+        UVXY is a 2x leveraged VIX futures ETF that undergoes frequent reverse splits.
+        Historical data often has inconsistent adjustments leading to artificial price jumps.
+        
+        Args:
+            df: DataFrame with UVXY data
+            ticker: Should be "UVXY"
+            
+        Returns:
+            Repaired DataFrame with consistent price adjustments
+        """
+        if ticker != "UVXY" or df.empty:
+            return df
+        
+        logger.info(f"Applying UVXY data repair for reverse split inconsistencies...")
+        
+        # Work with a copy to avoid modifying original data
+        repaired_df = df.copy()
+        
+        # Debug: Print column information
+        logger.debug(f"DataFrame columns type: {type(df.columns)}")
+        logger.debug(f"DataFrame columns: {df.columns.tolist()}")
+        logger.debug(f"Is MultiIndex: {isinstance(df.columns, pd.MultiIndex)}")
+        
+        # Extract close prices for analysis
+        if isinstance(df.columns, pd.MultiIndex):
+            if (ticker, 'Close') in df.columns:
+                close_prices = df[(ticker, 'Close')].copy()
+                logger.debug(f"Extracted {ticker} Close prices from MultiIndex")
+            else:
+                logger.warning(f"No Close price found for {ticker} in MultiIndex data")
+                logger.debug(f"Available MultiIndex columns: {df.columns.tolist()}")
+                return df
+        else:
+            if ticker in df.columns:
+                close_prices = df[ticker].copy()
+                logger.debug(f"Extracted {ticker} prices from flat columns")
+            else:
+                logger.warning(f"No {ticker} column found in flat data")
+                logger.debug(f"Available flat columns: {df.columns.tolist()}")
+                return df
+        
+        # Remove NaN values for analysis
+        valid_prices = close_prices.dropna()
+        if len(valid_prices) < 2:
+            logger.warning(f"Insufficient valid price data for {ticker} repair")
+            return df
+        
+        # Detect sharp price jumps (>5x or <0.2x) which indicate reverse split errors
+        price_ratios = valid_prices / valid_prices.shift(1)
+        sharp_jumps = (price_ratios > 5.0) | (price_ratios < 0.2)
+        jump_dates = price_ratios[sharp_jumps].index
+        
+        if len(jump_dates) == 0:
+            logger.debug(f"No sharp price jumps detected in {ticker} data")
+            return df
+        
+        logger.info(f"Detected {len(jump_dates)} sharp price jumps in {ticker} data, applying repairs...")
+        
+        # Apply repair by working backwards from the most recent data
+        # This ensures we maintain the current price level as the reference
+        repaired_prices = valid_prices.copy()
+        
+        # Sort jump dates in reverse chronological order to work backwards
+        sorted_jump_dates = sorted(jump_dates, reverse=True)
+        
+        for jump_date in sorted_jump_dates:
+            # Recalculate ratios after previous repairs
+            current_ratios = repaired_prices / repaired_prices.shift(1)
+            jump_ratio = current_ratios.loc[jump_date]
+            
+            # Skip if this jump has already been sufficiently repaired
+            if 0.5 <= jump_ratio <= 2.0:
+                logger.debug(f"Jump on {jump_date} already repaired (ratio={jump_ratio:.2f})")
+                continue
+            
+            # Determine if this is an upward or downward jump
+            if jump_ratio > 3.0:
+                # Upward jump - adjust all prices before this date downward
+                adjustment_factor = 1.0 / jump_ratio
+                mask = repaired_prices.index < jump_date
+                repaired_prices.loc[mask] *= adjustment_factor
+                
+                logger.debug(f"Applied upward jump repair on {jump_date}: "
+                           f"ratio={jump_ratio:.2f}, adjustment={adjustment_factor:.6f}")
+                
+            elif jump_ratio < 0.33:
+                # Downward jump - adjust all prices before this date upward
+                adjustment_factor = 1.0 / jump_ratio
+                mask = repaired_prices.index < jump_date
+                repaired_prices.loc[mask] *= adjustment_factor
+                
+                logger.debug(f"Applied downward jump repair on {jump_date}: "
+                           f"ratio={jump_ratio:.6f}, adjustment={adjustment_factor:.2f}")
+        
+        # Validate the repair by checking for remaining extreme jumps
+        final_ratios = repaired_prices / repaired_prices.shift(1)
+        remaining_jumps = ((final_ratios > 3.0) | (final_ratios < 0.33)).sum()
+        
+        if remaining_jumps > 0:
+            logger.warning(f"UVXY repair incomplete: {remaining_jumps} moderate jumps remain")
+        else:
+            logger.info(f"UVXY repair successful: price continuity restored")
+        
+        # Apply the repaired prices back to the DataFrame
+        if isinstance(repaired_df.columns, pd.MultiIndex):
+            repaired_df[(ticker, 'Close')] = repaired_prices.reindex(repaired_df.index)
+            
+            # Also repair OHLC data if available by applying the same adjustments
+            for field in ['Open', 'High', 'Low']:
+                if (ticker, field) in repaired_df.columns:
+                    original_field = df[(ticker, field)].copy()
+                    repaired_field = original_field.copy()
+                    
+                    for jump_date in jump_dates:
+                        jump_ratio = price_ratios.loc[jump_date]
+                        
+                        if jump_ratio > 5.0:
+                            adjustment_factor = 1.0 / jump_ratio
+                            mask = repaired_field.index < jump_date
+                            repaired_field.loc[mask] *= adjustment_factor
+                        elif jump_ratio < 0.2:
+                            adjustment_factor = 1.0 / jump_ratio
+                            mask = repaired_field.index >= jump_date
+                            repaired_field.loc[mask] *= adjustment_factor
+                    
+                    repaired_df[(ticker, field)] = repaired_field
+        else:
+            repaired_df[ticker] = repaired_prices.reindex(repaired_df.index)
+        
+        # Log repair statistics
+        original_min = valid_prices.min()
+        original_max = valid_prices.max()
+        repaired_min = repaired_prices.min()
+        repaired_max = repaired_prices.max()
+        
+        logger.info(f"UVXY repair summary:")
+        logger.info(f"  Original price range: ${original_min:.2f} - ${original_max:.2f}")
+        logger.info(f"  Repaired price range: ${repaired_min:.2f} - ${repaired_max:.2f}")
+        logger.info(f"  Price jumps repaired: {len(jump_dates)}")
+        
+        return repaired_df
 
     def _normalize_data_format(self, df: pd.DataFrame, source: str, tickers: List[str]) -> pd.DataFrame:
         """
@@ -410,6 +556,18 @@ class HybridDataSource(BaseDataSource):
             # Remove duplicate columns if any
             if isinstance(result_df.columns, pd.MultiIndex):
                 result_df = result_df.loc[:, ~result_df.columns.duplicated()]
+            
+            # Apply UVXY data repair if UVXY is present
+            if "UVXY" in tickers_to_fetch and not result_df.empty:
+                # Check if UVXY data exists in the result
+                if isinstance(result_df.columns, pd.MultiIndex):
+                    uvxy_cols = [col for col in result_df.columns if col[0] == "UVXY"]
+                else:
+                    uvxy_cols = ["UVXY"] if "UVXY" in result_df.columns else []
+                
+                if uvxy_cols:
+                    logger.info("Applying UVXY data repair for reverse split inconsistencies...")
+                    result_df = self._repair_uvxy_data(result_df, "UVXY")
         else:
             result_df = pd.DataFrame()
         

@@ -287,6 +287,11 @@ class TestBacktester(unittest.TestCase):
         # Mock dependencies
         mock_strategy_obj = MagicMock()
         mock_strategy_obj.get_universe.return_value = [(ticker, "EQUITY") for ticker in mock_universe_tickers]
+
+        # Mock the timing controller
+        mock_timing_controller = MagicMock()
+        mock_timing_controller.get_rebalance_dates.return_value = dates_monthly
+        mock_strategy_obj.get_timing_controller.return_value = mock_timing_controller
         
         # Create mock signals that return a single row DataFrame for each call
         def mock_generate_signals(*args, **kwargs):
@@ -306,9 +311,7 @@ class TestBacktester(unittest.TestCase):
         mock_weights_monthly.iloc[0] = 0 # Start with no holdings for turnover calc
 
         # Patching internal calls
-        with patch.object(backtester, '_get_strategy', return_value=mock_strategy_obj) as mock_get_strat, \
-             patch('src.portfolio_backtester.backtester.get_position_sizer', return_value=mock_position_sizer_func) as mock_get_pos_sizer, \
-             patch('src.portfolio_backtester.backtester.rebalance', return_value=mock_weights_monthly) as mock_rebalance_func:
+        with patch.object(backtester, '_get_strategy', return_value=mock_strategy_obj) as mock_get_strat,             patch('src.portfolio_backtester.backtester.get_position_sizer', return_value=mock_position_sizer_func) as mock_get_pos_sizer,             patch('src.portfolio_backtester.backtester.rebalance', return_value=mock_weights_monthly) as mock_rebalance_func:
 
             portfolio_rets = backtester.run_scenario(scenario_config, price_data_monthly, price_data_daily)
 

@@ -96,6 +96,9 @@ def load_config():
         
         logger.info(f"Successfully loaded configuration: {len(BACKTEST_SCENARIOS)} scenarios found")
         
+        # Return the loaded configuration
+        return GLOBAL_CONFIG, BACKTEST_SCENARIOS
+        
     except ConfigurationError:
         # Re-raise configuration errors as-is
         raise

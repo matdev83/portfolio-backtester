@@ -57,6 +57,7 @@ GLOBAL_CONFIG:
     - "PLTR"
     - "UNH"
     - "GBTC"
+    - "UVXY"
   benchmark: "SPY"
   start_date: "2013-01-01"
   end_date: "2025-06-30"

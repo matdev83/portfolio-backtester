@@ -46,6 +46,8 @@ def _resolve_strategy(name: str):
         class_name = "EMAStrategy"
     elif name == "low_volatility_factor":
         class_name = "LowVolatilityFactorStrategy"
+    elif name == "uvxy_rsi":
+        class_name = "UvxyRsiStrategy"
     return getattr(strategies, class_name, None)
 
 

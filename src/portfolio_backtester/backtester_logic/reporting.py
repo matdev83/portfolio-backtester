@@ -55,6 +55,61 @@ def display_results(self, daily_data_for_display):
     else:
         logger.info("Optimization reports are disabled. Skipping advanced stability measures and Monte Carlo analysis.")
 
+    # ------------------------------------------------------------------
+    # 2. Always show a basic performance table and equity/draw-down chart
+    # ------------------------------------------------------------------
+    try:
+        if not self.results:
+            return
+
+        # Gather strategy returns and benchmark returns
+        period_returns = {name: data["returns"] for name, data in self.results.items()}
+
+        benchmark_ticker = self.global_config["benchmark"]
+        if isinstance(daily_data_for_display.columns, pd.MultiIndex):
+            bench_px = daily_data_for_display.xs(
+                (benchmark_ticker, "Close"), level=("Ticker", "Field"), axis=1
+            )
+        else:
+            bench_px = daily_data_for_display[benchmark_ticker]
+
+        bench_period_rets_raw = bench_px.pct_change(fill_method=None).fillna(0.0)
+
+        # Ensure we pass a Series (not DataFrame) to metric calculator
+        if isinstance(bench_period_rets_raw, pd.DataFrame):
+            bench_period_rets = bench_period_rets_raw.iloc[:, 0]
+        else:
+            bench_period_rets = bench_period_rets_raw
+
+        num_trials_map = {
+            name: data.get("num_trials_for_dsr", 1) for name, data in self.results.items()
+        }
+
+        _generate_performance_table(
+            self,
+            console,
+            period_returns,
+            bench_period_rets,
+            "Full-Period Performance",
+            num_trials_map,
+        )
+
+        # Plot equity curve and draw-down summary – save to reports directory
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_dir = os.path.join("data", "reports", f"{timestamp}_summary")
+        os.makedirs(report_dir, exist_ok=True)
+
+        _plot_performance_summary(self, bench_period_rets, None)
+        plt.tight_layout()
+        plot_path = os.path.join(report_dir, "equity_curve.png")
+        plt.savefig(plot_path)
+        plt.close()
+
+        logger.info("Performance summary saved to %s", plot_path)
+
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to generate summary table/plot: %s", exc)
+
 def _generate_performance_table(self, console: Console, period_returns: dict,
                                   bench_period_rets: pd.Series, title: str,
                                   num_trials_map: dict):

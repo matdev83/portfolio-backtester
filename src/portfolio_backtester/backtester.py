@@ -235,21 +235,74 @@ class Backtester:
         )
         
         universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
+
+        # ------------------------------------------------------------------
+        # Remove any tickers that failed data download (not present in price data)
+        # ------------------------------------------------------------------
+        missing_cols = [t for t in universe_tickers if t not in price_data_monthly_closes.columns]
+        if missing_cols:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    f"Tickers {missing_cols} not found in price data; they will be skipped for this run."
+                )
+            universe_tickers = [t for t in universe_tickers if t not in missing_cols]
+
+        if not universe_tickers:
+            raise ValueError("No universe tickers remain after filtering missing data columns.")
+
         benchmark_ticker = self.global_config["benchmark"]
 
-        rebalance_dates = price_data_monthly_closes.index # Dates for generating signals (typically month-end)
-
-        # --- Iterative Signal Generation ---
-        all_monthly_weights = []
-
-        # WFO dates from scenario_config (optional)
+        # Get timing controller from strategy and determine rebalance dates
+        timing_controller = strategy.get_timing_controller()
+        
+        # Reset timing state for new scenario run (important for WFO windows)
+        timing_controller.reset_state()
+        
+        # Determine date range for rebalancing
+        start_date = price_data_daily_ohlc.index.min()
+        end_date = price_data_daily_ohlc.index.max()
+        
+        # Apply WFO date constraints if specified
         wfo_start_date = pd.to_datetime(scenario_config.get("wfo_start_date", None))
         wfo_end_date = pd.to_datetime(scenario_config.get("wfo_end_date", None))
+        
+        if wfo_start_date is not None:
+            start_date = max(start_date, wfo_start_date)
+        if wfo_end_date is not None:
+            end_date = min(end_date, wfo_end_date)
+        
+        # Get rebalance dates from timing controller
+        rebalance_dates = timing_controller.get_rebalance_dates(
+            start_date=start_date,
+            end_date=end_date,
+            available_dates=price_data_daily_ohlc.index,
+            strategy_context=strategy
+        )
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            timing_mode = timing_controller.__class__.__name__
+            logger.debug(f"Using {timing_mode} with {len(rebalance_dates)} rebalance dates for strategy {scenario_config['strategy']}")
+            logger.debug(f"Rebalance date range: {rebalance_dates.min()} to {rebalance_dates.max()}")
+
+        # --- Iterative Signal Generation with Timing Controller Integration ---
+        all_monthly_weights = []
 
         for current_rebalance_date in rebalance_dates:
             if self.has_timed_out:
                 logger.warning("Timeout reached during scenario run. Halting signal generation.")
                 break
+            
+            # Check with timing controller if signal should be generated
+            should_generate = timing_controller.should_generate_signal(
+                current_date=current_rebalance_date,
+                strategy_context=strategy
+            )
+            
+            if not should_generate:
+                if verbose and logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"Timing controller skipped signal generation for date: {current_rebalance_date}")
+                continue
+            
             if verbose:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(f"Generating signals for date: {current_rebalance_date}")
@@ -269,7 +322,6 @@ class Backtester:
                 all_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, universe_tickers]
                 benchmark_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, [benchmark_ticker]]
 
-
             non_universe_tickers = strategy.get_non_universe_data_requirements()
             non_universe_historical_data_for_strat = pd.DataFrame()
             if non_universe_tickers:
@@ -282,14 +334,64 @@ class Backtester:
 
             # Call strategy's generate_signals
             # The strategy itself will handle WFO start/end date filtering if current_rebalance_date is outside.
-            current_weights_df = strategy.generate_signals(
-                all_historical_data=all_historical_data_for_strat,
-                benchmark_historical_data=benchmark_historical_data_for_strat,
-                non_universe_historical_data=non_universe_historical_data_for_strat,
-                current_date=current_rebalance_date,
-                start_date=wfo_start_date,
-                end_date=wfo_end_date
-            )
+            # Check if strategy supports non_universe_historical_data parameter for backward compatibility
+            import inspect
+            sig = inspect.signature(strategy.generate_signals)
+            if 'non_universe_historical_data' in sig.parameters:
+                current_weights_df = strategy.generate_signals(
+                    all_historical_data=all_historical_data_for_strat,
+                    benchmark_historical_data=benchmark_historical_data_for_strat,
+                    non_universe_historical_data=non_universe_historical_data_for_strat,
+                    current_date=current_rebalance_date,
+                    start_date=wfo_start_date,
+                    end_date=wfo_end_date
+                )
+            else:
+                # Backward compatibility: call without non_universe_historical_data
+                current_weights_df = strategy.generate_signals(
+                    all_historical_data=all_historical_data_for_strat,
+                    benchmark_historical_data=benchmark_historical_data_for_strat,
+                    current_date=current_rebalance_date,
+                    start_date=wfo_start_date,
+                    end_date=wfo_end_date
+                )
+            
+            # Update timing state with signal generation
+            if current_weights_df is not None and not current_weights_df.empty:
+                # Extract weights as Series for the current date
+                if len(current_weights_df) > 0:
+                    current_weights_series = current_weights_df.iloc[0]  # Get first (and typically only) row
+                    timing_controller.update_signal_state(current_rebalance_date, current_weights_series)
+                    
+                    # Update position tracking state with current prices
+                    try:
+                        # Extract current prices for position tracking
+                        if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and 'Close' in price_data_daily_ohlc.columns.get_level_values(1):
+                            current_prices = price_data_daily_ohlc.loc[current_rebalance_date].xs('Close', level='Field')
+                        elif not isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
+                            current_prices = price_data_daily_ohlc.loc[current_rebalance_date]
+                        else:
+                            # Try to extract Close prices from MultiIndex
+                            try:
+                                current_prices = price_data_daily_ohlc.loc[current_rebalance_date].xs('Close', level=-1)
+                            except:
+                                # Fallback: use available price data
+                                current_prices = price_data_daily_ohlc.loc[current_rebalance_date].iloc[:len(universe_tickers)]
+                        
+                        # Filter prices to universe tickers only
+                        universe_prices = current_prices.reindex(universe_tickers).ffill()
+                        
+                        # Update position state
+                        timing_controller.update_position_state(
+                            current_rebalance_date, 
+                            current_weights_series, 
+                            universe_prices
+                        )
+                        
+                    except Exception as e:
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(f"Could not update position state for {current_rebalance_date}: {e}")
+            
             # current_weights_df should be a DataFrame with 1 row (current_rebalance_date) and asset columns
             all_monthly_weights.append(current_weights_df)
 

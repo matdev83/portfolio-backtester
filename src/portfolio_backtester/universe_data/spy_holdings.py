@@ -360,10 +360,10 @@ def ssga_daily(date: Union[dt.date, pd.Timestamp]):
         date = pd.Timestamp(date)
     """
     Return DataFrame for one date or None if 404.
-    Uses a 6-hour cache in ../cache/ssga_daily/
+    Uses a 6-hour cache in data/cache/ssga_daily/
     """
     script_dir = Path(__file__).parent
-    cache_dir = script_dir.parent.parent / "cache" / "ssga_daily"
+    cache_dir = script_dir.parent.parent.parent / "data" / "cache" / "ssga_daily"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / f"{date:%Y-%m-%d}.parquet"
 
@@ -711,10 +711,10 @@ def _get_sec_filings(company: Company, start_date: pd.Timestamp) -> list:
 def sec_holdings(start, end):
     """
     Returns a DataFrame from N-PORT-P (monthly) and N-Q (quarterly).
-    Uses a 6-hour cache in ../cache/sec_holdings/
+    Uses a 6-hour cache in data/cache/sec_holdings/
     """
     script_dir = Path(__file__).parent
-    cache_dir = script_dir.parent.parent / "cache" / "sec_holdings"
+    cache_dir = script_dir.parent.parent.parent / "data" / "cache" / "sec_holdings"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / f"{CIK}_{start:%Y-%m-%d}_{end:%Y-%m-%d}.parquet"
 
@@ -765,7 +765,7 @@ def build_history(start: pd.Timestamp, end: pd.Timestamp, *, ignore_cache: bool 
     ----------
     ignore_cache : bool, default ``False``
         If ``True`` the function bypasses any aggregated parquet in
-        ``cache/spy_history`` and rebuilds the DataFrame from scratch.
+        ``data/cache/spy_history`` and rebuilds the DataFrame from scratch.
     """
 
     # Try loading an aggregated cache first – unless explicitly disabled
@@ -907,7 +907,7 @@ def main():
 def _history_cache_file(start: pd.Timestamp, end: pd.Timestamp) -> Path:
     """Return the path of the aggregate history cache parquet file for the given date range."""
     script_dir = Path(__file__).parent
-    cache_dir = script_dir.parent.parent / "cache" / "spy_history"
+    cache_dir = script_dir.parent.parent.parent / "data" / "cache" / "spy_history"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"{TICKER}_history_{start:%Y-%m-%d}_{end:%Y-%m-%d}.parquet"
 

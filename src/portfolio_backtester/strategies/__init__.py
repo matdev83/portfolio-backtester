@@ -13,6 +13,8 @@ from .filtered_lagged_momentum_strategy import FilteredLaggedMomentumStrategy
 from .ema_crossover_strategy import EMAStrategy
 from .ema_roro_strategy import EMARoRoStrategy
 from .low_volatility_factor_strategy import LowVolatilityFactorStrategy
+from .momentum_beta_filtered_strategy import MomentumBetaFilteredStrategy
+from .uvxy_rsi_strategy import UvxyRsiStrategy
 
 __all__ = [
     "BaseStrategy",
@@ -28,6 +30,8 @@ __all__ = [
     "EMAStrategy",
     "EMARoRoStrategy",
     "LowVolatilityFactorStrategy",
+    "MomentumBetaFilteredStrategy",
+    "UvxyRsiStrategy",
 ]
 
 # --------------------------------------------------------------------

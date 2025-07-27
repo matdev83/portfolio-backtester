@@ -38,8 +38,8 @@ dependencies = [
     "openpyxl",
     "plotly",
     "kaleido",
-    "stooq",
-    "parameterized"
+    "parameterized",
+    "ta"
 ]
 
 [project.optional-dependencies]
