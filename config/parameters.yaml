@@ -62,9 +62,9 @@ GLOBAL_CONFIG:
   start_date: "2013-01-01"
   end_date: "2025-06-30"
   # IBKR Commission Structure (for detailed calculations if needed)
-  ibkr_commission_per_share: 0.005
-  ibkr_commission_min_per_order: 1.0
-  ibkr_commission_max_percent_of_trade: 0.005 # 0.5% of trade value
+  commission_per_share: 0.005
+  commission_min_per_order: 1.0
+  commission_max_percent_of_trade: 0.005
   
   # Realistic slippage for top 100 S&P 500 stocks (highly liquid large caps)
   slippage_bps: 2.5 # 2.5 basis points - realistic for liquid large caps

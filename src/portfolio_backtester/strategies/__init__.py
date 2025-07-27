@@ -61,7 +61,7 @@ def _camel_to_snake(name: str) -> str:
     return snake
 
 
-def enumerate_strategies_with_params() -> Dict[str, List[str]]:  # pragma: no cover
+def enumerate_strategies_with_params() -> Dict[str, type]:  # pragma: no cover
     """Enumerate all concrete strategy classes and their tunable parameters.
 
     The function performs the following steps:
