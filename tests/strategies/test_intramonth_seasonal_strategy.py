@@ -9,7 +9,7 @@ from src.portfolio_backtester.strategies.intramonth_seasonal_strategy import (
 @pytest.fixture
 def sample_historical_data():
     dates = pd.to_datetime(pd.date_range(start="2023-01-01", end="2023-03-31", freq="B"))
-    data = {"AAPL": 100}
+    data = {"AAPL": 100, "GOOG": 200}
     df = pd.DataFrame(index=dates, columns=list(data.keys()))
     for col in df.columns:
         df[col] = data[col]

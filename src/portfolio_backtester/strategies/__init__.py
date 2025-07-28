@@ -33,6 +33,7 @@ __all__ = [
     "LowVolatilityFactorStrategy",
     "MomentumBetaFilteredStrategy",
     "UvxyRsiStrategy",
+    "IntramonthSeasonalStrategy",
 ]
 
 # --------------------------------------------------------------------

@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 from typing import Any, Dict, Optional
 
 import pandas as pd
@@ -70,15 +71,15 @@ class IntramonthSeasonalStrategy(BaseStrategy):
         if isinstance(all_historical_data.columns, pd.MultiIndex):
             asset_list = all_historical_data.columns.get_level_values('Ticker').unique()
             for asset in asset_list:
-                if (asset, "Close") in all_historical_data.columns and not pd.isna(
-                    current_day_data[(asset, "Close")]
-                ).all():
+                if (asset, "Close") in all_historical_data.columns and np.all(
+                    pd.notna(current_day_data[(asset, "Close")])
+                ):
                     valid_assets.append(asset)
         else:
             asset_list = all_historical_data.columns
             for asset in asset_list:
-                if asset in current_day_data.index and not pd.isna(
-                    current_day_data[asset]
+                if asset in current_day_data.index and np.all(
+                    pd.notna(current_day_data[asset])
                 ):
                     valid_assets.append(asset)
         
@@ -121,10 +122,7 @@ class IntramonthSeasonalStrategy(BaseStrategy):
             all_historical_data, current_date, min_periods_override=1
         )
 
-        if len(valid_assets) > 1:
-            raise ValueError(
-                "IntramonthSeasonalStrategy can only operate on a universe with a single symbol."
-            )
+        # Strategy can work with multiple assets
 
         if not valid_assets:
             columns = (
@@ -156,11 +154,16 @@ class IntramonthSeasonalStrategy(BaseStrategy):
         entry_date = self.get_entry_date_for_month(current_date, entry_day)
 
         if current_date == entry_date:
+            logger.info(f"Entry condition met for {current_date}. Assets: {valid_assets}")
             for asset in valid_assets:
                 if asset not in self.positions:
+                    logger.info(f"Entering position for {asset} on {current_date}")
                     target_weights[asset] = 1.0 if direction == "long" else -1.0
                     exit_date = current_date + BDay(hold_days)
                     self.positions[asset] = {"exit_date": exit_date}
+
+        if (target_weights != 0).any():
+            logger.debug(f"Date: {current_date}, Non-zero weights: {target_weights[target_weights != 0]}")
 
         # Normalize weights to sum to 1 (or -1 for short)
         num_positions = (target_weights != 0).sum()

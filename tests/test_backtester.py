@@ -96,7 +96,7 @@ class TestBacktester(unittest.TestCase):
 
     @patch('src.portfolio_backtester.backtester.Backtester._get_data_source')
     @patch('numpy.random.seed')
-    @patch('src.portfolio_backtester.backtester.np.random.randint')
+    @patch('numpy.random.randint')
     def test_init_random_seed_generation(self, mock_np_randint, mock_np_seed, mock_get_data_source):
         mock_np_randint.return_value = 42 # Mock the generated seed value
         args = self.MockArgs()
@@ -130,8 +130,8 @@ class TestBacktester(unittest.TestCase):
         self.assertEqual(backtester.n_jobs, 4)
         self.assertEqual(backtester.early_stop_patience, 20)
 
-    @patch('src.portfolio_backtester.data_sources.stooq_data_source.StooqDataSource')
-    def test_get_data_source_stooq(self, mock_stooq_data_source_class):
+    @patch('numpy.random.seed')
+    def test_get_data_source_stooq(self, mock_np_seed, mock_stooq_data_source_class):
         mock_stooq_data_source_class.__name__ = 'StooqDataSource'
         mock_instance = MagicMock()
         mock_stooq_data_source_class.return_value = mock_instance
@@ -140,7 +140,7 @@ class TestBacktester(unittest.TestCase):
         config["data_source"] = "stooq"
         args = self.MockArgs()
         # Temporarily patch np.random.seed for Backtester instantiation
-        with patch('src.portfolio_backtester.backtester.np.random.seed'):
+        with patch('numpy.random.seed'):
             backtester = Backtester(config, self.scenarios, args)
 
         # _get_data_source is called in __init__, so we check the instance attribute
@@ -148,8 +148,8 @@ class TestBacktester(unittest.TestCase):
         mock_stooq_data_source_class.assert_called_once_with()
 
 
-    @patch('src.portfolio_backtester.data_sources.yfinance_data_source.YFinanceDataSource')
-    def test_get_data_source_yfinance(self, mock_yfinance_data_source_class):
+    @patch('numpy.random.seed')
+    def test_get_data_source_yfinance(self, mock_np_seed, mock_yfinance_data_source_class):
         mock_yfinance_data_source_class.__name__ = 'YFinanceDataSource'
         mock_instance = MagicMock()
         mock_yfinance_data_source_class.return_value = mock_instance
@@ -157,7 +157,7 @@ class TestBacktester(unittest.TestCase):
         config = self.global_config.copy()
         config["data_source"] = "yfinance"
         args = self.MockArgs()
-        with patch('src.portfolio_backtester.backtester.np.random.seed'):
+        with patch('numpy.random.seed'):
             backtester = Backtester(config, self.scenarios, args)
 
         self.assertEqual(backtester.data_source, mock_instance)
@@ -179,12 +179,12 @@ class TestBacktester(unittest.TestCase):
         config = self.global_config.copy()
         config["data_source"] = "unsupported_source"
         args = self.MockArgs()
-        with patch('src.portfolio_backtester.backtester.np.random.seed'):
+        with patch('numpy.random.seed'):
             with self.assertRaisesRegex(ValueError, "Unsupported data source: unsupported_source"):
                 Backtester(config, self.scenarios, args)
 
     # Tests for _get_strategy
-    @patch('src.portfolio_backtester.backtester.enumerate_strategies_with_params')
+    @patch('src.portfolio_backtester.strategies.enumerate_strategies_with_params')
     def test_get_strategy_valid(self, mock_enumerate_strategies):
         mock_strategy_class = MagicMock()
         mock_strategy_instance = MagicMock()
@@ -203,7 +203,7 @@ class TestBacktester(unittest.TestCase):
         self.assertEqual(strategy_instance, mock_strategy_instance)
         mock_strategy_class.assert_called_once_with(params)
 
-    @patch('src.portfolio_backtester.backtester.enumerate_strategies_with_params')
+    @patch('src.portfolio_backtester.strategies.enumerate_strategies_with_params')
     def test_get_strategy_vams_momentum(self, mock_enumerate_strategies):
         mock_strategy_class = MagicMock()
         mock_strategy_instance = MagicMock()
@@ -217,7 +217,7 @@ class TestBacktester(unittest.TestCase):
         self.assertEqual(strategy_instance, mock_strategy_instance)
         mock_strategy_class.assert_called_once_with(params)
 
-    @patch('src.portfolio_backtester.backtester.enumerate_strategies_with_params')
+    @patch('src.portfolio_backtester.strategies.enumerate_strategies_with_params')
     def test_get_strategy_vams_no_downside(self, mock_enumerate_strategies):
         mock_strategy_class = MagicMock()
         mock_strategy_instance = MagicMock()

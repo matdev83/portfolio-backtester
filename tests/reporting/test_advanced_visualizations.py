@@ -97,6 +97,15 @@ class TestAdvancedVisualizations:
         # Create mock study
         study = Mock()
         study.trials = trials
+        
+        # CRITICAL: Configure Mock to support len() operations and required attributes
+        # Problem: The optimization code calls len() on study.directions and study.trials,
+        # but Mock objects don't automatically support len() operations
+        # Solution: Provide real Python objects (lists) that support len() natively
+        study.directions = ['maximize']  # Single objective - use real list
+        study.best_trials = []  # Empty for single objective - use real list
+        study.best_trial = trials[0] if trials else None
+        
         return study
     
     @pytest.fixture

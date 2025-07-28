@@ -1,5 +1,5 @@
 BACKTEST_SCENARIOS:
-  - name: "Intramonth_Seasonal_Test"
+  - name: "Intramonth_Seasonal_Optimization"
     strategy: "intramonth_seasonal"
     rebalance_frequency: "D"
     position_sizer: "equal_weight"
@@ -11,19 +11,19 @@ BACKTEST_SCENARIOS:
         direction: "maximize"
     optimize:
       - parameter: "entry_day"
-        min_value: -10
+        type: "int"
+        min_value: -14
         max_value: 14
         step: 1
       - parameter: "hold_days"
-        min_value: 2
+        type: "int"
+        min_value: 3
         max_value: 14
         step: 1
     strategy_params:
       direction: "long"
       long_only: True
       leverage: 1.0
-    mc_simulations: 100
-    mc_years: 5
     universe:
       - "TLT"
   - name: "EMA_Crossover_Test"

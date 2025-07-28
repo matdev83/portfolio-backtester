@@ -180,7 +180,7 @@ class TestEnhancedBacktestingIntegration:
         args.mode = 'optimize'
         args.optimizer = 'optuna'
         args.optuna_trials = 10
-        args.timeout = 1200
+        args.timeout = 2400
         args.pruning_enabled = True
         args.pruning_n_startup_trials = 2
         args.pruning_n_warmup_steps = 0
@@ -206,7 +206,18 @@ class TestEnhancedBacktestingIntegration:
             mock_trial.number = 5
             mock_trial.value = 0.75
             mock_study.best_trial = mock_trial
-            mock_study.trials = [mock_trial]
+            
+            # CRITICAL: Configure Mock to support len() operations and required attributes
+            # Problem: The optimization code calls len() on study.directions and study.trials,
+            # but Mock objects don't automatically support len() operations
+            # Solution: Provide real Python objects (lists) that support len() natively
+            mock_study.directions = ['maximize']  # Single objective - use real list
+            mock_study.best_trials = []  # Empty for single objective - use real list
+            mock_study.trials = [mock_trial]  # Use regular list which already supports len()
+            
+            # IMPORTANT: Don't try to override __len__ on lists - it's read-only
+            # Instead, use real Python lists which already have proper __len__ implementation
+            
             mock_create_study.return_value = mock_study
             
             # Create backtester

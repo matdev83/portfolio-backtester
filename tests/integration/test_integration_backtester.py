@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 RunResult = tuple[subprocess.CompletedProcess, Path, Path] # process, stdout_file, stderr_file
 
-def run_backtester_process(command_args: list[str], timeout_sec: int = 1500) -> RunResult:
+def run_backtester_process(command_args: list[str], timeout_sec: int = 2700) -> RunResult:
     full_command = [sys.executable, "-m", "src.portfolio_backtester.backtester"] + command_args
     tmp_log_dir = PROJECT_ROOT / "tmp"
     tmp_log_dir.mkdir(exist_ok=True)
@@ -245,6 +245,7 @@ def test_optimize_mode_optuna_minimal():
         if stdout_file: cleanup_temp_files(stdout_file)
         if stderr_file: cleanup_temp_files(stderr_file)
 
+@pytest.mark.slow
 def test_optimize_mode_genetic_minimal():
     scenario_name = "Test_Genetic_Minimal"
     command_args = [

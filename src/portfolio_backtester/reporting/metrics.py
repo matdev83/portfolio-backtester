@@ -23,7 +23,22 @@ def _infer_steps_per_year(index: pd.DatetimeIndex) -> int:
     return 252
 
 def _calculate_capm(rets_aligned, bench_aligned, bench_ticker_name, steps_per_year):
-    if len(rets_aligned) < 2 or abs(bench_aligned.std()) < EPSILON:
+    # Add defensive checks for empty Series before length comparisons
+    if rets_aligned.empty or bench_aligned.empty or len(rets_aligned) < 2:
+        return np.nan, np.nan, np.nan
+    
+    # Use proper Series handling for standard deviation comparison
+    bench_std = bench_aligned.std()
+    # Handle case where bench_std might be a Series - convert to scalar safely
+    if isinstance(bench_std, pd.Series):
+        if bench_std.empty:
+            return np.nan, np.nan, np.nan
+        # Use the first value if it's a Series
+        bench_std_scalar = bench_std.iloc[0] if len(bench_std) > 0 else np.nan
+    else:
+        bench_std_scalar = bench_std
+    
+    if pd.isna(bench_std_scalar) or abs(bench_std_scalar) < EPSILON:
         return np.nan, np.nan, np.nan
     
     X = sm.add_constant(bench_aligned)
