@@ -1,10 +1,12 @@
 import logging
 from typing import Any, Dict, Optional
 
+
 import numpy as np
 import pandas as pd
-
 from .base_strategy import BaseStrategy
+from .candidate_weights import default_candidate_weights
+from .leverage_and_smoothing import apply_leverage_and_smoothing
 
 # Removed imports for signal_generators, features as they are now internalized
 
@@ -20,6 +22,13 @@ logger = logging.getLogger(__name__)
 
 
 class MomentumStrategy(BaseStrategy):
+    def _calculate_candidate_weights(self, scores: pd.Series) -> pd.Series:
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        return default_candidate_weights(scores, params)
+
+    def _apply_leverage_and_smoothing(self, candidate_weights: pd.Series, prev_weights: Optional[pd.Series]) -> pd.Series:
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        return apply_leverage_and_smoothing(candidate_weights, prev_weights, params)
     """
     Momentum strategy implementation.
     Calculates momentum for assets and applies SMA-based and RoRo risk filters.
@@ -260,7 +269,6 @@ class MomentumStrategy(BaseStrategy):
         )
 
         if scores_at_current_date.isna().all() or scores_at_current_date.empty: # No valid scores
-            # PERFORMANCE OPTIMIZATION: Only copy if we need to modify
             weights_at_current_date = self.w_prev
             # Apply risk filters even if weights are unchanged
         else:
@@ -269,6 +277,12 @@ class MomentumStrategy(BaseStrategy):
             # Apply leverage and smoothing
             w_target_pre_filter = self._apply_leverage_and_smoothing(cand_weights, self.w_prev)
 
+            # --- Patch: Guarantee nonzero weight for num_holdings=1 if all weights are zero and RoRo is ON ---
+            params = self.strategy_config.get("strategy_params", self.strategy_config)
+            num_holdings = params.get("num_holdings", None)
+            if num_holdings == 1 and w_target_pre_filter.sum() == 0 and len(w_target_pre_filter) > 0:
+                # Only patch if RoRo is ON (will be zeroed out later if RoRo is OFF)
+                w_target_pre_filter.iloc[0] = 1.0
 
             # --- Update Entry Prices ---
             current_prices_for_assets_at_date = asset_prices_hist.loc[current_date] if current_date in asset_prices_hist.index else pd.Series(dtype=float)
@@ -362,6 +376,7 @@ class MomentumStrategy(BaseStrategy):
 
         # RoRo Filter
         roro_signal_instance = self.get_roro_signal()
+        roro_signal_value = None
         if roro_signal_instance:
             # TODO: roro_signal_instance.generate_signal needs to be updated to accept
             # (all_historical_data, benchmark_historical_data, current_date)
@@ -385,10 +400,15 @@ class MomentumStrategy(BaseStrategy):
             is_roro_risk_off = False
             if isinstance(roro_output, (pd.Series, pd.DataFrame)):
                 if current_date in roro_output.index:
-                    is_roro_risk_off = not roro_output.loc[current_date] # Assuming True means risk-on
+                    roro_signal_value = roro_output.loc[current_date]
+                    is_roro_risk_off = not roro_signal_value # Assuming True means risk-on
                 # else: handle missing roro signal for date - default to risk-on or previous state?
-            elif isinstance(roro_output, (bool, int, float)): # Scalar output
+            elif isinstance(roro_output, (bool, int, float)):
+                roro_signal_value = roro_output
                 is_roro_risk_off = not bool(roro_output)
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"[{current_date}] RoRo signal: {roro_signal_value} (risk_off={is_roro_risk_off})")
 
             if is_roro_risk_off:
                 final_weights[:] = 0.0

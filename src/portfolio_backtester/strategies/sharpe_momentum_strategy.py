@@ -1,3 +1,5 @@
+from .candidate_weights import default_candidate_weights
+from .leverage_and_smoothing import apply_leverage_and_smoothing
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -14,7 +16,40 @@ except ImportError:
 
 # Removed SharpeSignalGenerator and feature imports
 
+import logging
+
 class SharpeMomentumStrategy(BaseStrategy):
+    def _calculate_candidate_weights(self, scores: pd.Series) -> pd.Series:
+        # Build params dict with required keys for candidate weights logic
+        config = self.strategy_config.get("strategy_params", self.strategy_config)
+        params = {
+            "num_holdings": config.get("num_holdings"),
+            "top_decile_fraction": config.get("top_decile_fraction", 0.1),
+            "long_only": config.get("long_only", True)
+        }
+        logger = logging.getLogger(__name__)
+        logger.debug(f"[SharpeMomentumStrategy] _calculate_candidate_weights: scores={scores.to_dict()} params={params}")
+        if scores is None or len(scores) == 0:
+            logger.debug("[SharpeMomentumStrategy] No scores, returning zeros.")
+            return pd.Series(0.0, index=getattr(scores, 'index', None))
+        cand = default_candidate_weights(scores, params)
+        # FINAL FALLBACK: If all candidate weights are zero and num_holdings==1, assign 1.0 to the top asset
+        if params.get("num_holdings", None) == 1 and (cand.abs().sum() == 0 or cand.isna().all()):
+            top_asset = scores.sort_values(ascending=False).index[0] if len(scores) > 0 else None
+            if top_asset is not None:
+                cand[:] = 0.0
+                cand[top_asset] = 1.0
+                logger.debug(f"[SharpeMomentumStrategy] FINAL FALLBACK: For num_holdings=1, forced 1.0 weight to {top_asset}")
+        logger.debug(f"[SharpeMomentumStrategy] candidate_weights={cand.to_dict()}")
+        return cand
+
+    def _apply_leverage_and_smoothing(self, candidate_weights: pd.Series, prev_weights: Optional[pd.Series]) -> pd.Series:
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        logger = logging.getLogger(__name__)
+        logger.debug(f"[SharpeMomentumStrategy] _apply_leverage_and_smoothing: candidate_weights={candidate_weights.to_dict()} prev_weights={None if prev_weights is None else prev_weights.to_dict()} params={params}")
+        result = apply_leverage_and_smoothing(candidate_weights, prev_weights, params)
+        logger.debug(f"[SharpeMomentumStrategy] after leverage/smoothing: {result.to_dict()}")
+        return result
     """Strategy that uses Sharpe ratio for ranking assets."""
 
     # Removed signal_generator_class
@@ -260,11 +295,13 @@ class SharpeMomentumStrategy(BaseStrategy):
 
         weights_at_current_date = weights_after_sl
 
+
         # --- Apply Risk Filters (SMA, RoRo) ---
         final_weights = weights_at_current_date
         benchmark_prices_hist = benchmark_historical_data[benchmark_historical_data.index <= current_date]
 
         sma_filter_window = params.get("sma_filter_window")
+        logger = logging.getLogger(__name__)
         if sma_filter_window and sma_filter_window > 0:
             benchmark_price_series_for_sma = benchmark_prices_hist.xs(price_col_benchmark, level='Field', axis=1) if isinstance(benchmark_prices_hist.columns, pd.MultiIndex) else benchmark_prices_hist[price_col_benchmark]
             benchmark_sma_series = self._calculate_benchmark_sma(benchmark_prices_hist, sma_filter_window, price_col_benchmark)
@@ -279,12 +316,16 @@ class SharpeMomentumStrategy(BaseStrategy):
 
                 if self.current_derisk_flag or \
                    (not current_benchmark_price_val.empty and not current_benchmark_sma_val.empty and current_benchmark_price_val.iloc[0] < current_benchmark_sma_val.iloc[0]):
+                    logger.debug(f"[SharpeMomentumStrategy] SMA filter zeroed weights on {current_date}")
                     final_weights[:] = 0.0
 
         roro_signal_instance = self.get_roro_signal()
         if roro_signal_instance:
-            is_roro_risk_off = not roro_signal_instance.generate_signal(all_historical_data, benchmark_historical_data, current_date)
+            roro_signal = roro_signal_instance.generate_signal(all_historical_data, benchmark_historical_data, current_date)
+            logger.debug(f"[SharpeMomentumStrategy] RoRo signal for {current_date}: {roro_signal}")
+            is_roro_risk_off = not roro_signal
             if is_roro_risk_off:
+                logger.debug(f"[SharpeMomentumStrategy] RoRo filter zeroed weights on {current_date}")
                 final_weights[:] = 0.0
 
         for asset in current_universe_tickers:

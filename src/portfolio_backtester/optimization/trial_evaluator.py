@@ -103,8 +103,6 @@ class TrialEvaluator:
         # ------------------------------------------------------------------
         # Decide whether to use multiprocessing or fall back to serial execution.
         use_multiprocessing = True
-        if sys.platform == "win32":
-            use_multiprocessing = False
 
         # Avoid multiprocessing when the backtester is a unittest.mock object (tests) – it cannot be pickled.
         try:
@@ -124,7 +122,7 @@ class TrialEvaluator:
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
                     executor.submit(
-                        self.backtester.evaluate_fast,
+                        self.backtester.evaluate_fast_numba,
                         trial,
                         trial_scenario_cfg,
                         [window],  # evaluate_fast expects a list of windows
@@ -145,7 +143,7 @@ class TrialEvaluator:
         else:
             # Serial evaluation (safer for mocked objects and debug runs)
             for window in self.windows:
-                obj_val, pnl_ret = self.backtester.evaluate_fast(
+                obj_val, pnl_ret = self.backtester.evaluate_fast_numba(
                     trial,
                     trial_scenario_cfg,
                     [window],

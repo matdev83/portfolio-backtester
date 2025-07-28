@@ -1,58 +1,106 @@
-"""Numba-accelerated kernels for high-frequency walk-forward evaluation.
+import numpy as np
+from numba import njit, prange
 
-These low-level functions are intentionally isolated from the rest of the
-codebase so they can be JIT-compiled once and reused across optimisation
-trials without pulling in large Python objects or pandas.
-"""
+@njit
+def window_mean_std(data, starts, ends):
+    """
+    Calculates the mean and standard deviation of a 1D array over multiple windows.
 
-from __future__ import annotations
+    Args:
+        data (np.ndarray): The input data.
+        starts (np.ndarray): The start indices of the windows.
+        ends (np.ndarray): The end indices of the windows.
 
-import numba as _nb
-import numpy as _np
+    Returns:
+        np.ndarray: A 2D array where each row contains the mean and standard deviation of a window.
+    """
+    n_windows = len(starts)
+    results = np.empty((n_windows, 2), dtype=np.float32)
+    for i in range(n_windows):
+        window = data[starts[i]:ends[i]]
+        if window.size == 0:
+            results[i, 0] = np.nan
+            results[i, 1] = np.nan
+        else:
+            results[i, 0] = np.mean(window)
+            results[i, 1] = np.std(window)
+    return results
 
+@njit
+def run_backtest_fast(daily_returns, test_starts, test_ends, strategy_func):
+    """
+    Runs a simplified backtest using Numba.
 
-@_nb.njit(cache=True, fastmath=True, parallel=True)
-def window_mean_std(daily_rets: _np.ndarray, test_starts: _np.ndarray, test_ends: _np.ndarray) -> _np.ndarray:
-    """Compute mean and standard deviation of daily portfolio returns for each
-    walk-forward *test* segment.
+    Args:
+        daily_returns (np.ndarray): The daily returns of the assets.
+        test_starts (np.ndarray): The start indices of the test windows.
+        test_ends (np.ndarray): The end indices of the test windows.
+        strategy_func (callable): A user-defined strategy function.
+
+    Returns:
+        np.ndarray: An array of portfolio returns for each window.
+    """
+    num_windows = len(test_starts)
+    portfolio_returns = np.empty(num_windows, dtype=np.float32)
+
+    for i in range(num_windows):
+        window_returns = daily_returns[test_starts[i]:test_ends[i]]
+        if window_returns.size > 0:
+            portfolio_returns[i] = strategy_func(window_returns)
+        else:
+            portfolio_returns[i] = np.nan
+
+    return portfolio_returns
+
+@njit(parallel=True)
+def run_backtest_numba(
+    prices: np.ndarray,
+    signals: np.ndarray,
+    start_indices: np.ndarray,
+    end_indices: np.ndarray,
+) -> np.ndarray:
+    """
+    Run a backtest using Numba for performance.
 
     Parameters
     ----------
-    daily_rets : (n_days,) float32
-        Daily portfolio return series.
-    test_starts, test_ends : (n_windows,) int64
-        Inclusive start / end indices (row offsets) for each test window in
-        *daily_rets*.
+    prices : np.ndarray
+        A 2D array of prices with shape (time, assets).
+    signals : np.ndarray
+        A 2D array of signals with shape (time, assets).
+    start_indices : np.ndarray
+        An array of start indices for each backtest window.
+    end_indices : np.ndarray
+        An array of end indices for each backtest window.
 
     Returns
     -------
-    metrics : (n_windows, 2) float32
-        ``metrics[i, 0]`` – mean return for window *i*.
-        ``metrics[i, 1]`` – standard deviation for window *i*.
+    np.ndarray
+        An array of portfolio returns for each window.
     """
-    n_windows = test_starts.shape[0]
-    out = _np.empty((n_windows, 2), dtype=_np.float32)
+    num_windows = len(start_indices)
+    portfolio_returns = np.empty(num_windows, dtype=np.float64)
 
-    for i in _nb.prange(n_windows):
-        s_idx = test_starts[i]
-        e_idx = test_ends[i] + 1  # inclusive → slice end
-        seg = daily_rets[s_idx:e_idx]
-        n = seg.size
-        if n == 0:
-            out[i, 0] = _np.nan
-            out[i, 1] = _np.nan
-            continue
-        # Mean
-        mu = _np.float32(0.0)
-        for j in range(n):
-            mu += seg[j]
-        mu /= n
-        # Std (two-pass; n small so fine)
-        var = _np.float32(0.0)
-        for j in range(n):
-            diff = seg[j] - mu
-            var += diff * diff
-        var /= n
-        out[i, 0] = mu
-        out[i, 1] = _np.sqrt(var)
-    return out 
+    for i in prange(num_windows):
+        start = start_indices[i]
+        end = end_indices[i]
+        
+        window_prices = prices[start:end]
+        window_signals = signals[start:end]
+        
+        if window_prices.shape[0] > 0:
+            # Calculate daily returns for the window
+            window_returns = np.full_like(window_prices, np.nan)
+            for t in range(1, window_prices.shape[0]):
+                for asset in range(window_prices.shape[1]):
+                    if window_prices[t-1, asset] > 0:
+                        window_returns[t, asset] = (window_prices[t, asset] / window_prices[t-1, asset]) - 1.0
+            
+            # Calculate portfolio returns
+            # Lag signals by one day to avoid lookahead bias
+            portfolio_daily_returns = np.sum(window_returns * np.roll(window_signals, 1, axis=0), axis=1)
+            portfolio_returns[i] = np.prod(1 + portfolio_daily_returns) - 1
+        else:
+            portfolio_returns[i] = np.nan
+
+    return portfolio_returns

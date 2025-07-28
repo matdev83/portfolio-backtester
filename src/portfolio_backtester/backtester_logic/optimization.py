@@ -17,6 +17,7 @@ from rich.progress import (
 
 from ..optimization.optuna_setup import setup_optuna_study
 from ..optimization.trial_evaluator import TrialEvaluator
+from ..optimization.genetic_optimizer import GeneticOptimizer # Added import
 from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG, generate_randomized_wfo_windows
 
 # TESTING NOTE: When testing optimization functions, be aware that Mock objects
@@ -30,7 +31,7 @@ _global_progress_tracker = None
 def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full):
     global _global_progress_tracker
     
-    optimizer_type = getattr(self.args, "optimizer", "optuna")
+    optimizer_type = self.global_config.get("optimizer_config", {}).get("optimizer_type", "optuna")
     if self.logger.isEnabledFor(logging.DEBUG):
         self.logger.debug(
             f"Running {optimizer_type} optimization for scenario: {scenario_config['name']} with walk-forward splits."
@@ -64,11 +65,27 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     if self.logger.isEnabledFor(logging.DEBUG):
         self.logger.debug("Using Optuna Optimizer.")
     
+    # Log Numba status and relevant configuration
+    wfo_robustness_config = self.global_config.get("wfo_robustness_config", {})
+    monte_carlo_config = self.global_config.get("monte_carlo_config", {})
+    
+    enable_window_randomization = wfo_robustness_config.get("enable_window_randomization", False)
+    enable_start_date_randomization = wfo_robustness_config.get("enable_start_date_randomization", False)
+    enable_monte_carlo = monte_carlo_config.get("enable_during_optimization", False)
+    
+    numba_enabled = not (enable_window_randomization or enable_start_date_randomization or enable_monte_carlo)
+    
+    self.logger.info(f"Optimization starting for scenario: {scenario_config['name']}")
+    self.logger.info(f"  - Numba acceleration: {'ENABLED' if numba_enabled else 'DISABLED'}")
+    self.logger.info(f"  - Window randomization: {enable_window_randomization}")
+    self.logger.info(f"  - Start date randomization: {enable_start_date_randomization}")
+    self.logger.info(f"  - Monte Carlo during optimization: {enable_monte_carlo}")
+    
     # Generate randomized WFO windows
     windows = generate_randomized_wfo_windows(
-        monthly_data.index, 
-        scenario_config, 
-        self.global_config, 
+        monthly_data.index,
+        scenario_config,
+        self.global_config,
         self.random_state
     )
 

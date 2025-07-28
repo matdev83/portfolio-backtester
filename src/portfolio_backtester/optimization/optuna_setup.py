@@ -3,31 +3,39 @@ import os
 from functools import reduce
 from operator import mul
 
+import numpy as np
 import optuna
 
 logger = logging.getLogger(__name__)
 
 def setup_optuna_study(backtester, scenario_config, storage, study_name: str):
     optimization_specs = scenario_config.get("optimize", [])
-    param_types = [
-        backtester.global_config.get("optimizer_parameter_defaults", {}).get(spec["parameter"], {}).get("type")
-        for spec in optimization_specs
-    ]
-    is_grid_search = all(pt == "int" for pt in param_types)
-
+    use_grid_sampler = scenario_config.get("use_grid_sampler", False)
     n_trials_actual = backtester.args.optuna_trials
-    if is_grid_search and backtester.n_jobs == 1:
-        search_space = {
-            spec["parameter"]: list(range(spec["min_value"], spec["max_value"] + 1, spec.get("step", 1)))
-            for spec in optimization_specs
-        }
+
+    if use_grid_sampler:
+        search_space = {}
+        for spec in optimization_specs:
+            param_name = spec["parameter"]
+            param_type = backtester.global_config.get("optimizer_parameter_defaults", {}).get(param_name, {}).get("type")
+            # If type is not found in global defaults, use the type from the spec
+            if not param_type:
+                param_type = spec.get("type")
+                
+            if param_type == "int":
+                search_space[param_name] = list(range(spec["min_value"], spec["max_value"] + 1, spec.get("step", 1)))
+            elif param_type == "float":
+                search_space[param_name] = list(
+                    np.arange(spec["min_value"], spec["max_value"] + spec.get("step", 0.1), spec.get("step", 0.1))
+                )
+            elif param_type == "categorical":
+                search_space[param_name] = spec["values"]
+
         sampler = optuna.samplers.GridSampler(search_space)
         n_trials_actual = reduce(mul, [len(v) for v in search_space.values()], 1)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Using GridSampler. Total trials: {n_trials_actual}")
     else:
-        if is_grid_search and backtester.n_jobs > 1:
-            logger.warning("Grid search is not supported with n_jobs > 1. Using TPESampler instead.")
         sampler = optuna.samplers.TPESampler(seed=backtester.random_state)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Using TPESampler with {n_trials_actual} trials.")

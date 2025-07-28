@@ -136,14 +136,21 @@ def _run_scenario_static(
 
 
 
+def _get_trading_days_in_month(year: int, month: int) -> pd.DatetimeIndex:
+    """Helper to get all trading days in a given month."""
+    start_of_month = pd.Timestamp(year=year, month=month, day=1)
+    end_of_month = start_of_month + pd.offsets.MonthEnd(1)
+    return pd.bdate_range(start=start_of_month, end=end_of_month)
+
 def generate_randomized_wfo_windows(monthly_data_index, scenario_config, global_config, random_state=None):
     """
     Generate walk-forward optimization windows with optional randomization for robustness.
+    Windows are aligned to calendar months and ensure valid trading days.
     
     Args:
-        monthly_data_index: DatetimeIndex of monthly data
+        monthly_data_index: DatetimeIndex of monthly data (assumed to be month-end dates)
         scenario_config: Scenario configuration dictionary
-        global_config: Global configuration dictionary  
+        global_config: Global configuration dictionary
         random_state: Random seed for reproducibility
         
     Returns:
@@ -175,49 +182,112 @@ def generate_randomized_wfo_windows(monthly_data_index, scenario_config, global_
     start_min_offset = start_rand_config.get("min_offset", 0)
     start_max_offset = start_rand_config.get("max_offset", 12)
     
-    idx = monthly_data_index
     windows = []
     
-    # Apply start date randomization
-    if enable_start_date_randomization:
-        start_offset = random.randint(start_min_offset, start_max_offset)
-    else:
-        start_offset = 0
+    # Determine the effective start date for the first window
+    # This should be the earliest date from which a full train_window_m can be formed
+    # and then potentially offset by start_offset
     
-    # Apply window randomization if enabled
-    # Randomization only EXTENDS windows, never shrinks them below specified minimums
-    if enable_window_randomization:
-        train_offset = random.randint(train_min_offset, train_max_offset)
-        test_offset = random.randint(test_min_offset, test_max_offset)
-        train_window_m = base_train_window_m + train_offset  # Always >= base size
-        test_window_m = base_test_window_m + test_offset     # Always >= base size
-    else:
-        train_window_m = base_train_window_m
-        test_window_m = base_test_window_m
+    # Find the first valid month-end date that can serve as a start for a train window
+    # The monthly_data_index is assumed to be month-end dates.
+    # We need at least (base_train_window_m + base_test_window_m) months of data
+    if len(monthly_data_index) < (base_train_window_m + base_test_window_m):
+        logger.warning(f"Not enough monthly data for base windows. Required: {base_train_window_m + base_test_window_m} months, Available: {len(monthly_data_index)} months.")
+        return []
+
+    # Calculate the first possible start of a train window
+    # This is the date that allows for a full train_window_m + test_window_m to exist
+    first_possible_train_start_idx = 0
     
-    # Generate windows with randomized parameters
-    start_idx = train_window_m + start_offset
+    # Iterate through the monthly data index to generate windows
+    current_window_start_idx = first_possible_train_start_idx
     
-    while start_idx + test_window_m <= len(idx):
-        train_end_idx = start_idx - 1
-        test_start_idx = train_end_idx + 1
-        test_end_idx = test_start_idx + test_window_m - 1
-        
-        if test_end_idx >= len(idx):
-            break
-            
-        if wf_type == "rolling":
-            train_start_idx = train_end_idx - train_window_m + 1
+    while True:
+        # Apply start date randomization for the current iteration
+        if enable_start_date_randomization:
+            current_start_offset = random.randint(start_min_offset, start_max_offset)
         else:
-            train_start_idx = start_offset  # Apply start offset for expanding windows
+            current_start_offset = 0
+        
+        # Apply window randomization for the current iteration
+        if enable_window_randomization:
+            current_train_offset = random.randint(train_min_offset, train_max_offset)
+            current_test_offset = random.randint(test_min_offset, test_max_offset)
+            current_train_window_m = base_train_window_m + current_train_offset
+            current_test_window_m = base_test_window_m + current_test_offset
+        else:
+            current_train_window_m = base_train_window_m
+            current_test_window_m = base_test_window_m
+
+        # Calculate window boundaries based on calendar months
+        # train_end is the end of the training period (month-end)
+        # test_end is the end of the testing period (month-end)
+        
+        # Determine the actual start of the training period based on the current_window_start_idx
+        # and the randomized start offset
+        
+        # For rolling windows, train_start moves with the window
+        if wf_type == "rolling":
+            train_start_month_idx = current_window_start_idx + current_start_offset
+            train_end_month_idx = train_start_month_idx + current_train_window_m - 1
+        else: # Expanding window
+            train_start_month_idx = current_start_offset # Start from the beginning, offset by random
+            train_end_month_idx = current_window_start_idx + current_train_window_m - 1
             
+        test_start_month_idx = train_end_month_idx + 1
+        test_end_month_idx = test_start_month_idx + current_test_window_m - 1
+        
+        # Ensure indices are within bounds of monthly_data_index
+        if test_end_month_idx >= len(monthly_data_index):
+            break # No more full test windows
+
+        train_start_date = monthly_data_index[train_start_month_idx]
+        train_end_date = monthly_data_index[train_end_month_idx]
+        test_start_date = monthly_data_index[test_start_month_idx]
+        test_end_date = monthly_data_index[test_end_month_idx]
+
+        # Adjust dates to be actual business days.
+        # For start dates, we want the first business day of that month.
+        # For end dates, we want the last business day of that month.
+
+        # For train_start_date, get the first day of its month, then find the first business day on or after it.
+        train_start_month = train_start_date.to_period('M').to_timestamp()
+        train_start_date = pd.bdate_range(start=train_start_month, end=train_start_month + pd.offsets.MonthEnd(0))[0]
+        
+        # For train_end_date, get the last day of its month, then find the last business day on or before it.
+        train_end_month = train_end_date.to_period('M').to_timestamp()
+        train_end_date = pd.bdate_range(start=train_end_month, end=train_end_month + pd.offsets.MonthEnd(0))[-1]
+        
+        # For test_start_date, get the first day of its month, then find the first business day on or after it.
+        test_start_month = test_start_date.to_period('M').to_timestamp()
+        test_start_date = pd.bdate_range(start=test_start_month, end=test_start_month + pd.offsets.MonthEnd(0))[0]
+        
+        # For test_end_date, get the last day of its month, then find the last business day on or before it.
+        test_end_month = test_end_date.to_period('M').to_timestamp()
+        test_end_date = pd.bdate_range(start=test_end_month, end=test_end_month + pd.offsets.MonthEnd(0))[-1]
+        
         windows.append((
-            idx[train_start_idx],
-            idx[train_end_idx], 
-            idx[test_start_idx],
-            idx[test_end_idx],
+            train_start_date,
+            train_end_date,
+            test_start_date,
+            test_end_date,
         ))
-        start_idx += test_window_m
+        
+        # Move to the next window
+        # For expanding windows, we increment the end of the training window
+        # For rolling windows, we increment the start of the training window
+        if wf_type == "rolling":
+            current_window_start_idx += current_test_window_m
+        else:  # Expanding window
+            current_window_start_idx += current_test_window_m
+        
+        # Break if the next window would exceed the data
+        if current_window_start_idx + base_train_window_m + base_test_window_m > len(monthly_data_index):
+            break
+
+    if logger.isEnabledFor(logging.DEBUG):
+        for i, (ts, te, vs, ve) in enumerate(windows):
+            logger.debug(f"Window {i+1}: Train={ts.date()} to {te.date()}, Test={vs.date()} to {ve.date()}")
 
     return windows
 

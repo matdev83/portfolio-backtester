@@ -195,6 +195,16 @@ class IntramonthSeasonalStrategy(BaseStrategy):
             entry_date = None
 
         if entry_date is not None and current_date == entry_date:
+            # Validate that the entry_day is valid for the given month
+            start_of_month = current_date.replace(day=1)
+            end_of_month = start_of_month + pd.offsets.MonthEnd(1)
+            b_days = pd.bdate_range(start=start_of_month, end=end_of_month)
+            
+            if entry_day > 0 and entry_day > len(b_days):
+                return pd.DataFrame(0.0, index=[current_date], columns=valid_assets)
+            elif entry_day < 0 and abs(entry_day) > len(b_days):
+                return pd.DataFrame(0.0, index=[current_date], columns=valid_assets)
+
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Entry condition met for {current_date}. Assets: {valid_assets}")
             for asset in valid_assets:

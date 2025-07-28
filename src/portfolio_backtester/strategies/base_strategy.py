@@ -253,54 +253,13 @@ class BaseStrategy(ABC):
     # ------------------------------------------------------------------ #
     # Shared helpers
     # ------------------------------------------------------------------ #
-    def _calculate_candidate_weights(self, look: pd.Series) -> pd.Series:
-        num_holdings = self.strategy_config.get("num_holdings")
-        if num_holdings is not None and num_holdings > 0:
-            nh = int(num_holdings)
-        else:
-            nh = max(
-                int(
-                    np.ceil(
-                        self.strategy_config.get("top_decile_fraction", 0.1)
-                        * look.count()
-                    )
-                ),
-                1,
-            )
-
-        winners = look.nlargest(nh).index
-        losers = look.nsmallest(nh).index
-
-        cand = pd.Series(index=look.index, dtype=float).fillna(0.0)
-        if len(winners) > 0:
-            cand[winners] = 1 / len(winners)
-        if not self.strategy_config.get("long_only", True) and len(losers) > 0:
-            cand[losers] = -1 / len(losers)
-        return cand
-
-    def _apply_leverage_and_smoothing(
-        self, cand: pd.Series, w_prev: pd.Series
-    ) -> pd.Series:
-        leverage = self.strategy_config.get("leverage", 1.0)
-        smoothing_lambda = self.strategy_config.get("smoothing_lambda", 0.5)
-
-        w_new = smoothing_lambda * w_prev + (1 - smoothing_lambda) * cand
-
-        if cand.abs().sum() > 1e-9:
-            long_lev = w_new[w_new > 0].sum()
-            short_lev = -w_new[w_new < 0].sum()
-
-            if long_lev > leverage:
-                w_new[w_new > 0] *= leverage / long_lev
-            if short_lev > leverage:
-                w_new[w_new < 0] *= leverage / short_lev
-
-        return w_new
+    
 
     # ------------------------------------------------------------------ #
     # Default signal generation pipeline (Abstract method to be implemented by subclasses)
     # ------------------------------------------------------------------ #
-    @abstractmethod
+    from numba import njit
+
     def generate_signals(
         self,
         all_historical_data: pd.DataFrame, # Full historical data for universe assets
@@ -356,7 +315,45 @@ class BaseStrategy(ABC):
         5. The validate_data_sufficiency() method will catch type mismatches, but 
            it's better to fix the test interface than rely on defensive coding
         """
-        pass
+        return pd.DataFrame()
+
+    @staticmethod
+    @njit
+    def run_logic(signals, w_prev, num_holdings, top_decile_fraction, long_only, leverage, smoothing_lambda):
+        if num_holdings is not None and num_holdings > 0:
+            nh = int(num_holdings)
+        else:
+            nh = max(
+                int(
+                    np.ceil(
+                        top_decile_fraction
+                        * signals.shape[0]
+                    )
+                ),
+                1,
+            )
+
+        winners = np.argsort(signals)[-nh:]
+        losers = np.argsort(signals)[:nh]
+
+        cand = np.zeros_like(signals)
+        if winners.shape[0] > 0:
+            cand[winners] = 1 / winners.shape[0]
+        if not long_only and losers.shape[0] > 0:
+            cand[losers] = -1 / losers.shape[0]
+
+        w_new = smoothing_lambda * w_prev + (1 - smoothing_lambda) * cand
+
+        if np.abs(cand).sum() > 1e-9:
+            long_lev = np.sum(w_new[w_new > 0])
+            short_lev = -np.sum(w_new[w_new < 0])
+
+            if long_lev > leverage:
+                w_new[w_new > 0] *= leverage / long_lev
+            if short_lev > leverage:
+                w_new[w_new < 0] *= leverage / short_lev
+
+        return w_new
 
     # --- Helper methods that might be used by subclasses ---
 

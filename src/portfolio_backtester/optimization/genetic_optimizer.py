@@ -5,9 +5,17 @@ import numpy as np
 import optuna
 import pygad
 
+# new import for adaptive controllers
+from .adaptive_parameters import (
+    DiversityCalculator,
+    AdaptiveMutationController,
+    AdaptiveCrossoverController,
+)
+
 # _evaluate_params_walk_forward is now a method of the Backtester class
 from ..optimization.trial_evaluator import TrialEvaluator
 from ..utils import generate_randomized_wfo_windows
+from .elite_archive import EliteArchive
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -256,6 +264,52 @@ class GeneticOptimizer:
                 logger.error("No optimization parameters specified.")
                 return self.scenario_config["strategy_params"].copy(), 0
 
+            # ------------------------------------------------------------------
+            # Adaptive parameter control setup
+            # ------------------------------------------------------------------
+            adaptive_cfg = ga_params_config.get("adaptive_mutation", {})
+            adaptive_enabled = adaptive_cfg.get("enabled", False)
+            if adaptive_enabled:
+                # Diversity calculator requires gene_space to compute normalised ranges.
+                diversity_calc = DiversityCalculator(gene_space)
+                mutation_controller = AdaptiveMutationController(
+                    base_rate=adaptive_cfg.get("base_rate", 0.1),
+                    min_rate=adaptive_cfg.get("min_rate", 0.01),
+                    max_rate=adaptive_cfg.get("max_rate", 0.5),
+                    diversity_threshold=adaptive_cfg.get("diversity_threshold", 0.3),
+                    max_generations=ga_params_config.get("num_generations", self.global_config.get("optimizer_parameter_defaults", {}).get("ga_num_generations", {}).get("default", 100)),
+                )
+                crossover_controller = AdaptiveCrossoverController(
+                    base_rate=adaptive_cfg.get("base_crossover_rate", 0.8),
+                    min_rate=adaptive_cfg.get("min_crossover_rate", 0.6),
+                    max_rate=adaptive_cfg.get("max_crossover_rate", 0.95),
+                )
+            else:
+                diversity_calc = None
+                mutation_controller = None
+                crossover_controller = None
+
+            # ------------------------------------------------------------------
+            # Elite preservation setup
+            # ------------------------------------------------------------------
+            elite_cfg = ga_params_config.get("elite_preservation", {})
+            elite_enabled = elite_cfg.get("enabled", False)
+            if elite_enabled:
+                archive = EliteArchive(
+                    max_size=elite_cfg.get("max_archive_size", 50),
+                    aging_factor=elite_cfg.get("aging_factor", 0.95),
+                )
+                injection_strategy = elite_cfg.get("injection_strategy", "direct")
+                injection_frequency = elite_cfg.get("injection_frequency", 5)
+                min_elites = elite_cfg.get("min_elites", 2)
+                max_elites = elite_cfg.get("max_elites", 5)
+            else:
+                archive = None
+                injection_strategy = "direct"
+                injection_frequency = 0
+                min_elites = 0
+                max_elites = 0
+
             # GA Parameters
             num_generations = ga_params_config.get("num_generations", self.global_config.get("optimizer_parameter_defaults", {}).get("ga_num_generations", {}).get("default", 100))
             num_parents_mating = ga_params_config.get("num_parents_mating", self.global_config.get("optimizer_parameter_defaults", {}).get("ga_num_parents_mating", {}).get("default", 10))
@@ -281,23 +335,32 @@ class GeneticOptimizer:
             self.start_time = time.time()
 
             on_generation_callback = None
-            if self.backtester.args.early_stop_patience > 0 or self.backtester.args.timeout is not None:
+            if (self.backtester.args.early_stop_patience > 0 or self.backtester.args.timeout is not None) or adaptive_enabled:
                 self.zero_fitness_streak = 0
                 self.best_fitness_so_far = -np.inf
 
                 def on_gen(ga_instance):
+                    """Callback executed by PyGAD after each generation."""
                     try:
-                        # Timeout check
+                        # Snapshot population and fitness arrays immediately
+                        population = ga_instance.population
+                        fitness_arr = np.asarray(ga_instance.last_generation_fitness, dtype=float)
+
+                        # -----------------------------
+                        # Timeout handling
+                        # -----------------------------
                         if self.backtester.args.timeout is not None:
                             elapsed_time = time.time() - self.start_time
                             if elapsed_time > self.backtester.args.timeout:
-                                logger.warning(f"Genetic Algorithm optimization timed out after {elapsed_time:.2f} seconds.")
+                                logger.warning(
+                                    f"Genetic Algorithm optimization timed out after {elapsed_time:.2f} seconds."
+                                )
                                 return "stop"
 
+                        # -----------------------------
+                        # Early stopping based on fitness stagnation
+                        # -----------------------------
                         current_best_fitness = ga_instance.best_solution(pop_fitness=ga_instance.last_generation_fitness)[1]
-                        if logger.isEnabledFor(logging.DEBUG):
-                            logger.debug(f"Generation {ga_instance.generations_completed}, Best fitness: {current_best_fitness}")
-
                         if np.isfinite(current_best_fitness) and np.isfinite(self.best_fitness_so_far):
                             if abs(current_best_fitness - self.best_fitness_so_far) < 1e-6:
                                 self.zero_fitness_streak += 1
@@ -307,21 +370,78 @@ class GeneticOptimizer:
                             self.zero_fitness_streak += 1
                         else:
                             self.zero_fitness_streak = 0
-
                         self.best_fitness_so_far = max(self.best_fitness_so_far, current_best_fitness)
 
-                        if self.backtester.args.early_stop_patience > 0 and self.zero_fitness_streak >= self.backtester.args.early_stop_patience:
+                        if (
+                            self.backtester.args.early_stop_patience > 0
+                            and self.zero_fitness_streak >= self.backtester.args.early_stop_patience
+                        ):
                             if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug(f"Early stopping GA due to {self.zero_fitness_streak} generations with no improvement.")
+                                logger.debug(
+                                    f"Early stopping GA due to {self.zero_fitness_streak} generations with no improvement."
+                                )
                             return "stop"
 
-                        if CENTRAL_INTERRUPTED_FLAG:
+                        # -----------------------------
+                        # Adaptive parameter control
+                        # -----------------------------
+                        if adaptive_enabled and diversity_calc is not None:
+                            pop_diversity = diversity_calc.phenotypic_diversity(population)
+                            fitness_var = float(np.var(fitness_arr))
+                            generation_no = ga_instance.generations_completed
+
+                            new_mut_rate = mutation_controller.rate(pop_diversity, fitness_var, generation_no)
+                            new_cx_rate = crossover_controller.rate(pop_diversity, 1.0 - pop_diversity)
+
+                            # Map probability -> percent of genes for PyGAD (0-1 -> 0-100)
+                            ga_instance.mutation_percent_genes = int(new_mut_rate * 100)
+                            # If PyGAD exposes mutation_probability or crossover_probability attributes, set them too.
+                            if hasattr(ga_instance, "mutation_probability"):
+                                ga_instance.mutation_probability = new_mut_rate
+                            if hasattr(ga_instance, "crossover_probability"):
+                                ga_instance.crossover_probability = new_cx_rate
+
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug(
+                                    f"[Gen {generation_no}] Diversity={pop_diversity:.3f}, MutationRate={new_mut_rate:.3f}, CrossoverRate={new_cx_rate:.3f}"
+                                )
+
+                        # -----------------------------
+                        # Elite archive maintenance & injection
+                        # -----------------------------
+                        if elite_enabled and archive is not None:
+                            # Add current generation elites (top min_elites by fitness)
+                            elite_count = max(min_elites, 1)
+                            top_idx = np.argsort(fitness_arr)[-elite_count:][::-1]
+                            for idx in top_idx:
+                                archive.add(population[idx], fitness_arr[idx], generation_no)
+
+                            # Periodic injection
+                            if injection_frequency > 0 and generation_no % injection_frequency == 0:
+                                population, fitness_arr = archive.inject(
+                                    population,
+                                    fitness_arr,
+                                    strategy=injection_strategy,
+                                    num_elites=max_elites,
+                                )
+                                # Update GA instance arrays directly
+                                ga_instance.population[:] = population
+                                ga_instance.last_generation_fitness[:] = fitness_arr
+
+                        # Log current generation stats
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(
+                                f"Generation {ga_instance.generations_completed}: BestFitness={current_best_fitness}"
+                            )
+
+                        # User interrupt flag (if exists in surrounding scope)
+                        if "CENTRAL_INTERRUPTED_FLAG" in globals() and globals()["CENTRAL_INTERRUPTED_FLAG"]:
                             logger.warning("Genetic Algorithm optimization interrupted by user via central flag.")
                             return "stop"
                     except Exception as e:
                         if logger.isEnabledFor(logging.WARNING):
                             logger.warning(f"Error in generation callback: {e}")
-                        
+
                 on_generation_callback = on_gen
 
             # Configure GA parameters
@@ -354,6 +474,9 @@ class GeneticOptimizer:
                 except (ImportError, AttributeError):
                     logger.warning("NSGA-II not available in this PyGAD version. Using standard GA with weighted objectives.")
 
+            keep_elitism = ga_params_config.get("keep_elitism", 2)
+            ga_kwargs["keep_elitism"] = keep_elitism
+
             self.ga_instance = pygad.GA(**ga_kwargs)
 
             logger.debug("Running Genetic Algorithm...")
@@ -380,7 +503,7 @@ class GeneticOptimizer:
                     )
             else:
                 # Single objective results
-                if self.ga_instance.best_solution_generation == -1 and not CENTRAL_INTERRUPTED_FLAG:
+                if self.ga_instance.best_solution_generation == -1 and not globals().get("CENTRAL_INTERRUPTED_FLAG", False):
                      logger.error("GA (single-objective): No best solution found and not due to interruption.")
                      return self.scenario_config["strategy_params"].copy(), num_evaluations
 

@@ -10,6 +10,7 @@ import optuna
 import pandas as pd
 
 from . import strategies
+from .strategies.base_strategy import BaseStrategy
 from .strategies import enumerate_strategies_with_params
 from .backtester_logic.execution import run_backtest_mode, run_optimize_mode
 from .backtester_logic.optimization import run_optimization
@@ -81,12 +82,17 @@ class Backtester:
         self.run_backtest_mode = types.MethodType(run_backtest_mode, self)
         self.run_optimize_mode = types.MethodType(run_optimize_mode, self)
         self.display_results = types.MethodType(display_results, self)
+        
         # Bind the optimization report generator to the Backtester instance
         self._generate_optimization_report = types.MethodType(_generate_optimization_report, self)
         
         from .backtester_logic.execution import generate_deferred_report
         self.generate_deferred_report = types.MethodType(generate_deferred_report, self)
 
+    def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full):
+        """Explicitly define run_optimization to fix multiprocessing pickling issue."""
+        return run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
+    
     @property
     def has_timed_out(self):
         return self.timeout_manager.check_timeout()
@@ -95,7 +101,7 @@ class Backtester:
 
     def _get_strategy(self, strategy_name, params):
         strategy_class = self.strategy_map.get(strategy_name)
-        
+
         if strategy_class:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Using {strategy_class.__name__} with params: {params}")
@@ -200,6 +206,8 @@ class Backtester:
         rets_full_np: np.ndarray,
         metrics_to_optimize: list,
         is_multi_objective: bool,
+        signals: np.ndarray,
+        strategy_instance: BaseStrategy,
     ) -> float | tuple[float, ...]:
         import os
         from . import numba_kernels as _nk
@@ -220,9 +228,9 @@ class Backtester:
                 test_starts = np.asarray([np.searchsorted(self._daily_index_cache, te_start) for _, _, te_start, _ in windows], dtype=np.int64)
                 test_ends = np.asarray([np.searchsorted(self._daily_index_cache, te_end) for _, _, _, te_end in windows], dtype=np.int64)
 
-                metrics_mat = _nk.window_mean_std(port_rets, test_starts, test_ends)
+                metrics_mat = _nk.run_backtest_fast(port_rets, test_starts, test_ends, BaseStrategy.run_logic, signals)
 
-                avg_metric = float(np.nanmean(metrics_mat[:, 0]))
+                avg_metric = float(np.nanmean(metrics_mat))
                 return avg_metric if not is_multi_objective else (avg_metric,)
 
             except Exception as exc:
@@ -653,10 +661,16 @@ class Backtester:
             monthly_data_np, _ = _df_to_float32_array(monthly_data)
             daily_data_np, _ = _df_to_float32_array(daily_data)
             rets_full_np, _ = _df_to_float32_array(rets_full)
+
+            strategy_class = self.strategy_map.get(scenario_config["strategy"])
+            strategy_instance = strategy_class(scenario_config["strategy_params"])
+            signals = strategy_instance.generate_signals(
+                monthly_data, daily_data, rets_full, None, None, None
+            )
             
             objective_value = self._evaluate_walk_forward_fast(
                 trial, scenario_config, windows, monthly_data_np, daily_data_np, rets_full_np,
-                metrics_to_optimize, is_multi_objective
+                metrics_to_optimize, is_multi_objective, signals.to_numpy(), strategy_instance
             )
             
             full_pnl_returns = pd.Series(dtype=float)
@@ -676,6 +690,49 @@ class Backtester:
                     full_pnl_returns = pd.Series(pnl_dict)
                     full_pnl_returns.index = pd.to_datetime(full_pnl_returns.index)
             return objective_value, full_pnl_returns
+
+    def evaluate_fast_numba(
+        self,
+        trial: Any,
+        scenario_config: dict,
+        windows: list,
+        monthly_data: pd.DataFrame,
+        daily_data: pd.DataFrame,
+        rets_full: pd.DataFrame,
+        metrics_to_optimize: list,
+        is_multi_objective: bool,
+    ) -> tuple[float | tuple[float, ...], pd.Series]:
+        from .numba_kernels import run_backtest_numba
+        from .utils import _df_to_float32_array
+
+        try:
+            if self._daily_index_cache is None or not daily_data.index.equals(pd.Index(self._daily_index_cache)):
+                self._daily_index_cache = daily_data.index.to_numpy()
+
+            prices_np, _ = _df_to_float32_array(daily_data)
+            
+            strategy_class = self.strategy_map.get(scenario_config["strategy"])
+            strategy_instance = strategy_class(scenario_config["strategy_params"])
+            signals = strategy_instance.generate_signals(
+                monthly_data, daily_data, rets_full, None, None, None
+            )
+            signals_np, _ = _df_to_float32_array(signals)
+
+            start_indices = np.asarray([np.searchsorted(self._daily_index_cache, w[2]) for w in windows], dtype=np.int64)
+            end_indices = np.asarray([np.searchsorted(self._daily_index_cache, w[3]) for w in windows], dtype=np.int64)
+
+            portfolio_returns = run_backtest_numba(prices_np, signals_np, start_indices, end_indices)
+            
+            # For now, we'll just return the mean of the portfolio returns as the objective value
+            objective_value = np.nanmean(portfolio_returns)
+
+            full_pnl_returns = pd.Series(portfolio_returns, index=[w[2] for w in windows])
+            
+            return objective_value, full_pnl_returns
+
+        except Exception as exc:
+            logger.error("Numba evaluation failed: %s", exc)
+            return np.nan, pd.Series(dtype=float)
 
     def run(self):
         if self.has_timed_out:

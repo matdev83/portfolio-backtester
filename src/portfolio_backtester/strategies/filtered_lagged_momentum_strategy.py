@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 
 from .base_strategy import BaseStrategy
+from .candidate_weights import default_candidate_weights
+from .leverage_and_smoothing import apply_leverage_and_smoothing
 
 # Import Numba optimization with fallback
 try:
@@ -15,6 +17,14 @@ except ImportError:
 
 
 class FilteredLaggedMomentumStrategy(BaseStrategy):
+
+    def _calculate_candidate_weights(self, scores: pd.Series) -> pd.Series:
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        return default_candidate_weights(scores, params)
+
+    def _apply_leverage_and_smoothing(self, candidate_weights: pd.Series, prev_weights: Optional[pd.Series]) -> pd.Series:
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        return apply_leverage_and_smoothing(candidate_weights, prev_weights, params)
     """
     Filtered Lagged Momentum strategy implementation.
     Combines standard and predictive momentum signals with SMA filtering.

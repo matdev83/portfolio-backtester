@@ -78,11 +78,14 @@ general_optimizer_config:
   # Timeout for the entire optimization process in seconds
   optimizer_timeout_sec: 3600 # 1 hour
 
+optimizer_config:
+  optimizer_type: "optuna" # "optuna" or "grid_search"
+
 # Walk-Forward Optimization Robustness Configuration
 wfo_robustness_config:
   # Enable/disable randomization features
-  enable_window_randomization: true   # RESTORED: Re-enabled for robustness testing
-  enable_start_date_randomization: true  # RESTORED: Re-enabled for robustness testing
+  enable_window_randomization: false   # DISABLED: To improve performance and enable Numba fast path
+  enable_start_date_randomization: false  # DISABLED: To improve performance and enable Numba fast path
   
   # Window length randomization (in months)
   train_window_randomization:
@@ -118,7 +121,7 @@ monte_carlo_config:
   
   # Performance optimization: enable Monte Carlo during optimization trials for robustness testing
   # Stage 1 MC (during optimization) vs Stage 2 MC (after optimization stress testing)
-  enable_during_optimization: true  # RESTORED: Re-enabled for parameter robustness testing
+  enable_during_optimization: false  # DISABLED: To improve performance and enable Numba fast path
   
   # Stage 2 comprehensive stress testing after optimization
   enable_stage2_stress_testing: true  # RESTORED: Re-enabled for full robustness analysis

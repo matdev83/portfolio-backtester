@@ -1,3 +1,5 @@
+from .candidate_weights import default_candidate_weights
+from .leverage_and_smoothing import apply_leverage_and_smoothing
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -15,6 +17,13 @@ except ImportError:
 
 
 class VAMSMomentumStrategy(BaseStrategy):
+    def _calculate_candidate_weights(self, scores: pd.Series) -> pd.Series:
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        return default_candidate_weights(scores, params)
+
+    def _apply_leverage_and_smoothing(self, candidate_weights: pd.Series, prev_weights: Optional[pd.Series]) -> pd.Series:
+        params = self.strategy_config.get("strategy_params", self.strategy_config)
+        return apply_leverage_and_smoothing(candidate_weights, prev_weights, params)
     """Momentum strategy implementation using Volatility Adjusted Momentum Scores (VAMS)."""
 
     def __init__(self, strategy_config: Dict[str, Any]):
