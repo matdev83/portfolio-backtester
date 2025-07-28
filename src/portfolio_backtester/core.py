@@ -168,7 +168,15 @@ class Backtester:
 
         price_data_monthly_closes, rets_daily = prepare_scenario_data(price_data_daily_ohlc, self.data_cache)
 
-        signals = generate_signals(strategy, scenario_config, price_data_daily_ohlc, universe_tickers, benchmark_ticker, self.has_timed_out)
+        # Pass a callable to lazily check timeout status during signal generation
+        signals = generate_signals(
+            strategy,
+            scenario_config,
+            price_data_daily_ohlc,
+            universe_tickers,
+            benchmark_ticker,
+            lambda: self.has_timed_out,
+        )
 
         sized_signals = size_positions(signals, scenario_config, price_data_monthly_closes, price_data_daily_ohlc, universe_tickers, benchmark_ticker)
 
@@ -752,7 +760,8 @@ class Backtester:
         self.rets_full = rets_full.to_frame() if isinstance(rets_full, pd.Series) else rets_full
 
         if self.args.mode == "optimize":
-            self.run_optimize_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full, self._generate_optimization_report)
+            # Updated call: run_optimize_mode now handles report generation internally
+            self.run_optimize_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         elif self.args.mode == "backtest":
             self.run_backtest_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         
