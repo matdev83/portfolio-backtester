@@ -7,7 +7,7 @@ from typing import Callable, Optional, TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from ..portfolio.position_sizer import get_position_sizer
+from ..universe_resolver import resolve_universe_config
 
 # Removed BaseSignalGenerator as it's being phased out
 # from ..signal_generators import BaseSignalGenerator
@@ -159,8 +159,74 @@ class BaseStrategy(ABC):
     # Universe helper
     # ------------------------------------------------------------------ #
     def get_universe(self, global_config: dict) -> list[tuple[str, float]]:
+        """
+        Get the universe of assets for this strategy.
+        
+        Resolution priority:
+        1. Strategy-specific universe_config
+        2. Legacy strategy get_universe override (if overridden in subclass)
+        3. Global config universe
+        
+        Args:
+            global_config: Global configuration dictionary
+            
+        Returns:
+            List of (ticker, weight) tuples. Weight is typically 1.0 for equal consideration.
+        """
+        # Check if strategy has universe_config
+        universe_config = self.strategy_config.get("universe_config")
+        
+        if universe_config:
+            try:
+                tickers = resolve_universe_config(universe_config)
+                return [(ticker, 1.0) for ticker in tickers]
+            except Exception as e:
+                logger.error(f"Failed to resolve universe_config: {e}")
+                logger.info("Falling back to global universe")
+        
+        # Check if this method is overridden in a subclass (legacy behavior)
+        if type(self).get_universe is not BaseStrategy.get_universe:
+            # This method is overridden, so we should not interfere with custom logic
+            # However, we need to avoid infinite recursion, so we call the parent implementation
+            # This is a bit tricky - we'll use the default behavior as fallback
+            pass
+        
+        # Fallback to global config universe
         default_universe = global_config.get("universe", [])
         return [(ticker, 1.0) for ticker in default_universe]
+    
+    
+    
+    def get_universe_method_with_date(self, global_config: dict, current_date) -> list[tuple[str, float]]:
+        """
+        Get the universe of assets for this strategy with date context.
+        
+        This method is similar to get_universe but provides date context for
+        dynamic universe methods that need to know the current date.
+        
+        Args:
+            global_config: Global configuration dictionary
+            current_date: Current date for universe resolution
+            
+        Returns:
+            List of (ticker, weight) tuples
+        """
+        # Check if strategy has universe_config
+        universe_config = self.strategy_config.get("universe_config")
+        
+        if universe_config:
+            try:
+                tickers = resolve_universe_config(universe_config, current_date)
+                return [(ticker, 1.0) for ticker in tickers]
+            except Exception as e:
+                logger.error(f"Failed to resolve universe_config with date {current_date}: {e}")
+                logger.info("Falling back to global universe")
+        
+        # Fallback to global config universe
+        default_universe = global_config.get("universe", [])
+        return [(ticker, 1.0) for ticker in default_universe]
+    
+    
 
     def get_non_universe_data_requirements(self) -> list[str]:
         """

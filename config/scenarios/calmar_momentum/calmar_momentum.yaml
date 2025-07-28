@@ -5,6 +5,11 @@ position_sizer: equal_weight
 transaction_costs_bps: 10
 train_window_months: 36
 test_window_months: 48
+
+# Universe Configuration: Use Dow Jones for Calmar momentum
+universe_config:
+  type: "named"
+  universe_name: "dow_jones"
 optimization_metric: Calmar
 optimize:
 - parameter: num_holdings

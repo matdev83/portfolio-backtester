@@ -5,6 +5,11 @@ position_sizer: "equal_weight"
 transaction_costs_bps: 10
 train_window_months: 24
 test_window_months: 12
+
+# Universe Configuration: Use NASDAQ top 20 for EMA RoRo strategy
+universe_config:
+  type: "named"
+  universe_name: "nasdaq_top20"
 optimization_targets:
   - name: "Sortino"
     direction: "maximize"

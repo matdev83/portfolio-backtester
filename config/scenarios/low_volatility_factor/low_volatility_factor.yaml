@@ -5,6 +5,11 @@ position_sizer: "equal_weight"
 transaction_costs_bps: 10
 train_window_months: 48
 test_window_months: 24
+
+# Universe Configuration: Use S&P 500 top 50 companies for this strategy
+universe_config:
+  type: "named"
+  universe_name: "sp500_top50"
 optimization_targets:
   - name: "Sortino"
     direction: "maximize"

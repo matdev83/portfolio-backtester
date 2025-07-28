@@ -1,4 +1,4 @@
-name: momentum_simple
+name: momentum_with_named_universe
 strategy: momentum
 rebalance_frequency: ME
 position_sizer: equal_weight
@@ -6,10 +6,11 @@ transaction_costs_bps: 10
 train_window_months: 36
 test_window_months: 48
 
-# Universe Configuration: Use Dow Jones components for simple momentum
+# Example: Named universe configuration
 universe_config:
   type: "named"
-  universe_name: "dow_jones"
+  universe_name: "sp500_top50"
+
 strategy_params:
   lookback_months: 6
   num_holdings: 15
@@ -18,5 +19,6 @@ strategy_params:
   leverage: 1.0
   long_only: true
   apply_trading_lag: false
+
 mc_simulations: 100
 mc_years: 5

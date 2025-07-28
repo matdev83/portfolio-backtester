@@ -7,6 +7,14 @@ position_sizer: equal_weight
 transaction_costs_bps: 5
 train_window_months: 12
 test_window_months: 12
+
+# Universe Configuration: Use fixed universe for UVXY strategy
+universe_config:
+  type: "fixed"
+  tickers:
+    - "UVXY"
+    - "VXX"
+    - "SVXY"
 optimization_targets:
 - name: Sharpe
   direction: maximize

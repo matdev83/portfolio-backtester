@@ -5,6 +5,13 @@ position_sizer: equal_weight
 transaction_costs_bps: 10
 train_window_months: 36
 test_window_months: 48
+
+# Universe Configuration: Use combined NASDAQ and Dow Jones
+universe_config:
+  type: "named"
+  universe_names:
+    - "nasdaq_top20"
+    - "dow_jones"
 optimization_metric: Sortino
 optimize:
 - parameter: num_holdings

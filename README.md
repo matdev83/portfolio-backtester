@@ -34,6 +34,7 @@ This project is a sophisticated Python-based tool for backtesting portfolio stra
 
 ### Enhanced Configuration System
 - **YAML-Based Configuration**: Flexible parameter and scenario management
+- **Configurable Universes**: Three flexible ways to define trading universes (fixed, named, method-based)
 - **Robustness Configuration**: Fine-tuned control over WFO randomization
 - **Monte Carlo Configuration**: Detailed control over synthetic data generation
 - **Advanced Reporting Configuration**: Control over statistical analysis generation for faster optimization
@@ -219,6 +220,81 @@ python -m src.portfolio_backtester.backtester \
 ## Configuration Files
 
 The backtester uses a set of YAML files in the `config/` directory to manage global settings, define specific backtest experiments, and provide examples.
+
+## Universe Configuration
+
+The backtester supports flexible universe configuration through three different approaches:
+
+### 1. Fixed Universe
+Define a static list of tickers directly in the strategy configuration:
+
+```yaml
+universe_config:
+  type: "fixed"
+  tickers: 
+    - "AAPL"
+    - "MSFT"
+    - "GOOGL"
+    - "AMZN"
+    - "NVDA"
+```
+
+### 2. Named Universe
+Reference predefined universe files stored in `config/universes/`:
+
+```yaml
+universe_config:
+  type: "named"
+  universe_name: "sp500_top50"
+```
+
+Universe files use a simple text format with one ticker per line:
+```
+# S&P 500 Top 50 companies
+AAPL
+MSFT
+GOOGL  # Alphabet Class A
+AMZN
+# Comments and empty lines are supported
+NVDA
+```
+
+### 3. Multiple Named Universes
+Combine multiple named universes (union of all tickers):
+
+```yaml
+universe_config:
+  type: "named"
+  universe_names: 
+    - "nasdaq_top20"
+    - "dow_jones"
+```
+
+### 4. Method-Based Universe
+Use dynamic universe generation methods:
+
+```yaml
+universe_config:
+  type: "method"
+  method_name: "get_top_weight_sp500_components"
+  n_holdings: 50
+  exact: false
+```
+
+### Built-in Named Universes
+
+The following named universes are included:
+
+- **sp500_top50**: Top 50 S&P 500 companies by market capitalization
+- **nasdaq_top20**: Top 20 NASDAQ companies by market capitalization  
+- **dow_jones**: All 30 Dow Jones Industrial Average components
+
+### Backward Compatibility
+
+Existing configurations continue to work without changes:
+- Strategies without `universe_config` use the global universe
+- Scenario-level `universe` overrides still take precedence
+- Custom `get_universe()` method overrides are preserved
 
 ### 1. `parameters.yaml` (Global Settings)
 

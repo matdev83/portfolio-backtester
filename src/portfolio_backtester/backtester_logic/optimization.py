@@ -15,7 +15,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from ..optimization.genetic_optimizer import GeneticOptimizer
+from ..optimization.optuna_setup import setup_optuna_study
 from ..optimization.trial_evaluator import TrialEvaluator
 from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG, generate_randomized_wfo_windows
 
@@ -104,7 +104,7 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         from optuna.storages.journal import JournalFileBackend, JournalFileOpenLock
         storage = JournalStorage(JournalFileBackend(file_path=db_path, lock_obj=JournalFileOpenLock(db_path)))
     
-    study, n_trials = _setup_optuna_study(self, scenario_config, storage, study_name)
+    study, n_trials = setup_optuna_study(self, scenario_config, storage, study_name)
 
     metrics_to_optimize = [t["name"] for t in scenario_config.get("optimization_targets", [])] or \
                           [scenario_config.get("optimization_metric", "Calmar")]
@@ -261,67 +261,4 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     
     return optimal_params, actual_trial_number_for_dsr, best_trial_obj
 
-def _setup_optuna_study(self, scenario_config, storage, study_name: str):
-    optimization_specs = scenario_config.get("optimize", [])
-    param_types = [
-        self.global_config.get("optimizer_parameter_defaults", {}).get(spec["parameter"], {}).get("type")
-        for spec in optimization_specs
-    ]
-    is_grid_search = all(pt == "int" for pt in param_types)
 
-    n_trials_actual = self.args.optuna_trials
-    if is_grid_search and self.n_jobs == 1:
-        search_space = {
-            spec["parameter"]: list(range(spec["min_value"], spec["max_value"] + 1, spec.get("step", 1)))
-            for spec in optimization_specs
-        }
-        sampler = optuna.samplers.GridSampler(search_space)
-        n_trials_actual = reduce(mul, [len(v) for v in search_space.values()], 1)
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"Using GridSampler. Total trials: {n_trials_actual}")
-    else:
-        if is_grid_search and self.n_jobs > 1:
-            self.logger.warning("Grid search is not supported with n_jobs > 1. Using TPESampler instead.")
-        sampler = optuna.samplers.TPESampler(seed=self.random_state)
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"Using TPESampler with {n_trials_actual} trials.")
-
-    if self.args.pruning_enabled:
-        pruner = optuna.pruners.MedianPruner(
-            n_startup_trials=self.args.pruning_n_startup_trials,
-            n_warmup_steps=self.args.pruning_n_warmup_steps,
-            interval_steps=self.args.pruning_interval_steps
-        )
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug("MedianPruner enabled.")
-    else:
-        pruner = optuna.pruners.NopPruner()
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug("Pruning disabled (NopPruner used).")
-
-    if self.args.random_seed is not None:
-        try:
-            optuna.delete_study(study_name=study_name, storage=storage)
-            if self.logger.isEnabledFor(logging.DEBUG):
-                self.logger.debug(f"Deleted existing Optuna study '{study_name}' for fresh start with random seed.")
-        except KeyError:
-            pass
-        except Exception as e:
-            if self.logger.isEnabledFor(logging.WARNING):
-                self.logger.warning(f"Could not delete existing Optuna study '{study_name}': {e}")
-
-    optimization_targets_config = scenario_config.get("optimization_targets", [])
-    study_directions = [t.get("direction", "maximize").lower() for t in optimization_targets_config] or ["maximize"]
-    for i, d in enumerate(study_directions):
-        if d not in ["maximize", "minimize"]:
-            if self.logger.isEnabledFor(logging.WARNING):
-                self.logger.warning(f"Invalid direction '{d}' for target. Defaulting to 'maximize'.")
-            study_directions[i] = "maximize"
-
-    study = optuna.create_study(
-        study_name=study_name, storage=storage, sampler=sampler, pruner=pruner,
-        directions=study_directions if len(study_directions) > 1 else None,
-        direction=study_directions[0] if len(study_directions) == 1 else None,
-        load_if_exists=(self.args.random_seed is None)
-    )
-    return study, n_trials_actual

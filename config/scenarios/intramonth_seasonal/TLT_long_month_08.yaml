@@ -1,0 +1,28 @@
+name: TLT_long_month_8
+strategy: intramonth_seasonal
+rebalance_frequency: D
+position_sizer: equal_weight
+transaction_costs_bps: 10
+train_window_months: 12
+test_window_months: 12
+optimization_targets:
+- name: Sortino
+  direction: maximize
+optimize:
+- parameter: entry_day
+  type: int
+  min_value: -14
+  max_value: 14
+  step: 1
+- parameter: hold_days
+  type: int
+  min_value: 3
+  max_value: 14
+  step: 1
+strategy_params:
+  direction: long
+  long_only: true
+  leverage: 1.0
+  allowed_months: [8]
+universe:
+- TLT 

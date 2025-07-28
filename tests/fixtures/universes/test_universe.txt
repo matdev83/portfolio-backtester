@@ -1,0 +1,10 @@
+# Test universe for unit tests
+AAPL
+MSFT
+GOOGL
+# This is a comment
+AMZN
+NVDA
+
+# Empty lines and comments should be ignored
+TSLA

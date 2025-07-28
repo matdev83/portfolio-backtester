@@ -1,0 +1,21 @@
+# Top 20 NASDAQ companies by market capitalization
+AAPL
+MSFT
+GOOGL
+GOOG  # Alphabet Class C
+AMZN
+NVDA
+META
+TSLA
+AVGO
+COST
+ADBE
+NFLX
+PEP
+CSCO
+CMCSA
+INTC
+TXN
+QCOM
+AMGN
+HON

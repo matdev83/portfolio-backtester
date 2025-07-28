@@ -1,5 +1,12 @@
 description: Aggressive Low-Volatility Factor with higher leverage
 strategy_class: LowVolatilityFactorStrategy
+
+# Universe Configuration: Use multiple universes for broader coverage
+universe_config:
+  type: "named"
+  universe_names: 
+    - "sp500_top50"
+    - "nasdaq_top20"
 strategy_params:
   volatility_lookback_days: 126
   size_percentile: 50

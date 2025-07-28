@@ -5,6 +5,13 @@ position_sizer: equal_weight
 transaction_costs_bps: 10
 train_window_months: 12
 test_window_months: 12
+
+# Universe Configuration: Use method-based universe for seasonal strategy
+universe_config:
+  type: "method"
+  method_name: "get_top_weight_sp500_components"
+  n_holdings: 30
+  exact: false
 optimization_targets:
 - name: Sortino
   direction: maximize
