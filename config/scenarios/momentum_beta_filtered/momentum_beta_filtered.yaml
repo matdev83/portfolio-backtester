@@ -1,0 +1,16 @@
+name: momentum_beta_filtered
+strategy: momentum_beta_filtered
+rebalance_frequency: ME
+position_sizer: equal_weight
+transaction_costs_bps: 10
+train_window_months: 36
+test_window_months: 48
+strategy_params:
+  lookback_months: 12
+  long_only: false
+  beta_lookback_days: 21
+  num_high_beta_to_exclude: 1
+  rsi_length: 2
+  rsi_overbought: 90
+mc_simulations: 100
+mc_years: 5

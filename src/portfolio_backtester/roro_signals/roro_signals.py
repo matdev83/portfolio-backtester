@@ -48,8 +48,13 @@ class BaseRoRoSignal(ABC):
 
 class DummyRoRoSignal(BaseRoRoSignal):
     """
-    A dummy RoRo signal that returns True (risk-on) for specific hardcoded date windows
-    and False (risk-off) for all other periods for the given current_date.
+    INTENTIONAL PLACEHOLDER: A dummy RoRo signal implementation for testing and development.
+    
+    This is deliberately a placeholder implementation that returns True (risk-on) for 
+    specific hardcoded date windows and False (risk-off) for all other periods.
+    
+    TODO: Replace with actual risk-on/risk-off signal logic based on market indicators
+    such as VIX levels, yield curve analysis, or other market regime detection methods.
     """
 
     def generate_signal(
@@ -60,15 +65,19 @@ class DummyRoRoSignal(BaseRoRoSignal):
     ) -> bool:
         """
         Generates the dummy RoRo signal for the current_date.
-
+        
+        PLACEHOLDER IMPLEMENTATION: This uses hardcoded date windows for testing purposes.
+        
         Returns True (risk-on) for:
         - 2006-01-01 to 2009-12-31
         - 2020-01-01 to 2020-04-01
         - 2022-01-01 to 2022-11-05
         And False (risk-off) for all other periods.
+        
+        TODO: Replace with actual market regime detection logic.
         """
 
-        # Define date windows for risk-on (signal = True)
+        # PLACEHOLDER: Define hardcoded date windows for risk-on (signal = True)
         risk_on_windows = [
             (pd.Timestamp("2006-01-01"), pd.Timestamp("2009-12-31")),
             (pd.Timestamp("2020-01-01"), pd.Timestamp("2020-04-01")),

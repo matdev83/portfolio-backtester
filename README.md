@@ -216,7 +216,56 @@ python -m src.portfolio_backtester.backtester \
   --study-name "genetic_vams_opt"
 ```
 
-## Configuration
+## Configuration Files
+
+The backtester uses a set of YAML files in the `config/` directory to manage global settings, define specific backtest experiments, and provide examples.
+
+### 1. `parameters.yaml` (Global Settings)
+
+This file establishes the foundational parameters for the entire backtesting environment. It contains the default settings that are inherited by all scenarios unless explicitly overridden.
+
+- **Purpose**: To define the global environment, default optimizer search ranges, and system-wide feature configurations.
+- **Key Sections**:
+  - `GLOBAL_CONFIG`: Sets the default stock `universe`, `benchmark`, date ranges, and transaction cost models.
+  - `OPTIMIZER_PARAMETER_DEFAULTS`: Defines the default search space (min, max, step) for every optimizable parameter (e.g., `leverage`, `lookback_months`).
+  - `wfo_robustness_config`, `monte_carlo_config`, etc.: Configure advanced features like Walk-Forward Optimization and Monte Carlo simulations.
+
+### 2. `scenarios.yaml` (Backtest Experiments)
+
+This is the primary file for defining and managing your specific backtesting experiments. Each entry in this file represents a complete, runnable test.
+
+- **Purpose**: To define specific combinations of strategies, parameters, and optimization goals.
+- **Example Scenario**:
+
+  ```yaml
+  - name: "Momentum_Simple_Test"
+    strategy: "momentum"
+    rebalance_frequency: "ME"
+    position_sizer: "equal_weight"
+    transaction_costs_bps: 10
+    train_window_months: 36
+    test_window_months: 12
+    optimization_targets:
+      - name: "Sortino"
+        direction: "maximize"
+    optimize:
+      - parameter: "num_holdings"
+        min_value: 10
+        max_value: 25
+        step: 5
+    strategy_params:
+      lookback_months: 12
+      long_only: True
+  ```
+
+### 3. `timing_examples.yaml` (How-To Guide for Timing)
+
+This file is a supplementary resource dedicated to showcasing the capabilities of the flexible timing framework. It is not used directly by the backtester but serves as a valuable source of examples.
+
+- **Purpose**: To provide clear, ready-to-use examples for different timing configurations (time-based, signal-based, and custom controllers).
+- **Usage**: Copy and paste configurations from this file into your `scenarios.yaml` to implement advanced timing strategies.
+
+## Detailed Configuration Sections
 
 ### WFO Robustness Configuration (`config/parameters.yaml`)
 

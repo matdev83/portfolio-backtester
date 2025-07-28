@@ -1077,10 +1077,19 @@ def _ensure_history_loaded():
                         logger.info(f"Built history with shape: {_HISTORY_DF.shape}. Date range: {_HISTORY_DF['date'].min():%Y-%m-%d} to {_HISTORY_DF['date'].max():%Y-%m-%d}")
                 else:
                     logger.error("Failed to build history or an empty DataFrame was returned.")
-                    _HISTORY_DF = pd.DataFrame() # Assign empty df to prevent repeated build attempts in same session if build fails
+                    logger.error("Failed to build SPY holdings history from scratch")
+                    # Set to None to allow retry in future sessions, but log the failure
+                    _HISTORY_DF = None
+                    # Could raise an exception here if this is a critical failure
+                    # raise RuntimeError("Failed to build SPY holdings history from scratch")
             except Exception as e:
                 logger.error(f"Error building history from scratch: {e}")
-                _HISTORY_DF = pd.DataFrame() # Assign empty df to prevent repeated build attempts
+                logger.error(f"Exception during SPY holdings history build: {e}")
+                # Set to None to allow retry in future sessions
+                _HISTORY_DF = None
+                # Re-raise the exception to make the failure visible to calling code
+                # Uncomment the next line if you want failures to be more visible:
+                # raise
         else:
             logger.info("Kaggle data loaded as base. Now checking for newer data from SSGA/SEC.")
             # If Kaggle data is loaded, we only need to fetch data from its end date + 1

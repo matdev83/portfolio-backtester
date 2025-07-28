@@ -1,10 +1,7 @@
 import logging
 import sys
 from pathlib import Path
-
-import logging
-import sys
-from pathlib import Path
+import os
 
 # Import our YAML validator
 from .optimization.genetic_optimizer import get_ga_optimizer_parameter_defaults
@@ -20,7 +17,7 @@ BACKTEST_SCENARIOS = []
 
 # Configuration file paths
 PARAMETERS_FILE = Path(__file__).parent.parent.parent / "config" / "parameters.yaml"
-SCENARIOS_FILE = Path(__file__).parent.parent.parent / "config" / "scenarios.yaml"
+SCENARIOS_DIR = Path(__file__).parent.parent.parent / "config" / "scenarios"
 
 
 class ConfigurationError(Exception):
@@ -77,22 +74,26 @@ def load_config():
         except Exception as e:
             logger.warning(f"Failed to load GA defaults: {e}")
 
-        # Load and validate scenarios file
-        logger.info(f"Loading scenarios from: {SCENARIOS_FILE}")
-        is_valid, scenarios_data, error_message = validate_yaml_file(SCENARIOS_FILE)
-        
-        if not is_valid:
-            logger.error(f"Scenarios file validation failed: {SCENARIOS_FILE}")
-            print(error_message, file=sys.stderr)
-            raise ConfigurationError("Invalid scenarios.yaml file. See error details above.")
-        
-        if scenarios_data is None:
-            raise ConfigurationError(f"Scenarios file is empty: {SCENARIOS_FILE}")
-        
-        # Extract scenarios with validation
-        BACKTEST_SCENARIOS = scenarios_data.get("BACKTEST_SCENARIOS", [])
+        # Load and validate scenario files from subdirectories
+        logger.info(f"Loading scenarios from: {SCENARIOS_DIR}")
+        BACKTEST_SCENARIOS = []
+        if SCENARIOS_DIR.exists() and SCENARIOS_DIR.is_dir():
+            # Walk through all subdirectories to find YAML files
+            for root, dirs, files in os.walk(SCENARIOS_DIR):
+                for scenario_file in files:
+                    if scenario_file.endswith(".yaml"):
+                        scenario_path = Path(root) / scenario_file
+                        is_valid, scenario_data, error_message = validate_yaml_file(scenario_path)
+                        if not is_valid:
+                            logger.error(f"Scenario file validation failed: {scenario_path}")
+                            print(error_message, file=sys.stderr)
+                            raise ConfigurationError(f"Invalid scenario file: {scenario_file}. See error details above.")
+                        if scenario_data is None:
+                            raise ConfigurationError(f"Scenario file is empty: {scenario_path}")
+                        BACKTEST_SCENARIOS.append(scenario_data)
+
         if not BACKTEST_SCENARIOS:
-            raise ConfigurationError("'BACKTEST_SCENARIOS' section is missing or empty in scenarios.yaml.")
+            logger.warning(f"No scenarios found in {SCENARIOS_DIR}.")
         
         logger.info(f"Successfully loaded configuration: {len(BACKTEST_SCENARIOS)} scenarios found")
         
@@ -120,7 +121,7 @@ def validate_config_files() -> bool:
     
     # Validate parameters file
     print(f"Validating {PARAMETERS_FILE}...")
-    is_valid, _, errors = validator.validate_file(PARAMETERS_FILE)
+    is_valid, _, errors = validate_yaml_file(PARAMETERS_FILE)
     if is_valid:
         print("[OK] parameters.yaml is valid")
     else:
@@ -128,15 +129,22 @@ def validate_config_files() -> bool:
         print(validator.format_errors(errors))
         all_valid = False
     
-    # Validate scenarios file
-    print(f"\nValidating {SCENARIOS_FILE}...")
-    is_valid, _, errors = validator.validate_file(SCENARIOS_FILE)
-    if is_valid:
-        print("[OK] scenarios.yaml is valid")
-    else:
-        print("[ERROR] scenarios.yaml has errors:")
-        print(validator.format_errors(errors))
-        all_valid = False
+    # Validate scenario files in subdirectories
+    print(f"\nValidating scenarios in {SCENARIOS_DIR}...")
+    if SCENARIOS_DIR.exists() and SCENARIOS_DIR.is_dir():
+        # Walk through all subdirectories to find YAML files
+        for root, dirs, files in os.walk(SCENARIOS_DIR):
+            for scenario_file in files:
+                if scenario_file.endswith(".yaml"):
+                    scenario_path = Path(root) / scenario_file
+                    print(f"Validating {scenario_path}...")
+                    is_valid, _, errors = validate_yaml_file(scenario_path)
+                    if is_valid:
+                        print(f"[OK] {scenario_file} is valid")
+                    else:
+                        print(f"[ERROR] {scenario_file} has errors:")
+                        print(validator.format_errors(errors))
+                        all_valid = False
     
     return all_valid
 
@@ -157,8 +165,6 @@ def safe_load_config() -> bool:
     except Exception as e:
         logger.error(f"Unexpected error loading configuration: {e}")
         return False
-
-    # populate_default_optimizations() # We will add this later
 
 # Load configuration when the module is imported
 try:

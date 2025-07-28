@@ -1,0 +1,20 @@
+name: momentum_vol_targeted_10pct
+strategy: momentum
+rebalance_frequency: ME
+position_sizer: equal_weight
+transaction_costs_bps: 10
+train_window_months: 36
+test_window_months: 48
+strategy_params:
+  lookback_months: 6
+  num_holdings: 20
+  smoothing_lambda: 0.5
+  long_only: true
+  volatility_targeting:
+    name: annualized
+    target_annual_vol: 0.1
+    lookback_days: 60
+    max_leverage: 1.5
+    min_leverage: 0.5
+mc_simulations: 1000
+mc_years: 10

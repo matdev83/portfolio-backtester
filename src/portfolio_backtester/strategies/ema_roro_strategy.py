@@ -27,7 +27,8 @@ except ImportError:
 class EMARoRoStrategy(EMAStrategy):
     """EMA crossover strategy with RoRo signal integration for risk management."""
     
-    # Set the RoRo signal class to use the dummy implementation with hardcoded dates
+    # PLACEHOLDER: Set the RoRo signal class to use the dummy implementation with hardcoded dates
+    # TODO: Replace DummyRoRoSignal with actual RoRo signal implementation when available
     roro_signal_class = DummyRoRoSignal
     
     def __init__(self, strategy_config: dict):

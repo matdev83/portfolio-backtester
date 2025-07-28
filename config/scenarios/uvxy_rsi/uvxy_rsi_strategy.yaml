@@ -1,0 +1,33 @@
+name: uvxy_rsi_strategy
+description: UVXY short strategy based on SPY RSI(2) signals - Daily signal-driven,
+  no rebalancing
+strategy: uvxy_rsi
+rebalance_frequency: D
+position_sizer: equal_weight
+transaction_costs_bps: 5
+train_window_months: 12
+test_window_months: 12
+optimization_targets:
+- name: Sharpe
+  direction: maximize
+optimize:
+- parameter: rsi_threshold
+  min_value: 20.0
+  max_value: 40.0
+  step: 2.5
+- parameter: rsi_period
+  min_value: 2
+  max_value: 5
+  step: 1
+strategy_params:
+  rsi_period: 2
+  rsi_threshold: 30.0
+  price_column_asset: Close
+  price_column_benchmark: Close
+  long_only: false
+  leverage: 1.0
+  smoothing_lambda: 0.0
+  shorting_fee_bps: 25
+  rebalance_frequency: daily
+mc_simulations: 100
+mc_years: 3

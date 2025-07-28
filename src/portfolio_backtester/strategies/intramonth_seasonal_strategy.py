@@ -31,6 +31,9 @@ class IntramonthSeasonalStrategy(BaseStrategy):
             "entry_day": 5,  # n-th business day
             "hold_days": 10,  # m business days
             "price_column_asset": "Close",
+            # Months in which the strategy is allowed to open new trades (1=Jan, …, 12=Dec)
+            # By default all months are enabled.
+            "allowed_months": list(range(1, 13)),
         }
 
         params_dict_to_update = self.strategy_config
@@ -51,7 +54,8 @@ class IntramonthSeasonalStrategy(BaseStrategy):
 
     @classmethod
     def tunable_parameters(cls) -> set[str]:
-        return {"direction", "entry_day", "hold_days"}
+        # allowed_months can be optimised by passing categorical choices in the scenario config
+        return {"direction", "entry_day", "hold_days", "allowed_months"}
 
     def get_minimum_required_periods(self) -> int:
         """
@@ -150,6 +154,24 @@ class IntramonthSeasonalStrategy(BaseStrategy):
         direction = params["direction"]
         entry_day = params["entry_day"]
         hold_days = params["hold_days"]
+        allowed_months_param = params.get("allowed_months", list(range(1, 13)))
+
+        # Normalise allowed_months to a list of unique ints 1..12
+        if isinstance(allowed_months_param, (list, tuple, set)):
+            allowed_months = sorted({int(m) for m in allowed_months_param})
+        elif isinstance(allowed_months_param, int):
+            allowed_months = [allowed_months_param]
+        elif isinstance(allowed_months_param, str):
+            # Accept comma-separated string like "1,3,5"
+            allowed_months = sorted({int(part.strip()) for part in allowed_months_param.split(',') if part.strip()})
+        else:
+            raise ValueError("allowed_months must be an int, list/tuple/set of ints, or comma-separated str")
+
+        # Validation – ensure 1 ≤ month ≤ 12 and at least one month enabled
+        if not allowed_months:
+            raise ValueError("IntramonthSeasonalStrategy: allowed_months must contain at least one month (1-12)")
+        if any(m < 1 or m > 12 for m in allowed_months):
+            raise ValueError("IntramonthSeasonalStrategy: allowed_months values must be between 1 and 12")
 
         if self._last_weights is None:
             self._last_weights = pd.Series(0.0, index=valid_assets)
@@ -166,10 +188,13 @@ class IntramonthSeasonalStrategy(BaseStrategy):
                 target_weights[asset] = 0
                 del self.positions[asset]
 
-        # Check for entries
-        entry_date = self.get_entry_date_for_month(current_date, entry_day)
+        # Check for entries – only if trading allowed this month
+        if current_date.month in allowed_months:
+            entry_date = self.get_entry_date_for_month(current_date, entry_day)
+        else:
+            entry_date = None
 
-        if current_date == entry_date:
+        if entry_date is not None and current_date == entry_date:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Entry condition met for {current_date}. Assets: {valid_assets}")
             for asset in valid_assets:

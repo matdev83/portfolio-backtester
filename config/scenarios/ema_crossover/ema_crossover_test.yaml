@@ -1,0 +1,32 @@
+name: ema_crossover_test
+strategy: ema_crossover
+rebalance_frequency: ME
+position_sizer: equal_weight
+transaction_costs_bps: 10
+train_window_months: 24
+test_window_months: 12
+optimization_targets:
+- name: Sortino
+  direction: maximize
+optimization_constraints:
+- metric: Ann. Vol
+  max_value: 0.2
+optimize:
+- parameter: fast_ema_days
+  min_value: 7
+  max_value: 32
+  step: 1
+- parameter: slow_ema_days
+  min_value: 64
+  max_value: 128
+  step: 32
+- parameter: leverage
+  min_value: 1.0
+  max_value: 2.0
+  step: 0.5
+strategy_params:
+  fast_ema_days: 20
+  slow_ema_days: 64
+  leverage: 1.5
+mc_simulations: 100
+mc_years: 5

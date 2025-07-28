@@ -153,13 +153,13 @@ class AtrBasedStopLoss(BaseStopLoss):
             if asset in atr_values_for_date.index:
                 atr_value = atr_values_for_date.loc[asset]
             else:
-                # print(f"Warning: ATR value for asset {asset} on date {current_date} not found. Skipping stop for this asset.")
+                # ATR value not found for asset - skipping stop loss for this asset
                 # This can happen if the ATR feature doesn't cover all assets in current_weights,
                 # e.g. if an asset is new to the universe and doesn't have enough history for ATR.
                 atr_value = np.nan # Default to NaN if specific asset ATR is missing
 
             if pd.isna(atr_value):
-                # print(f"Warning: ATR value for asset {asset} on date {current_date} is NaN. Skipping stop for this asset.")
+                # ATR value is NaN for asset - skipping stop loss for this asset
                 continue
 
             if weight > 0:  # Long position
@@ -343,19 +343,5 @@ class AtrBasedStopLoss(BaseStopLoss):
 #         # data is expected to be a DataFrame with 'High', 'Low', 'Close' columns for each asset
 #         # This computation needs to be adapted based on how data is provided (single asset or multi-asset)
 #         # For multi-asset, it should iterate over columns if they are assets, or expect multi-index.
-#         # Placeholder:
-#         # import pandas_ta as ta
-#         # atr_df = pd.DataFrame(index=data.index)
-#         # for asset_col in data.columns.get_level_values(0).unique(): # Assuming multi-index [Asset, OHLC]
-#         #     asset_data = data[asset_col] # This would be a DataFrame with HLC columns
-#         #     atr_df[asset_col] = ta.atr(high=asset_data['High'], low=asset_data['Low'], close=asset_data['Close'], length=self.atr_period)
-#         # return atr_df
-#         raise NotImplementedError("ATRFeature compute method needs to be implemented correctly.")
-
-#     def __hash__(self):
-#         return hash((self.name, self.atr_period))
-
-#     def __eq__(self, other):
-#         if not isinstance(other, ATRFeature):
-#             return False
-#         return self.name == other.name and self.atr_period == other.atr_period
+# NOTE: ATRFeature implementation has been moved to src/portfolio_backtester/features/atr.py
+# This commented code block was removed as part of code cleanup.

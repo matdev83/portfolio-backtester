@@ -1,0 +1,34 @@
+name: vams_no_downside
+strategy: vams_no_downside
+rebalance_frequency: ME
+position_sizer: equal_weight
+transaction_costs_bps: 10
+train_window_months: 36
+test_window_months: 48
+optimization_metric: Sortino
+strategy_params:
+  long_only: true
+  sma_filter_window: null
+mc_simulations: 1000
+mc_years: 10
+optimize:
+- parameter: num_holdings
+  min_value: 10
+  max_value: 30
+  step: 1
+- parameter: lookback_months
+  min_value: 6
+  max_value: 24
+  step: 1
+- parameter: top_decile_fraction
+  min_value: 0.05
+  max_value: 0.2
+  step: 0.05
+- parameter: smoothing_lambda
+  min_value: 0.1
+  max_value: 0.9
+  step: 0.1
+- parameter: leverage
+  min_value: 0.1
+  max_value: 1.0
+  step: 0.1

@@ -217,15 +217,11 @@ class VAMSMomentumStrategy(BaseStrategy):
             cand_weights = self._calculate_candidate_weights(scores_at_current_date)
             w_target_pre_filter = self._apply_leverage_and_smoothing(cand_weights, self.w_prev)
 
-            # Get current prices for all assets, ensuring it's a Series indexed by tickers
-            current_prices_for_assets_at_date: pd.Series = pd.Series(np.nan, index=current_universe_tickers)
-            if current_date in asset_prices_for_vams.index:
-                temp_prices = asset_prices_for_vams.loc[current_date]
-                if isinstance(temp_prices, pd.DataFrame):
-                    temp_prices = temp_prices.squeeze()
-                if not isinstance(temp_prices, pd.Series): # Ensure it's a Series before reindex
-                    temp_prices = pd.Series([temp_prices], index=[current_universe_tickers[0]]) if not current_universe_tickers.empty else pd.Series(dtype=float)
-                current_prices_for_assets_at_date = temp_prices.reindex(current_universe_tickers).fillna(np.nan)
+            # Get current prices for all assets using utility function
+            from ..utils.price_data_utils import extract_current_prices
+            current_prices_for_assets_at_date = extract_current_prices(
+                asset_prices_for_vams, current_date, current_universe_tickers
+            )
             
             for asset in current_universe_tickers:
                 if not current_prices_for_assets_at_date.empty and asset in current_prices_for_assets_at_date.index:
@@ -244,15 +240,11 @@ class VAMSMomentumStrategy(BaseStrategy):
         # --- Apply Stop Loss ---
         sl_handler = self.get_stop_loss_handler()
         asset_ohlc_hist_for_sl = all_historical_data[all_historical_data.index <= current_date]
-        # Ensure current_prices_for_sl_check is a Series of close prices
-        current_prices_for_sl_check: pd.Series = pd.Series(np.nan, index=current_universe_tickers)
-        if current_date in asset_prices_for_vams.index:
-            temp_prices_sl = asset_prices_for_vams.loc[current_date]
-            if isinstance(temp_prices_sl, pd.DataFrame):
-                temp_prices_sl = temp_prices_sl.squeeze()
-            if not isinstance(temp_prices_sl, pd.Series): # Ensure it's a Series before reindex
-                temp_prices_sl = pd.Series([temp_prices_sl], index=[current_universe_tickers[0]]) if not current_universe_tickers.empty else pd.Series(dtype=float)
-            current_prices_for_sl_check = temp_prices_sl.reindex(current_universe_tickers).fillna(np.nan)
+        # Get current prices for stop loss check using utility function  
+        from ..utils.price_data_utils import extract_current_prices
+        current_prices_for_sl_check = extract_current_prices(
+            asset_prices_for_vams, current_date, current_universe_tickers
+        )
 
         stop_levels = sl_handler.calculate_stop_levels(current_date, asset_ohlc_hist_for_sl, self.w_prev, self.entry_prices)
         weights_after_sl = sl_handler.apply_stop_loss(current_date, current_prices_for_sl_check, weights_at_current_date, self.entry_prices, stop_levels)

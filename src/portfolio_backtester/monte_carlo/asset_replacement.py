@@ -69,7 +69,7 @@ class AssetReplacementManager:
                 'enable_validation': False  # Skip validation for speed
             }
             optimized_config['generation_config'] = {
-                'max_attempts': 1,  # Single attempt for speed
+                'max_attempts': config.get('monte_carlo_max_attempts', 1),  # Configurable attempts (default 1 for speed)
                 'validation_tolerance': 1.0  # Very lenient
             }
             self.synthetic_generator = SyntheticDataGenerator(optimized_config)

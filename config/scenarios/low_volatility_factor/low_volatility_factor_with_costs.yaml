@@ -1,0 +1,19 @@
+description: Low-Volatility Factor with transaction costs and shorting fees
+strategy_class: LowVolatilityFactorStrategy
+strategy_params:
+  volatility_lookback_days: 252
+  size_percentile: 50
+  vol_percentile_low: 30
+  vol_percentile_high: 70
+  beta_lookback_months: 36
+  beta_min_cap: 0.25
+  beta_max_cap: 2.0
+  beta_max_low_vol: 1.0
+  use_hedged_legs: true
+  long_only: false
+  account_for_costs: true
+  shorting_fee_annual: 0.01
+  leverage: 1.0
+  smoothing_lambda: 0.5
+  price_column: Close
+name: LowVolatilityFactor_WithCosts

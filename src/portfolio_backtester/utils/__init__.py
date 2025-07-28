@@ -8,7 +8,7 @@ import pandas as pd
 from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
-from . import strategies
+from .. import strategies
 
 # Get a logger for this module (or use a more general one if available)
 logger = logging.getLogger(__name__)
@@ -77,8 +77,8 @@ def _run_scenario_static(
         Daily benchmark prices (needed by *calculate_metrics* in the caller).
     """
 
-    from .portfolio.position_sizer import get_position_sizer
-    from .portfolio.rebalancing import rebalance
+    from ..portfolio.position_sizer import get_position_sizer
+    from ..portfolio.rebalancing import rebalance
 
     strat_cls = _resolve_strategy(scenario_cfg["strategy"])
     if not strat_cls:
@@ -324,7 +324,3 @@ def _df_to_float32_array(df: pd.DataFrame, *, field: str | None = None) -> tuple
     # Pandas to NumPy (contiguous)
     matrix = np.ascontiguousarray(extracted.values, dtype=np.float32)
     return matrix, tickers
-
-
-
-

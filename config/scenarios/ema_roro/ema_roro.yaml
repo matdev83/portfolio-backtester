@@ -1,0 +1,14 @@
+name: ema_roro
+strategy: "ema_roro"
+rebalance_frequency: "ME"
+position_sizer: "equal_weight"
+transaction_costs_bps: 10
+train_window_months: 24
+test_window_months: 12
+optimization_targets:
+  - name: "Sortino"
+    direction: "maximize"
+strategy_params:
+  fast_ema_days: 20
+  slow_ema_days: 64
+  leverage: 1.5
