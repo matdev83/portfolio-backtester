@@ -3,6 +3,7 @@ import os
 from functools import reduce
 from operator import mul
 
+import numpy as np
 import optuna
 from rich.console import Console
 from rich.progress import (
@@ -17,6 +18,11 @@ from rich.progress import (
 from ..optimization.genetic_optimizer import GeneticOptimizer
 from ..optimization.trial_evaluator import TrialEvaluator
 from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG, generate_randomized_wfo_windows
+
+# TESTING NOTE: When testing optimization functions, be aware that Mock objects
+# may be passed as timeout values or other numeric parameters. The TimeoutManager
+# class in core.py handles this with defensive programming using try-catch blocks
+# to prevent TypeError exceptions when Mock objects are used in numeric operations.
 
 # Global progress tracker for optimization
 _global_progress_tracker = None
@@ -78,6 +84,12 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Generated {len(windows)} standard walk-forward windows.")
 
+    study_name_base = f"{scenario_config['name']}_walk_forward"
+    if self.args.study_name:
+        study_name_base = f"{self.args.study_name}_{study_name_base}"
+    
+    study_name = f"{study_name_base}_seed_{self.random_state}" if self.args.random_seed is not None else study_name_base
+
     if self.args.storage_url:
         storage = self.args.storage_url
     else:
@@ -85,19 +97,14 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
         os.makedirs(journal_dir, exist_ok=True)
         
         # Sanitize study name for use in file path
-        sanitized_study_name = self.args.study_name or scenario_config['name']
-        sanitized_study_name = "".join(c for c in sanitized_study_name if c.isalnum() or c in ('_', '-')).rstrip()
+        sanitized_study_name = "".join(c for c in study_name if c.isalnum() or c in ('_', '-')).rstrip()
         
-        db_path = os.path.join(journal_dir, f"{sanitized_study_name}.log")
+        db_path = os.path.normpath(os.path.join(journal_dir, f"{sanitized_study_name}.log"))
         from optuna.storages import JournalStorage
         from optuna.storages.journal import JournalFileBackend, JournalFileOpenLock
         storage = JournalStorage(JournalFileBackend(file_path=db_path, lock_obj=JournalFileOpenLock(db_path)))
-
-    study_name_base = f"{scenario_config['name']}_walk_forward"
-    if self.args.study_name:
-        study_name_base = f"{self.args.study_name}_{study_name_base}"
     
-    study, n_trials = _setup_optuna_study(self, scenario_config, storage, study_name_base)
+    study, n_trials = _setup_optuna_study(self, scenario_config, storage, study_name)
 
     metrics_to_optimize = [t["name"] for t in scenario_config.get("optimization_targets", [])] or \
                           [scenario_config.get("optimization_metric", "Calmar")]
@@ -106,7 +113,30 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     evaluator = TrialEvaluator(self, scenario_config, monthly_data, daily_data, rets_full, metrics_to_optimize, is_multi_objective, windows)
 
     def objective(trial: optuna.trial.Trial):
-        return evaluator.evaluate(trial)
+        values = evaluator.evaluate(trial)
+
+        # Check for multi-objective case first
+        if study.directions and len(study.directions) > 1:
+            processed_values = []
+            for i, v in enumerate(values):
+                if v is None or (isinstance(v, float) and not np.isfinite(v)):
+                    if study.directions[i] == optuna.study.StudyDirection.MAXIMIZE:
+                        processed_values.append(-1e9)
+                    else:
+                        processed_values.append(1e9)
+                else:
+                    processed_values.append(v)
+            return tuple(processed_values)
+
+        # Single-objective case
+        value = values
+        if value is None or (isinstance(value, float) and not np.isfinite(value)):
+            if study.direction == optuna.study.StudyDirection.MAXIMIZE:
+                return -1e9
+            else:
+                return 1e9
+                
+        return value
 
     # Calculate total work units: trials × windows per trial
     total_work_units = n_trials * len(windows)
@@ -231,9 +261,7 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     
     return optimal_params, actual_trial_number_for_dsr, best_trial_obj
 
-def _setup_optuna_study(self, scenario_config, storage, study_name_base: str):
-    study_name = f"{study_name_base}_seed_{self.random_state}" if self.args.random_seed is not None else study_name_base
-
+def _setup_optuna_study(self, scenario_config, storage, study_name: str):
     optimization_specs = scenario_config.get("optimize", [])
     param_types = [
         self.global_config.get("optimizer_parameter_defaults", {}).get(spec["parameter"], {}).get("type")

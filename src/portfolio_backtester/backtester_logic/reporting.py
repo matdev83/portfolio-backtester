@@ -85,6 +85,24 @@ def display_results(self, daily_data_for_display):
             name: data.get("num_trials_for_dsr", 1) for name, data in self.results.items()
         }
 
+        # ------------------------------------------------------------------
+        # Create a unique report directory once and reuse it throughout
+        # ------------------------------------------------------------------
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        scenario_name_for_filename = (
+            self.args.scenario_name.replace(" ", "_")
+            .replace("(", "")
+            .replace(")", "")
+            .replace('"', "")
+        )
+        report_dir = os.path.join(
+            "data", "reports", f"{scenario_name_for_filename}_{timestamp}"
+        )
+        os.makedirs(report_dir, exist_ok=True)
+
+        # ------------------------------------------------------------------
+        # Generate performance table in the newly created directory
+        # ------------------------------------------------------------------
         _generate_performance_table(
             self,
             console,
@@ -92,12 +110,8 @@ def display_results(self, daily_data_for_display):
             bench_period_rets,
             "Full-Period Performance",
             num_trials_map,
+            report_dir,
         )
-
-        # Plot equity curve and draw-down summary – save to reports directory
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_dir = os.path.join("data", "reports", f"{timestamp}_summary")
-        os.makedirs(report_dir, exist_ok=True)
 
         _plot_performance_summary(self, bench_period_rets, None)
         plt.tight_layout()
@@ -112,7 +126,7 @@ def display_results(self, daily_data_for_display):
 
 def _generate_performance_table(self, console: Console, period_returns: dict,
                                   bench_period_rets: pd.Series, title: str,
-                                  num_trials_map: dict):
+                                  num_trials_map: dict, report_dir: str):
     table = Table(title=title)
     table.add_column("Metric", style="cyan", no_wrap=True)
 
@@ -158,6 +172,12 @@ def _generate_performance_table(self, console: Console, period_returns: dict,
     
     console.print(table)
 
+    # Save performance table to CSV
+    all_metrics_df = pd.DataFrame(all_period_metrics)
+    metrics_path = os.path.join(report_dir, "performance_metrics.csv")
+    all_metrics_df.to_csv(metrics_path)
+    self.logger.info("Performance metrics saved to %s", metrics_path)
+
     for name in period_returns.keys():
         result_data = self.results.get(name, {})
         optimal_params = result_data.get("optimal_params")
@@ -165,6 +185,13 @@ def _generate_performance_table(self, console: Console, period_returns: dict,
         constraint_status = result_data.get("constraint_status", "UNKNOWN")
 
         if optimal_params:
+            # Save optimal parameters to a text file
+            params_path = os.path.join(report_dir, f"optimal_params_{name}.txt")
+            with open(params_path, "w") as f:
+                for param, value in optimal_params.items():
+                    f.write(f"{param}: {value}\n")
+            self.logger.info("Optimal parameters for %s saved to %s", name, params_path)
+
             # Add constraint status to the title if there are violations
             title_suffix = ""
             if constraint_status == "VIOLATED":
@@ -175,8 +202,8 @@ def _generate_performance_table(self, console: Console, period_returns: dict,
                 title_suffix = " ⚠️ FALLBACK USED"
             
             params_table = Table(
-                title=f"Optimal Parameters for {display_name}{title_suffix}", 
-                show_header=True, 
+                title=f"Optimal Parameters for {display_name}{title_suffix}",
+                show_header=True,
                 header_style="bold magenta"
             )
             params_table.add_column("Parameter", style="cyan")

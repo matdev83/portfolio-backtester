@@ -5,6 +5,9 @@ import signal
 import numpy as np
 import pandas as pd
 
+from pandas.tseries.holiday import USFederalHolidayCalendar
+from pandas.tseries.offsets import CustomBusinessDay
+
 from . import strategies
 
 # Get a logger for this module (or use a more general one if available)
@@ -308,9 +311,9 @@ def _df_to_float32_array(df: pd.DataFrame, *, field: str | None = None) -> tuple
         else:
             # Assume the last level holds the field
             level_name = df.columns.names[-1]
-        if field not in df.columns.get_level_values(level_name):
+        if field not in df.columns.get_level_values(str(level_name)):
             raise KeyError(f"Field '{field}' not found in DataFrame columns")
-        extracted = df.xs(field, level=level_name, axis=1)
+        extracted = df.xs(field, level=str(level_name), axis=1)
     else:
         extracted = df.copy()
 
@@ -321,4 +324,7 @@ def _df_to_float32_array(df: pd.DataFrame, *, field: str | None = None) -> tuple
     # Pandas to NumPy (contiguous)
     matrix = np.ascontiguousarray(extracted.values, dtype=np.float32)
     return matrix, tickers
+
+
+
 

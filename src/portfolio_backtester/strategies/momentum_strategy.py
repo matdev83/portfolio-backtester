@@ -401,43 +401,12 @@ class MomentumStrategy(BaseStrategy):
         # PERFORMANCE OPTIMIZATION: Store reference, copy only if strategy modifies weights later
         self.w_prev = final_weights
 
+        if params.get('apply_trading_lag', False):
+            final_weights = final_weights.shift(1)
+
         # Create a DataFrame for the current date's weights
         output_weights_df = pd.DataFrame(0.0, index=[current_date], columns=current_universe_tickers)
         output_weights_df.loc[current_date] = final_weights
-
-        # Apply trading lag if configured
-        # Note: The backtester applies a global shift. If lag is strategy-specific AND
-        # the strategy is supposed to return weights for the *actual* holding period,
-        # then this shift here is correct. Otherwise, it might be double-counted.
-        # For now, keeping the original logic.
-        # If apply_trading_lag is True, the strategy's output for current_date
-        # are the weights that should have been decided on current_date-1.
-        # This requires careful handling in the backtester.
-        # A simpler model is strategy generates signals for date D, backtester applies on D+1.
-        # If `apply_trading_lag` is True, it means the signals computed for `current_date`
-        # are based on data available prior to `current_date`, and intended for `current_date`.
-        # The backtester's shift(1) handles the execution lag.
-        # So, if `apply_trading_lag` is true here, it effectively means the calculation
-        # itself should use data from `current_date - 1 day/period`.
-        # This is getting complex. The original `weights.shift(1)` in the old code
-        # was applied *after* a full series of weights was generated.
-        # Here, we are generating for a single `current_date`.
-        # Let's assume `apply_trading_lag` means the backtester will handle the shift,
-        # and the strategy provides weights for `current_date` based on data up to `current_date`.
-        # The config `apply_trading_lag` in strategy seems redundant if backtester handles it.
-        # For now, I will remove the direct shift here, assuming the backtester's global shift is sufficient.
-        # If a strategy-specific lag logic (e.g. signals are valid for D+N) is needed, it's more complex.
-
-        # Revisit apply_trading_lag: The old code had it at the end of generate_signals, shifting the *entire*
-        # output DataFrame. Since we now output for a single current_date, a shift here doesn't make sense
-        # in the same way. The backtester's daily reindex and shift(1) should handle execution lag.
-        # The `apply_trading_lag` parameter in strategy_config might be for strategies that have an *additional*
-        # inherent lag in their signal generation logic itself (e.g. using data from t-2 to decide for t).
-        # This is not the case for simple momentum.
-        # I'll assume the strategy computes weights for `current_date` based on data available at `current_date` (or `current_date-1` if monthly).
-        # The backtester will then shift these daily weights by 1 for execution.
-        # So, `apply_trading_lag` in strategy config is likely for internal signal calculation lag, not execution.
-        # The Momentum feature's `skip_months` already handles this type of lag.
 
         return output_weights_df
 

@@ -1,11 +1,12 @@
 import logging
 import numpy as np
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
 from pandas.tseries.offsets import BDay
 
 from .base_strategy import BaseStrategy
+from ..datetime_utils import get_bday_offset
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,8 @@ class IntramonthSeasonalStrategy(BaseStrategy):
 
     def __init__(self, strategy_config: Dict[str, Any]):
         super().__init__(strategy_config)
-        self.w_prev: Optional[pd.Series] = None
-        self.positions: Dict[str, Dict[str, Any]] = {}  # To track open positions and their exit dates
+        self._last_weights: Optional[pd.Series] = None
+        self.positions: Dict[str, Dict[str, Any]] = {}
 
         defaults = {
             "direction": "long",  # "long" or "short"
@@ -41,6 +42,13 @@ class IntramonthSeasonalStrategy(BaseStrategy):
         for k, v in defaults.items():
             params_dict_to_update.setdefault(k, v)
 
+        # PERFORMANCE: cache reusable objects -------------------------------
+        # 1. Business-day offset is the same for the whole simulation, build it once.
+        self._bday_offset = get_bday_offset()
+        # 2. Cache entry date per (year, month, entry_day) to avoid recomputing
+        #    bdate_range inside every generate_signals call.
+        self._entry_date_cache: Dict[Tuple[int, int, int], pd.Timestamp] = {}
+
     @classmethod
     def tunable_parameters(cls) -> set[str]:
         return {"direction", "entry_day", "hold_days"}
@@ -51,6 +59,12 @@ class IntramonthSeasonalStrategy(BaseStrategy):
         of data is good for handling edge cases around month ends.
         """
         return 1 # Only need data for the current day
+
+    def get_synthetic_data_requirements(self) -> bool:
+        """
+        This strategy does not require synthetic data generation.
+        """
+        return False
 
     def filter_universe_by_data_availability(
         self,
@@ -137,16 +151,18 @@ class IntramonthSeasonalStrategy(BaseStrategy):
         entry_day = params["entry_day"]
         hold_days = params["hold_days"]
 
-        if self.w_prev is None:
-            self.w_prev = pd.Series(0.0, index=valid_assets)
+        if self._last_weights is None:
+            self._last_weights = pd.Series(0.0, index=valid_assets)
         else:
-            self.w_prev = self.w_prev.reindex(valid_assets).fillna(0.0)
+            self._last_weights = self._last_weights.reindex(valid_assets, fill_value=0.0)
 
-        target_weights = self.w_prev.copy()
+        target_weights = self._last_weights.copy()
 
         # Check for exits
         for asset, pos_info in list(self.positions.items()):
             if current_date >= pos_info["exit_date"]:
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"Exiting position for {asset} on {current_date}")
                 target_weights[asset] = 0
                 del self.positions[asset]
 
@@ -154,16 +170,20 @@ class IntramonthSeasonalStrategy(BaseStrategy):
         entry_date = self.get_entry_date_for_month(current_date, entry_day)
 
         if current_date == entry_date:
-            logger.info(f"Entry condition met for {current_date}. Assets: {valid_assets}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Entry condition met for {current_date}. Assets: {valid_assets}")
             for asset in valid_assets:
                 if asset not in self.positions:
-                    logger.info(f"Entering position for {asset} on {current_date}")
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Entering position for {asset} on {current_date}")
                     target_weights[asset] = 1.0 if direction == "long" else -1.0
-                    exit_date = current_date + BDay(hold_days)
+                    exit_date = current_date + self._bday_offset * hold_days
                     self.positions[asset] = {"exit_date": exit_date}
 
+        if (self._last_weights is not None) and (self._last_weights != 0).any():
+            logger.debug(f"Date: {current_date}, Previous weights: {self._last_weights[self._last_weights != 0]}")
         if (target_weights != 0).any():
-            logger.debug(f"Date: {current_date}, Non-zero weights: {target_weights[target_weights != 0]}")
+            logger.debug(f"Date: {current_date}, New weights: {target_weights[target_weights != 0]}")
 
         # Normalize weights to sum to 1 (or -1 for short)
         num_positions = (target_weights != 0).sum()
@@ -173,22 +193,32 @@ class IntramonthSeasonalStrategy(BaseStrategy):
             else:
                 target_weights[target_weights < 0] = -1.0 / num_positions
 
-        self.w_prev = target_weights
+        self._last_weights = target_weights
         
         # Return a transposed DataFrame
         return pd.DataFrame(target_weights.to_dict(), index=[current_date]).reindex(columns=valid_assets).fillna(0.0).rename_axis(None)
 
     def get_entry_date_for_month(self, date: pd.Timestamp, entry_day: int) -> pd.Timestamp:
-        """Calculates the target entry date for a given month."""
+        """Calculates the target entry date for a given month, using an internal cache for speed."""
+        cache_key = (date.year, date.month, entry_day)
+        if cache_key in self._entry_date_cache:
+            return self._entry_date_cache[cache_key]
+
         start_of_month = date.replace(day=1)
         end_of_month = start_of_month + pd.offsets.MonthEnd(1)
         b_days = pd.bdate_range(start=start_of_month, end=end_of_month)
-        
+
         if entry_day > 0:
             if entry_day > len(b_days):
-                return b_days[-1]
-            return b_days[entry_day - 1]
+                entry_date = b_days[-1]
+            else:
+                entry_date = b_days[entry_day - 1]
         else:
             if abs(entry_day) > len(b_days):
-                return b_days[0]
-            return b_days[entry_day]
+                entry_date = b_days[0]
+            else:
+                entry_date = b_days[entry_day]
+
+        # Store in cache and return
+        self._entry_date_cache[cache_key] = entry_date
+        return entry_date

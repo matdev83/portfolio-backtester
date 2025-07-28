@@ -1049,3 +1049,305 @@ def rolling_downside_volatility_batch(returns_matrix: np.ndarray, window: int) -
             result[t, asset_idx] = downside_vol
     
     return result
+
+
+@numba.jit(nopython=True, cache=True)
+def rolling_cumprod_fast(data: np.ndarray, window: int) -> np.ndarray:
+    """
+    Fast rolling cumulative product calculation for momentum calculations.
+    
+    Replaces (1 + returns).rolling(window).apply(np.prod, raw=True) - 1
+    
+    Parameters
+    ----------
+    data : np.ndarray
+        1-D array of returns data
+    window : int
+        Rolling window length
+        
+    Returns
+    -------
+    np.ndarray
+        1-D array of rolling momentum values (cumulative product - 1)
+    """
+    n = len(data)
+    result = np.full(n, np.nan)
+    
+    for i in range(window - 1, n):
+        window_data = data[i - window + 1:i + 1]
+        
+        # Check for NaN values in window
+        has_nan = False
+        for j in range(len(window_data)):
+            if np.isnan(window_data[j]):
+                has_nan = True
+                break
+        
+        if not has_nan:
+            # Calculate cumulative product: (1 + r1) * (1 + r2) * ... - 1
+            prod = 1.0
+            for j in range(len(window_data)):
+                prod *= (1.0 + window_data[j])
+            result[i] = prod - 1.0
+    
+    return result
+
+
+@numba.jit(nopython=True, parallel=True, cache=True)
+def vams_batch_fast(returns_matrix: np.ndarray, window: int) -> np.ndarray:
+    """
+    Batch VAMS (Volatility Adjusted Momentum Scores) calculation for multiple assets.
+    
+    VAMS = momentum / volatility
+    where momentum = rolling cumulative product - 1
+    and volatility = rolling standard deviation
+    
+    Parameters
+    ----------
+    returns_matrix : np.ndarray
+        2-D array of returns with shape (time, assets)
+    window : int
+        Rolling window length (lookback months)
+        
+    Returns
+    -------
+    np.ndarray
+        2-D array of VAMS values with same shape as input
+    """
+    n_periods, n_assets = returns_matrix.shape
+    result = np.full((n_periods, n_assets), np.nan)
+    
+    for asset_idx in numba.prange(n_assets):
+        asset_returns = returns_matrix[:, asset_idx]
+        
+        # Calculate momentum using rolling cumulative product
+        momentum = rolling_cumprod_fast(asset_returns, window)
+        
+        # Calculate rolling volatility
+        volatility = rolling_std_fast(asset_returns, window)
+        
+        # Calculate VAMS = momentum / volatility
+        for t in range(len(momentum)):
+            if (not np.isnan(momentum[t]) and not np.isnan(volatility[t]) and 
+                volatility[t] > 1e-9):
+                result[t, asset_idx] = momentum[t] / volatility[t]
+    
+    return result
+
+
+@numba.jit(nopython=True, parallel=True, cache=True)
+def dp_vams_batch_fast(returns_matrix: np.ndarray, window: int, alpha: float) -> np.ndarray:
+    """
+    Batch DP-VAMS (Downside Penalized VAMS) calculation for multiple assets.
+    
+    DP-VAMS = momentum / (alpha * downside_dev + (1 - alpha) * total_vol)
+    
+    Parameters
+    ----------
+    returns_matrix : np.ndarray
+        2-D array of returns with shape (time, assets)
+    window : int
+        Rolling window length (lookback months)
+    alpha : float
+        Weighting factor for downside deviation (0 to 1)
+        
+    Returns
+    -------
+    np.ndarray
+        2-D array of DP-VAMS values with same shape as input
+    """
+    n_periods, n_assets = returns_matrix.shape
+    result = np.full((n_periods, n_assets), np.nan)
+    
+    for asset_idx in numba.prange(n_assets):
+        asset_returns = returns_matrix[:, asset_idx]
+        
+        # Calculate momentum using rolling cumulative product
+        momentum = rolling_cumprod_fast(asset_returns, window)
+        
+        # Calculate total volatility
+        total_vol = rolling_std_fast(asset_returns, window)
+        
+        # Calculate downside volatility
+        downside_vol = np.full(n_periods, np.nan)
+        for t in range(window - 1, n_periods):
+            window_returns = asset_returns[t - window + 1:t + 1]
+            
+            # Get only negative returns for downside calculation
+            downside_count = 0
+            downside_sum_sq = 0.0
+            for j in range(len(window_returns)):
+                if not np.isnan(window_returns[j]) and window_returns[j] < 0:
+                    downside_sum_sq += window_returns[j] ** 2
+                    downside_count += 1
+            
+            if downside_count > 0:
+                downside_vol[t] = np.sqrt(downside_sum_sq / downside_count)
+            else:
+                downside_vol[t] = 0.0
+        
+        # Calculate DP-VAMS
+        for t in range(len(momentum)):
+            if (not np.isnan(momentum[t]) and not np.isnan(total_vol[t]) and 
+                not np.isnan(downside_vol[t])):
+                denominator = alpha * downside_vol[t] + (1.0 - alpha) * total_vol[t]
+                if denominator > 1e-9:
+                    result[t, asset_idx] = momentum[t] / denominator
+    
+    return result
+
+
+@numba.jit(nopython=True, cache=True)
+def garch_simulation_fast(length: int, omega: float, alpha: float, beta: float, 
+                         mean_return: float, initial_variance: float, 
+                         random_seed: int = 42) -> np.ndarray:
+    """
+    Fast GARCH(1,1) simulation using Numba.
+    
+    Replaces the Python loop in synthetic data generation for significant speedup.
+    
+    Parameters
+    ----------
+    length : int
+        Number of periods to simulate
+    omega : float
+        GARCH omega parameter (long-term variance)
+    alpha : float
+        GARCH alpha parameter (ARCH effect)
+    beta : float
+        GARCH beta parameter (persistence)
+    mean_return : float
+        Mean return for the series
+    initial_variance : float
+        Initial variance value
+    random_seed : int
+        Random seed for reproducibility
+        
+    Returns
+    -------
+    np.ndarray
+        Array of simulated returns
+    """
+    np.random.seed(random_seed)
+    
+    returns = np.zeros(length)
+    variances = np.zeros(length)
+    
+    # Set initial variance
+    variances[0] = initial_variance
+    
+    for t in range(1, length):
+        # GARCH variance equation
+        variances[t] = (omega + 
+                       alpha * (returns[t-1] - mean_return)**2 + 
+                       beta * variances[t-1])
+        
+        # Ensure variance is positive
+        variances[t] = max(variances[t], 1e-12)
+        
+        # Generate return with conditional variance
+        returns[t] = np.random.normal(mean_return, np.sqrt(variances[t]))
+    
+    return returns
+
+
+@numba.jit(nopython=True, parallel=True, cache=True)
+def calmar_batch_fast(returns_matrix: np.ndarray, window: int, cal_factor: float = 12.0) -> np.ndarray:
+    """
+    Batch Calmar ratio calculation for multiple assets.
+    
+    Calmar = annualized_return / approximated_max_drawdown
+    where approximated_max_drawdown = rolling_std * 2.5
+    
+    Parameters
+    ----------
+    returns_matrix : np.ndarray
+        2-D array of returns with shape (time, assets)
+    window : int
+        Rolling window length
+    cal_factor : float
+        Annualization factor (default 12 for monthly data)
+        
+    Returns
+    -------
+    np.ndarray
+        2-D array of Calmar ratios with same shape as input
+    """
+    n_periods, n_assets = returns_matrix.shape
+    result = np.full((n_periods, n_assets), np.nan)
+    
+    for asset_idx in numba.prange(n_assets):
+        asset_returns = returns_matrix[:, asset_idx]
+        
+        # Calculate rolling mean
+        rolling_mean = rolling_mean_fast(asset_returns, window) * cal_factor
+        
+        # Calculate rolling std as proxy for max drawdown
+        rolling_std = rolling_std_fast(asset_returns, window)
+        approx_max_dd = rolling_std * 2.5
+        
+        # Calculate Calmar ratio
+        for t in range(len(rolling_mean)):
+            if (not np.isnan(rolling_mean[t]) and not np.isnan(approx_max_dd[t]) and 
+                approx_max_dd[t] > 1e-6):
+                calmar_val = rolling_mean[t] / approx_max_dd[t]
+                # Clip extreme values
+                if calmar_val > 10.0:
+                    result[t, asset_idx] = 10.0
+                elif calmar_val < -10.0:
+                    result[t, asset_idx] = -10.0
+                else:
+                    result[t, asset_idx] = calmar_val
+    
+    return result
+
+
+@numba.jit(nopython=True, parallel=True, cache=True)
+def calmar_batch_fast(returns_matrix: np.ndarray, window: int, cal_factor: float = 12.0) -> np.ndarray:
+    """
+    Batch Calmar ratio calculation for multiple assets.
+    
+    Calmar = annualized_return / approximated_max_drawdown
+    where approximated_max_drawdown = rolling_std * 2.5
+    
+    Parameters
+    ----------
+    returns_matrix : np.ndarray
+        2-D array of returns with shape (time, assets)
+    window : int
+        Rolling window length
+    cal_factor : float
+        Annualization factor (default 12 for monthly data)
+        
+    Returns
+    -------
+    np.ndarray
+        2-D array of Calmar ratios with same shape as input
+    """
+    n_periods, n_assets = returns_matrix.shape
+    result = np.full((n_periods, n_assets), np.nan)
+    
+    for asset_idx in numba.prange(n_assets):
+        asset_returns = returns_matrix[:, asset_idx]
+        
+        # Calculate rolling mean
+        rolling_mean = rolling_mean_fast(asset_returns, window) * cal_factor
+        
+        # Calculate rolling std as proxy for max drawdown
+        rolling_std = rolling_std_fast(asset_returns, window)
+        approx_max_dd = rolling_std * 2.5
+        
+        # Calculate Calmar ratio
+        for t in range(len(rolling_mean)):
+            if (not np.isnan(rolling_mean[t]) and not np.isnan(approx_max_dd[t]) and 
+                approx_max_dd[t] > 1e-6):
+                calmar_val = rolling_mean[t] / approx_max_dd[t]
+                # Clip extreme values
+                if calmar_val > 10.0:
+                    result[t, asset_idx] = 10.0
+                elif calmar_val < -10.0:
+                    result[t, asset_idx] = -10.0
+                else:
+                    result[t, asset_idx] = calmar_val
+    
+    return result

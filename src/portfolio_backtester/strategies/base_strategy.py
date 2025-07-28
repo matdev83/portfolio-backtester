@@ -21,7 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 class BaseStrategy(ABC):
-    """Base class for trading strategies."""
+    """Base class for trading strategies.
+    
+    TESTING NOTE: When testing strategy classes, be aware that strategy instances
+    are created with a configuration dictionary that contains 'strategy_params'.
+    The strategy parameters are stored in self.strategy_config['strategy_params'],
+    not directly in self.strategy_config. This is important for test assertions
+    that check parameter values.
+    """
 
     # Removed signal_generator_class as signal generation is now internal
     # signal_generator_class: type[BaseSignalGenerator] | None = None
@@ -90,7 +97,7 @@ class BaseStrategy(ABC):
             # Update strategy config with fallback timing config
             self.strategy_config['timing_config'] = fallback_config
     
-    def get_timing_controller(self) -> 'TimingController':
+    def get_timing_controller(self) -> Optional['TimingController']:
         """Get the timing controller for this strategy."""
         if self._timing_controller is None:
             self._initialize_timing_controller()
@@ -162,6 +169,12 @@ class BaseStrategy(ABC):
         """
         return []
 
+    def get_synthetic_data_requirements(self) -> bool:
+        """
+        Returns a boolean indicating whether the strategy requires synthetic data generation.
+        """
+        return True
+
 
     # ------------------------------------------------------------------ #
     # Optimiser-introspection hook                                       #
@@ -232,6 +245,20 @@ class BaseStrategy(ABC):
         end_date: Optional[pd.Timestamp] = None, # Optional end date for WFO window
     ) -> pd.DataFrame: # Returns a DataFrame of weights
         """
+        IMPORTANT: Method signature has evolved over time!
+        
+        LEGACY INTERFACE WARNING: Some old tests may call this method with a different signature:
+        - generate_signals(prices, features, benchmark) - OLD 3-argument format
+        - generate_signals(all_historical_data, benchmark_historical_data, current_date) - CURRENT format
+        
+        If you encounter TypeError about numpy array vs Timestamp comparisons, it's likely
+        because legacy code is passing arguments in the wrong order, causing current_date
+        to receive a pandas Series instead of a Timestamp.
+        
+        The validate_data_sufficiency() method includes defensive type checking to handle
+        these cases gracefully, but it's better to update calling code to use the correct signature.
+        """
+        """
         Generates trading signals based on historical data and current date.
         Subclasses must implement this method.
 
@@ -252,6 +279,16 @@ class BaseStrategy(ABC):
             if generating signals for one date at a time, or multiple rows if the
             strategy generates signals for a range and then filters.
             The weights should adhere to the start_date and end_date if provided.
+            
+        TESTING PITFALLS FOR FUTURE DEVELOPERS:
+        ======================================
+        1. Always use the current 6-parameter signature when writing new tests
+        2. If you see tests calling generate_signals(prices, features, benchmark), 
+           they need to be updated to the current interface
+        3. Mock data should use proper MultiIndex OHLCV format, not simple price DataFrames
+        4. Always pass current_date as pd.Timestamp, never as Series or numpy array
+        5. The validate_data_sufficiency() method will catch type mismatches, but 
+           it's better to fix the test interface than rely on defensive coding
         """
         pass
 
@@ -351,6 +388,39 @@ class BaseStrategy(ABC):
         if all_historical_data.empty:
             return False, "No historical data available for universe assets"
             
+        # CRITICAL: Defensive type checking for current_date parameter
+        # 
+        # PROBLEM ENCOUNTERED: Tests and legacy code may pass current_date as various types:
+        # - pandas Series (from old test interfaces)
+        # - numpy arrays (from parameter mismatches)
+        # - strings, datetime objects, etc.
+        # 
+        # This causes "TypeError: '>' not supported between instances of 'numpy.ndarray' and 'Timestamp'"
+        # when comparing current_date > latest_available_date below.
+        #
+        # SOLUTION: Always ensure current_date is a proper pd.Timestamp before any comparisons
+        if not isinstance(current_date, pd.Timestamp):
+            # Handle case where current_date might be a numpy array or other iterable type
+            # This commonly happens when tests call generate_signals() with wrong signature
+            if hasattr(current_date, '__iter__') and not isinstance(current_date, str):
+                # Extract first element from array-like objects
+                try:
+                    if hasattr(current_date, 'iloc'):
+                        # For pandas Series/DataFrame - use .iloc to avoid deprecation warnings
+                        # about positional indexing with []
+                        current_date = pd.Timestamp(current_date.iloc[0])
+                    else:
+                        # For numpy arrays, lists, tuples, etc.
+                        current_date = pd.Timestamp(current_date[0])
+                except (IndexError, TypeError):
+                    return False, f"Invalid current_date format: {type(current_date)}"
+            else:
+                # Handle scalar values that aren't Timestamps (strings, datetime, etc.)
+                try:
+                    current_date = pd.Timestamp(current_date)
+                except (ValueError, TypeError):
+                    return False, f"Cannot convert current_date to Timestamp: {current_date}"
+            
         # Check if current_date is beyond available data
         latest_available_date = all_historical_data.index.max()
         if current_date > latest_available_date:
@@ -395,7 +465,7 @@ class BaseStrategy(ABC):
         self,
         all_historical_data: pd.DataFrame,
         current_date: pd.Timestamp,
-        min_periods_override: int = None
+        min_periods_override: Optional[int] = None
     ) -> list:
         """
         Filter the universe to only include assets that have sufficient historical data

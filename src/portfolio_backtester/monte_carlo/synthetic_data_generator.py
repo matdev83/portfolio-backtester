@@ -12,6 +12,13 @@ import logging
 from typing import Dict
 from dataclasses import dataclass
 
+# Import Numba optimizations with fallback
+try:
+    from ..numba_optimized import garch_simulation_fast, generate_ohlc_from_prices_fast
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -93,14 +100,27 @@ class SyntheticDataGenerator:
         mean_return = asset_stats.mean_return
         volatility = asset_stats.volatility
 
-        returns = np.zeros(length)
-        variances = np.zeros(length)
+        if NUMBA_AVAILABLE:
+            # Use Numba-optimized GARCH simulation
+            returns = garch_simulation_fast(
+                length=length,
+                omega=garch_params.omega,
+                alpha=garch_params.alpha,
+                beta=garch_params.beta,
+                mean_return=mean_return,
+                initial_variance=volatility ** 2,
+                random_seed=self.random_seed
+            )
+        else:
+            # Fallback to Python implementation
+            returns = np.zeros(length)
+            variances = np.zeros(length)
 
-        variances[0] = volatility ** 2
+            variances[0] = volatility ** 2
 
-        for t in range(1, length):
-            variances[t] = garch_params.omega + garch_params.alpha * (returns[t-1] - mean_return)**2 + garch_params.beta * variances[t-1]
-            returns[t] = np.random.normal(mean_return, np.sqrt(variances[t]))
+            for t in range(1, length):
+                variances[t] = garch_params.omega + garch_params.alpha * (returns[t-1] - mean_return)**2 + garch_params.beta * variances[t-1]
+                returns[t] = np.random.normal(mean_return, np.sqrt(variances[t]))
 
         return returns
 
@@ -126,19 +146,24 @@ class SyntheticDataGenerator:
         return synthetic_df
 
     def _generate_ohlc_from_prices(self, prices: np.ndarray) -> np.ndarray:
-        ohlc = np.zeros((len(prices), 4))
-        
-        for i in range(len(prices)):
-            close = prices[i]
+        if NUMBA_AVAILABLE:
+            # Use Numba-optimized OHLC generation
+            return generate_ohlc_from_prices_fast(prices, random_seed=self.random_seed)
+        else:
+            # Fallback to Python implementation
+            ohlc = np.zeros((len(prices), 4))
             
-            if i == 0:
-                open_price = close
-            else:
-                open_price = prices[i-1]
+            for i in range(len(prices)):
+                close = prices[i]
+                
+                if i == 0:
+                    open_price = close
+                else:
+                    open_price = prices[i-1]
+                
+                high = max(open_price, close)
+                low = min(open_price, close)
+                
+                ohlc[i] = [open_price, high, low, close]
             
-            high = max(open_price, close)
-            low = min(open_price, close)
-            
-            ohlc[i] = [open_price, high, low, close]
-        
-        return ohlc
+            return ohlc

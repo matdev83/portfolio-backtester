@@ -1,0 +1,95 @@
+"""
+Advanced backtester feature integration tests.
+Focused on complex scenarios, optimization integration, and advanced features.
+Separated from core tests for better organization.
+"""
+
+import unittest
+import pytest
+import pandas as pd
+import numpy as np
+from unittest.mock import Mock, patch
+from src.portfolio_backtester.backtester import Backtester
+
+
+@pytest.mark.integration
+class TestBacktesterAdvancedFeatures(unittest.TestCase):
+    """Test advanced backtester features integration."""
+    
+    def setUp(self):
+        """Set up advanced test scenarios."""
+        self.advanced_config = {
+            'strategy': 'momentum',
+            'strategy_params': {
+                'lookback_months': 6,
+                'num_holdings': 20,
+                'smoothing_lambda': 0.3,
+                'leverage': 1.5
+            },
+            'start_date': '2020-01-01',
+            'end_date': '2023-12-31',
+            'initial_capital': 1000000,
+            'transaction_costs': 0.001,
+            'rebalance_frequency': 'M'
+        }
+    
+    @patch("src.portfolio_backtester.data_sources.get_data_source")
+    def test_transaction_cost_integration(self, mock_get_data_source):
+        """Test transaction cost integration with backtester."""
+        mock_data_source = Mock()
+        mock_get_data_source.return_value = mock_data_source
+        
+        backtester = Backtester(self.advanced_config)
+        
+        # Verify transaction costs are properly integrated
+        self.assertEqual(backtester.transaction_costs, 0.001)
+    
+    @patch("src.portfolio_backtester.data_sources.get_data_source")
+    def test_leverage_integration(self, mock_get_data_source):
+        """Test leverage integration."""
+        mock_data_source = Mock()
+        mock_get_data_source.return_value = mock_data_source
+        
+        backtester = Backtester(self.advanced_config)
+        
+        # Verify leverage is properly configured
+        self.assertEqual(backtester.strategy.leverage, 1.5)
+    
+    @patch("src.portfolio_backtester.data_sources.get_data_source")
+    def test_large_universe_integration(self, mock_get_data_source):
+        """Test integration with large asset universes."""
+        # Create large universe
+        large_universe = [f'STOCK_{i:03d}' for i in range(100)]
+        
+        config = self.advanced_config.copy()
+        config['universe'] = large_universe
+        
+        mock_data_source = Mock()
+        mock_get_data_source.return_value = mock_data_source
+        
+        backtester = Backtester(config)
+        
+        # Should handle large universes without issues
+        self.assertEqual(len(backtester.universe), 100)
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+class TestBacktesterOptimizationIntegration:
+    """Test backtester integration with optimization features."""
+    
+    def test_walk_forward_optimization_integration(self):
+        """Test WFO integration (placeholder for actual implementation)."""
+        # This would test integration with walk-forward optimization
+        # Placeholder for now
+        pass
+    
+    def test_monte_carlo_integration(self):
+        """Test Monte Carlo integration (placeholder for actual implementation)."""
+        # This would test integration with Monte Carlo features
+        # Placeholder for now
+        pass
+
+
+if __name__ == '__main__':
+    unittest.main()

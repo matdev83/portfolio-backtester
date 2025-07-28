@@ -1,0 +1,207 @@
+"""
+Core backtester integration tests.
+Focused on basic backtester initialization and core functionality integration.
+Consolidates overlapping tests from test_backtester.py and test_integration_backtester.py
+"""
+
+import unittest
+import pytest
+import pandas as pd
+import numpy as np
+from unittest.mock import Mock, patch, MagicMock
+from src.portfolio_backtester.backtester import Backtester
+from src.portfolio_backtester.strategies.momentum_strategy import MomentumStrategy
+
+
+class TestBacktesterCoreIntegration(unittest.TestCase):
+    """Test core backtester integration functionality."""
+    
+    @patch("src.portfolio_backtester.data_sources.get_data_source")
+    @patch('numpy.random.seed')
+    def test_backtester_initialization(self, mock_np_seed, mock_get_data_source):
+        """Test backtester initialization with core components."""
+        # Mock data source
+        mock_data_source = Mock()
+        mock_get_data_source.return_value = mock_data_source
+        
+        # Test basic initialization
+        config = {
+            'strategy': 'momentum',
+            'start_date': '2020-01-01',
+            'end_date': '2023-12-31',
+            'initial_capital': 100000
+        }
+        
+        backtester = Backtester(config)
+        
+        # Verify initialization
+        self.assertIsInstance(backtester, Backtester)
+        self.assertEqual(backtester.initial_capital, 100000)
+        mock_np_seed.assert_called_once()
+    
+    @patch("src.portfolio_backtester.data_sources.get_data_source")
+    def test_strategy_integration(self, mock_get_data_source):
+        """Test strategy integration with backtester."""
+        # Mock data source
+        mock_data_source = Mock()
+        mock_get_data_source.return_value = mock_data_source
+        
+        config = {
+            'strategy': 'momentum',
+            'strategy_params': {
+                'lookback_months': 3,
+                'num_holdings': 10
+            },
+            'start_date': '2020-01-01',
+            'end_date': '2023-12-31'
+        }
+        
+        backtester = Backtester(config)
+        
+        # Verify strategy is properly integrated
+        self.assertIsNotNone(backtester.strategy)
+        self.assertIsInstance(backtester.strategy, MomentumStrategy)
+    
+    @patch("src.portfolio_backtester.data_sources.get_data_source")
+    def test_data_source_integration(self, mock_get_data_source):
+        """Test data source integration."""
+        # Mock data source with realistic behavior
+        mock_data_source = Mock()
+        mock_data_source.get_data.return_value = self._create_mock_data()
+        mock_get_data_source.return_value = mock_data_source
+        
+        config = {
+            'strategy': 'momentum',
+            'start_date': '2020-01-01',
+            'end_date': '2020-12-31',
+            'universe': ['AAPL', 'MSFT']
+        }
+        
+        backtester = Backtester(config)
+        
+        # Verify data source integration
+        self.assertIsNotNone(backtester.data_source)
+        mock_get_data_source.assert_called_once()
+    
+    def _create_mock_data(self):
+        """Create mock data for testing."""
+        dates = pd.date_range('2020-01-01', '2020-12-31', freq='D')
+        tickers = ['AAPL', 'MSFT']
+        
+        # Create MultiIndex DataFrame
+        columns = pd.MultiIndex.from_product([tickers, ['Close']], names=['Ticker', 'Field'])
+        data = pd.DataFrame(
+            np.random.randn(len(dates), len(columns)) * 0.02 + 1,
+            index=dates,
+            columns=columns
+        ).cumprod() * 100
+        
+        return data
+
+
+class TestBacktesterComponentIntegration(unittest.TestCase):
+    """Test integration between backtester components."""
+    
+    def setUp(self):
+        """Set up test environment."""
+        self.mock_data = self._create_comprehensive_mock_data()
+    
+    def _create_comprehensive_mock_data(self):
+        """Create comprehensive mock data for integration tests."""
+        dates = pd.date_range('2020-01-01', '2022-12-31', freq='D')
+        tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN']
+        fields = ['Open', 'High', 'Low', 'Close', 'Volume']
+        
+        # Create realistic market data
+        np.random.seed(42)
+        data_dict = {}
+        
+        for ticker in tickers:
+            ticker_data = {}
+            base_price = 100
+            
+            for i, date in enumerate(dates):
+                if i == 0:
+                    close = base_price
+                else:
+                    # Random walk
+                    close = ticker_data['Close'][i-1] * (1 + np.random.normal(0, 0.02))
+                
+                # Generate OHLCV
+                open_price = close * (1 + np.random.normal(0, 0.005))
+                high = max(open_price, close) * (1 + abs(np.random.normal(0, 0.01)))
+                low = min(open_price, close) * (1 - abs(np.random.normal(0, 0.01)))
+                volume = np.random.randint(1000000, 10000000)
+                
+                for field in fields:
+                    if field not in ticker_data:
+                        ticker_data[field] = []
+                    
+                    if field == 'Open':
+                        ticker_data[field].append(open_price)
+                    elif field == 'High':
+                        ticker_data[field].append(high)
+                    elif field == 'Low':
+                        ticker_data[field].append(low)
+                    elif field == 'Close':
+                        ticker_data[field].append(close)
+                    elif field == 'Volume':
+                        ticker_data[field].append(volume)
+            
+            data_dict[ticker] = ticker_data
+        
+        # Convert to MultiIndex DataFrame
+        columns = pd.MultiIndex.from_product([tickers, fields], names=['Ticker', 'Field'])
+        data_array = np.column_stack([
+            data_dict[ticker][field] for ticker in tickers for field in fields
+        ])
+        
+        return pd.DataFrame(data_array, index=dates, columns=columns)
+    
+    @patch("src.portfolio_backtester.data_sources.get_data_source")
+    def test_end_to_end_integration(self, mock_get_data_source):
+        """Test end-to-end integration of all components."""
+        # Mock data source
+        mock_data_source = Mock()
+        mock_data_source.get_data.return_value = self.mock_data
+        mock_get_data_source.return_value = mock_data_source
+        
+        config = {
+            'strategy': 'momentum',
+            'strategy_params': {
+                'lookback_months': 3,
+                'num_holdings': 2,
+                'smoothing_lambda': 0.5
+            },
+            'start_date': '2020-06-01',  # Allow for lookback period
+            'end_date': '2021-12-31',
+            'initial_capital': 100000,
+            'rebalance_frequency': 'M',
+            'universe': ['AAPL', 'MSFT', 'GOOGL', 'AMZN']
+        }
+        
+        backtester = Backtester(config)
+        
+        # This should not raise exceptions
+        try:
+            # Test that all components work together
+            self.assertIsNotNone(backtester.strategy)
+            self.assertIsNotNone(backtester.data_source)
+            self.assertEqual(backtester.initial_capital, 100000)
+        except Exception as e:
+            self.fail(f"End-to-end integration failed: {e}")
+
+
+@pytest.mark.integration
+class TestBacktesterPerformanceIntegration:
+    """Test backtester performance integration scenarios."""
+    
+    def test_integration_performance_benchmarks(self):
+        """Test that integration scenarios meet performance benchmarks."""
+        # This would contain performance-focused integration tests
+        # Placeholder for now - would be expanded based on actual performance requirements
+        pass
+
+
+if __name__ == '__main__':
+    unittest.main()

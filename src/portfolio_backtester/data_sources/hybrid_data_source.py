@@ -2,7 +2,7 @@ import logging
 import pickle
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -428,48 +428,52 @@ class HybridDataSource(BaseDataSource):
             else:
                 raise ValueError(f"Unknown source: {source}")
             
-            if data_df is None or data_df.empty:
-                logger.warning(f"No data returned from {source}")
-                return pd.DataFrame(), [], tickers
-            
-            # Normalize the data format
+            # Normalize the data format, even if data_df is empty, to ensure consistent structure
             normalized_df = self._normalize_data_format(data_df, source, tickers)
             
-            # Check which tickers were successfully fetched
             successful_tickers = []
             failed_tickers = []
             
-            for ticker in tickers:
-                # Check if ticker exists in the normalized data
+            if not normalized_df.empty:
                 if isinstance(normalized_df.columns, pd.MultiIndex):
-                    ticker_cols = [col for col in normalized_df.columns if col[0] == ticker]
-                    if ticker_cols:
-                        # Extract ticker data for validation
-                        ticker_data = normalized_df[ticker_cols]
-                        if self._is_data_valid(ticker_data, ticker):
-                            successful_tickers.append(ticker)
-                        else:
-                            failed_tickers.append(ticker)
-                    else:
-                        failed_tickers.append(ticker)
+                    present_tickers = normalized_df.columns.get_level_values('Ticker').unique()
+                    for ticker in present_tickers:
+                        if ticker in tickers:
+                            ticker_data = normalized_df.xs(ticker, level='Ticker', axis=1, drop_level=False)
+                            if self._is_data_valid(pd.DataFrame(ticker_data), ticker):
+                                successful_tickers.append(ticker)
+                    
+                    failed_tickers = list(set(tickers) - set(successful_tickers))
+                
                 else:
-                    if ticker in normalized_df.columns:
-                        ticker_data = normalized_df[[ticker]]
-                        if self._is_data_valid(ticker_data, ticker):
-                            successful_tickers.append(ticker)
+                    # Handle flat DataFrame case
+                    for ticker in tickers:
+                        if ticker in normalized_df.columns:
+                            ticker_data = normalized_df[[ticker]]
+                            if self._is_data_valid(pd.DataFrame(ticker_data), ticker):
+                                successful_tickers.append(ticker)
+                            else:
+                                failed_tickers.append(ticker)
                         else:
                             failed_tickers.append(ticker)
-                    else:
-                        failed_tickers.append(ticker)
+            else:
+                failed_tickers = tickers
             
             logger.info(f"{source} results: {len(successful_tickers)} successful, {len(failed_tickers)} failed")
             if failed_tickers:
                 logger.debug(f"{source} failed tickers: {failed_tickers}")
             
-            return normalized_df, successful_tickers, failed_tickers
+            # Return only the data for successful tickers
+            if isinstance(normalized_df.columns, pd.MultiIndex):
+                cols_to_keep = [col for col in normalized_df.columns if col[0] in successful_tickers]
+                return normalized_df[cols_to_keep], successful_tickers, failed_tickers
+            else:
+                cols_to_keep = [col for col in normalized_df.columns if col in successful_tickers]
+                return normalized_df[cols_to_keep], successful_tickers, failed_tickers
             
         except Exception as e:
             logger.error(f"Error fetching data from {source}: {e}")
+            # If an error occurs, all tickers are considered failed for this source
             return pd.DataFrame(), [], tickers
 
     def get_data(self, tickers: List[str], start_date: str, end_date: str) -> pd.DataFrame:
@@ -595,7 +599,7 @@ class HybridDataSource(BaseDataSource):
         
         return result_df
 
-    def get_failure_report(self) -> Dict[str, any]:
+    def get_failure_report(self) -> Dict[str, Any]:
         """
         Get a detailed report of data fetching failures.
         

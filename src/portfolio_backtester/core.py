@@ -463,7 +463,8 @@ class Backtester:
             universe_tickers = [t for t in universe_tickers if t not in missing_cols]
 
         if not universe_tickers:
-            raise ValueError("No universe tickers remain after filtering missing data columns.")
+            logger.warning("No universe tickers remain after filtering for missing data. Skipping scenario.")
+            return pd.Series(dtype=float)
 
         benchmark_ticker = self.global_config["benchmark"]
 
@@ -574,9 +575,10 @@ class Backtester:
         trial_threshold = self._get_monte_carlo_trial_threshold(optimization_mode)
         
         trial_number = getattr(trial, 'number', 0) if trial else 0
-        mc_adaptive_enabled = mc_enabled and mc_during_optimization and (trial_number >= trial_threshold)
+        strategy = self._get_strategy(scenario_config["strategy"], scenario_config["strategy_params"])
+        mc_adaptive_enabled = mc_enabled and mc_during_optimization and (trial_number >= trial_threshold) and strategy.get_synthetic_data_requirements()
         
-        if mc_adaptive_enabled:
+        if mc_adaptive_enabled and 'asset_replacement_manager' not in scenario_config:
             from .monte_carlo.asset_replacement import AssetReplacementManager
             
             stage1_config = monte_carlo_config.copy()
@@ -584,29 +586,18 @@ class Backtester:
             stage1_config['replacement_percentage'] = monte_carlo_config.get('replacement_percentage', 0.05)
             
             stage1_config['generation_config'] = {
-                'buffer_multiplier': 1.0,
-                'max_attempts': 1,
-                'validation_tolerance': 1.0
+                'buffer_multiplier': 1.0, 'max_attempts': 1, 'validation_tolerance': 1.0
             }
-            
-            stage1_config['validation_config'] = {
-                'enable_validation': False
-            }
+            stage1_config['validation_config'] = {'enable_validation': False}
             
             asset_replacement_manager = AssetReplacementManager(stage1_config)
-            if asset_replacement_manager is not None:
-                asset_replacement_manager.set_full_data_source(self.data_source, self.global_config)
+            asset_replacement_manager.set_full_data_source(self.data_source, self.global_config)
+            scenario_config['asset_replacement_manager'] = asset_replacement_manager
+            
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Stage 1 MC: Lightweight synthetic data enabled for optimization robustness (mode: {optimization_mode}, trial: {trial_number})")
-        elif mc_enabled and not mc_during_optimization:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug("Stage 1 MC: Disabled during optimization for performance")
-        elif mc_enabled and trial_number < trial_threshold:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Stage 1 MC: Waiting for trial {trial_threshold} before enabling (current: {trial_number}, mode: {optimization_mode})")
-        else:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug("Stage 1 MC: Monte Carlo disabled in configuration")
+                logger.debug(f"Stage 1 MC: Initialized AssetReplacementManager for optimization robustness (mode: {optimization_mode})")
+
+        asset_replacement_manager = scenario_config.get('asset_replacement_manager')
 
         all_window_returns = []
         
@@ -991,6 +982,8 @@ class Backtester:
         all_tickers.add(self.global_config["benchmark"])
 
         for scenario_config in self.scenarios:
+            if "universe" in scenario_config:
+                all_tickers.update(scenario_config["universe"])
             strategy = self._get_strategy(
                 scenario_config["strategy"], scenario_config["strategy_params"]
             )

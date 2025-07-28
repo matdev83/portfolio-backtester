@@ -58,9 +58,15 @@ def rolling_sharpe_sizer(
                 sharpe_values = rolling_sharpe_fast(rets[col].values, window, 1.0)
                 sharpe[col] = sharpe_values
             else:
-                mean_rets = rets[col].rolling(window).mean()
-                std_rets = rets[col].rolling(window).std()
-                sharpe[col] = mean_rets / std_rets.replace(0, np.nan)
+                # Use existing Numba functions if available for individual columns
+                if NUMBA_AVAILABLE and not rets[col].isna().all():
+                    mean_values = rolling_mean_fast(rets[col].values, window)
+                    std_values = rolling_std_fast(rets[col].values, window)
+                    sharpe[col] = pd.Series(mean_values, index=rets.index) / pd.Series(std_values, index=rets.index).replace(0, np.nan)
+                else:
+                    mean_rets = rets[col].rolling(window).mean()
+                    std_rets = rets[col].rolling(window).std()
+                    sharpe[col] = mean_rets / std_rets.replace(0, np.nan)
     
     sized = signals.mul(sharpe)
     sized_sums = sized.abs().sum(axis=1)
@@ -101,9 +107,14 @@ def rolling_sortino_sizer(
                         return 1e-9
                     return np.sqrt(np.mean((downside_returns - target_return) ** 2))
                 
-                mean_rets = rets[col].rolling(window).mean()
-                downside_dev = rets[col].rolling(window).apply(downside, raw=False)
-                sortino[col] = (mean_rets - target_return) / downside_dev.replace(0, np.nan)
+                # Use existing Numba functions if available for individual columns
+                if NUMBA_AVAILABLE and not rets[col].isna().all():
+                    sortino_values = rolling_sortino_fast(rets[col].values, window, target_return, 1.0)
+                    sortino[col] = pd.Series(sortino_values, index=rets.index)
+                else:
+                    mean_rets = rets[col].rolling(window).mean()
+                    downside_dev = rets[col].rolling(window).apply(downside, raw=False)
+                    sortino[col] = (mean_rets - target_return) / downside_dev.replace(0, np.nan)
     
     sized = signals.mul(sortino)
     sized_sums = sized.abs().sum(axis=1)
@@ -140,9 +151,14 @@ def rolling_beta_sizer(
                 beta_values = rolling_beta_fast(rets[col].values, bench_rets.values, window)
                 beta[col] = beta_values
             else:
-                cov = rets[col].rolling(window).cov(bench_rets)
-                var = bench_rets.rolling(window).var()
-                beta[col] = cov / var
+                # Use existing Numba functions if available for individual columns
+                if NUMBA_AVAILABLE and not rets[col].isna().all():
+                    beta_values = rolling_beta_fast(rets[col].values, bench_rets.values, window)
+                    beta[col] = pd.Series(beta_values, index=rets.index)
+                else:
+                    cov = rets[col].rolling(window).cov(bench_rets)
+                    var = bench_rets.rolling(window).var()
+                    beta[col] = cov / var
     
     factor = 1 / beta.abs().replace(0, np.nan)
     sized = signals.mul(factor)
@@ -180,7 +196,12 @@ def rolling_benchmark_corr_sizer(
                 corr_values = rolling_correlation_fast(rets[col].values, bench_rets.values, window)
                 corr[col] = corr_values
             else:
-                corr[col] = rets[col].rolling(window).corr(bench_rets)
+                # Use existing Numba functions if available for individual columns
+                if NUMBA_AVAILABLE and not rets[col].isna().all():
+                    corr_values = rolling_correlation_fast(rets[col].values, bench_rets.values, window)
+                    corr[col] = pd.Series(corr_values, index=rets.index)
+                else:
+                    corr[col] = rets[col].rolling(window).corr(bench_rets)
     
     factor = 1 / (corr.abs() + 1e-9)
     sized = signals.mul(factor)
