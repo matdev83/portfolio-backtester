@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 
-class TestCoverageValidator:
+class CoverageValidator:
     """Validates test coverage and ensures no regression."""
     
     def __init__(self):
@@ -209,7 +209,7 @@ def main():
     print("Starting Test Suite Validation")
     print("="*60)
     
-    validator = TestCoverageValidator()
+    validator = CoverageValidator()
     
     # Run all validations
     validations = [
