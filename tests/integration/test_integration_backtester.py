@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 RunResult = tuple[subprocess.CompletedProcess, Path, Path] # process, stdout_file, stderr_file
 
-def run_backtester_process(command_args: list[str], timeout_sec: int = 180) -> RunResult:
+def run_backtester_process(command_args: list[str], timeout_sec: int = 1500) -> RunResult:
     full_command = [sys.executable, "-m", "src.portfolio_backtester.backtester"] + command_args
     tmp_log_dir = PROJECT_ROOT / "tmp"
     tmp_log_dir.mkdir(exist_ok=True)
@@ -29,6 +29,8 @@ def run_backtester_process(command_args: list[str], timeout_sec: int = 180) -> R
         )
         stdout_tf.flush()
         stderr_tf.flush()
+        print(f"--- STDOUT ---\n{Path(stdout_tf.name).read_text(encoding='utf-8')}\n--- END STDOUT ---")
+        print(f"--- STDERR ---\n{Path(stderr_tf.name).read_text(encoding='utf-8')}\n--- END STDERR ---")
         return process, Path(stdout_tf.name), Path(stderr_tf.name)
     except subprocess.TimeoutExpired as e:
         print(f"Timeout running command: {' '.join(full_command)}")

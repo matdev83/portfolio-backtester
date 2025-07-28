@@ -15,6 +15,7 @@ from .ema_roro_strategy import EMARoRoStrategy
 from .low_volatility_factor_strategy import LowVolatilityFactorStrategy
 from .momentum_beta_filtered_strategy import MomentumBetaFilteredStrategy
 from .uvxy_rsi_strategy import UvxyRsiStrategy
+from .intramonth_seasonal_strategy import IntramonthSeasonalStrategy
 
 __all__ = [
     "BaseStrategy",

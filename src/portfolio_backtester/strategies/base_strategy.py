@@ -353,7 +353,7 @@ class BaseStrategy(ABC):
             
         # Check if current_date is beyond available data
         latest_available_date = all_historical_data.index.max()
-        if current_date > latest_available_date:
+        if pd.Timestamp(current_date) > pd.Timestamp(latest_available_date):
             return False, f"Current date {current_date} is beyond available data (latest: {latest_available_date})"
             
         # Filter data up to current_date

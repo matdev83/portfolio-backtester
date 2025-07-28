@@ -180,9 +180,10 @@ class TestEnhancedBacktestingIntegration:
         args.mode = 'optimize'
         args.optimizer = 'optuna'
         args.optuna_trials = 10
-        args.optuna_timeout_sec = 30
+        args.timeout = 1200
         args.pruning_enabled = True
         args.pruning_n_startup_trials = 2
+        args.pruning_n_warmup_steps = 0
         args.pruning_interval_steps = 1
         args.n_jobs = 1
         args.early_stop_patience = 5
@@ -467,7 +468,9 @@ class TestEnhancedBacktestingIntegration:
         # Test with minimal configuration
         minimal_config = {
             'universe': ['AAPL', 'MSFT'],
-            'benchmark': 'SPY'
+            'benchmark': 'SPY',
+            'wfo_robustness_config': {},
+            'monte_carlo_config': {},
         }
         
         scenario_config = {

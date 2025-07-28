@@ -317,7 +317,7 @@ class TestGeneticOptimizerWithWalkForward:
         # For now, let's try to directly instantiate and then override necessary parts.
 
         with patch('portfolio_backtester.config_loader.load_config') as mock_load_config, \
-             patch('portfolio_backtester.backtester.populate_default_optimizations') as mock_populate:
+             patch('portfolio_backtester.config_initializer.populate_default_optimizations') as mock_populate:
             # Prevent file loading by patching, and assign our mocks
             from portfolio_backtester import backtester as bt_module
             bt_module.GLOBAL_CONFIG = MOCK_GLOBAL_CONFIG

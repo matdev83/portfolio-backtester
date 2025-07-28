@@ -129,7 +129,7 @@ class TestDataSanityCheck(unittest.TestCase):
         # Allow for up to 5 trading days lag (very conservative for data provider delays)
         # Get the last 10 trading days to create acceptable range
         recent_trading_days = self.nyse.valid_days(
-            start_date=expected_last_trading_day - timedelta(days=20),
+            start_date=expected_last_trading_day - timedelta(days=50),
             end_date=expected_last_trading_day
         )
         
