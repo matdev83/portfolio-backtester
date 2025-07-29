@@ -39,7 +39,10 @@ dependencies = [
     "plotly",
     "kaleido",
     "parameterized",
-    "ta"
+    "ta",
+    "edgar",
+    "httpx",
+    "tqdm"
 ]
 
 [project.optional-dependencies]
