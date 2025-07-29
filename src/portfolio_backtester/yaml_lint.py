@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 YAML Linter CLI Tool
 

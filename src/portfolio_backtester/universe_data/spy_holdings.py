@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 """
 Grab the longest public history of S&P-500 ETF holdings (default: SPY).
 

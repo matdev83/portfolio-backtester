@@ -402,9 +402,8 @@ class TestBackwardCompatibility:
         strategy_config = {}
         
         strategy = MockStrategy(strategy_config)
-        universe = strategy.get_universe(global_config)
-        
-        assert universe == []
+        with pytest.raises(ValueError):
+            strategy.get_universe(global_config)
     
     def test_missing_global_universe(self):
         """Test behavior when global config has no universe key."""
@@ -412,9 +411,8 @@ class TestBackwardCompatibility:
         strategy_config = {}
         
         strategy = MockStrategy(strategy_config)
-        universe = strategy.get_universe(global_config)
-        
-        assert universe == []
+        with pytest.raises(ValueError):
+            strategy.get_universe(global_config)
 
 
 class TestErrorHandlingAndLogging:
