@@ -28,8 +28,8 @@ class EMAStrategy(BaseStrategy):
         self.slow_ema_days = strategy_config.get('slow_ema_days', 64)
         self.leverage = strategy_config.get('leverage', 1.0)
         
-    @staticmethod
-    def tunable_parameters() -> Set[str]:
+    @classmethod
+    def tunable_parameters(cls) -> Set[str]:
         """Return set of tunable parameters for this strategy."""
         return {'fast_ema_days', 'slow_ema_days', 'leverage'}
     
@@ -37,9 +37,11 @@ class EMAStrategy(BaseStrategy):
         self,
         all_historical_data: pd.DataFrame,
         benchmark_historical_data: pd.DataFrame,
-        current_date: pd.Timestamp,
+        non_universe_historical_data: Optional[pd.DataFrame] = None,
+        current_date: Optional[pd.Timestamp] = None,
         start_date: Optional[pd.Timestamp] = None,
         end_date: Optional[pd.Timestamp] = None,
+        **kwargs,
     ) -> pd.DataFrame:
         """
         Generate EMA crossover signals.
@@ -54,6 +56,10 @@ class EMAStrategy(BaseStrategy):
         Returns:
             DataFrame with signals (weights) for the current date
         """
+        # Check if current_date is provided
+        # Handle None current_date gracefully - use the last date in the data
+        if current_date is None:
+            current_date = all_historical_data.index[-1]
         # Check if we should generate signals for this date
         if start_date is not None and current_date < start_date:
             return pd.DataFrame(index=[current_date], columns=all_historical_data.columns).fillna(0.0)
@@ -75,43 +81,47 @@ class EMAStrategy(BaseStrategy):
         else:
             available_tickers = list(all_historical_data.columns)
         
-        # Initialize weights
-        weights = pd.Series(0.0, index=available_tickers)
-        
-        # Calculate EMA signals for each ticker
-        for ticker in available_tickers:
-            prices = close_prices[ticker].dropna()
-            
-            if len(prices) < max(self.fast_ema_days, self.slow_ema_days) + 10:
-                # Not enough data for reliable signals
-                continue
-                
-            # Calculate EMAs up to current date
-            if NUMBA_AVAILABLE:
-                fast_ema_values = ema_fast(prices.values, self.fast_ema_days)
-                slow_ema_values = ema_fast(prices.values, self.slow_ema_days)
-                fast_ema = pd.Series(fast_ema_values, index=prices.index)
-                slow_ema = pd.Series(slow_ema_values, index=prices.index)
+        # --------------------------------------------------------------
+        # Vectorised EMA calculation for all tickers.
+        # Require only *exactly* max(fast, slow) periods of history instead
+        # of +10; this prevents ‘no data’ on the very first WFO window.
+        # --------------------------------------------------------------
+
+        min_periods = max(self.fast_ema_days, self.slow_ema_days)
+        valid_mask = close_prices.notna().sum() >= min_periods
+        valid_tickers = close_prices.columns[valid_mask]
+        fast_ema = close_prices[valid_tickers].ewm(span=self.fast_ema_days).mean()
+        slow_ema = close_prices[valid_tickers].ewm(span=self.slow_ema_days).mean()
+        # Get EMA values at current date (or closest available date)
+        if current_date in fast_ema.index and current_date in slow_ema.index:
+            fast_values = fast_ema.loc[current_date]
+            slow_values = slow_ema.loc[current_date]
+            signal_mask = (fast_values > slow_values) & (~fast_values.isna()) & (~slow_values.isna())
+            weights = pd.Series(0.0, index=available_tickers)
+            weights.loc[signal_mask.index[signal_mask]] = 1.0
+        else:
+            # If current_date is not available, use the last available date before current_date
+            available_dates = fast_ema.index[fast_ema.index <= current_date]
+            if len(available_dates) > 0:
+                last_available_date = available_dates[-1]
+                fast_values = fast_ema.loc[last_available_date]
+                slow_values = slow_ema.loc[last_available_date]
+                signal_mask = (fast_values > slow_values) & (~fast_values.isna()) & (~slow_values.isna())
+                weights = pd.Series(0.0, index=available_tickers)
+                weights.loc[signal_mask.index[signal_mask]] = 1.0
+                import logging
+                logging.getLogger(__name__).debug(f"EMAStrategy: using {last_available_date} instead of {current_date}")
             else:
-                fast_ema = prices.ewm(span=self.fast_ema_days).mean()
-                slow_ema = prices.ewm(span=self.slow_ema_days).mean()
-            
-            # Get EMA values at current date
-            if current_date in fast_ema.index and current_date in slow_ema.index:
-                fast_value = fast_ema.loc[current_date]
-                slow_value = slow_ema.loc[current_date]
-                
-                # Long signal when fast EMA > slow EMA
-                if not pd.isna(fast_value) and not pd.isna(slow_value) and fast_value > slow_value:
-                    weights[ticker] = 1.0
-        
-        # Equal weight allocation among selected stocks
+                weights = pd.Series(0.0, index=available_tickers)
+        # Equal-weight allocation among selected stocks
         if weights.sum() > 0:
             weights = weights / weights.sum()
             # Apply leverage
             weights = weights * self.leverage
-        
-        # Return as DataFrame with current date as index
+        else:
+            import logging
+            logging.getLogger(__name__).debug("EMAStrategy: no positions selected on %s", current_date)
+            # Return as DataFrame with current date as index
         return pd.DataFrame([weights], index=[current_date])
     
     def __str__(self):

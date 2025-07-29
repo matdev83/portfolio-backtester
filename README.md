@@ -16,6 +16,7 @@ This project is a sophisticated Python-based tool for backtesting portfolio stra
 - **WFO Robustness Features**: Randomized window sizes and start dates for enhanced robustness
 - **Multi-Objective Optimization**: Simultaneous optimization of multiple metrics (Sharpe, Sortino, Max Drawdown)
 - **Dual Optimization Engines**: Optuna (Bayesian) and Genetic Algorithm support
+- **Advanced Genetic Algorithm Features**: Adaptive parameter control, elite preservation, and sophisticated crossover operators
 - **Trial Pruning**: Early stopping of unpromising parameter combinations
 
 ### Two-Stage Monte Carlo System
@@ -655,9 +656,9 @@ This ensures all existing functionality remains intact while providing performan
 
 Performance gains are most significant during optimization runs with many trials and windows.
 
-## Genetic Algorithm Enhancements (v2)
+## Genetic Algorithm Enhancements (v3)
 
-The **Genetic** optimizer now includes two major optional subsystems designed to
+The **Genetic** optimizer now includes three major optional subsystems designed to
 speed-up convergence and prevent the loss of valuable solutions:
 
 1. **Adaptive Parameter Control** – mutation and crossover probabilities are
@@ -666,8 +667,11 @@ speed-up convergence and prevent the loss of valuable solutions:
 2. **Elite Preservation System** – the best chromosomes discovered across
    generations are kept in a fixed-size archive and can be periodically
    reinjected into the population to avoid genetic drift.
+3. **Advanced Crossover Operators** – sophisticated recombination strategies that
+   provide better exploration and exploitation capabilities than standard PyGAD
+   crossover types.
 
-Both features are fully backward-compatible and *disabled by default*.  Your
+All features are fully backward-compatible and *disabled by default*.  Your
 existing scenarios will work unchanged.
 
 ### Adaptive Parameter Control
@@ -698,14 +702,14 @@ adaptive_mutation:
 
 A lightweight archive stores the top-`N` chromosomes (by fitness) seen so far.
 These elites can be reinserted every few generations, ensuring the optimizer
-never “forgets” its best discoveries.
+never "forgets" its best discoveries.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `enabled` | Enable elite preservation | `false` |
 | `max_archive_size` | Maximum elites stored globally | `50` |
 | `aging_factor` | Fitness decay per generation (prevents stagnation) | `0.95` |
-| `injection_strategy` | `direct` (replace worst) &#124; `tournament` | `direct` |
+| `injection_strategy` | `direct` (replace worst) | `tournament` | `direct` |
 | `injection_frequency` | How often (in generations) to inject elites | `5` |
 | `min_elites` / `max_elites` | Range of elites to inject each time | `2` / `5` |
 
@@ -722,10 +726,79 @@ elite_preservation:
   max_elites: 5
 ```
 
+### Advanced Crossover Operators
+
+The genetic optimizer now supports four advanced crossover operators that provide
+more sophisticated recombination strategies than the basic crossover types
+available in PyGAD. These operators can significantly improve convergence speed
+and solution quality for different types of optimization problems.
+
+#### Available Operators
+
+1. **Simulated Binary Crossover (SBX)** – Designed for continuous optimization
+   problems, creates offspring that are close to parents with spread controlled
+   by a distribution index.
+2. **Multi-point Crossover** – Creates offspring by selecting multiple crossover
+   points and alternating between parents for chromosome segments.
+3. **Uniform Crossover Variant** – Allows for a bias parameter to favor one
+   parent over another, unlike standard uniform crossover.
+4. **Arithmetic Crossover** – Creates offspring as weighted averages of parents,
+   suitable for continuous parameter optimization.
+
+#### YAML Configuration
+
+To use advanced crossover operators, specify the `advanced_crossover_type`
+parameter in your genetic algorithm configuration:
+
+```yaml
+genetic_algorithm_params:
+  # Select which advanced crossover operator to use
+  advanced_crossover_type: simulated_binary  # or multi_point, uniform_variant, arithmetic
+  
+  # Operator-specific parameters (optional, shown with defaults)
+  sbx_distribution_index: 20.0    # For SBX - controls offspring spread (1.0-100.0)
+  num_crossover_points: 3         # For Multi-point - number of crossover points (2-10)
+  uniform_crossover_bias: 0.5     # For Uniform variant - probability of selecting from first parent (0.1-0.9)
+```
+
+#### Usage Examples
+
+```yaml
+# Example 1: Simulated Binary Crossover for continuous optimization
+genetic_algorithm_params:
+  advanced_crossover_type: simulated_binary
+  sbx_distribution_index: 15.0
+
+# Example 2: Multi-point Crossover for linked gene problems
+genetic_algorithm_params:
+  advanced_crossover_type: multi_point
+  num_crossover_points: 4
+
+# Example 3: Uniform Crossover Variant with bias
+genetic_algorithm_params:
+  advanced_crossover_type: uniform_variant
+  uniform_crossover_bias: 0.3
+
+# Example 4: Arithmetic Crossover for weighted averaging
+genetic_algorithm_params:
+  advanced_crossover_type: arithmetic
+```
+
+#### Benefits
+
+* **Better Exploration**: SBX and Multi-point operators provide more diverse
+  recombination strategies
+* **Fine-tuned Control**: Configurable parameters allow optimization for specific
+  problem types
+* **Performance Optimized**: Minimal computational overhead compared to standard
+  PyGAD operators
+* **Backward Compatible**: Standard PyGAD crossover types still work when
+  `advanced_crossover_type` is not specified
+
 ### Full GA Configuration Snippet
 
 Below is a minimal but complete `genetic_algorithm_params` block that activates
-both new subsystems while keeping all previous parameters unchanged:
+all new subsystems while keeping all previous parameters unchanged:
 
 ```yaml
 genetic_algorithm_params:
@@ -751,6 +824,9 @@ genetic_algorithm_params:
     injection_frequency: 3
     min_elites: 3
     max_elites: 7
+  # Advanced Crossover Operators
+  advanced_crossover_type: simulated_binary
+  sbx_distribution_index: 15.0
 ```
 
 Running a scenario with the above configuration typically yields:
@@ -758,8 +834,23 @@ Running a scenario with the above configuration typically yields:
 * **15-30 % faster** convergence (fewer generations for similar fitness)
 * More stable fitness curves (reduced oscillations)
 * Better worst-generation metrics thanks to elite injections
+* Improved solution quality through advanced recombination strategies
 
 > **Tip:** Use `--log-level DEBUG` to see live diversity, mutation and crossover
 > adjustments per generation.
 
 ---
+
+## API–stable signature registry
+If you add or modify a function/method decorated with `@api_stable`,
+regenerate the reference snapshot before pushing:
+
+```bash
+# inside the project root, with virtual-env active
+data\..venv\Scripts\python scripts/update_protected_signatures.py
+```
+The script auto-discovers and imports every module under
+`src/portfolio_backtester/`, updates
+`src/portfolio_backtester/api_stability/api_stable_signatures.json`, and
+prints how many signatures were recorded. Runtime warnings during the
+scan are expected and harmless.

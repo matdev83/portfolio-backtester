@@ -9,6 +9,7 @@ from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
 from ..constants import ZERO_RET_EPS
 from ..portfolio.position_sizer import get_position_sizer
 from ..portfolio.rebalancing import rebalance
+from ..api_stability import api_stable
 
 
 def _resolve_strategy(name: str):
@@ -78,6 +79,7 @@ def _run_scenario_static(
     return (gross - tc).reindex(price_daily.index).fillna(0)
 
 
+@api_stable(version="1.0", strict_params=True, strict_return=False)
 def build_objective(
     g_cfg: Dict,
     base_scen_cfg: Dict,

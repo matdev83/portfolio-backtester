@@ -275,8 +275,12 @@ def _detect_timing_mode(config: Dict[str, Any], strategy_instance=None) -> str:
     # Check strategy instance class name patterns (if available)
     if strategy_instance is not None:
         class_name = strategy_instance.__class__.__name__.lower()
-        if any(pattern in class_name for pattern in ['daily', 'signal', 'intraday', 'rsi', 'breakout', 'uvxy']):
-            return 'signal_based'
+        # Add guard to prevent infinite loop
+        try:
+            if any(pattern in class_name for pattern in ['daily', 'signal', 'intraday', 'rsi', 'breakout', 'uvxy']):
+                return 'signal_based'
+        except Exception:
+            pass  # Guard against infinite loop
     
     # Check if strategy instance has overridden supports_daily_signals method
     if strategy_instance is not None:

@@ -13,6 +13,9 @@ try:
     NUMBA_AVAILABLE = True
 except ImportError:
     NUMBA_AVAILABLE = False
+    def momentum_scores_fast_vectorized(prices_now, prices_then):
+        # Fallback: simple numpy vectorized calculation
+        return (prices_now / prices_then) - 1
 
 
 
@@ -111,11 +114,9 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
     ) -> pd.Series:
         """Calculate momentum scores for given lookback and skip periods."""
         relevant_prices = asset_prices[asset_prices.index <= current_date]
-
         if relevant_prices.empty:
             return pd.Series(dtype=float, index=asset_prices.columns)
 
-        # Calculate start and end points for momentum calculation
         date_t_minus_skip = current_date - pd.DateOffset(months=skip_months)
         date_t_minus_skip_minus_lookback = current_date - pd.DateOffset(months=skip_months + lookback_months)
 
@@ -128,33 +129,49 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
         if prices_now is None or prices_then is None:
             return pd.Series(dtype=float, index=asset_prices.columns)
 
-        if NUMBA_AVAILABLE:
-            momentum_values = momentum_scores_fast_vectorized(prices_now.values, prices_then.values)
-            momentum_scores = pd.Series(momentum_values, index=prices_now.index)
-        else:
-            # Replace 0s or negative prices with NaN
-            prices_then = prices_then.replace(0, np.nan)
-            if prices_then.ndim > 0:
-                prices_then[prices_then < 0] = np.nan
-            elif prices_then < 0:
-                prices_then = np.nan
+        # Ensure Series, not DataFrame
+        if isinstance(prices_now, pd.DataFrame):
+            prices_now = prices_now.iloc[0]
+        if isinstance(prices_then, pd.DataFrame):
+            prices_then = prices_then.iloc[0]
 
-            momentum_scores = (prices_now / prices_then) - 1
-        return momentum_scores.fillna(0.0)
+        prices_then = prices_then.replace(0, np.nan)
+        if hasattr(prices_then, 'ndim') and prices_then.ndim > 0:
+            prices_then[prices_then < 0] = np.nan
+        # If prices_now or prices_then is a float, convert to Series
+        if not isinstance(prices_now, pd.Series):
+            prices_now = pd.Series([prices_now], index=asset_prices.columns[:1])
+        if not isinstance(prices_then, pd.Series):
+            prices_then = pd.Series([prices_then], index=asset_prices.columns[:1])
+        momentum_scores = momentum_scores_fast_vectorized(prices_now.values, prices_then.values)
+        return pd.Series(momentum_scores, index=prices_now.index).fillna(0.0)
 
     def generate_signals(
         self,
         all_historical_data: pd.DataFrame,
         benchmark_historical_data: pd.DataFrame,
-        current_date: pd.Timestamp,
+        non_universe_historical_data: Optional[pd.DataFrame] = None,
+        current_date: Optional[pd.Timestamp] = None,
         start_date: Optional[pd.Timestamp] = None,
         end_date: Optional[pd.Timestamp] = None,
+        **kwargs,
     ) -> pd.DataFrame:
         """
         Generates trading signals for the FilteredLaggedMomentumStrategy.
+        
+        Parameters:
+            all_historical_data: pd.DataFrame
+            benchmark_historical_data: pd.DataFrame
+            non_universe_historical_data: pd.DataFrame (optional, unused)
+            current_date: pd.Timestamp
+            start_date: Optional[pd.Timestamp]
+            end_date: Optional[pd.Timestamp]
         """
 
         # --- Data Sufficiency Validation ---
+        # Handle None current_date gracefully - use the last date in the data
+        if current_date is None:
+            current_date = all_historical_data.index[-1]
         is_sufficient, reason = self.validate_data_sufficiency(
             all_historical_data, benchmark_historical_data, current_date
         )
@@ -170,12 +187,15 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
         price_col_benchmark = params["price_column_benchmark"]
 
         # --- Date Window Filtering ---
-        if start_date and current_date < start_date:
+        # Handle None current_date gracefully - use the last date in the data
+        if current_date is None:
+            current_date = all_historical_data.index[-1]
+        if start_date is not None and current_date < start_date:
             columns = (all_historical_data.columns.get_level_values(0).unique() 
                       if isinstance(all_historical_data.columns, pd.MultiIndex) 
                       else all_historical_data.columns)
             return pd.DataFrame(0.0, index=[current_date], columns=columns)
-        if end_date and current_date > end_date:
+        if end_date is not None and current_date > end_date:
             columns = (all_historical_data.columns.get_level_values(0).unique() 
                       if isinstance(all_historical_data.columns, pd.MultiIndex) 
                       else all_historical_data.columns)
@@ -189,6 +209,9 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
 
         asset_prices_hist = asset_prices_for_momentum[asset_prices_for_momentum.index <= current_date]
         benchmark_prices_hist = benchmark_historical_data[benchmark_historical_data.index <= current_date]
+        asset_prices_hist_df = asset_prices_hist if isinstance(asset_prices_hist, pd.DataFrame) else asset_prices_hist.to_frame()
+        if not isinstance(asset_prices_hist_df, pd.DataFrame):
+            raise ValueError("asset_prices_hist must be a DataFrame")
 
         current_universe_tickers = asset_prices_hist.columns
         if self.w_prev is None:
@@ -203,14 +226,14 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
 
         # --- Calculate Blended Momentum Scores ---
         standard_scores = self._calculate_momentum_scores(
-            asset_prices_hist,
+            asset_prices_hist_df,
             params["momentum_lookback_standard"],
             params["momentum_skip_standard"],
             current_date
         )
 
         predictive_scores = self._calculate_momentum_scores(
-            asset_prices_hist,
+            asset_prices_hist_df,
             params["momentum_lookback_predictive"],
             params["momentum_skip_predictive"],
             current_date
@@ -232,38 +255,44 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
             # Update Entry Prices
             current_prices_for_assets_at_date = asset_prices_hist.loc[current_date] if current_date in asset_prices_hist.index else pd.Series(dtype=float)
 
-            for asset in current_universe_tickers:
-                if asset not in w_target_pre_filter.index:
-                    continue
-                if not current_prices_for_assets_at_date.empty and asset in current_prices_for_assets_at_date.index:
-                    asset_current_price = current_prices_for_assets_at_date[asset]
-                    if pd.isna(asset_current_price):
-                        continue
+            # Vectorized entry/exit logic
+            prev = np.asarray(self.w_prev.reindex(current_universe_tickers, fill_value=0.0).values)
+            target = np.asarray(w_target_pre_filter.reindex(current_universe_tickers, fill_value=0.0).values)
+            entry = np.asarray(self.entry_prices.reindex(current_universe_tickers, fill_value=np.nan).values)
+            prices = np.asarray(current_prices_for_assets_at_date.reindex(current_universe_tickers, fill_value=np.nan).values)
 
-                    if (self.w_prev.get(asset, 0) == 0 and w_target_pre_filter.get(asset, 0) != 0) or \
-                       (np.sign(self.w_prev.get(asset, 0)) != np.sign(w_target_pre_filter.get(asset, 0)) and w_target_pre_filter.get(asset, 0) != 0):
-                        self.entry_prices[asset] = asset_current_price
-                    elif w_target_pre_filter.get(asset, 0) == 0:
-                        self.entry_prices[asset] = np.nan
-
-            # PERFORMANCE OPTIMIZATION: Only copy if we need to modify
-
-
+            entry_mask = ((prev == 0) & (target != 0)) | ((np.sign(prev) != np.sign(target)) & (target != 0))
+            exit_mask = (target == 0)
+            entry[entry_mask] = prices[entry_mask]
+            entry[exit_mask] = np.nan
+            self.entry_prices = pd.Series(entry, index=current_universe_tickers)
             weights_at_current_date = w_target_pre_filter
 
         # --- Apply Stop Loss ---
         sl_handler = self.get_stop_loss_handler()
         asset_ohlc_hist_for_sl = all_historical_data[all_historical_data.index <= current_date]
-        current_prices_for_sl_check = asset_prices_hist.loc[current_date] if current_date in asset_prices_hist.index else pd.Series(dtype=float, index=current_universe_tickers)
+        if current_date in asset_prices_hist.index:
+            temp_prices = asset_prices_hist.loc[current_date]
+            if isinstance(temp_prices, pd.DataFrame):
+                temp_prices = temp_prices.squeeze()
+            if isinstance(temp_prices, pd.DataFrame):
+                temp_prices = temp_prices.iloc[:, 0]
+            if not isinstance(temp_prices, pd.Series):
+                temp_prices = pd.Series([temp_prices], index=[current_universe_tickers[0]]) if len(current_universe_tickers) > 0 else pd.Series(dtype=float)
+            current_prices_for_sl_check = temp_prices.reindex(current_universe_tickers).fillna(np.nan)
+        else:
+            current_prices_for_sl_check = pd.Series(np.nan, index=current_universe_tickers)
 
         stop_levels = sl_handler.calculate_stop_levels(current_date, asset_ohlc_hist_for_sl, self.w_prev, self.entry_prices)
         weights_after_sl = sl_handler.apply_stop_loss(current_date, current_prices_for_sl_check, weights_at_current_date, self.entry_prices, stop_levels)
 
-        for asset in current_universe_tickers:
-            if weights_at_current_date.get(asset, 0) != 0 and weights_after_sl.get(asset, 0) == 0:
-                self.entry_prices[asset] = np.nan
-        # PERFORMANCE OPTIMIZATION: Only copy if we need to modify
-
+        # Vectorized stop loss exit logic
+        before_sl = np.asarray([weights_at_current_date.get(asset, 0) for asset in current_universe_tickers])
+        after_sl = np.asarray([weights_after_sl.get(asset, 0) for asset in current_universe_tickers])
+        entry = np.asarray([self.entry_prices.get(asset, np.nan) for asset in current_universe_tickers])
+        exit_mask = (before_sl != 0) & (after_sl == 0)
+        entry[exit_mask] = np.nan
+        self.entry_prices = pd.Series(entry, index=current_universe_tickers)
         weights_at_current_date = weights_after_sl
 
         # --- Apply Risk Filters (SMA, RoRo) ---
@@ -293,9 +322,30 @@ class FilteredLaggedMomentumStrategy(BaseStrategy):
 
                 if self.current_derisk_flag:
                     final_weights[:] = 0.0
-                elif not current_benchmark_price.empty and not current_benchmark_sma.empty and \
-                     current_benchmark_price_raw.item() < current_benchmark_sma_raw.item():
-                    final_weights[:] = 0.0
+                elif not current_benchmark_price.empty and not current_benchmark_sma.empty:
+                    # Extract scalar for comparison
+                    # Convert DataFrame to Series/scalar if needed
+                    price_raw = current_benchmark_price_raw
+                    sma_raw = current_benchmark_sma_raw
+                    if isinstance(price_raw, pd.DataFrame):
+                        price_raw = price_raw.squeeze()
+                    if isinstance(price_raw, pd.DataFrame):
+                        price_raw = price_raw.iloc[:, 0]
+                    if isinstance(sma_raw, pd.DataFrame):
+                        sma_raw = sma_raw.squeeze()
+                    if isinstance(sma_raw, pd.DataFrame):
+                        sma_raw = sma_raw.iloc[:, 0]
+                    def safe_float(val):
+                        try:
+                            if isinstance(val, pd.Series):
+                                val = val.iloc[0]
+                            return float(val)
+                        except Exception:
+                            return np.nan
+                    price_val = safe_float(price_raw)
+                    sma_val = safe_float(sma_raw)
+                    if not np.isnan(price_val) and not np.isnan(sma_val) and price_val < sma_val:
+                        final_weights[:] = 0.0
 
         roro_signal_instance = self.get_roro_signal()
         if roro_signal_instance:

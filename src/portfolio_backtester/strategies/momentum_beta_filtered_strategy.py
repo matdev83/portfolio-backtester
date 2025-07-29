@@ -122,12 +122,16 @@ class MomentumBetaFilteredStrategy(MomentumUnfilteredAtrStrategy):
         self,
         all_historical_data: pd.DataFrame,
         benchmark_historical_data: pd.DataFrame,
-        current_date: pd.Timestamp,
-        start_date: pd.Timestamp | None = None,
-        end_date: pd.Timestamp | None = None,
+        non_universe_historical_data: 'pd.DataFrame | None' = None,
+        current_date: 'pd.Timestamp | None' = None,
+        start_date: 'pd.Timestamp | None' = None,
+        end_date: 'pd.Timestamp | None' = None,
         **kwargs,
     ) -> pd.DataFrame:
         params = self.strategy_config.get("strategy_params", self.strategy_config)
+        # Handle None current_date gracefully - use the last date in the data
+        if current_date is None:
+            current_date = all_historical_data.index[-1]
 
         price_col_asset = params.get("price_column_asset", "Close")
         price_col_bench = params.get("price_column_benchmark", "Close")
@@ -166,11 +170,15 @@ class MomentumBetaFilteredStrategy(MomentumUnfilteredAtrStrategy):
         bench_rets = benchmark_close.pct_change(fill_method=None)
 
         # Drop assets with no data whatsoever
-        asset_rets = asset_rets.dropna(axis=1, how="all")
+        # Workaround: drop columns with all NaNs by transposing, dropping rows, and transposing back
+        asset_rets = asset_rets.T.dropna(how="all", axis=0).T
 
         # --------------------------------------------------------------
         # Rolling beta – pick the latest value for each asset
         # --------------------------------------------------------------
+        # Ensure asset_rets is always a DataFrame
+        if isinstance(asset_rets, pd.Series):
+            asset_rets = asset_rets.to_frame()
         betas = self._latest_rolling_betas(asset_rets, bench_rets, beta_window)
         betas = betas.dropna()
 
@@ -184,42 +192,47 @@ class MomentumBetaFilteredStrategy(MomentumUnfilteredAtrStrategy):
         # --------------------------------------------------------------
         # RSI check for high-beta names → decide which to short
         # --------------------------------------------------------------
-        short_candidates: List[str] = []
-        for asset in top_beta_assets:
-            if asset not in asset_close.columns:
-                continue
-            rsi_value = self._calculate_rsi(asset_close[asset].dropna(), rsi_len)
-            if rsi_value >= rsi_over:
-                short_candidates.append(asset)
+        # Vectorized RSI check for high-beta names
+        short_candidates = []
+        if top_beta_assets:
+            high_beta_prices = asset_close[top_beta_assets].dropna(how='all')
+            # Compute RSI for each asset
+            def rsi_vec(prices):
+                if prices.size < rsi_len + 1:
+                    return np.nan
+                delta = prices.diff()
+                gains = delta.clip(lower=0)
+                losses = -delta.clip(upper=0)
+                avg_gain = gains.tail(rsi_len).mean()
+                avg_loss = losses.tail(rsi_len).mean()
+                if avg_loss == 0 or np.isnan(avg_loss):
+                    return 100.0
+                rs = avg_gain / avg_loss
+                return 100.0 - (100.0 / (1.0 + rs))
+            rsi_vals = high_beta_prices.apply(rsi_vec, axis=0)
+            short_candidates = rsi_vals[rsi_vals >= rsi_over].index.tolist()
 
         # --------------------------------------------------------------
         # Maintain existing shorts until the cover condition is met
         # --------------------------------------------------------------
-        shorts_to_keep: List[str] = []
+        shorts_to_keep = []
         if self.w_prev is not None and not self.w_prev.empty:
-            for asset, weight in self.w_prev[self.w_prev < 0].items():
-                if asset not in asset_close.columns:
-                    continue
-                price_series = asset_close[asset].dropna()
-                if price_series.empty:
-                    continue
-
-                # Current close
-                current_close = price_series.iloc[-1]
-
-                # Prior month low
+            prev_shorts = [asset for asset in self.w_prev[self.w_prev < 0].index if asset in asset_close.columns]
+            if len(prev_shorts) > 0:
+                # Workaround: drop columns with all NaNs by transposing, dropping rows, and transposing back
+                price_df = asset_close[prev_shorts].T.dropna(how='all', axis=0).T
+                # Ensure DatetimeIndex for .month/.year
+                if not isinstance(price_df.index, pd.DatetimeIndex):
+                    price_df.index = pd.to_datetime(price_df.index)
+                current_close = price_df.iloc[-1]
                 prev_month_date = current_date - pd.DateOffset(months=1)
-                mask_prev_month = (
-                    (price_series.index.month == prev_month_date.month)
-                    & (price_series.index.year == prev_month_date.year)
-                )
-                prev_month_low = price_series[mask_prev_month].min()
-
-                # Cover only if we *definitively* break below the prior month's low
-                if (not np.isnan(prev_month_low)) and (current_close < prev_month_low):
-                    # Do **not** append → position will be closed
-                    continue
-                shorts_to_keep.append(asset)
+                mask_prev_month = (price_df.index.month == prev_month_date.month) & (price_df.index.year == prev_month_date.year)
+                prev_month_lows = price_df[mask_prev_month].min(axis=0)
+                for asset in prev_shorts:
+                    prev_low = prev_month_lows[asset]
+                    curr_close = current_close[asset]
+                    if np.isnan(prev_low) or bool(curr_close >= prev_low):
+                        shorts_to_keep.append(asset)
 
         # Final list of shorts for this rebalance
         self._short_assets = list({*shorts_to_keep, *short_candidates})

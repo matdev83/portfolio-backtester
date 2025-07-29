@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
-    from ..features.base import Feature # No longer needed
     # from ..features.atr import ATRFeature # No longer needed
     pass # For type hinting if needed
 
@@ -124,7 +123,7 @@ class AtrBasedStopLoss(BaseStopLoss):
         self.atr_multiple = self.stop_loss_specific_config.get("atr_multiple", 2.5)
         self._atr_cache = {}  # Cache for ATR calculations
 
-    def get_required_features(self) -> Set[Feature]:
+    def get_required_features(self):
         from ..features.atr import ATRFeature # Import here to avoid circular dependency at module load time
         return {ATRFeature(atr_period=self.atr_length)}
 
@@ -135,200 +134,96 @@ class AtrBasedStopLoss(BaseStopLoss):
         current_weights: pd.Series,
         entry_prices: pd.Series
     ) -> pd.Series:
-        stop_levels = pd.Series(np.nan, index=current_weights.index)
-        
-        # Calculate ATR directly from OHLC data
+        # Vectorized ATR calculation
         atr_values_for_date = self._calculate_atr(asset_ohlc_history, current_date)
-
-
-        for asset in current_weights.index:
-            weight = current_weights.loc[asset]
-            entry_price = entry_prices.loc[asset]
-
-            if pd.isna(entry_price) or weight == 0:
-                continue
-
-            # Get ATR for the specific asset on the current_date
-            # This expects atr_values_for_date to be a Series indexed by asset tickers
-            if asset in atr_values_for_date.index:
-                atr_value = atr_values_for_date.loc[asset]
-            else:
-                # ATR value not found for asset - skipping stop loss for this asset
-                # This can happen if the ATR feature doesn't cover all assets in current_weights,
-                # e.g. if an asset is new to the universe and doesn't have enough history for ATR.
-                atr_value = np.nan # Default to NaN if specific asset ATR is missing
-
-            if pd.isna(atr_value):
-                # ATR value is NaN for asset - skipping stop loss for this asset
-                continue
-
-            if weight > 0:  # Long position
-                stop_levels.loc[asset] = entry_price - (atr_value * self.atr_multiple)
-            elif weight < 0:  # Short position
-                stop_levels.loc[asset] = entry_price + (atr_value * self.atr_multiple)
-
+        stop_levels = pd.Series(np.nan, index=current_weights.index)
+        # Only consider assets with open positions and valid entry prices
+        open_mask = (current_weights != 0) & (~pd.isna(entry_prices)) & (~pd.isna(atr_values_for_date))
+        long_mask = open_mask & (current_weights > 0)
+        short_mask = open_mask & (current_weights < 0)
+        # Vectorized stop level calculation
+        stop_levels[long_mask] = entry_prices[long_mask] - (atr_values_for_date[long_mask] * self.atr_multiple)
+        stop_levels[short_mask] = entry_prices[short_mask] + (atr_values_for_date[short_mask] * self.atr_multiple)
         return stop_levels
 
     def _calculate_atr(self, asset_ohlc_history: pd.DataFrame, current_date: pd.Timestamp) -> pd.Series:
-        """Calculate Average True Range for all assets as of current_date."""
-        if asset_ohlc_history.empty:
-            return pd.Series(dtype=float)
-        
-        # Create cache key
+        """Vectorized ATR calculation for all assets as of current_date."""
+        if asset_ohlc_history is None or asset_ohlc_history.empty:
+            tickers = []
+            if hasattr(asset_ohlc_history, 'columns'):
+                if isinstance(asset_ohlc_history.columns, pd.MultiIndex) and 'Ticker' in asset_ohlc_history.columns.names:
+                    tickers = asset_ohlc_history.columns.get_level_values('Ticker').unique()
+                else:
+                    tickers = asset_ohlc_history.columns
+            return pd.Series(np.nan, index=tickers)
+
         cache_key = (str(current_date), self.atr_length, len(asset_ohlc_history))
         if cache_key in self._atr_cache:
             return self._atr_cache[cache_key]
-        
-        # Filter data up to current_date
         ohlc_data = asset_ohlc_history[asset_ohlc_history.index <= current_date]
-        
         if len(ohlc_data) < self.atr_length:
-            # Not enough data for ATR calculation
-            result = pd.Series(np.nan, index=asset_ohlc_history.columns.get_level_values(0).unique() if isinstance(asset_ohlc_history.columns, pd.MultiIndex) else asset_ohlc_history.columns)
+            if hasattr(asset_ohlc_history, 'columns'):
+                if isinstance(asset_ohlc_history.columns, pd.MultiIndex) and 'Ticker' in asset_ohlc_history.columns.names:
+                    tickers = asset_ohlc_history.columns.get_level_values('Ticker').unique()
+                else:
+                    tickers = asset_ohlc_history.columns
+            else:
+                tickers = []
+            result = pd.Series(np.nan, index=tickers)
             self._atr_cache[cache_key] = result
             return result
-        
-        # Extract OHLC data for each asset
         if isinstance(ohlc_data.columns, pd.MultiIndex) and 'Field' in ohlc_data.columns.names:
-            # MultiIndex columns: (Ticker, Field)
-            assets = ohlc_data.columns.get_level_values('Ticker').unique()
-            atr_values = {}
-            
-            for asset in assets:
-                try:
-                    high = ohlc_data[(asset, 'High')]
-                    low = ohlc_data[(asset, 'Low')]
-                    close = ohlc_data[(asset, 'Close')]
-                    
-                    # Calculate True Range
-                    tr1 = high - low
-                    tr2 = abs(high - close.shift(1))
-                    tr3 = abs(low - close.shift(1))
-                    true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-                    
-                    # Calculate ATR as rolling mean of True Range
-                    atr = true_range.rolling(window=self.atr_length, min_periods=self.atr_length).mean()
-                    
-                    # Get ATR value for current_date
-                    if current_date in atr.index:
-                        atr_values[asset] = atr.loc[current_date]
-                    else:
-                        atr_values[asset] = np.nan
-                        
-                except KeyError:
-                    # Missing OHLC data for this asset
-                    atr_values[asset] = np.nan
-            
-            result = pd.Series(atr_values)
+            tickers = ohlc_data.columns.get_level_values('Ticker').unique()
+            highs = ohlc_data.xs('High', level='Field', axis=1)
+            lows = ohlc_data.xs('Low', level='Field', axis=1)
+            closes = ohlc_data.xs('Close', level='Field', axis=1)
+            prev_closes = closes.shift(1)
+            tr1 = highs - lows
+            tr2 = (highs - prev_closes).abs()
+            tr3 = (lows - prev_closes).abs()
+            true_range = np.fmax(tr1, np.fmax(tr2, tr3))
+            atr = pd.DataFrame(true_range, index=highs.index, columns=highs.columns).rolling(window=self.atr_length, min_periods=self.atr_length).mean()
+            if current_date in atr.index:
+                atr_today = atr.loc[current_date]
+                if isinstance(atr_today, pd.Series):
+                    result = atr_today
+                else:
+                    result = pd.Series(np.nan, index=tickers)
+            else:
+                result = pd.Series(np.nan, index=tickers)
         else:
-            # Only Close prices available - use rolling standard deviation as ATR proxy
-            # OPTIMIZED: Pre-calculate all returns and rolling stats once
-            atr_values = {}
-            
-            # Get the last self.atr_length + 1 rows for efficiency
-            recent_data = ohlc_data.tail(self.atr_length + 10)  # Add buffer for safety
-            
-            for asset in ohlc_data.columns:
-                try:
-                    close_prices = recent_data[asset].dropna()
-                    
-                    if len(close_prices) < self.atr_length:
-                        atr_values[asset] = np.nan
-                        continue
-                    
-                    # Calculate returns and rolling std more efficiently
-                    returns = close_prices.pct_change(fill_method=None).dropna()
-                    if len(returns) < self.atr_length:
-                        atr_values[asset] = np.nan
-                        continue
-                        
-                    rolling_std = returns.rolling(window=self.atr_length, min_periods=self.atr_length).std()
-                    
-                    # Convert to price-based volatility (approximate ATR)
-                    if current_date in close_prices.index:
-                        current_price = close_prices.loc[current_date]
-                        if current_date in rolling_std.index and not pd.isna(rolling_std.loc[current_date]):
-                            # ATR proxy = current_price * rolling_volatility * scaling_factor
-                            scaling_factor = 1.0  # This can be adjusted based on empirical analysis
-                            atr_values[asset] = current_price * rolling_std.loc[current_date] * scaling_factor
-                        else:
-                            atr_values[asset] = np.nan
-                    else:
-                        atr_values[asset] = np.nan
-                        
-                except (KeyError, Exception):
-                    # Missing data for this asset
-                    atr_values[asset] = np.nan
-            
-            result = pd.Series(atr_values)
-        
-        # Cache the result
+            closes = ohlc_data
+            returns = closes.pct_change(fill_method=None)
+            rolling_std = returns.rolling(window=self.atr_length, min_periods=self.atr_length).std()
+            if current_date in closes.index and current_date in rolling_std.index:
+                current_prices = closes.loc[current_date]
+                std_today = rolling_std.loc[current_date]
+                atr_today = current_prices * std_today
+                result = atr_today
+            else:
+                result = pd.Series(np.nan, index=closes.columns)
+        # Ensure result is always a Series, never a DataFrame
+        if isinstance(result, pd.DataFrame):
+            # Return a Series of NaN with the expected index
+            if hasattr(result, 'columns'):
+                return pd.Series(np.nan, index=result.columns)
+            return pd.Series(np.nan)
         self._atr_cache[cache_key] = result
-        return result
-
+        return result.astype(float)
     def apply_stop_loss(
         self,
         current_date: pd.Timestamp,
-        prices_for_current_date: pd.DataFrame, # Expects columns like 'Low', 'High', 'Close'
+        current_asset_prices: pd.Series,
         target_weights: pd.Series,
-        entry_prices: pd.Series, # Unused here, but part of the interface
+        entry_prices: pd.Series,
         stop_levels: pd.Series
     ) -> pd.Series:
-        # PERFORMANCE OPTIMIZATION: Avoid unnecessary copy
-
-        adjusted_weights = target_weights
-
-        # Ensure prices_for_current_date is a Series for the specific date if it's a DataFrame row
-        # The plan is that BaseStrategy will pass prices.loc[[date]], which is a DataFrame with one row.
-        # We need to ensure we are accessing the values correctly.
-        if isinstance(prices_for_current_date, pd.DataFrame):
-            if not prices_for_current_date.empty and current_date in prices_for_current_date.index:
-                # If it's a DataFrame with the current_date as index (e.g. from prices.loc[[date]])
-                # then for each asset, we access its low/high.
-                # This assumes prices_for_current_date columns are asset tickers, and it contains Low/High for that date.
-                # This interpretation is WRONG. prices_for_current_date should be like:
-                #            AAPL   MSFT   GOOG
-                # Open      150.0  250.0  1000.0
-                # High      152.0  252.0  1002.0
-                # Low       149.0  249.0   998.0
-                # Close     151.0  251.0  1001.0
-                # This structure is not what BaseStrategy.generate_signals currently receives for `prices`.
-                # `prices` in generate_signals is DataFrame [date, asset_ticker] of CLOSE prices.
-                #
-                # REVISED PLAN for apply_stop_loss:
-                # The `BaseStrategy` will need to be modified to pass the *correct* price data
-                # for the stop check. For the initial implementation as per plan step 3's revision:
-                # "The stop loss will be checked based on the *previous period's close* against the calculated stop level."
-                # So, `prices_for_current_date` will effectively be a Series of close prices for `current_date`.
-                # Let's assume `prices_for_current_date` is a pd.Series of CLOSE prices for current_date, indexed by asset.
-                pass # Logic below handles this
-            else:
-                # print(f"Warning: Price data for current_date {current_date} not available in expected format for stop-loss check.")
-                return adjusted_weights # Cannot check stops
-
-        for asset in target_weights.index:
-            if pd.isna(stop_levels.loc[asset]) or target_weights.loc[asset] == 0:
-                continue
-
-            # As per revised plan, using close prices from `prices_for_current_date` (assumed Series of closes)
-            # This means `prices_for_current_date` should be `prices.loc[current_date]` from BaseStrategy.
-            current_price_for_asset = prices_for_current_date.get(asset) # Get close price for the asset
-
-            if current_price_for_asset is None or pd.isna(current_price_for_asset):
-                # print(f"Warning: Close price for asset {asset} on {current_date} not found. Cannot apply stop loss.")
-                continue
-
-            if target_weights.loc[asset] > 0:  # Long position
-                # If current period's price (e.g. month-end close) is below stop level
-                if current_price_for_asset <= stop_levels.loc[asset]:
-                    adjusted_weights.loc[asset] = 0.0
-                    # print(f"Stop-loss triggered for LONG {asset} on {current_date}. Price: {current_price_for_asset}, Stop: {stop_levels.loc[asset]}")
-            elif target_weights.loc[asset] < 0:  # Short position
-                # If current period's price (e.g. month-end close) is above stop level
-                if current_price_for_asset >= stop_levels.loc[asset]:
-                    adjusted_weights.loc[asset] = 0.0
-                    # print(f"Stop-loss triggered for SHORT {asset} on {current_date}. Price: {current_price_for_asset}, Stop: {stop_levels.loc[asset]}")
-
+        # Vectorized stop loss application
+        adjusted_weights = target_weights.copy()
+        valid_mask = (~pd.isna(stop_levels)) & (target_weights != 0) & (~pd.isna(current_asset_prices))
+        long_mask = valid_mask & (target_weights > 0) & (current_asset_prices <= stop_levels)
+        short_mask = valid_mask & (target_weights < 0) & (current_asset_prices >= stop_levels)
+        adjusted_weights[long_mask | short_mask] = 0.0
         return adjusted_weights
 
 # Example of how ATRFeature might be defined (will be in feature.py)

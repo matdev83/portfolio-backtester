@@ -102,10 +102,25 @@ def _create_minimal_backtester(tmp_path, mode: str = "optimize") -> Backtester:
 
 
 def test_backtester_run_optimize_mode_binding(tmp_path):
-    """Ensure Backtester instances expose run_optimize_mode with the expected signature."""
+    """Ensure run_optimize_mode function is accessible and has the expected signature (no longer dynamically bound due to multiprocessing fix)."""
     bt = _create_minimal_backtester(tmp_path, mode="optimize")
-    sig_bound = inspect.signature(bt.run_optimize_mode)
-    assert len(sig_bound.parameters) == 4  # self is already bound on instance method
+    
+    # After the multiprocessing fix, run_optimize_mode is no longer dynamically bound
+    # Instead, it's called directly from the module. Test that the function exists and is callable.
+    from src.portfolio_backtester.backtester_logic.execution import run_optimize_mode
+    
+    assert callable(run_optimize_mode)
+    
+    # Check the signature
+    sig_original = inspect.signature(run_optimize_mode)
+    
+    # Should have 5 parameters: self, scenario_config, monthly_data, daily_data, rets_full
+    assert len(sig_original.parameters) == 5
+    
+    # Check parameter names
+    expected_params = ['self', 'scenario_config', 'monthly_data', 'daily_data', 'rets_full']
+    actual_params = list(sig_original.parameters.keys())
+    assert actual_params == expected_params
 
 
 @mock.patch("src.portfolio_backtester.backtester_logic.strategy_logic.generate_signals")

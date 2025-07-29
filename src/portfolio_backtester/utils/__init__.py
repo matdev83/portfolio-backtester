@@ -9,6 +9,7 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
 from .. import strategies
+from ..api_stability import api_stable
 
 # Get a logger for this module (or use a more general one if available)
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ def register_signal_handler():
         logger.error(f"Failed to register SIGINT handler: {e}")
 
 
+@api_stable(version="1.0", strict_params=True, strict_return=False)
 def _resolve_strategy(name: str):
     class_name = "".join(w.capitalize() for w in name.split('_')) + "Strategy"
     if name == "momentum_unfiltered_atr":

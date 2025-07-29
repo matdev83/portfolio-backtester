@@ -10,7 +10,6 @@ from rich.console import Console
 from rich.progress import (
     BarColumn,
     Progress,
-    SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -515,7 +514,6 @@ class HybridDataSource(BaseDataSource):
         all_data_frames = []
         
         with Progress(
-            SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),

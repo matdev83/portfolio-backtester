@@ -231,7 +231,7 @@ class TestStrategyDataValidation:
         
         # Test generate_signals with sufficient data
         signals = strategy.generate_signals(
-            sufficient_universe_data, benchmark_data, current_date
+            sufficient_universe_data, benchmark_data, pd.DataFrame(), current_date
         )
         
         assert isinstance(signals, pd.DataFrame), f"{strategy_class.__name__} should return DataFrame"
@@ -277,7 +277,7 @@ class TestStrategyDataValidation:
         
         # Test generate_signals with insufficient data
         signals = strategy.generate_signals(
-            insufficient_universe_data, insufficient_benchmark_data, current_date
+            insufficient_universe_data, insufficient_benchmark_data, pd.DataFrame(), current_date
         )
         
         assert isinstance(signals, pd.DataFrame), f"{strategy_class.__name__} should return DataFrame even with insufficient data"

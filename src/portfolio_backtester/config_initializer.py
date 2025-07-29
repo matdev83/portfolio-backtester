@@ -1,5 +1,6 @@
 from typing import Set
 from .utils import _resolve_strategy
+from .api_stability import api_stable
 
 def _get_strategy_tunable_params(strategy_name: str) -> Set[str]:
     """Resolves strategy and returns its tunable parameters."""
@@ -14,6 +15,7 @@ def _get_sizer_tunable_param(sizer_name: str | None, sizer_param_map: dict) -> s
         return sizer_param_map.get(sizer_name)
     return None
 
+@api_stable(version="1.0", strict_params=True, strict_return=False)
 def populate_default_optimizations(scenarios: list, optimizer_parameter_defaults: dict):
     """Ensure each scenario has an optimize section covering all tunable
     parameters of its strategy and dynamic position sizer.

@@ -30,5 +30,6 @@ strategy_params:
   direction: long
   long_only: true
   leverage: 1.0
+enable_monte_carlo_during_optimization: false
 universe:
 - TLT

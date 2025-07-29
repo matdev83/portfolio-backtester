@@ -4,6 +4,34 @@ from .momentum_strategy import MomentumStrategy
 
 
 class MomentumUnfilteredAtrStrategy(MomentumStrategy):
+    def generate_signals(
+        self,
+        all_historical_data: 'pd.DataFrame',
+        benchmark_historical_data: 'pd.DataFrame',
+        non_universe_historical_data: 'pd.DataFrame' = None, # Optional, for compatibility
+        current_date: 'pd.Timestamp' = None,
+        start_date: 'Optional[pd.Timestamp]' = None,
+        end_date: 'Optional[pd.Timestamp]' = None,
+    ) -> 'pd.DataFrame':
+        """
+        Generates trading signals for the MomentumUnfilteredAtrStrategy.
+        
+        Parameters:
+            all_historical_data: pd.DataFrame
+            benchmark_historical_data: pd.DataFrame
+            non_universe_historical_data: pd.DataFrame (optional, unused)
+            current_date: pd.Timestamp
+            start_date: Optional[pd.Timestamp]
+            end_date: Optional[pd.Timestamp]
+        """
+        # Delegate to parent, ignoring non_universe_historical_data
+        return super().generate_signals(
+            all_historical_data,
+            benchmark_historical_data,
+            current_date=current_date,
+            start_date=start_date,
+            end_date=end_date
+        )
     """
     Momentum strategy variant that is unfiltered (no SMA/RoRo filters) but includes ATR-based stop loss.
     This strategy is based on the MomentumStrategy but with:

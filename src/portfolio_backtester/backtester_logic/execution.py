@@ -84,7 +84,8 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
         if enable_during_optimization:
             # Full reporting during optimization (slower but immediate)
             try:
-                self._generate_optimization_report(scenario_config, optimal_params, full_rets, best_trial_obj, actual_num_trials)
+                from ..backtester_logic.reporting_logic import generate_optimization_report
+                generate_optimization_report(self, scenario_config, optimal_params, full_rets, best_trial_obj, actual_num_trials)
             except Exception as e:
                 self.logger.error(f"Failed to generate optimization report: {e}")
                 self.logger.debug("Report generation error details:", exc_info=True)
@@ -112,7 +113,8 @@ def generate_deferred_report(self):
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug("📊 Generating deferred optimization report...")
         try:
-            self._generate_optimization_report(**self._deferred_report_data)
+            from ..backtester_logic.reporting_logic import generate_optimization_report
+            generate_optimization_report(self, **self._deferred_report_data)
             # Clear the deferred data
             delattr(self, '_deferred_report_data')
         except Exception as e:

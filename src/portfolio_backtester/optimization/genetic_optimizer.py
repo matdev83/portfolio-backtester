@@ -12,6 +12,9 @@ from .adaptive_parameters import (
     AdaptiveCrossoverController,
 )
 
+# new import for advanced crossover operators
+from .advanced_crossover import get_crossover_operator, CROSSOVER_OPERATORS
+
 # _evaluate_params_walk_forward is now a method of the Backtester class
 from ..optimization.trial_evaluator import TrialEvaluator
 from ..utils import generate_randomized_wfo_windows
@@ -453,12 +456,29 @@ class GeneticOptimizer:
                 "num_genes": num_genes,
                 "gene_space": gene_space,
                 "parent_selection_type": parent_selection_type,
-                "crossover_type": crossover_type,
                 "mutation_type": mutation_type,
                 "mutation_percent_genes": mutation_percent_genes,
                 "random_seed": pygad_seed,
                 "on_generation": on_generation_callback,
             }
+
+            # Handle advanced crossover operators
+            crossover_operator_name = ga_params_config.get("advanced_crossover_type")
+            if crossover_operator_name and crossover_operator_name in CROSSOVER_OPERATORS:
+                custom_crossover_func = get_crossover_operator(crossover_operator_name)
+                if custom_crossover_func:
+                    ga_kwargs["crossover_type"] = custom_crossover_func
+                    # Store additional parameters for the crossover operator
+                    if crossover_operator_name == "simulated_binary":
+                        ga_kwargs["sbx_distribution_index"] = ga_params_config.get("sbx_distribution_index", 20.0)
+                    elif crossover_operator_name == "multi_point":
+                        ga_kwargs["num_crossover_points"] = ga_params_config.get("num_crossover_points", 3)
+                    elif crossover_operator_name == "uniform_variant":
+                        ga_kwargs["uniform_crossover_bias"] = ga_params_config.get("uniform_crossover_bias", 0.5)
+                    logger.debug(f"Using advanced crossover operator: {crossover_operator_name}")
+            else:
+                # If no advanced crossover specified, use the standard PyGAD crossover types
+                ga_kwargs["crossover_type"] = crossover_type
 
             # Add parallel processing if available
             #if self.backtester.n_jobs > 1:
@@ -566,6 +586,10 @@ def get_ga_optimizer_parameter_defaults():
         "ga_sol_per_pop": {"default": 50, "type": "int", "low": 10, "high": 200, "help": "Solutions per population in GA."},
         "ga_parent_selection_type": {"default": "sss", "type": "categorical", "values": ["sss", "rws", "sus", "rank", "random", "tournament"], "help": "Parent selection type for GA."},
         "ga_crossover_type": {"default": "single_point", "type": "categorical", "values": ["single_point", "two_points", "uniform", "scattered"], "help": "Crossover type for GA."},
+        "ga_advanced_crossover_type": {"default": None, "type": "categorical", "values": [None, "simulated_binary", "multi_point", "uniform_variant", "arithmetic"], "help": "Advanced crossover operator for GA."},
+        "ga_sbx_distribution_index": {"default": 20.0, "type": "float", "low": 1.0, "high": 100.0, "help": "Distribution index for Simulated Binary Crossover."},
+        "ga_num_crossover_points": {"default": 3, "type": "int", "low": 2, "high": 10, "help": "Number of crossover points for Multi-point crossover."},
+        "ga_uniform_crossover_bias": {"default": 0.5, "type": "float", "low": 0.1, "high": 0.9, "help": "Bias parameter for Uniform crossover variant."},
         "ga_mutation_type": {"default": "random", "type": "categorical", "values": ["random", "swap", "inversion", "scramble", "adaptive"], "help": "Mutation type for GA."},
         "ga_mutation_percent_genes": {"default": "default", "type": "str", "help": "Percentage of genes to mutate (e.g., 'default', 10 for 10%)."} # PyGAD uses "default" or float/int
     }

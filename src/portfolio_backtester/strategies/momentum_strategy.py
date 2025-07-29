@@ -187,12 +187,21 @@ class MomentumStrategy(BaseStrategy):
         self,
         all_historical_data: pd.DataFrame, # Universe asset data (OHLCV)
         benchmark_historical_data: pd.DataFrame, # Benchmark asset data (OHLCV)
-        current_date: pd.Timestamp,
+        non_universe_historical_data: pd.DataFrame = None, # Optional, for compatibility
+        current_date: pd.Timestamp = None,
         start_date: Optional[pd.Timestamp] = None,
         end_date: Optional[pd.Timestamp] = None,
     ) -> pd.DataFrame:
         """
         Generates trading signals for the MomentumStrategy.
+        
+        Parameters:
+            all_historical_data: pd.DataFrame
+            benchmark_historical_data: pd.DataFrame
+            non_universe_historical_data: pd.DataFrame (optional, unused)
+            current_date: pd.Timestamp
+            start_date: Optional[pd.Timestamp]
+            end_date: Optional[pd.Timestamp]
         """
 
         # --- Data Sufficiency Validation ---
@@ -235,13 +244,10 @@ class MomentumStrategy(BaseStrategy):
         # Extract relevant price column for assets. Assuming 'all_historical_data' has a 'Ticker' level if MultiIndex.
         if isinstance(all_historical_data.columns, pd.MultiIndex) and 'Ticker' in all_historical_data.columns.names:
             asset_prices_for_mom = all_historical_data.xs(price_col_asset, level='Field', axis=1)
-            # Filter to only valid assets
-            valid_asset_cols = [col for col in asset_prices_for_mom.columns if col in valid_assets]
-            asset_prices_for_mom = asset_prices_for_mom[valid_asset_cols]
-        else: # Assume single level column index with tickers, or already just Close prices
-            # Filter to only valid assets
-            valid_asset_cols = [col for col in all_historical_data.columns if col in valid_assets]
-            asset_prices_for_mom = all_historical_data[valid_asset_cols]
+            # Vectorized filtering of valid assets
+            asset_prices_for_mom = asset_prices_for_mom.loc[:, asset_prices_for_mom.columns.isin(valid_assets)]
+        else:
+            asset_prices_for_mom = all_historical_data.loc[:, all_historical_data.columns.isin(valid_assets)]
 
         # Filter data up to current_date for calculations
         asset_prices_hist = asset_prices_for_mom[asset_prices_for_mom.index <= current_date]
@@ -268,40 +274,32 @@ class MomentumStrategy(BaseStrategy):
             current_date
         )
 
-        if scores_at_current_date.isna().all() or scores_at_current_date.empty: # No valid scores
+        if scores_at_current_date.isna().all() or scores_at_current_date.empty:
             weights_at_current_date = self.w_prev
-            # Apply risk filters even if weights are unchanged
         else:
-            # Calculate candidate weights based on scores
             cand_weights = self._calculate_candidate_weights(scores_at_current_date)
-            # Apply leverage and smoothing
             w_target_pre_filter = self._apply_leverage_and_smoothing(cand_weights, self.w_prev)
-
-            # --- Patch: Guarantee nonzero weight for num_holdings=1 if all weights are zero and RoRo is ON ---
             params = self.strategy_config.get("strategy_params", self.strategy_config)
             num_holdings = params.get("num_holdings", None)
             if num_holdings == 1 and w_target_pre_filter.sum() == 0 and len(w_target_pre_filter) > 0:
-                # Only patch if RoRo is ON (will be zeroed out later if RoRo is OFF)
                 w_target_pre_filter.iloc[0] = 1.0
 
-            # --- Update Entry Prices ---
-            current_prices_for_assets_at_date = asset_prices_hist.loc[current_date] if current_date in asset_prices_hist.index else pd.Series(dtype=float)
-
-            for asset in current_universe_tickers:
-                if asset not in w_target_pre_filter.index: # Should not happen if w_target_pre_filter is aligned
-                    continue
-                if not current_prices_for_assets_at_date.empty and asset in current_prices_for_assets_at_date.index:
-                    asset_current_price = current_prices_for_assets_at_date[asset]
-                    if pd.isna(asset_current_price): # If current price is NaN, cannot determine entry price
-                        continue
-
-                    if (self.w_prev.get(asset, 0) == 0 and w_target_pre_filter.get(asset, 0) != 0) or \
-                       (np.sign(self.w_prev.get(asset, 0)) != np.sign(w_target_pre_filter.get(asset, 0)) and w_target_pre_filter.get(asset, 0) != 0):
-                        self.entry_prices[asset] = asset_current_price
-                    elif w_target_pre_filter.get(asset, 0) == 0:
-                        self.entry_prices[asset] = np.nan
-
-            # PERFORMANCE OPTIMIZATION: Only copy if we need to modify
+            # --- Vectorized Update Entry Prices ---
+            if current_date in asset_prices_hist.index:
+                current_prices_for_assets_at_date = asset_prices_hist.loc[current_date]
+                # Find assets where entry price should be set
+                prev_weights = self.w_prev.reindex(current_universe_tickers).fillna(0.0)
+                new_weights = w_target_pre_filter.reindex(current_universe_tickers).fillna(0.0)
+                price_update_mask = (
+                    ((prev_weights == 0) & (new_weights != 0)) |
+                    ((np.sign(prev_weights) != np.sign(new_weights)) & (new_weights != 0))
+                )
+                valid_prices = current_prices_for_assets_at_date[~current_prices_for_assets_at_date.isna()]
+                update_assets = price_update_mask.index.intersection(valid_prices.index)
+                self.entry_prices.loc[update_assets] = valid_prices.loc[update_assets]
+                # Set entry price to NaN where new weight is zero
+                zeroed_assets = new_weights.index[new_weights == 0]
+                self.entry_prices.loc[zeroed_assets] = np.nan
             weights_at_current_date = w_target_pre_filter
 
 
@@ -334,9 +332,10 @@ class MomentumStrategy(BaseStrategy):
              current_date, current_prices_for_sl, weights_at_current_date, self.entry_prices, stop_levels
         )
 
-        for asset in current_universe_tickers: # Update entry prices if SL closed positions
-            if weights_at_current_date.get(asset, 0) != 0 and weights_after_sl.get(asset, 0) == 0:
-                self.entry_prices[asset] = np.nan
+        # Vectorized update: set entry price to NaN where SL closed positions
+        closed_assets = [asset for asset in current_universe_tickers if weights_at_current_date.get(asset, 0) != 0 and weights_after_sl.get(asset, 0) == 0]
+        if closed_assets:
+            self.entry_prices.loc[closed_assets] = np.nan
         weights_at_current_date = weights_after_sl
 
 
@@ -414,9 +413,10 @@ class MomentumStrategy(BaseStrategy):
                 final_weights[:] = 0.0
 
         # Update entry prices if risk filters zeroed out positions
-        for asset in current_universe_tickers:
-            if weights_at_current_date.get(asset, 0) != 0 and final_weights.get(asset, 0) == 0:
-                 self.entry_prices[asset] = np.nan
+        # Vectorized update: set entry price to NaN where risk filters zeroed out positions
+        zeroed_assets = [asset for asset in current_universe_tickers if weights_at_current_date.get(asset, 0) != 0 and final_weights.get(asset, 0) == 0]
+        if zeroed_assets:
+            self.entry_prices.loc[zeroed_assets] = np.nan
 
         # PERFORMANCE OPTIMIZATION: Store reference, copy only if strategy modifies weights later
         self.w_prev = final_weights

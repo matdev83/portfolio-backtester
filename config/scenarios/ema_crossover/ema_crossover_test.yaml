@@ -3,7 +3,7 @@ strategy: ema_crossover
 rebalance_frequency: ME
 position_sizer: equal_weight
 transaction_costs_bps: 10
-train_window_months: 24
+train_window_months: 36
 test_window_months: 12
 
 # Universe Configuration: Use NASDAQ top 20 for EMA crossover strategy

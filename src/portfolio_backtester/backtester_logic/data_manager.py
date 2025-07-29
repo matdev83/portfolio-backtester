@@ -21,7 +21,11 @@ def get_data_source(global_config):
         logger.debug(f"Using {data_source_class.__name__}.")
         if ds_name == "hybrid":
             prefer_stooq = global_config.get("prefer_stooq", True)
-            return HybridDataSource(prefer_stooq=prefer_stooq)
+            return HybridDataSource(
+                cache_expiry_hours=24,
+                prefer_stooq=prefer_stooq,
+                negative_cache_timeout_hours=4
+            )
         return data_source_class()
     else:
         logger.error(f"Unsupported data source: {ds_name}")

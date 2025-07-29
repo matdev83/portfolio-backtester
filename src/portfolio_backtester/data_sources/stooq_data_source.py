@@ -7,7 +7,7 @@ from typing import List
 import pandas as pd
 import pandas_datareader.data as web
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from .base_data_source import BaseDataSource
 
@@ -99,7 +99,6 @@ class StooqDataSource(BaseDataSource):
         SYMBOL_MAP = {"^GSPC": "^SPX"}
 
         with Progress(
-            SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),

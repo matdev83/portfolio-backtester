@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
 from typing import Optional, Dict, Any
+from ..api_stability import api_stable
 
+@api_stable(version="1.0", strict_params=True, strict_return=False)
 def apply_leverage_and_smoothing(candidate_weights: pd.Series, prev_weights: Optional[pd.Series], params: Optional[Dict[str, Any]] = None) -> pd.Series:
     """
     Applies leverage and exponential smoothing to candidate weights.

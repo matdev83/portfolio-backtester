@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
 from typing import Optional, Dict, Any
+from ..api_stability import api_stable
 
+@api_stable(version="1.0", strict_params=True, strict_return=False)
 def default_candidate_weights(scores: pd.Series, params: Optional[Dict[str, Any]] = None) -> pd.Series:
     """
     Default candidate weight calculation: equal weight for top N assets by score.

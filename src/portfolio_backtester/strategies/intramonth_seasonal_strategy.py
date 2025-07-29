@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class IntramonthSeasonalStrategy(BaseStrategy):
+    # Cache for business day calendars and month ends (class-level, shared)
+    _bday_range_cache = {}
+    _month_end_cache = {}
     """
     Intramonth seasonal trading strategy.
 
@@ -24,7 +27,8 @@ class IntramonthSeasonalStrategy(BaseStrategy):
     def __init__(self, strategy_config: Dict[str, Any]):
         super().__init__(strategy_config)
         self._last_weights: Optional[pd.Series] = None
-        self.positions: Dict[str, Dict[str, Any]] = {}
+        # Use Numpy arrays for position tracking
+        self._exit_dates_np = None  # Numpy array of exit dates (as int64 timestamps)
 
         defaults = {
             "direction": "long",  # "long" or "short"
@@ -125,30 +129,33 @@ class IntramonthSeasonalStrategy(BaseStrategy):
         start_date: Optional[pd.Timestamp] = None,
         end_date: Optional[pd.Timestamp] = None,
     ) -> pd.DataFrame:
+        # --- Step 1: Extract all relevant arrays and info up front ---
+        # Asset names
+        if isinstance(all_historical_data.columns, pd.MultiIndex):
+            all_assets = all_historical_data.columns.get_level_values(0).unique().to_numpy()
+        else:
+            all_assets = all_historical_data.columns.to_numpy()
+
+        # Current day data as numpy
+        if not all_historical_data.empty and current_date in all_historical_data.index:
+            current_day_data = all_historical_data.loc[current_date].to_numpy()
+        else:
+            current_day_data = np.array([])
+
+        # Validate data sufficiency
         is_sufficient, reason = self.validate_data_sufficiency(
             all_historical_data, benchmark_historical_data, current_date
         )
         if not is_sufficient:
-            columns = (
-                all_historical_data.columns.get_level_values(0).unique()
-                if isinstance(all_historical_data.columns, pd.MultiIndex)
-                else all_historical_data.columns
-            )
-            return pd.DataFrame(0.0, index=[current_date], columns=columns)
+            return pd.DataFrame(0.0, index=[current_date], columns=all_assets)
 
+        # Valid assets (still as list for now)
         valid_assets = self.filter_universe_by_data_availability(
             all_historical_data, current_date, min_periods_override=1
         )
 
-        # Strategy can work with multiple assets
-
         if not valid_assets:
-            columns = (
-                all_historical_data.columns.get_level_values(0).unique()
-                if isinstance(all_historical_data.columns, pd.MultiIndex)
-                else all_historical_data.columns
-            )
-            return pd.DataFrame(0.0, index=[current_date], columns=columns)
+            return pd.DataFrame(0.0, index=[current_date], columns=all_assets)
 
         params = self.strategy_config.get("strategy_params", self.strategy_config)
         direction = params["direction"]
@@ -173,22 +180,27 @@ class IntramonthSeasonalStrategy(BaseStrategy):
         if any(m < 1 or m > 12 for m in allowed_months):
             raise ValueError("IntramonthSeasonalStrategy: allowed_months values must be between 1 and 12")
 
-        if self._last_weights is None:
-            self._last_weights = pd.Series(0.0, index=valid_assets)
-        else:
-            self._last_weights = self._last_weights.reindex(valid_assets, fill_value=0.0)
+        # --- Step 2: Use Numpy arrays for weights ---
 
-        target_weights = self._last_weights.copy()
+        # Map valid_assets to indices in all_assets
+        asset_idx_map = {asset: i for i, asset in enumerate(all_assets)}
+        valid_indices = np.array([asset_idx_map[a] for a in valid_assets if a in asset_idx_map], dtype=int)
 
-        # Check for exits
-        for asset, pos_info in list(self.positions.items()):
-            if current_date >= pos_info["exit_date"]:
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Exiting position for {asset} on {current_date}")
-                target_weights[asset] = 0
-                del self.positions[asset]
+        # Initialize last_weights and target_weights as Numpy arrays
+        if not hasattr(self, '_last_weights_np') or self._last_weights_np.shape[0] != len(all_assets):
+            self._last_weights_np = np.zeros(len(all_assets), dtype=np.float64)
+        target_weights_np = self._last_weights_np.copy()
 
-        # Check for entries – only if trading allowed this month
+        # Initialize exit_dates array (int64 timestamps, NaT for no position)
+        if self._exit_dates_np is None or self._exit_dates_np.shape[0] != len(all_assets):
+            self._exit_dates_np = np.full(len(all_assets), np.datetime64('NaT'), dtype='datetime64[ns]')
+
+        # Vectorized exit: set weights to 0 where exit_date <= current_date
+        exit_mask = (~pd.isna(self._exit_dates_np)) & (self._exit_dates_np <= np.datetime64(current_date))
+        target_weights_np[exit_mask] = 0
+        self._exit_dates_np[exit_mask] = np.datetime64('NaT')
+
+        # Vectorized entry: only if trading allowed this month
         if current_date.month in allowed_months:
             entry_date = self.get_entry_date_for_month(current_date, entry_day)
         else:
@@ -196,42 +208,55 @@ class IntramonthSeasonalStrategy(BaseStrategy):
 
         if entry_date is not None and current_date == entry_date:
             # Validate that the entry_day is valid for the given month
-            start_of_month = current_date.replace(day=1)
-            end_of_month = start_of_month + pd.offsets.MonthEnd(1)
-            b_days = pd.bdate_range(start=start_of_month, end=end_of_month)
-            
+            year, month = current_date.year, current_date.month
+            cache_key = (year, month)
+            if cache_key in self._month_end_cache:
+                end_of_month = self._month_end_cache[cache_key]
+            else:
+                start_of_month = current_date.replace(day=1)
+                end_of_month = start_of_month + pd.offsets.MonthEnd(1)
+                self._month_end_cache[cache_key] = end_of_month
+            if cache_key in self._bday_range_cache:
+                b_days = self._bday_range_cache[cache_key]
+            else:
+                start_of_month = current_date.replace(day=1)
+                b_days = pd.bdate_range(start=start_of_month, end=end_of_month)
+                self._bday_range_cache[cache_key] = b_days
+
             if entry_day > 0 and entry_day > len(b_days):
-                return pd.DataFrame(0.0, index=[current_date], columns=valid_assets)
+                return pd.DataFrame(0.0, index=[current_date], columns=all_assets)
             elif entry_day < 0 and abs(entry_day) > len(b_days):
-                return pd.DataFrame(0.0, index=[current_date], columns=valid_assets)
+                return pd.DataFrame(0.0, index=[current_date], columns=all_assets)
 
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Entry condition met for {current_date}. Assets: {valid_assets}")
-            for asset in valid_assets:
-                if asset not in self.positions:
-                    if logger.isEnabledFor(logging.DEBUG):
-                        logger.debug(f"Entering position for {asset} on {current_date}")
-                    target_weights[asset] = 1.0 if direction == "long" else -1.0
-                    exit_date = current_date + self._bday_offset * hold_days
-                    self.positions[asset] = {"exit_date": exit_date}
+            # Only enter for valid_indices not already in a position
+            not_in_position = pd.isna(self._exit_dates_np[valid_indices])
+            if not_in_position.any():
+                if direction == "long":
+                    target_weights_np[valid_indices[not_in_position]] = 1.0
+                else:
+                    target_weights_np[valid_indices[not_in_position]] = -1.0
+                # Set exit dates for new positions
+                exit_date = np.datetime64(current_date + self._bday_offset * hold_days)
+                self._exit_dates_np[valid_indices[not_in_position]] = exit_date
 
-        if (self._last_weights is not None) and (self._last_weights != 0).any():
-            logger.debug(f"Date: {current_date}, Previous weights: {self._last_weights[self._last_weights != 0]}")
-        if (target_weights != 0).any():
-            logger.debug(f"Date: {current_date}, New weights: {target_weights[target_weights != 0]}")
+        if hasattr(self, '_last_weights_np') and np.any(self._last_weights_np != 0):
+            logger.debug(f"Date: {current_date}, Previous weights: {self._last_weights_np[self._last_weights_np != 0]}")
+        if np.any(target_weights_np != 0):
+            logger.debug(f"Date: {current_date}, New weights: {target_weights_np[target_weights_np != 0]}")
 
         # Normalize weights to sum to 1 (or -1 for short)
-        num_positions = (target_weights != 0).sum()
+        num_positions = np.count_nonzero(target_weights_np)
         if num_positions > 0:
             if direction == "long":
-                target_weights[target_weights > 0] = 1.0 / num_positions
+                target_weights_np[target_weights_np > 0] = 1.0 / num_positions
             else:
-                target_weights[target_weights < 0] = -1.0 / num_positions
+                target_weights_np[target_weights_np < 0] = -1.0 / num_positions
+                target_weights_np[target_weights_np > 0] = -1.0 / num_positions
 
-        self._last_weights = target_weights
-        
-        # Return a transposed DataFrame
-        return pd.DataFrame(target_weights.to_dict(), index=[current_date]).reindex(columns=valid_assets).fillna(0.0).rename_axis(None)
+        self._last_weights_np = target_weights_np.copy()
+
+        # Output as DataFrame (single row)
+        return pd.DataFrame([target_weights_np], index=[current_date], columns=all_assets).rename_axis(None)
 
     def get_entry_date_for_month(self, date: pd.Timestamp, entry_day: int) -> pd.Timestamp:
         """Calculates the target entry date for a given month, using an internal cache for speed."""

@@ -120,6 +120,17 @@ def enumerate_strategies_with_params() -> Dict[str, type]:  # pragma: no cover
         strategy_key = _camel_to_snake(cls.__name__)
         discovered[strategy_key] = cls
 
+    # Add manual mappings for naming inconsistencies between config files and auto-generated names
+    strategy_aliases = {
+        'ema_crossover': 'ema',  # EMAStrategy should be accessible as both 'ema' and 'ema_crossover'
+        'ema_roro': 'ema_ro_ro',  # EMARoRoStrategy should be accessible as both 'ema_ro_ro' and 'ema_roro'
+    }
+    
+    # Add aliases to the discovered strategies
+    for alias, canonical_name in strategy_aliases.items():
+        if canonical_name in discovered:
+            discovered[alias] = discovered[canonical_name]
+
     return discovered
 
 

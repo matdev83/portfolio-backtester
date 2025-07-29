@@ -7,6 +7,7 @@ from typing import Dict, Any, TYPE_CHECKING
 import pandas as pd
 
 from .timing_state import TimingState
+from ..api_stability import api_stable
 
 if TYPE_CHECKING:
     from ..strategies.base_strategy import BaseStrategy
@@ -20,6 +21,7 @@ class TimingController(ABC):
         self.timing_state = TimingState()
     
     @abstractmethod
+    @api_stable(version="1.0", strict_params=True, strict_return=False)
     def get_rebalance_dates(
         self, 
         start_date: pd.Timestamp,

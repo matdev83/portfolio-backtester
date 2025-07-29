@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
-import ta
+from ta.momentum import RSIIndicator
 
 from .base_strategy import BaseStrategy
 
@@ -83,7 +83,7 @@ class UvxyRsiStrategy(BaseStrategy):
             return pd.Series(index=price_series.index, dtype=float)
         
         # Use ta library for RSI calculation
-        rsi = ta.momentum.RSIIndicator(close=price_series, window=period).rsi()
+        rsi = RSIIndicator(close=price_series, window=period).rsi()
         
         return rsi
 
@@ -91,10 +91,10 @@ class UvxyRsiStrategy(BaseStrategy):
         self,
         all_historical_data: pd.DataFrame,
         benchmark_historical_data: pd.DataFrame,
+        non_universe_historical_data: Optional[pd.DataFrame],
         current_date: pd.Timestamp,
         start_date: Optional[pd.Timestamp] = None,
         end_date: Optional[pd.Timestamp] = None,
-        non_universe_historical_data: Optional[pd.DataFrame] = None,
         **kwargs,
     ) -> pd.DataFrame:
         """
@@ -135,60 +135,28 @@ class UvxyRsiStrategy(BaseStrategy):
     def _generate_signals_for_range(self, spy_data: pd.Series, universe_tickers: list, 
                                    rsi_period: int, rsi_threshold: float,
                                    start_date: pd.Timestamp, end_date: pd.Timestamp) -> pd.DataFrame:
-        """Generate signals for a full date range with proper daily logic."""
-        
-        # Get all trading days in the range
+        """Vectorized: Generate signals for a full date range with proper daily logic."""
         trading_days = spy_data.index[(spy_data.index >= start_date) & (spy_data.index <= end_date)]
-        
         if len(trading_days) == 0:
             return self._create_empty_signals_range(universe_tickers, start_date, end_date)
-        
-        # Calculate RSI for the full SPY series
+
         spy_rsi = self._calculate_rsi(spy_data, rsi_period)
-        
-        # Initialize signals DataFrame
-        signals = pd.DataFrame(
-            index=trading_days,
-            columns=universe_tickers,
-            dtype=float
-        ).fillna(0.0)
-        
-        # Track position state
-        in_position = False
-        entry_date = None
-        
-        for date in trading_days:
-            if date not in spy_rsi.index:
-                continue
-                
-            current_rsi = spy_rsi.loc[date]
-            
-            if np.isnan(current_rsi):
-                continue
-            
-            # Signal logic
-            if not in_position and current_rsi < rsi_threshold:
-                # Enter short position
-                for ticker in universe_tickers:
-                    signals.loc[date, ticker] = -1.0 / len(universe_tickers)
-                in_position = True
-                entry_date = date
-                logger.debug(f"Entering short UVXY on {date}: SPY RSI({rsi_period}) = {current_rsi:.2f} < {rsi_threshold}")
-                
-            elif in_position and entry_date is not None:
-                # Check if we should exit (1-day holding period)
-                if date > entry_date:
-                    # Exit position
-                    for ticker in universe_tickers:
-                        signals.loc[date, ticker] = 0.0
-                    in_position = False
-                    entry_date = None
-                    logger.debug(f"Closing UVXY position on {date}: 1-day holding period complete")
-                else:
-                    # Hold position
-                    for ticker in universe_tickers:
-                        signals.loc[date, ticker] = -1.0 / len(universe_tickers)
-        
+        spy_rsi = spy_rsi.reindex(trading_days)
+
+        # Entry: short signal when RSI < threshold
+        entry_signal = (spy_rsi < rsi_threshold) & (~spy_rsi.isna())
+        entry_dates = trading_days[entry_signal]
+
+        # Build a DataFrame of zeros
+        signals = pd.DataFrame(0.0, index=trading_days, columns=universe_tickers, dtype=float)
+
+
+        # Vectorized: For each entry, set -1.0/len(universe_tickers) for entry and next day (holding period = 1 day)
+        entry_indices = trading_days.get_indexer(entry_dates)
+        hold_indices = np.unique(np.concatenate([entry_indices, entry_indices + 1]))
+        hold_indices = hold_indices[(hold_indices >= 0) & (hold_indices < len(trading_days))]
+        signals.iloc[hold_indices, :] = -1.0 / len(universe_tickers)
+
         return signals
     
     def _generate_signal_for_date(self, spy_data: pd.Series, universe_tickers: list,

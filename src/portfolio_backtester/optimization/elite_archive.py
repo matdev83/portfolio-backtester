@@ -13,6 +13,7 @@ length manageable.
 
 from dataclasses import dataclass
 from datetime import datetime
+from ..api_stability import api_stable
 from typing import List, Any, Dict, Tuple
 import numpy as np
 
@@ -42,6 +43,7 @@ class EliteArchive:
     # ---------------------------------------------------------------------
     # Public helpers
     # ---------------------------------------------------------------------
+    @api_stable(version="1.0", strict_params=True, strict_return=False)
     def add(self, chromosome: np.ndarray, fitness: float, generation: int) -> None:
         """Attempt to add a new elite to the archive."""
         if not np.isfinite(fitness):

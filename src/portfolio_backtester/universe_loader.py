@@ -30,6 +30,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Set
+from .api_stability import api_stable
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,7 @@ def _parse_universe_file(file_path: Path) -> List[str]:
 
 
 @lru_cache(maxsize=128)
+@api_stable(version="1.0", strict_params=True, strict_return=False)
 def load_named_universe(universe_name: str) -> List[str]:
     """
     Load a named universe from a text file.

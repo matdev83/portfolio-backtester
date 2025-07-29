@@ -32,8 +32,8 @@ def test_sortino_vs_sharpe_weights():
     sortino_strategy = SortinoMomentumStrategy(strategy_config)
 
     # Features are now computed internally by the strategies
-    sharpe_weights = sharpe_strategy.generate_signals(data, benchmark_data.to_frame(), data.index[-1])
-    sortino_weights = sortino_strategy.generate_signals(data, benchmark_data.to_frame(), data.index[-1])
+    sharpe_weights = sharpe_strategy.generate_signals(all_historical_data=data, benchmark_historical_data=benchmark_data.to_frame(), current_date=data.index[-1])
+    sortino_weights = sortino_strategy.generate_signals(all_historical_data=data, benchmark_historical_data=benchmark_data.to_frame(), current_date=data.index[-1])
 
     diff = (sharpe_weights - sortino_weights).abs().sum().sum()
     assert diff < 10.0 # Relaxed threshold for expected differences

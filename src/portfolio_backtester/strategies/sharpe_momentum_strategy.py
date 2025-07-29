@@ -19,6 +19,8 @@ except ImportError:
 import logging
 
 class SharpeMomentumStrategy(BaseStrategy):
+    """Strategy that uses Sharpe ratio for ranking assets."""
+
     def _calculate_candidate_weights(self, scores: pd.Series) -> pd.Series:
         # Build params dict with required keys for candidate weights logic
         config = self.strategy_config.get("strategy_params", self.strategy_config)
@@ -50,16 +52,14 @@ class SharpeMomentumStrategy(BaseStrategy):
         result = apply_leverage_and_smoothing(candidate_weights, prev_weights, params)
         logger.debug(f"[SharpeMomentumStrategy] after leverage/smoothing: {result.to_dict()}")
         return result
-    """Strategy that uses Sharpe ratio for ranking assets."""
-
     # Removed signal_generator_class
 
     def __init__(self, strategy_config: Dict[str, Any]):
         super().__init__(strategy_config)
-
-        self.w_prev: Optional[pd.Series] = None
-        self.current_derisk_flag: bool = False
-        self.consecutive_periods_under_sma: int = 0
+        # Instance variables
+        self.w_prev = None  # type: Optional[pd.Series]
+        self.current_derisk_flag = False  # type: bool
+        self.consecutive_periods_under_sma = 0  # type: int
 
         defaults = {
             "rolling_window": 6, # Months for Sharpe ratio calculation
@@ -85,7 +85,7 @@ class SharpeMomentumStrategy(BaseStrategy):
         for k, v in defaults.items():
             params_dict_to_update.setdefault(k, v)
 
-        self.entry_prices: pd.Series | None = None
+        self.entry_prices = None  # type: Optional[pd.Series]
 
     @classmethod
     def tunable_parameters(cls) -> set[str]:
@@ -159,21 +159,26 @@ class SharpeMomentumStrategy(BaseStrategy):
             try:
                 from ..numba_optimized import sharpe_fast
                 sharpe_mat = sharpe_fast(returns_np, window_days, annualization_factor=252.0)
-                sharpe_ratio_calculated = pd.DataFrame(sharpe_mat, index=daily_returns.index, columns=daily_returns.columns)
+                cols = getattr(daily_returns, 'columns', None)
+                if isinstance(cols, (pd.Index, list)):
+                    sharpe_ratio_calculated = pd.DataFrame(sharpe_mat, index=daily_returns.index, columns=cols)
+                else:
+                    sharpe_ratio_calculated = pd.DataFrame(sharpe_mat, index=daily_returns.index)
             except ImportError:
                 # Fallback to per-asset fast function
+                from ..numba_optimized import rolling_sharpe_fast_portfolio
                 sharpe_ratio_calculated = pd.DataFrame(index=daily_closes.index, columns=daily_closes.columns)
                 for asset in daily_closes.columns:
                     sharpe_ratio_calculated[asset] = rolling_sharpe_fast_portfolio(daily_closes[asset].values, rolling_window_months, annualization_factor)
         else:
             # Resample to monthly, calculate monthly returns
             monthly_closes = daily_closes.resample('ME').last()
-            monthly_rets = monthly_closes.pct_change(fill_method=None).fillna(0)
-
-            # Ensure we have enough data for rolling calculation up to current_date's month-end
-            # The monthly_rets will be indexed by month-ends.
-            relevant_monthly_rets = monthly_rets[monthly_rets.index <= current_month_end]
-
+            # Always return a Series
+            if isinstance(latest_sharpe, pd.DataFrame):
+                latest_sharpe = latest_sharpe.squeeze(axis=0)
+            if not isinstance(latest_sharpe, pd.Series):
+                latest_sharpe = pd.Series(latest_sharpe, index=daily_closes.columns)
+            return latest_sharpe.fillna(0.0)
             if len(relevant_monthly_rets) < rolling_window_months:
                 return pd.Series(0.0, index=daily_closes.columns) # Not enough history for any asset
 
@@ -203,10 +208,15 @@ class SharpeMomentumStrategy(BaseStrategy):
         self,
         all_historical_data: pd.DataFrame,
         benchmark_historical_data: pd.DataFrame,
-        current_date: pd.Timestamp,
+        non_universe_historical_data: Optional[pd.DataFrame] = None,
+        current_date: Optional[pd.Timestamp] = None,
         start_date: Optional[pd.Timestamp] = None,
         end_date: Optional[pd.Timestamp] = None,
+        **kwargs,
     ) -> pd.DataFrame:
+        # Handle None current_date gracefully - use the last date in the data
+        if current_date is None:
+            current_date = all_historical_data.index[-1]
 
         # --- Data Sufficiency Validation ---
         is_sufficient, reason = self.validate_data_sufficiency(
@@ -223,9 +233,9 @@ class SharpeMomentumStrategy(BaseStrategy):
         price_col_asset = params["price_column_asset"]
         price_col_benchmark = params["price_column_benchmark"]
 
-        if start_date and current_date < start_date:
+        if start_date is not None and current_date is not None and current_date < start_date:
             return pd.DataFrame(index=[current_date], columns=all_historical_data.columns.get_level_values(0).unique() if isinstance(all_historical_data.columns, pd.MultiIndex) else all_historical_data.columns).fillna(0.0)
-        if end_date and current_date > end_date:
+        if end_date is not None and current_date is not None and current_date > end_date:
             return pd.DataFrame(index=[current_date], columns=all_historical_data.columns.get_level_values(0).unique() if isinstance(all_historical_data.columns, pd.MultiIndex) else all_historical_data.columns).fillna(0.0)
 
         # Prepare asset data (universe)
@@ -263,36 +273,52 @@ class SharpeMomentumStrategy(BaseStrategy):
 
             # Update Entry Prices (using daily close prices from all_historical_data)
             asset_closes_hist = asset_data_for_scores[asset_data_for_scores.index <= current_date]
-            current_prices_for_assets_at_date = asset_closes_hist.loc[current_date] if current_date in asset_closes_hist.index else pd.Series(dtype=float)
+            if current_date is not None and current_date in asset_closes_hist.index:
+                temp_prices = asset_closes_hist.loc[current_date]
+                if isinstance(temp_prices, pd.DataFrame):
+                    temp_prices = temp_prices.squeeze()
+                if not isinstance(temp_prices, pd.Series):
+                    temp_prices = pd.Series([temp_prices], index=[current_universe_tickers[0]]) if len(current_universe_tickers) > 0 else pd.Series(dtype=float)
+                current_prices_for_assets_at_date = temp_prices.reindex(current_universe_tickers).fillna(np.nan)
+            else:
+                current_prices_for_assets_at_date = pd.Series(np.nan, index=current_universe_tickers)
 
-            for asset in current_universe_tickers:
-                if not current_prices_for_assets_at_date.empty and asset in current_prices_for_assets_at_date.index:
-                    asset_current_price = current_prices_for_assets_at_date[asset]
-                    if pd.isna(asset_current_price):
-                        continue
+            # Vectorized entry/exit logic
+            prev = np.asarray([self.w_prev.get(asset, 0) for asset in current_universe_tickers])
+            target = np.asarray([w_target_pre_filter.get(asset, 0) for asset in current_universe_tickers])
+            entry = np.asarray([self.entry_prices.get(asset, np.nan) for asset in current_universe_tickers])
+            prices = np.asarray([current_prices_for_assets_at_date.get(asset, np.nan) for asset in current_universe_tickers])
 
-                    if (self.w_prev.get(asset, 0) == 0 and w_target_pre_filter.get(asset, 0) != 0) or \
-                       (np.sign(self.w_prev.get(asset, 0)) != np.sign(w_target_pre_filter.get(asset, 0)) and w_target_pre_filter.get(asset, 0) != 0):
-                        self.entry_prices[asset] = asset_current_price
-                    elif w_target_pre_filter.get(asset, 0) == 0:
-                        self.entry_prices[asset] = np.nan
-            # PERFORMANCE OPTIMIZATION: Only copy if we need to modify
-
+            entry_mask = ((prev == 0) & (target != 0)) | ((np.sign(prev) != np.sign(target)) & (target != 0))
+            exit_mask = (target == 0)
+            entry[entry_mask] = prices[entry_mask]
+            entry[exit_mask] = np.nan
+            self.entry_prices = pd.Series(entry, index=current_universe_tickers)
             weights_at_current_date = w_target_pre_filter
 
         # --- Apply Stop Loss ---
         sl_handler = self.get_stop_loss_handler()
         asset_ohlc_hist_for_sl = all_historical_data[all_historical_data.index <= current_date]
-        current_prices_for_sl_check = asset_data_for_scores.loc[current_date] if current_date in asset_data_for_scores.index else pd.Series(dtype=float, index=current_universe_tickers)
+        if current_date is not None and current_date in asset_data_for_scores.index:
+            temp_prices = asset_data_for_scores.loc[current_date]
+            if isinstance(temp_prices, pd.DataFrame):
+                temp_prices = temp_prices.squeeze()
+            if not isinstance(temp_prices, pd.Series):
+                temp_prices = pd.Series([temp_prices], index=[current_universe_tickers[0]]) if len(current_universe_tickers) > 0 else pd.Series(dtype=float)
+            current_prices_for_sl_check = temp_prices.reindex(current_universe_tickers).fillna(np.nan)
+        else:
+            current_prices_for_sl_check = pd.Series(np.nan, index=current_universe_tickers)
 
         stop_levels = sl_handler.calculate_stop_levels(current_date, asset_ohlc_hist_for_sl, self.w_prev, self.entry_prices)
         weights_after_sl = sl_handler.apply_stop_loss(current_date, current_prices_for_sl_check, weights_at_current_date, self.entry_prices, stop_levels)
 
-        for asset in current_universe_tickers:
-            if weights_at_current_date.get(asset, 0) != 0 and weights_after_sl.get(asset, 0) == 0:
-                self.entry_prices[asset] = np.nan
-        # PERFORMANCE OPTIMIZATION: Only copy if we need to modify
-
+        # Vectorized stop loss exit logic
+        before_sl = np.asarray([weights_at_current_date.get(asset, 0) for asset in current_universe_tickers])
+        after_sl = np.asarray([weights_after_sl.get(asset, 0) for asset in current_universe_tickers])
+        entry = np.asarray([self.entry_prices.get(asset, np.nan) for asset in current_universe_tickers])
+        exit_mask = (before_sl != 0) & (after_sl == 0)
+        entry[exit_mask] = np.nan
+        self.entry_prices = pd.Series(entry, index=current_universe_tickers)
         weights_at_current_date = weights_after_sl
 
 
@@ -307,15 +333,31 @@ class SharpeMomentumStrategy(BaseStrategy):
             benchmark_sma_series = self._calculate_benchmark_sma(benchmark_prices_hist, sma_filter_window, price_col_benchmark)
 
             if current_date in benchmark_price_series_for_sma.index and current_date in benchmark_sma_series.index:
-                current_benchmark_price_val = benchmark_price_series_for_sma.loc[[current_date]]
-                current_benchmark_sma_val = benchmark_sma_series.loc[[current_date]]
+                current_benchmark_price_val = benchmark_price_series_for_sma.loc[current_date]
+                current_benchmark_sma_val = benchmark_sma_series.loc[current_date]
+                # Convert to float scalars for logic
+                def to_scalar(val):
+                    if isinstance(val, pd.Series):
+                        if val.empty:
+                            return np.nan
+                        return float(val.iloc[0])
+                    elif isinstance(val, pd.DataFrame):
+                        if val.empty:
+                            return np.nan
+                        return float(val.values[0, 0])
+                    try:
+                        return float(val)
+                    except Exception:
+                        return np.nan
+                price_scalar = to_scalar(current_benchmark_price_val)
+                sma_scalar = to_scalar(current_benchmark_sma_val)
                 derisk_periods = params.get("derisk_days_under_sma", 10)
-
+                # Pass as Series of length 1 to _calculate_derisk_flags
+                price_series = pd.Series([price_scalar], index=[current_date])
+                sma_series = pd.Series([sma_scalar], index=[current_date])
                 self.current_derisk_flag, self.consecutive_periods_under_sma = \
-                    self._calculate_derisk_flags(current_benchmark_price_val, current_benchmark_sma_val, derisk_periods, self.current_derisk_flag, self.consecutive_periods_under_sma)
-
-                if self.current_derisk_flag or \
-                   (not current_benchmark_price_val.empty and not current_benchmark_sma_val.empty and current_benchmark_price_val.iloc[0] < current_benchmark_sma_val.iloc[0]):
+                    self._calculate_derisk_flags(price_series, sma_series, derisk_periods, self.current_derisk_flag, self.consecutive_periods_under_sma)
+                if self.current_derisk_flag or (not np.isnan(price_scalar) and not np.isnan(sma_scalar) and price_scalar < sma_scalar):
                     logger.debug(f"[SharpeMomentumStrategy] SMA filter zeroed weights on {current_date}")
                     final_weights[:] = 0.0
 
@@ -328,9 +370,13 @@ class SharpeMomentumStrategy(BaseStrategy):
                 logger.debug(f"[SharpeMomentumStrategy] RoRo filter zeroed weights on {current_date}")
                 final_weights[:] = 0.0
 
-        for asset in current_universe_tickers:
-            if weights_at_current_date.get(asset, 0) != 0 and final_weights.get(asset, 0) == 0:
-                 self.entry_prices[asset] = np.nan
+        # Vectorized risk filter exit logic
+        before_risk = np.asarray([weights_at_current_date.get(asset, 0) for asset in current_universe_tickers])
+        after_risk = np.asarray([final_weights.get(asset, 0) for asset in current_universe_tickers])
+        entry = np.asarray([self.entry_prices.get(asset, np.nan) for asset in current_universe_tickers])
+        exit_mask = (before_risk != 0) & (after_risk == 0)
+        entry[exit_mask] = np.nan
+        self.entry_prices = pd.Series(entry, index=current_universe_tickers)
 
         # PERFORMANCE OPTIMIZATION: Store reference, copy only if strategy modifies weights later
 
@@ -338,7 +384,7 @@ class SharpeMomentumStrategy(BaseStrategy):
         self.w_prev = final_weights
 
         output_weights_df = pd.DataFrame(0.0, index=[current_date], columns=current_universe_tickers)
-        output_weights_df.loc[current_date] = final_weights
+        output_weights_df.loc[current_date, :] = final_weights
         return output_weights_df
 
     def _get_params(self) -> Dict[str, Any]:

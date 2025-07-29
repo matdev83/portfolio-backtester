@@ -1,3 +1,5 @@
+from .leverage_and_smoothing import apply_leverage_and_smoothing
+
 """
 Low-Volatility Factor Strategy Implementation
 
@@ -117,8 +119,11 @@ from ..data_sources.etf_holdings import ETFHoldingsDataSource
 from .base_strategy import BaseStrategy
 
 # Import Numba optimization with fallback for beta calculation
+
+rolling_beta_fast_portfolio = None
 try:
-    from ..numba_optimized import rolling_beta_fast_portfolio
+    from ..numba_optimized import rolling_beta_fast_portfolio as _rbfp
+    rolling_beta_fast_portfolio = _rbfp
     NUMBA_AVAILABLE = True
 except ImportError:
     NUMBA_AVAILABLE = False
@@ -127,6 +132,7 @@ logger = logging.getLogger(__name__)
 
 
 class LowVolatilityFactorStrategy(BaseStrategy):
+
     """
     Low-Volatility Factor Strategy based on SSRN-5295002.
     
@@ -139,12 +145,11 @@ class LowVolatilityFactorStrategy(BaseStrategy):
 
     def __init__(self, strategy_config: Dict[str, Any]):
         super().__init__(strategy_config)
-        
         # Initialize stateful variables
-        self.w_prev: Optional[pd.Series] = None
-        self.portfolio_betas: Dict[str, float] = {}
-        self.size_breakpoints: Dict[str, float] = {}
-        self.volatility_breakpoints: Dict[str, float] = {}
+        self.w_prev = None
+        self.portfolio_betas = {}
+        self.size_breakpoints = {}
+        self.volatility_breakpoints = {}
         self.etf_holdings_data_source = ETFHoldingsDataSource()
         
         # Default parameters based on the paper
@@ -285,7 +290,8 @@ class LowVolatilityFactorStrategy(BaseStrategy):
             }
         else:
             # Full 2x3 sorting with size and volatility
-            size_breakpoint = self._get_size_breakpoints(market_caps, params["size_percentile"])
+            # Use 50th percentile as default since size_percentile parameter was removed
+            size_breakpoint = self._get_size_breakpoints(market_caps, 50.0)
             self.size_breakpoints[current_date] = size_breakpoint
             
             # Create size groups
@@ -316,9 +322,12 @@ class LowVolatilityFactorStrategy(BaseStrategy):
                 betas[portfolio_name] = 1.0
                 continue
             
-            if NUMBA_AVAILABLE:
+            if rolling_beta_fast_portfolio is not None:
                 portfolio_prices = prices[stocks].mean(axis=1)
-                beta = rolling_beta_fast_portfolio(portfolio_prices.values, market_prices.values, lookback_months)
+                try:
+                    beta = rolling_beta_fast_portfolio(portfolio_prices.values, market_prices.values, lookback_months)
+                except Exception:
+                    beta = 1.0
             else:
                 # Calculate portfolio returns (equal-weighted for simplicity)
                 portfolio_prices = prices[stocks].mean(axis=1)
@@ -326,7 +335,7 @@ class LowVolatilityFactorStrategy(BaseStrategy):
                 market_returns = market_prices.pct_change(fill_method=None).dropna()
                 
                 # Align returns
-                common_dates = portfolio_returns.index.intersection(market_returns.index)
+                common_dates = portfolio_returns.index.intersection(list(market_returns.index))
                 if len(common_dates) < 12:  # Need at least 12 months
                     betas[portfolio_name] = 1.0
                     continue
@@ -454,6 +463,7 @@ class LowVolatilityFactorStrategy(BaseStrategy):
         self,
         all_historical_data: pd.DataFrame,
         benchmark_historical_data: pd.DataFrame,
+        non_universe_historical_data: pd.DataFrame,
         current_date: pd.Timestamp,
         start_date: Optional[pd.Timestamp] = None,
         end_date: Optional[pd.Timestamp] = None,
@@ -511,12 +521,14 @@ class LowVolatilityFactorStrategy(BaseStrategy):
         params = self.strategy_config.get("strategy_params", self.strategy_config)
         price_col = params["price_column"]
         
-        # Extract price data
+        # Extract price data as DataFrame
         if isinstance(all_historical_data.columns, pd.MultiIndex):
             price_data = all_historical_data.xs(price_col, level=1, axis=1)
         else:
-            price_data = all_historical_data
-        
+            price_data = all_historical_data if isinstance(all_historical_data, pd.DataFrame) else all_historical_data.to_frame()
+        # Ensure price_data is always a DataFrame
+        if isinstance(price_data, pd.Series):
+            price_data = price_data.to_frame()
         # Filter to current date and before
         price_data = price_data[price_data.index <= current_date]
         
@@ -527,45 +539,68 @@ class LowVolatilityFactorStrategy(BaseStrategy):
         
         # Calculate volatilities
         volatilities = self._calculate_volatility(price_data, params["volatility_lookback_days"])
-        current_volatilities = volatilities.loc[current_date].dropna()
-        
+        if isinstance(volatilities, pd.DataFrame):
+            current_volatilities = volatilities.loc[current_date].dropna()
+        else:
+            current_volatilities = volatilities.dropna()
+        if isinstance(current_volatilities, pd.DataFrame):
+            current_volatilities = current_volatilities.squeeze()
         # Calculate market caps (returns None if not available)
         market_caps = self._calculate_market_caps(price_data)
         
         if market_caps is not None:
             # Full 2x3 sorting with market cap data
-            current_market_caps = market_caps.loc[current_date].dropna()
-            
+            if isinstance(market_caps, pd.DataFrame):
+                current_market_caps = market_caps.loc[current_date].dropna()
+            else:
+                current_market_caps = market_caps.dropna()
+            if isinstance(current_market_caps, pd.DataFrame):
+                current_market_caps = current_market_caps.squeeze()
             # Get common stocks with both volatility and market cap data
-            common_stocks = current_volatilities.index.intersection(current_market_caps.index)
+            if isinstance(current_volatilities, pd.Series) and isinstance(current_market_caps, pd.Series):
+                common_stocks = list(set(current_volatilities.index) & set(current_market_caps.index))
+            else:
+                common_stocks = []
             common_stocks = [stock for stock in common_stocks if stock in valid_assets]
-            
-            if len(common_stocks) < 10:  # Need minimum number of stocks
+            if len(common_stocks) < 10:
                 if logger.isEnabledFor(logging.WARNING):
                     logger.warning(f"Too few stocks with complete data at {current_date}")
                 return pd.DataFrame(0.0, index=[current_date], columns=valid_assets)
-            
-            # Filter data to common stocks
-            current_volatilities = current_volatilities[common_stocks]
-            current_market_caps = current_market_caps[common_stocks]
+            if isinstance(current_volatilities, pd.Series) and isinstance(current_market_caps, pd.Series):
+                current_volatilities = current_volatilities[common_stocks]
+                current_market_caps = current_market_caps[common_stocks]
+            else:
+                current_volatilities = pd.Series(dtype=float)
+                current_market_caps = pd.Series(dtype=float)
         else:
             # Volatility-only sorting (1x3) - no market cap data
-            common_stocks = [stock for stock in current_volatilities.index if stock in valid_assets]
-            
-            if len(common_stocks) < 10:  # Need minimum number of stocks
+            if isinstance(current_volatilities, pd.Series):
+                common_stocks = [stock for stock in current_volatilities.index if stock in valid_assets]
+            else:
+                common_stocks = []
+            if len(common_stocks) < 10:
                 if logger.isEnabledFor(logging.WARNING):
                     logger.warning(f"Too few stocks with complete data at {current_date}")
                 return pd.DataFrame(0.0, index=[current_date], columns=valid_assets)
-            
-            # Filter volatilities to common stocks
-            current_volatilities = current_volatilities[common_stocks]
-            current_market_caps = None  # No market cap data available
+            if isinstance(current_volatilities, pd.Series):
+                current_volatilities = current_volatilities[common_stocks]
+            else:
+                current_volatilities = pd.Series(dtype=float)
+            current_market_caps = pd.Series(np.nan, index=current_volatilities.index)
         
         # Perform sorting (2x3 if market cap available, 1x3 if not)
+        # Ensure both arguments are Series
+        if not isinstance(current_market_caps, pd.Series):
+            current_market_caps = pd.Series(dtype=float)
+        if not isinstance(current_volatilities, pd.Series):
+            current_volatilities = pd.Series(dtype=float)
         portfolios = self._sort_stocks_2x3(current_market_caps, current_volatilities, current_date)
         
         # Calculate portfolio betas
         benchmark_prices = benchmark_historical_data[price_col] if price_col in benchmark_historical_data.columns else benchmark_historical_data.iloc[:, 0]
+        # Ensure price_data is DataFrame
+        if isinstance(price_data, pd.Series):
+            price_data = price_data.to_frame()
         portfolio_betas = self._calculate_portfolio_betas(
             price_data, benchmark_prices, portfolios, params["beta_lookback_months"]
         )
@@ -580,20 +615,18 @@ class LowVolatilityFactorStrategy(BaseStrategy):
         weights = self._apply_transaction_costs(weights, current_date)
         
         # Apply leverage and smoothing
-        if self.w_prev is not None:
-            weights = self._apply_leverage_and_smoothing(weights, self.w_prev)
-        else:
-            weights = weights * params["leverage"]
+        weights = apply_leverage_and_smoothing(weights, self.w_prev, params)
         
         # Update previous weights
         # PERFORMANCE OPTIMIZATION: Store reference, copy only if strategy modifies weights later
 
         self.w_prev = weights
         
-        # Create result DataFrame
+        # Vectorized result DataFrame construction
         result = pd.DataFrame(0.0, index=[current_date], columns=valid_assets)
-        for stock in weights.index:
-            if stock in valid_assets:
-                result.loc[current_date, stock] = weights[stock]
-        
-        return result 
+        # Assign weights for valid assets using reindex to align
+        # Ensure proper alignment and avoid shape mismatch
+        aligned_weights = weights.reindex(valid_assets).fillna(0.0)
+        if len(aligned_weights) > 0:
+            result.loc[current_date, aligned_weights.index] = aligned_weights.values
+        return result

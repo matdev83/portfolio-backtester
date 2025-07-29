@@ -1,5 +1,16 @@
 name: sortino_momentum
 strategy: sortino_momentum
+universe:
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - NVDA
+  - META
+  - TSLA
+  - BRK-B
+  - UNH
+  - JNJ
 rebalance_frequency: ME
 position_sizer: equal_weight
 transaction_costs_bps: 10

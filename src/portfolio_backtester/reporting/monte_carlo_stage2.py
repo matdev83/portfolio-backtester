@@ -15,7 +15,6 @@ import pandas as pd
 from rich.progress import (
     BarColumn,
     Progress,
-    SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -72,8 +71,8 @@ def _plot_monte_carlo_robustness_analysis(
         simulation_results: dict[float, list[pd.Series]] = {}
         total_sims = len(replacement_percentages) * num_simulations_per_level
 
+
         with Progress(
-            SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
@@ -82,9 +81,20 @@ def _plot_monte_carlo_robustness_analysis(
         ) as progress:
             task = progress.add_task("[cyan]Stage 2 Monte Carlo Stress Testing…", total=total_sims)
 
+            timeout_manager = getattr(self, 'timeout_manager', None)
+            timed_out = False
+
             for rep_pct in replacement_percentages:
+                if timed_out:
+                    logger.warning("Stage 2 MC: Timeout detected, aborting further simulations.")
+                    break
                 level_results: list[pd.Series] = []
                 for sim in range(num_simulations_per_level):
+                    # Check for timeout before each simulation
+                    if timeout_manager is not None and timeout_manager.check_timeout():
+                        logger.warning("Stage 2 MC: Timeout detected during simulation (rep_pct=%.3f, sim=%d). Aborting Stage 2 MC.", rep_pct, sim)
+                        timed_out = True
+                        break
                     try:
                         # naive synthetic: bootstrap returns with noise
                         synthetic = rets_full.copy()

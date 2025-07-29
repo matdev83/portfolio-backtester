@@ -5,8 +5,11 @@ Supports dynamic loading and registration of custom timing controllers.
 
 import importlib
 import logging
-from typing import Dict, Type, Optional, Any, Callable
+from typing import Dict, Type, Optional, Any, Callable, List
 from abc import ABC
+from ..api_stability import api_stable
+
+import pandas as pd
 
 from .timing_controller import TimingController
 
@@ -19,6 +22,8 @@ class CustomTimingRegistry:
     
     _registry: Dict[str, Type[TimingController]] = {}
     _aliases: Dict[str, str] = {}
+    # Unified lookup cache for O(1) access - combines registry and resolved aliases
+    _unified_lookup: Dict[str, Type[TimingController]] = {}
     
     @classmethod
     def register(cls, name: str, controller_class: Type[TimingController], aliases: Optional[list] = None):
@@ -34,15 +39,20 @@ class CustomTimingRegistry:
             raise ValueError(f"Controller class {controller_class} must inherit from TimingController")
         
         cls._registry[name] = controller_class
+        # Update unified lookup cache
+        cls._unified_lookup[name] = controller_class
         logger.info(f"Registered custom timing controller: {name} -> {controller_class}")
         
         # Register aliases
         if aliases:
             for alias in aliases:
                 cls._aliases[alias] = name
+                # Update unified lookup cache for aliases
+                cls._unified_lookup[alias] = controller_class
                 logger.debug(f"Registered alias: {alias} -> {name}")
     
     @classmethod
+    @api_stable(version="1.0", strict_params=True, strict_return=False)
     def get(cls, name: str) -> Optional[Type[TimingController]]:
         """
         Get a registered timing controller class by name.
@@ -53,16 +63,8 @@ class CustomTimingRegistry:
         Returns:
             Controller class or None if not found
         """
-        # Check direct registry first
-        if name in cls._registry:
-            return cls._registry[name]
-        
-        # Check aliases
-        if name in cls._aliases:
-            actual_name = cls._aliases[name]
-            return cls._registry.get(actual_name)
-        
-        return None
+        # Single O(1) lookup from unified cache
+        return cls._unified_lookup.get(name)
     
     @classmethod
     def list_registered(cls) -> Dict[str, str]:
@@ -97,17 +99,22 @@ class CustomTimingRegistry:
         """
         if name in cls._registry:
             del cls._registry[name]
+            # Remove from unified lookup cache
+            cls._unified_lookup.pop(name, None)
+            
             # Remove any aliases pointing to this name
             aliases_to_remove = [alias for alias, target in cls._aliases.items() if target == name]
             for alias in aliases_to_remove:
                 del cls._aliases[alias]
+                # Remove alias from unified lookup cache
+                cls._unified_lookup.pop(alias, None)
             logger.info(f"Unregistered timing controller: {name}")
             return True
         
         return False
     
     @classmethod
-    def clear(cls):
+    def clear(cls) -> None:
         """Clear user-registered controllers while keeping built-ins."""
         # Determine built-ins the first time we call clear
         if not hasattr(cls, "_built_in_names"):
@@ -120,6 +127,15 @@ class CustomTimingRegistry:
 
         # Rebuild alias map excluding removed controllers
         cls._aliases = {alias: tgt for alias, tgt in cls._aliases.items() if tgt in cls._registry}
+
+        # Rebuild unified lookup cache with remaining controllers and aliases
+        cls._unified_lookup.clear()
+        # Add remaining registry entries
+        cls._unified_lookup.update(cls._registry)
+        # Add remaining aliases
+        for alias, target_name in cls._aliases.items():
+            if target_name in cls._registry:
+                cls._unified_lookup[alias] = cls._registry[target_name]
 
         logger.info("Cleared custom timing controllers (built-ins preserved)")
 
@@ -303,7 +319,7 @@ class AdaptiveTimingController(TimingController):
         else:
             return False
     
-    def get_rebalance_dates(self, start_date, end_date, available_dates, strategy):
+    def get_rebalance_dates(self, start_date: pd.Timestamp, end_date: pd.Timestamp, available_dates: List[pd.Timestamp], strategy: Any) -> List[pd.Timestamp]:
         """
         Get rebalance dates for adaptive timing.
         
@@ -353,7 +369,7 @@ class MomentumTimingController(TimingController):
         # Rebalance weekly for momentum strategies
         return current_date.weekday() == 0  # Monday
     
-    def get_rebalance_dates(self, start_date, end_date, available_dates, strategy):
+    def get_rebalance_dates(self, start_date: pd.Timestamp, end_date: pd.Timestamp, available_dates: List[pd.Timestamp], strategy: Any) -> List[pd.Timestamp]:
         """Get weekly rebalance dates for momentum timing."""
         from .time_based_timing import TimeBasedTiming
         

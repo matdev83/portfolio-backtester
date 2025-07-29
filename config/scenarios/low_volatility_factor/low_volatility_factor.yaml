@@ -3,6 +3,8 @@ strategy: "low_volatility_factor"
 rebalance_frequency: "ME"
 position_sizer: "equal_weight"
 transaction_costs_bps: 10
+start_date: "2018-01-01"  # Start later to ensure sufficient historical data (50+ months from 2013)
+end_date: "2023-12-31"
 train_window_months: 48
 test_window_months: 24
 
@@ -27,5 +29,5 @@ strategy_params:
   leverage: 1.0
   smoothing_lambda: 0.5
   price_column: "Close"
-  rebalance_frequency: "monthly"
+  rebalance_frequency: M
   shorting_fee_annual: 0.01

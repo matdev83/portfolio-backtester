@@ -3,7 +3,7 @@ import time
 import types
 import sys
 import argparse
-from typing import Any
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 import numpy as np
 import optuna
@@ -23,6 +23,7 @@ from .backtester_logic.portfolio_logic import calculate_portfolio_returns
 from .backtester_logic.data_manager import get_data_source, prepare_scenario_data
 # Import display function for user-visible results
 from .backtester_logic.reporting import display_results
+from .api_stability import api_stable
 # Import the optimization report generator and alias for internal use
 from .backtester_logic.reporting_logic import generate_optimization_report as _generate_optimization_report
 from .utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
@@ -35,62 +36,71 @@ logger = logging.getLogger(__name__)
 
 
 class Backtester:
-    def __init__(self, global_config, scenarios, args, random_state=None):
-        self.global_config = global_config
+    @api_stable(version="1.0", strict_params=True, strict_return=False)
+    def __init__(
+        self,
+        global_config: Dict[str, Any],
+        scenarios: List[Dict[str, Any]],
+        args: argparse.Namespace,
+        random_state: Optional[int] = None
+    ) -> None:
+        self.global_config: Dict[str, Any] = global_config
         self.global_config["optimizer_parameter_defaults"] = OPTIMIZER_PARAMETER_DEFAULTS
-        self.scenarios = scenarios
+        self.scenarios: List[Dict[str, Any]] = scenarios
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Backtester initialized with scenario strategy_params: {self.scenarios[0].get('strategy_params')}")
         populate_default_optimizations(self.scenarios, OPTIMIZER_PARAMETER_DEFAULTS)
-        self.args = args
-        self.timeout_manager = TimeoutManager(args.timeout)
-        self.strategy_map = {name: klass for name, klass in enumerate_strategies_with_params().items()}
-        self.data_source = get_data_source(self.global_config)
-        self.results = {}
-        self.monthly_data: pd.DataFrame | None = None
-        self.daily_data_ohlc: pd.DataFrame | None = None
-        self.rets_full: pd.DataFrame | pd.Series | None = None
+        self.args: argparse.Namespace = args
+        # Always use a wall-clock reference for timeout, for multiprocessing safety
+        self._timeout_start_time: float = time.time()
+        self.timeout_manager: TimeoutManager = TimeoutManager(args.timeout, start_time=self._timeout_start_time)
+        self.strategy_map: Dict[str, type] = {name: klass for name, klass in enumerate_strategies_with_params().items()}
+        self.data_source: Any = get_data_source(self.global_config)
+        self.results: Dict[str, Any] = {}
+        self.monthly_data: Optional[pd.DataFrame] = None
+        self.daily_data_ohlc: Optional[pd.DataFrame] = None
+        self.rets_full: Optional[Union[pd.DataFrame, pd.Series]] = None
         if random_state is None:
             self.random_state = np.random.randint(0, 2**31 - 1)
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"No random seed provided. Using generated seed: {self.random_state}.")
         else:
             self.random_state = random_state
+        self._windows_precomputed: bool = False
         np.random.seed(self.random_state)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Numpy random seed set to {self.random_state}.")
-        self.n_jobs = getattr(args, "n_jobs", 1)
-        self.early_stop_patience = getattr(args, "early_stop_patience", 10)
+        self.n_jobs: int = getattr(args, "n_jobs", 1)
+        self.early_stop_patience: int = getattr(args, "early_stop_patience", 10)
         self.logger = logger
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Backtester initialized.")
-        
-        self.data_cache = get_global_cache()
+
+        self.data_cache: Any = get_global_cache()
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Data preprocessing cache initialized")
-        
-        self._daily_index_cache = None
-        
-        self.asset_replacement_manager = None
-        self.synthetic_data_generator = None
+
+        self._daily_index_cache: Optional[np.ndarray] = None
+        self._daily_prices_np_cache: Optional[np.ndarray] = None
+
+        self.asset_replacement_manager: Any = None
+        self.synthetic_data_generator: Any = None
         if self.global_config.get('enable_synthetic_data', False):
             self._initialize_monte_carlo_components()
             if self.asset_replacement_manager is not None:
                 self.asset_replacement_manager.set_full_data_source(self.data_source, self.global_config)
 
-        self.run_optimization = types.MethodType(run_optimization, self)
-        self.run_backtest_mode = types.MethodType(run_backtest_mode, self)
-        self.run_optimize_mode = types.MethodType(run_optimize_mode, self)
-        self.display_results = types.MethodType(display_results, self)
-        
-        # Bind the optimization report generator to the Backtester instance
-        self._generate_optimization_report = types.MethodType(_generate_optimization_report, self)
-        
-        from .backtester_logic.execution import generate_deferred_report
-        self.generate_deferred_report = types.MethodType(generate_deferred_report, self)
+        # Remove dynamic method binding to fix multiprocessing pickling issues
+        # Methods will be called directly from their modules
 
-    def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full):
-        """Explicitly define run_optimization to fix multiprocessing pickling issue."""
+    def run_optimization(
+        self, 
+        scenario_config: Dict[str, Any], 
+        monthly_data: pd.DataFrame, 
+        daily_data: pd.DataFrame, 
+        rets_full: pd.DataFrame
+    ) -> Any:
+        """Call run_optimization directly from module to fix multiprocessing pickling issue."""
         return run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     
     @property
@@ -99,18 +109,19 @@ class Backtester:
 
     
 
-    def _get_strategy(self, strategy_name, params):
+    def _get_strategy(self, strategy_name: str, params: Dict[str, Any]) -> BaseStrategy:
         strategy_class = self.strategy_map.get(strategy_name)
-
-        if strategy_class:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Using {strategy_class.__name__} with params: {params}")
-            return strategy_class(params)
-        else:
+        if strategy_class is None:
             logger.error(f"Unsupported strategy: {strategy_name}")
             raise ValueError(f"Unsupported strategy: {strategy_name}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Using {strategy_class.__name__} with params: {params}")
+        result = strategy_class(params)
+        if not isinstance(result, BaseStrategy):
+            raise TypeError(f"Strategy class {strategy_class} did not return a BaseStrategy instance.")
+        return result
     
-    def _initialize_monte_carlo_components(self):
+    def _initialize_monte_carlo_components(self) -> None:
         """Initialize Monte Carlo components for synthetic data generation."""
         try:
             from .monte_carlo.asset_replacement import AssetReplacementManager
@@ -137,14 +148,27 @@ class Backtester:
 
     
 
+    @api_stable(version="1.0", strict_params=True, strict_return=True)
     def run_scenario(
         self,
-        scenario_config,
+        scenario_config: Dict[str, Any],
         price_data_monthly_closes: pd.DataFrame,
         price_data_daily_ohlc: pd.DataFrame,
-        rets_daily: pd.DataFrame | None = None,
+        rets_daily: Optional[pd.DataFrame] = None,
         verbose: bool = True,
-    ):
+    ) -> Optional[pd.Series]:
+        """
+        [API STABILITY NOTE]
+        This method is protected by the @api_stable decorator to ensure its signature remains stable for critical workflows.
+        
+        TEMPORARY CHANGE (for test): The 'price_data_daily_ohlc' parameter was commented out to simulate a breaking change and test the API stability protection system. This change has now been reverted.
+        
+        If you need to restore the original method, ensure the signature includes:
+            price_data_daily_ohlc: pd.DataFrame
+        as the third parameter, as shown above.
+        
+        Any changes to this signature should be made with caution and must be validated by the API stability test suite.
+        """
         if verbose:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Running scenario: {scenario_config['name']}")
@@ -168,7 +192,7 @@ class Backtester:
 
         if not universe_tickers:
             logger.warning("No universe tickers remain after filtering for missing data. Skipping scenario.")
-            return pd.Series(dtype=float)
+            return None
 
         benchmark_ticker = self.global_config["benchmark"]
 
@@ -194,6 +218,8 @@ class Backtester:
                 logger.debug(f"Portfolio net returns calculated for {scenario_name}. First few net returns: {portfolio_rets_net.head().to_dict()}")
                 logger.debug(f"Net returns index: {portfolio_rets_net.index.min()} to {portfolio_rets_net.index.max()}")
 
+        if not isinstance(portfolio_rets_net, (pd.Series, type(None))):
+            raise TypeError("run_scenario must return a pd.Series or None")
         return portfolio_rets_net
 
     def _evaluate_walk_forward_fast(
@@ -217,28 +243,22 @@ class Backtester:
         if use_fast:
             try:
                 daily_returns = rets_full_np.astype(np.float32)
-
                 if daily_returns.size == 0:
                     raise ValueError("Daily returns array is empty – cannot run fast path")
-
                 port_rets = np.nanmean(daily_returns, axis=1).astype(np.float32)
-
                 if self._daily_index_cache is None:
                     raise ValueError("_daily_index_cache is not initialized")
                 test_starts = np.asarray([np.searchsorted(self._daily_index_cache, te_start) for _, _, te_start, _ in windows], dtype=np.int64)
                 test_ends = np.asarray([np.searchsorted(self._daily_index_cache, te_end) for _, _, _, te_end in windows], dtype=np.int64)
-
-                metrics_mat = _nk.run_backtest_fast(port_rets, test_starts, test_ends, BaseStrategy.run_logic, signals)
-
+                metrics_mat = _nk.run_backtest_fast(port_rets, test_starts, test_ends, signals)
                 avg_metric = float(np.nanmean(metrics_mat))
                 return avg_metric if not is_multi_objective else (avg_metric,)
-
             except Exception as exc:
                 logger.error("Fast walk-forward path failed – falling back to legacy: %s", exc)
-
-        monthly_data = pd.DataFrame(monthly_data_np)
-        daily_data = pd.DataFrame(daily_data_np)
-        rets_full = pd.DataFrame(rets_full_np)
+        # Fallback: ensure all *_np variables are valid arrays
+        monthly_data = pd.DataFrame(monthly_data_np) if monthly_data_np is not None else pd.DataFrame()
+        daily_data = pd.DataFrame(daily_data_np) if daily_data_np is not None else pd.DataFrame()
+        rets_full = pd.DataFrame(rets_full_np) if rets_full_np is not None else pd.DataFrame()
         return self._evaluate_params_walk_forward(
             trial,
             scenario_config,
@@ -263,7 +283,7 @@ class Backtester:
     ) -> float | tuple[float, ...]:
         from .reporting.metrics import calculate_metrics
         
-        if not hasattr(self, '_windows_precomputed') or not self._windows_precomputed:
+        if not self._windows_precomputed:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug("Pre-computing returns for all windows")
             self.data_cache.precompute_window_returns(daily_data, windows)
@@ -272,7 +292,7 @@ class Backtester:
         from .backtester_logic.optimization import _global_progress_tracker
         from .utils import calculate_stability_metrics, INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
         
-        metric_values_per_objective = [[] for _ in metrics_to_optimize]
+        metric_values_per_objective: list[list[float]] = [[] for _ in metrics_to_optimize]
         processed_steps_for_pruning = 0
 
         pruning_enabled = getattr(self.args, "pruning_enabled", False)
@@ -318,10 +338,12 @@ class Backtester:
         if _global_progress_tracker and trial and hasattr(trial, 'number'):
             trial_num = trial.number + 1
             total_trials = _global_progress_tracker['total_trials']
-            _global_progress_tracker['progress'].update(
-                _global_progress_tracker['task'], 
-                description=f"[cyan]Trial {trial_num}/{total_trials} running ({len(windows)} windows/trial)..."
-            )
+            progress = _global_progress_tracker.get('progress')
+            if progress and hasattr(progress, 'update'):
+                progress.update(
+                    _global_progress_tracker['task'], 
+                    description=f"[cyan]Trial {trial_num}/{total_trials} running ({len(windows)} windows/trial)..."
+                )
         
         replacement_info = None
         if asset_replacement_manager is not None:
@@ -380,10 +402,10 @@ class Backtester:
         for window_idx, (tr_start, tr_end, te_start, te_end) in enumerate(windows):
             if self.has_timed_out:
                 logger.warning("Timeout reached during walk-forward evaluation. Stopping further windows.")
-                break
+                return float("nan") if not is_multi_objective else tuple([float("nan")] * len(metrics_to_optimize))
             if CENTRAL_INTERRUPTED_FLAG:
                 self.logger.warning("Evaluation interrupted by user via central flag.")
-                break
+                return float("nan") if not is_multi_objective else tuple([float("nan")] * len(metrics_to_optimize))
 
             m_slice = monthly_data.loc[tr_start:tr_end]
             d_slice = daily_data.loc[tr_start:te_end]
@@ -434,8 +456,10 @@ class Backtester:
                     self.logger.warning(f"No returns generated for window {tr_start}-{te_end}. Skipping.")
                 for i in range(len(metrics_to_optimize)):
                     metric_values_per_objective[i].append(np.nan)
-                if _global_progress_tracker:
-                    _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
+                progress = _global_progress_tracker.get('progress') if _global_progress_tracker else None
+                task = _global_progress_tracker['task'] if _global_progress_tracker and 'task' in _global_progress_tracker else None
+                if progress and hasattr(progress, 'update') and task is not None:
+                    progress.update(task, advance=1)
                 continue
 
             all_window_returns.append(window_returns)
@@ -444,18 +468,17 @@ class Backtester:
             if test_rets.empty:
                 if self.logger.isEnabledFor(logging.DEBUG):
                     logger.debug(f"Test returns empty for window {tr_start}-{te_end} with params {scenario_config['strategy_params']}.")
-                if _global_progress_tracker:
-                    _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
-                if is_multi_objective:
-                    return tuple([float("nan")] * len(metrics_to_optimize))
-                return float("nan")
+                progress = _global_progress_tracker.get('progress') if _global_progress_tracker else None
+                task = _global_progress_tracker['task'] if _global_progress_tracker and 'task' in _global_progress_tracker else None
+                if progress and hasattr(progress, 'update') and task is not None:
+                    progress.update(task, advance=1)
+                return float("nan") if not is_multi_objective else tuple([float("nan")] * len(metrics_to_optimize))
 
             if abs(test_rets.mean()) < 1e-9 and abs(test_rets.std()) < 1e-9:
                 if trial and hasattr(trial, "set_user_attr"):
                     trial.set_user_attr("zero_returns", True)
-                    if hasattr(trial, "number"):
-                        if logger.isEnabledFor(logging.DEBUG):
-                            logger.debug(f"Trial {trial.number}, window {window_idx+1}: Marked with zero_returns.")
+                    if hasattr(trial, "number") and logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Trial {trial.number}, window {window_idx+1}: Marked with zero_returns.")
 
             bench_ser = d_slice[self.global_config["benchmark"]].loc[te_start:te_end]
             bench_period_rets = bench_ser.pct_change(fill_method=None).fillna(0)
@@ -465,8 +488,10 @@ class Backtester:
             for i, metric_val in enumerate(current_metrics):
                 metric_values_per_objective[i].append(metric_val)
 
-            if _global_progress_tracker:
-                _global_progress_tracker['progress'].update(_global_progress_tracker['task'], advance=1)
+            progress = _global_progress_tracker.get('progress') if _global_progress_tracker else None
+            task = _global_progress_tracker['task'] if _global_progress_tracker and 'task' in _global_progress_tracker else None
+            if progress and hasattr(progress, 'update') and task is not None:
+                progress.update(task, advance=1)
 
             processed_steps_for_pruning += 1
             if pruning_enabled and processed_steps_for_pruning % pruning_interval_steps == 0:
@@ -529,7 +554,7 @@ class Backtester:
         else:
             return float(metric_avgs[0])
     
-    def _evaluate_single_window(self, window_config, scenario_config, shared_data):
+    def _evaluate_single_window(self, window_config: Dict[str, Any], scenario_config: Dict[str, Any], shared_data: Dict[str, Any]) -> Tuple[List[float], pd.Series]:
         from .reporting.performance_metrics import calculate_metrics
         
         window_idx = window_config['window_idx']
@@ -595,7 +620,7 @@ class Backtester:
             logger.error(f"Error evaluating window {window_idx}: {e}")
             return [np.nan] * len(metrics_to_optimize), pd.Series(dtype=float)
 
-    def _get_monte_carlo_trial_threshold(self, optimization_mode):
+    def _get_monte_carlo_trial_threshold(self, optimization_mode: str) -> int:
         thresholds = {
             'fast': 20,
             'balanced': 10,    
@@ -631,50 +656,90 @@ class Backtester:
                     full_pnl_returns.index = pd.to_datetime(full_pnl_returns.index)
             return objective_value, full_pnl_returns
         
-        monte_carlo_config = self.global_config.get('monte_carlo_config', {})
-        mc_enabled = monte_carlo_config.get('enable_synthetic_data', False)
-        mc_during_optimization = monte_carlo_config.get('enable_during_optimization', True)
-        
-        robustness_config = self.global_config.get("wfo_robustness_config", {})
-        window_randomization = robustness_config.get("enable_window_randomization", False)
-        start_randomization = robustness_config.get("enable_start_date_randomization", False)
-        
-        if (mc_enabled and mc_during_optimization) or window_randomization or start_randomization:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug("Fast path disabled due to Monte-Carlo or randomization features - using legacy path")
-            objective_value = self._evaluate_params_walk_forward(
-                trial, scenario_config, windows, monthly_data, daily_data, rets_full,
-                metrics_to_optimize, is_multi_objective
-            )
-            full_pnl_returns = pd.Series(dtype=float)
-            if trial and hasattr(trial, 'user_attrs') and 'full_pnl_returns' in trial.user_attrs:
-                pnl_dict = trial.user_attrs['full_pnl_returns']
-                if isinstance(pnl_dict, dict):
-                    full_pnl_returns = pd.Series(pnl_dict)
-                    full_pnl_returns.index = pd.to_datetime(full_pnl_returns.index)
-            return objective_value, full_pnl_returns
-        
         try:
+            # --------------------------------------------------------------
+            # Cache daily index and price matrix so that repeated calls (one
+            # per walk-forward window) in the *same process* avoid expensive
+            # pandas-to-NumPy conversions.
+            # --------------------------------------------------------------
+            # Attributes are now always present from __init__
+
+            # Update cache if DataFrame index changed (different data slice)
             if self._daily_index_cache is None or not daily_data.index.equals(pd.Index(self._daily_index_cache)):
-                self._daily_index_cache = daily_data.index.to_numpy()
-            
+                # Convert to NumPy datetime64 for fast, type-stable searchsorted
+                self._daily_index_cache = daily_data.index.values.astype('datetime64[ns]')
+
+                # Handle Multi-Index vs single-level columns only when cache invalidated
+                if isinstance(daily_data.columns, pd.MultiIndex):
+                    self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data, field='Close')
+                else:
+                    self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data)
+
+            prices_np = self._daily_prices_np_cache
+                
+            strategy_class = self.strategy_map.get(scenario_config["strategy"])
+            if strategy_class is None:
+                logger.error(f"Unsupported strategy: {scenario_config['strategy']}")
+                return np.nan, pd.Series(dtype=float)
+            strategy_instance = strategy_class(scenario_config["strategy_params"])
+            # ----------------------------------------------------------
+            # Build a *full-length* signal matrix aligned with the daily
+            # price DataFrame – same logic as evaluate_fast_numba.
+            # ----------------------------------------------------------
+
+            if isinstance(daily_data.columns, pd.MultiIndex):
+                price_df_for_cols = daily_data.xs('Close', level='Field', axis=1)
+            else:
+                price_df_for_cols = daily_data
+
+            tickers = list(price_df_for_cols.columns)
+
+            signals_df = pd.DataFrame(
+                data=np.nan,
+                index=daily_data.index,
+                columns=tickers,
+                dtype=np.float32,
+            )
+
+            for _, _, te_start, _ in windows:
+                try:
+                    w_sig = strategy_instance.generate_signals(
+                        monthly_data,
+                        daily_data,
+                        rets_full,
+                        te_start,
+                        None,
+                        None,
+                    )
+                    if w_sig is not None and not w_sig.empty:
+                        for col in w_sig.columns:
+                            if col in signals_df.columns:
+                                signals_df.at[te_start, col] = w_sig.iloc[0][col]
+                except Exception as sig_exc:
+                    logger.error(
+                        "Signal generation failed for window start %s: %s",
+                        te_start,
+                        sig_exc,
+                    )
+
+            signals_df.ffill(inplace=True)
+            signals_df.fillna(0.0, inplace=True)
+
+            signals = signals_df
+
+            # Convert DataFrames to numpy arrays for fast evaluation
+            from .utils import _df_to_float32_array
             monthly_data_np, _ = _df_to_float32_array(monthly_data)
             daily_data_np, _ = _df_to_float32_array(daily_data)
             rets_full_np, _ = _df_to_float32_array(rets_full)
 
-            strategy_class = self.strategy_map.get(scenario_config["strategy"])
-            strategy_instance = strategy_class(scenario_config["strategy_params"])
-            signals = strategy_instance.generate_signals(
-                monthly_data, daily_data, rets_full, None, None, None
-            )
-            
             objective_value = self._evaluate_walk_forward_fast(
                 trial, scenario_config, windows, monthly_data_np, daily_data_np, rets_full_np,
                 metrics_to_optimize, is_multi_objective, signals.to_numpy(), strategy_instance
             )
-            
+
             full_pnl_returns = pd.Series(dtype=float)
-            
+
             return objective_value, full_pnl_returns
             
         except Exception as exc:
@@ -706,35 +771,114 @@ class Backtester:
         from .utils import _df_to_float32_array
 
         try:
+            # --------------------------------------------------------------
+            # Cache daily index and price matrix so that repeated calls (one
+            # per walk-forward window) in the *same process* avoid expensive
+            # pandas-to-NumPy conversions.
+            # --------------------------------------------------------------
+            # Attributes are now always present from __init__
+
+            # Update cache if DataFrame index changed (different data slice)
             if self._daily_index_cache is None or not daily_data.index.equals(pd.Index(self._daily_index_cache)):
                 self._daily_index_cache = daily_data.index.to_numpy()
 
-            prices_np, _ = _df_to_float32_array(daily_data)
+                # Handle Multi-Index vs single-level columns only when cache invalidated
+                if isinstance(daily_data.columns, pd.MultiIndex):
+                    self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data, field='Close')
+                else:
+                    self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data)
+
+            prices_np = self._daily_prices_np_cache
             
             strategy_class = self.strategy_map.get(scenario_config["strategy"])
+            if strategy_class is None:
+                logger.error(f"Unsupported strategy: {scenario_config['strategy']}")
+                return np.nan, pd.Series(dtype=float)
             strategy_instance = strategy_class(scenario_config["strategy_params"])
-            signals = strategy_instance.generate_signals(
-                monthly_data, daily_data, rets_full, None, None, None
+
+            # ----------------------------------------------------------
+            # Build a *full-length* signals matrix that matches exactly
+            # the shape of the price matrix used by the Numba kernel.
+            # We only calculate a signal on each walk-forward test window
+            # start date (``te_start``) and then forward-fill so the
+            # positions remain constant until the next re-optimisation
+            # point.  Any days prior to the first window carry zero
+            # exposure.
+            # ----------------------------------------------------------
+
+            # Determine the list of tickers (same order as the price
+            # matrix extracted via ``_df_to_float32_array``).
+            if isinstance(daily_data.columns, pd.MultiIndex):
+                # Extract just the *Close* field to obtain single-level
+                # columns that represent tickers only.
+                price_df_for_cols = daily_data.xs('Close', level='Field', axis=1)
+            else:
+                price_df_for_cols = daily_data
+
+            tickers = list(price_df_for_cols.columns)
+
+            # Initialise signals DataFrame with NaNs so we can detect
+            # unfilled periods explicitly (filled with 0.0 later).
+            signals_df = pd.DataFrame(
+                data=np.nan,
+                index=daily_data.index,
+                columns=tickers,
+                dtype=np.float32,
             )
-            signals_np, _ = _df_to_float32_array(signals)
 
-            start_indices = np.asarray([np.searchsorted(self._daily_index_cache, w[2]) for w in windows], dtype=np.int64)
-            end_indices = np.asarray([np.searchsorted(self._daily_index_cache, w[3]) for w in windows], dtype=np.int64)
+            # Generate signals only on each test window *start* date.
+            for _, _, te_start, _ in windows:
+                try:
+                    window_signal = strategy_instance.generate_signals(
+                        monthly_data,
+                        daily_data,
+                        rets_full,
+                        te_start,
+                        None,
+                        None,
+                    )
 
+                    if window_signal is not None and not window_signal.empty:
+                        # Align columns – some strategies may return a
+                        # subset of tickers; missing tickers default to 0.
+                        for col in window_signal.columns:
+                            if col in signals_df.columns:
+                                signals_df.at[te_start, col] = window_signal.iloc[0][col]
+                except Exception as sig_exc:
+                    logger.error(
+                        "Signal generation failed for window start %s: %s",
+                        te_start,
+                        sig_exc,
+                    )
+
+            # Forward-fill to make positions persistent until next signal
+            # update, then replace any leading NaNs (prior to first
+            # window) with zero exposure.
+            signals_df.ffill(inplace=True)
+            signals_df.fillna(0.0, inplace=True)
+
+            # Convert to float32 NumPy array for Numba kernel.
+            signals_np, _ = _df_to_float32_array(signals_df)
+             
+            start_indices = np.asarray([np.searchsorted(self._daily_index_cache, np.datetime64(w[2])) for w in windows], dtype=np.int64)
+            end_indices = np.asarray([np.searchsorted(self._daily_index_cache, np.datetime64(w[3])) for w in windows], dtype=np.int64)
+
+            if prices_np is None or signals_np is None:
+                logger.error("prices_np or signals_np is None. Cannot run numba backtest.")
+                return np.nan, pd.Series(dtype=float)
             portfolio_returns = run_backtest_numba(prices_np, signals_np, start_indices, end_indices)
             
             # For now, we'll just return the mean of the portfolio returns as the objective value
-            objective_value = np.nanmean(portfolio_returns)
-
+            objective_value: float | tuple[float, ...] = float(np.nanmean(portfolio_returns))
             full_pnl_returns = pd.Series(portfolio_returns, index=[w[2] for w in windows])
-            
             return objective_value, full_pnl_returns
 
         except Exception as exc:
             logger.error("Numba evaluation failed: %s", exc)
             return np.nan, pd.Series(dtype=float)
 
-    def run(self):
+    @api_stable(version="1.0", strict_params=True, strict_return=False)
+    def run(self) -> None:
         if self.has_timed_out:
             logger.warning("Timeout reached before starting the backtest run.")
             return
@@ -818,9 +962,9 @@ class Backtester:
 
         if self.args.mode == "optimize":
             # Updated call: run_optimize_mode now handles report generation internally
-            self.run_optimize_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
+            run_optimize_mode(self, self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         elif self.args.mode == "backtest":
-            self.run_backtest_mode(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
+            run_backtest_mode(self, self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         
         if CENTRAL_INTERRUPTED_FLAG:
             self.logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
@@ -828,14 +972,16 @@ class Backtester:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug("All scenarios completed. Displaying results.")
             if self.args.mode == "backtest":
-                self.display_results(daily_data)
+                display_results(self, daily_data)
             else:
                 try:
-                    self.generate_deferred_report()
+                    from .backtester_logic.execution import generate_deferred_report
+                    generate_deferred_report(self)
                 except Exception as e:
                     self.logger.warning(f"Failed to generate deferred report: {e}")
                 
-                self.display_results(self.daily_data_ohlc)
+                if self.daily_data_ohlc is not None:
+                    display_results(self, self.daily_data_ohlc)
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug("Optimization mode completed. Reports generated.")
 

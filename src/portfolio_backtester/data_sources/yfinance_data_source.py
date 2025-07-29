@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 import os
 import time
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
 from rich.console import Console
 from pathlib import Path
 import logging
@@ -88,7 +88,6 @@ class YFinanceDataSource(BaseDataSource):
                 logger.info(f"Created data directory at: {self.data_dir}")
 
         with Progress(
-            SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),

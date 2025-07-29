@@ -45,6 +45,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "optimization: marks tests related to optimization functionality")
     config.addinivalue_line("markers", "monte_carlo: marks tests related to Monte Carlo functionality")
     config.addinivalue_line("markers", "reporting: marks tests related to reporting functionality")
+    config.addinivalue_line("markers", "api_stability: marks tests related to API stability validation")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -460,8 +461,7 @@ def cleanup_cache():
 def session_cleanup():
     """Clean up session-level resources."""
     yield
-    # Final cleanup after all tests
-    OptimizedDataGenerator.clear_cache()
+    # Note: Don't clear cache here - let pytest_sessionfinish report stats first
 
 
 # ============================================================================
@@ -600,3 +600,6 @@ def pytest_sessionfinish(session, exitstatus):
         print(f"  - Cache hit rate: {hit_rate:.1%}")
     
     print("="*60)
+    
+    # Clean up cache after reporting statistics
+    OptimizedDataGenerator.clear_cache()

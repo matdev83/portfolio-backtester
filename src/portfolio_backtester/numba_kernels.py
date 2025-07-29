@@ -93,13 +93,58 @@ def run_backtest_numba(
             window_returns = np.full_like(window_prices, np.nan)
             for t in range(1, window_prices.shape[0]):
                 for asset in range(window_prices.shape[1]):
-                    if window_prices[t-1, asset] > 0:
-                        window_returns[t, asset] = (window_prices[t, asset] / window_prices[t-1, asset]) - 1.0
-            
+                    if window_prices[t - 1, asset] > 0:
+                        window_returns[t, asset] = (window_prices[t, asset] / window_prices[t - 1, asset]) - 1.0
+
+            # Replace remaining NaNs in returns with 0.0 so they don't propagate
+            for r in range(window_returns.shape[0]):
+                for c in range(window_returns.shape[1]):
+                    if np.isnan(window_returns[r, c]):
+                        window_returns[r, c] = 0.0
+
+            # ------------------------------------------------------------------
+            # Manual one–day lag of signals (avoid np.roll keyword limitation in
+            # Numba). First day has no previous signal ⇒ use 0.
+            # ------------------------------------------------------------------
+            shifted_signals = np.empty_like(window_signals)
+            shifted_signals[0, :] = 0.0
+            for t in range(1, window_signals.shape[0]):
+                shifted_signals[t, :] = window_signals[t - 1, :]
+ 
+            # ------------------------------------------------------------------
+            # Skip assets that have no finite returns inside this window.  They
+            # typically appear when a price series starts after the window
+            # begins.  Zero-out their signals so they contribute nothing but do
+            # not invalidate the whole window.
+            # ------------------------------------------------------------------
+            has_valid_asset = False
+            for asset in range(window_returns.shape[1]):
+                asset_has_data = False
+                for t in range(window_returns.shape[0]):
+                    if not np.isnan(window_returns[t, asset]):
+                        asset_has_data = True
+                        break
+                if not asset_has_data:
+                    shifted_signals[:, asset] = 0.0
+                else:
+                    has_valid_asset = True
+
+            # If no asset had data, this window is invalid
+            if not has_valid_asset:
+                portfolio_returns[i] = np.nan
+                continue
+
+            # If all returns are NaN (e.g., asset starts mid-window) or all signals zero, skip.
+            if np.isnan(window_returns).all() or np.all(shifted_signals == 0):
+                portfolio_returns[i] = np.nan
+                continue
+
             # Calculate portfolio returns
-            # Lag signals by one day to avoid lookahead bias
-            portfolio_daily_returns = np.sum(window_returns * np.roll(window_signals, 1, axis=0), axis=1)
-            portfolio_returns[i] = np.prod(1 + portfolio_daily_returns) - 1
+            portfolio_daily_returns = np.sum(window_returns * shifted_signals, axis=1)
+            if np.isnan(portfolio_daily_returns).all():
+                portfolio_returns[i] = np.nan
+                continue
+            portfolio_returns[i] = np.prod(1.0 + portfolio_daily_returns[np.isfinite(portfolio_daily_returns)]) - 1.0
         else:
             portfolio_returns[i] = np.nan
 

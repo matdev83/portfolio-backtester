@@ -6,81 +6,76 @@ This file provides instructions and best practices for coding agents (AI assista
 
 ---
 
-## General Guidelines
+## Essential Commands
 
-- **Respect Project Structure:**
-  - Source code is in `src/portfolio_backtester/`.
-  - Configuration files are in `config/` (YAML format).
-  - Tests are in `tests/`.
-  - Documentation is in `docs/`.
-  - Virtual Environment is in `.venv/` and you MUST activate it before running any command.
-- **Do Not Invent New Concepts:**
-  - This project does not use the term "agent" in its codebase. Do not introduce new abstractions unless explicitly requested.
-- **Follow Existing Patterns:**
-  - When adding strategies, optimizers, or modules, follow the structure and style of existing files.
-- **Preserve YAML and Config Conventions:**
-  - All scenario and parameter configuration is managed via YAML files in `config/`.
-- **Testing:**
-  - Add or update tests in `tests/` for any new or modified logic.
-- **Documentation:**
-  - Update `README.md` and/or relevant files in `docs/` if you add features or change usage.
-
----
-
-## File and Directory Conventions
-
-- **Strategies:**
-  - Implemented as classes in `src/portfolio_backtester/strategies/`.
-  - Inherit from `BaseStrategy`.
-- **Optimization:**
-  - Optimizer logic is in `src/portfolio_backtester/optimization/`.
-- **Data Handling:**
-  - Data sources and loaders are in `src/portfolio_backtester/data/`.
-- **Reporting:**
-  - Reporting and analytics modules are in `src/portfolio_backtester/reporting/`.
-- **Configuration:**
-  - All scenario and parameter configuration is managed via YAML files in `config/`.
-- **Tests:**
-  - Place all tests in `tests/` and follow the naming conventions of existing test files.
+- **Setup**: `python -m venv .venv && source .venv/bin/activate && pip install -e .`
+- **Linting**: `ruff check src tests`
+- **Type checking**: `mypy src`
+- **Run all tests**: `python -m pytest tests/ -v`
+- **Run single test**: `python -m pytest tests/path/to/test_file.py::test_function_name -v`
+- **Run test category**: `python -m pytest tests/unit/ -v` (or integration, system)
 
 ---
 
 ## Coding Standards
 
 - **Language:** Python 3.10+
-- **Formatting:** Follow PEP8 and the style of existing code.
-- **Imports:** Use absolute imports within the `src/portfolio_backtester/` package.
-- **Logging:** Use the `logging` module, not print statements.
-- **Type Hints:** Use type hints for all function signatures and class attributes.
-- **Error Handling:** Use exceptions and logging for error reporting.
+- **Formatting:** Ruff with Google docstring convention
+- **Imports:** Absolute imports within `src/portfolio_backtester/` package
+- **Naming:** snake_case for functions/variables, PascalCase for classes
+- **Type Hints:** Required for all function signatures and class attributes
+- **Docstrings:** Google style for all public functions and classes
+- **Logging:** Use `logging` module, not print statements
+- **Error Handling:** Use exceptions and logging for error reporting
 
 ---
 
-## Pull Request/Change Instructions
+## Project Structure Guidelines
 
-- **Atomic Commits:** Make small, focused commits for each logical change.
-- **Describe Changes:** Clearly describe the purpose and scope of each change in commit messages or PR descriptions.
-- **No Unnecessary Files:** Do not add temporary, debug, or unrelated files.
-- **Respect Existing Functionality:** Do not break or remove existing features unless explicitly requested.
-
----
-
-## How to Add a New Strategy (Example)
-
-1. Create a new file in `src/portfolio_backtester/strategies/`.
-2. Inherit from `BaseStrategy` and follow the pattern of existing strategies.
-3. Add default parameters to `config/parameters.yaml` if needed.
-4. Add or update tests in `tests/`.
-5. Update documentation if the new strategy is user-facing.
+- Source code: `src/portfolio_backtester/`
+- Configuration: `config/` (YAML files)
+- Tests: `tests/` (mirrors src structure)
+- Documentation: `docs/`
+- Virtual Environment: `.venv/` (MUST activate before running commands)
 
 ---
 
-## How to Update Configuration
+## Agent Development Principles
 
-- Edit YAML files in `config/`.
-- Validate YAML syntax and ensure all required fields are present.
-- Do not hardcode configuration in Python files.
+- **Virtual Environment**: The project's virtual environment is located in the `.venv/` directory. It **MUST** be activated (`source .venv/bin/activate`) before executing any Python commands.
+- **Dependency Management**: Agents are **NOT ALLOWED** to install packages directly using `pip`, `npm`, or any other package manager. All dependencies must be managed by editing the `pyproject.toml` file. After editing, the project must be re-installed in editable mode using `pip install -e .`. This is the only permitted use of `pip`.
+- **Verification**: Before marking a task as complete, an agent **MUST** verify its work. This includes running specific tests related to the changes and executing the full test suite to ensure no regressions were introduced.
+- **Architectural Principles**: Adhere to the following software design principles:
+    - **TDD (Test-Driven Development)**
+    - **SOLID**
+    - **DRY (Don't Repeat Yourself)**
+    - **KISS (Keep It Simple, Stupid)**
+    - **Convention over Configuration**
 
 ---
 
-For further details, see `README.md` and the `docs/` directory.
+## Pull Request Workflow
+
+1. Make atomic commits with clear messages
+2. Add/update tests for new/modified logic
+3. Run linter and type checker before committing
+4. Update `README.md` and docs for user-facing changes
+5. Do not introduce new abstractions unless explicitly requested
+
+---
+
+## Configuration Management
+
+- Edit YAML files in `config/` for scenarios and parameters
+- Validate YAML syntax before committing
+- Do not hardcode configuration in Python files
+
+---
+
+## API Stability
+
+After introducing a new `@api_stable` method run:
+```bash
+python scripts/update_protected_signatures.py --quiet
+```
+Commit the updated `api_stable_signatures.json` file.

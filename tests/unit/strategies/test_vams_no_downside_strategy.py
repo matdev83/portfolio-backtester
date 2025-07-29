@@ -94,7 +94,7 @@ class TestVAMSNoDownsideStrategy(unittest.TestCase):
         # Create proper benchmark data with 'Close' column
         benchmark_df = self.benchmark_data.to_frame()
         benchmark_df.columns = ['Close']  # Rename to match expected column name
-        signals = self.strategy.generate_signals(self.data, benchmark_df, self.data.index[-1])
+        signals = self.strategy.generate_signals(self.data, benchmark_df, pd.DataFrame(), self.data.index[-1])
         
         # Check that signals have the correct shape
         self.assertEqual(signals.shape, (1, len(self.data.columns)))
@@ -115,7 +115,7 @@ class TestVAMSNoDownsideStrategy(unittest.TestCase):
         # Create proper benchmark data with 'Close' column
         benchmark_df = self.benchmark_data.to_frame()
         benchmark_df.columns = ['Close']  # Rename to match expected column name
-        signals = strategy_with_sma.generate_signals(self.data, benchmark_df, self.data.index[-1])
+        signals = strategy_with_sma.generate_signals(self.data, benchmark_df, pd.DataFrame(), self.data.index[-1])
         
         # Check that signals have the correct shape
         self.assertEqual(signals.shape, (1, len(self.data.columns)))
@@ -131,14 +131,14 @@ class TestVAMSNoDownsideStrategy(unittest.TestCase):
         small_benchmark = self.benchmark_data.iloc[:3]
         small_benchmark_df = small_benchmark.to_frame()
         small_benchmark_df.columns = ['Close']  # Rename to match expected column name
-        signals = self.strategy.generate_signals(small_data, small_benchmark_df, small_data.index[-1])
+        signals = self.strategy.generate_signals(small_data, small_benchmark_df, pd.DataFrame(), small_data.index[-1])
         self.assertEqual(signals.shape, (1, len(small_data.columns)))
 
         # Test with all zero returns
         zero_data = pd.DataFrame(100, index=self.data.index, columns=self.data.columns)
         zero_benchmark_df = self.benchmark_data.to_frame()
         zero_benchmark_df.columns = ['Close']  # Rename to match expected column name
-        signals = self.strategy.generate_signals(zero_data, zero_benchmark_df, zero_data.index[-1])
+        signals = self.strategy.generate_signals(zero_data, zero_benchmark_df, pd.DataFrame(), zero_data.index[-1])
         self.assertEqual(signals.shape, (1, len(zero_data.columns)))
 
 

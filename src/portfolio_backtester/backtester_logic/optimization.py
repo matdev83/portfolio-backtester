@@ -9,7 +9,6 @@ from rich.console import Console
 from rich.progress import (
     BarColumn,
     Progress,
-    SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -68,10 +67,16 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     # Log Numba status and relevant configuration
     wfo_robustness_config = self.global_config.get("wfo_robustness_config", {})
     monte_carlo_config = self.global_config.get("monte_carlo_config", {})
-    
+
     enable_window_randomization = wfo_robustness_config.get("enable_window_randomization", False)
     enable_start_date_randomization = wfo_robustness_config.get("enable_start_date_randomization", False)
-    enable_monte_carlo = monte_carlo_config.get("enable_during_optimization", False)
+
+    # Scenario-level override: enable_monte_carlo_during_optimization can be true/false.
+    if "enable_monte_carlo_during_optimization" in scenario_config:
+        enable_monte_carlo = bool(scenario_config["enable_monte_carlo_during_optimization"])
+    else:
+        # Fallback to global config, default True
+        enable_monte_carlo = monte_carlo_config.get("enable_during_optimization", True)
     
     numba_enabled = not (enable_window_randomization or enable_start_date_randomization or enable_monte_carlo)
     
@@ -110,17 +115,7 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     if self.args.storage_url:
         storage = self.args.storage_url
     else:
-        journal_dir = "data/optuna_journal"
-        os.makedirs(journal_dir, exist_ok=True)
-        
-        # Sanitize study name for use in file path
-        sanitized_study_name = "".join(c for c in study_name if c.isalnum() or c in ('_', '-')).rstrip()
-        
-        db_path = os.path.normpath(os.path.join(journal_dir, f"{sanitized_study_name}.log"))
-        from optuna.storages import JournalStorage
-        from optuna.storages.journal import JournalFileBackend, JournalFileOpenLock
-        storage = JournalStorage(JournalFileBackend(file_path=db_path, lock_obj=JournalFileOpenLock(db_path)))
-    
+         storage = f"sqlite:///{study_name}.db"    
     study, n_trials = setup_optuna_study(self, scenario_config, storage, study_name)
 
     metrics_to_optimize = [t["name"] for t in scenario_config.get("optimization_targets", [])] or \
@@ -159,7 +154,6 @@ def run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
     total_work_units = n_trials * len(windows)
     
     with Progress(
-        SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),

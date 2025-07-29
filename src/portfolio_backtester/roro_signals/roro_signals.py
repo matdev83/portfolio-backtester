@@ -84,6 +84,10 @@ class DummyRoRoSignal(BaseRoRoSignal):
             (pd.Timestamp("2022-01-01"), pd.Timestamp("2022-11-05")),
         ]
 
+        # Handle None or invalid current_date gracefully
+        if current_date is None or not isinstance(current_date, pd.Timestamp):
+            return False  # Default to risk-off for invalid dates
+            
         for start_date, end_date in risk_on_windows:
             if start_date <= current_date <= end_date:
                 return True  # Risk-on

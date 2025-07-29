@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import Callable, Optional, TYPE_CHECKING, Dict, Any, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -13,6 +13,7 @@ from ..universe_resolver import resolve_universe_config
 # from ..signal_generators import BaseSignalGenerator
 from ..roro_signals import BaseRoRoSignal
 from .stop_loss import AtrBasedStopLoss, BaseStopLoss, NoStopLoss
+from ..api_stability import api_stable
 
 if TYPE_CHECKING:
     from ..timing.timing_controller import TimingController
@@ -39,7 +40,7 @@ class BaseStrategy(ABC):
     stop_loss_handler_class: type[BaseStopLoss] = NoStopLoss
 
 
-    def __init__(self, strategy_config: dict):
+    def __init__(self, strategy_config: Dict[str, Any]) -> None:
         self.strategy_config = strategy_config
         self._roro_signal_instance: BaseRoRoSignal | None = None
         self._stop_loss_handler_instance: BaseStopLoss | None = None
@@ -52,7 +53,7 @@ class BaseStrategy(ABC):
     # Timing Controller Integration
     # ------------------------------------------------------------------ #
     
-    def _initialize_timing_controller(self):
+    def _initialize_timing_controller(self) -> None:
         """Initialize the appropriate timing controller based on configuration."""
         # Import here to avoid circular imports
         from ..timing.time_based_timing import TimeBasedTiming
@@ -124,7 +125,8 @@ class BaseStrategy(ABC):
     #         raise NotImplementedError("signal_generator_class must be set")
     #     return self.signal_generator_class(self.strategy_config)
 
-    def get_roro_signal(self) -> BaseRoRoSignal | None:
+    @api_stable(version="1.0", strict_params=True, strict_return=False)
+    def get_roro_signal(self) -> Optional[BaseRoRoSignal]:
         if self.roro_signal_class is None:
             return None
         if self._roro_signal_instance is None:
@@ -158,7 +160,7 @@ class BaseStrategy(ABC):
     # ------------------------------------------------------------------ #
     # Universe helper
     # ------------------------------------------------------------------ #
-    def get_universe(self, global_config: dict) -> list[tuple[str, float]]:
+    def get_universe(self, global_config: Dict[str, Any]) -> List[Tuple[str, float]]:
         """
         Get the universe of assets for this strategy.
         
@@ -172,6 +174,9 @@ class BaseStrategy(ABC):
             
         Returns:
             List of (ticker, weight) tuples. Weight is typically 1.0 for equal consideration.
+            
+        Raises:
+            ValueError: If the universe is empty (contains no symbols).
         """
         # Check if strategy has universe_config
         universe_config = self.strategy_config.get("universe_config")
@@ -179,7 +184,10 @@ class BaseStrategy(ABC):
         if universe_config:
             try:
                 tickers = resolve_universe_config(universe_config)
-                return [(ticker, 1.0) for ticker in tickers]
+                universe = [(ticker, 1.0) for ticker in tickers]
+                if not universe:
+                    raise ValueError("Strategy universe_config resolved to an empty universe")
+                return universe
             except Exception as e:
                 logger.error(f"Failed to resolve universe_config: {e}")
                 logger.info("Falling back to global universe")
@@ -193,11 +201,14 @@ class BaseStrategy(ABC):
         
         # Fallback to global config universe
         default_universe = global_config.get("universe", [])
-        return [(ticker, 1.0) for ticker in default_universe]
+        universe = [(ticker, 1.0) for ticker in default_universe]
+        if not universe:
+            raise ValueError("Global config universe is empty")
+        return universe
     
     
     
-    def get_universe_method_with_date(self, global_config: dict, current_date) -> list[tuple[str, float]]:
+    def get_universe_method_with_date(self, global_config: Dict[str, Any], current_date: pd.Timestamp) -> List[Tuple[str, float]]:
         """
         Get the universe of assets for this strategy with date context.
         
@@ -210,6 +221,9 @@ class BaseStrategy(ABC):
             
         Returns:
             List of (ticker, weight) tuples
+            
+        Raises:
+            ValueError: If the universe is empty (contains no symbols).
         """
         # Check if strategy has universe_config
         universe_config = self.strategy_config.get("universe_config")
@@ -217,18 +231,24 @@ class BaseStrategy(ABC):
         if universe_config:
             try:
                 tickers = resolve_universe_config(universe_config, current_date)
-                return [(ticker, 1.0) for ticker in tickers]
+                universe = [(ticker, 1.0) for ticker in tickers]
+                if not universe:
+                    raise ValueError("Strategy universe_config resolved to an empty universe")
+                return universe
             except Exception as e:
                 logger.error(f"Failed to resolve universe_config with date {current_date}: {e}")
                 logger.info("Falling back to global universe")
         
         # Fallback to global config universe
         default_universe = global_config.get("universe", [])
-        return [(ticker, 1.0) for ticker in default_universe]
+        universe = [(ticker, 1.0) for ticker in default_universe]
+        if not universe:
+            raise ValueError("Global config universe is empty")
+        return universe
     
     
 
-    def get_non_universe_data_requirements(self) -> list[str]:
+    def get_non_universe_data_requirements(self) -> List[str]:
         """
         Returns a list of tickers that are not part of the trading universe
         but are required for the strategy's calculations.
@@ -260,6 +280,7 @@ class BaseStrategy(ABC):
     # ------------------------------------------------------------------ #
     from numba import njit
 
+    @api_stable(version="1.0", strict_params=True, strict_return=True)
     def generate_signals(
         self,
         all_historical_data: pd.DataFrame, # Full historical data for universe assets
@@ -427,6 +448,7 @@ class BaseStrategy(ABC):
         # Base implementation returns a conservative default
         return 12
 
+    @api_stable(version="1.0", strict_params=True, strict_return=False)
     def validate_data_sufficiency(
         self,
         all_historical_data: pd.DataFrame,
@@ -529,7 +551,7 @@ class BaseStrategy(ABC):
         all_historical_data: pd.DataFrame,
         current_date: pd.Timestamp,
         min_periods_override: Optional[int] = None
-    ) -> list:
+    ) -> List[str]:
         """
         Filter the universe to only include assets that have sufficient historical data
         as of the current date. This handles cases where stocks were not yet listed
