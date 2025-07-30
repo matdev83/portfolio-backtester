@@ -20,39 +20,17 @@ from ..optimization.trial_evaluator import TrialEvaluator
 from ..utils import generate_randomized_wfo_windows
 from .elite_archive import EliteArchive
 
+from .base_optimizer import BaseOptimizer
+
 # Set up logger
 logger = logging.getLogger(__name__)
 
-class GeneticOptimizer:
-    def __init__(self, scenario_config, backtester_instance, global_config, monthly_data, daily_data, rets_full, random_state=None):
-        self.scenario_config = scenario_config
-        self.backtester = backtester_instance
-        self.backtester_instance = backtester_instance  # For backward compatibility
-        self.global_config = global_config
-        self.monthly_data = monthly_data
-        self.daily_data = daily_data
-        self.rets_full = rets_full
-        self.random_state = random_state
-
-        self.optimization_params_spec = scenario_config.get("optimize", [])
-        if not self.optimization_params_spec:
-            raise ValueError("Genetic optimizer requires 'optimize' specifications in the scenario config.")
-
-        self.metrics_to_optimize = [t["name"] for t in scenario_config.get("optimization_targets", [])] or \
-                                   [scenario_config.get("optimization_metric", "Calmar")]
-        self.is_multi_objective = len(self.metrics_to_optimize) > 1
-        if self.is_multi_objective:
-            if logger.isEnabledFor(logging.DEBUG):
-
-                logger.debug(f"Multi-objective optimization for: {self.metrics_to_optimize}")
-
+class GeneticOptimizer(BaseOptimizer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.ga_instance = None
-
-        # Early stopping variables
         self.zero_fitness_streak = 0
         self.best_fitness_so_far = -np.inf
-
-        # Timeout variables
         self.start_time = None
 
     def _validate_gene_space(self, gene_space):
@@ -107,24 +85,6 @@ class GeneticOptimizer:
             trial_scenario_config = self.scenario_config.copy()
             trial_scenario_config["strategy_params"] = current_params
 
-            # Mock Optuna trial object for _evaluate_params_walk_forward
-            class MockTrial:
-                def __init__(self, params, study=None, number=0):
-                    self.params = params
-                    self.user_attrs = {}
-                    self.study = study
-                    self.number = number
-
-                def suggest_int(self, name, low, high, step=1): return self.params.get(name)
-                def suggest_float(self, name, low, high, step=None, log=False): return self.params.get(name)
-                def suggest_categorical(self, name, choices): return self.params.get(name)
-                def report(self, value, step): pass
-                def should_prune(self): return False
-                def set_user_attr(self, key, value): self.user_attrs[key] = value
-
-            mock_study = type('MockStudy', (), {'directions': [optuna.study.StudyDirection.MAXIMIZE for _ in self.metrics_to_optimize]})()
-            mock_trial = MockTrial(current_params, mock_study, solution_idx)
-
             # Generate walk-forward windows using centralized function
             windows = generate_randomized_wfo_windows(
                 self.monthly_data.index,
@@ -138,7 +98,7 @@ class GeneticOptimizer:
                 return -np.inf if not self.is_multi_objective else [-np.inf] * len(self.metrics_to_optimize)
 
             evaluator = TrialEvaluator(self.backtester, self.scenario_config, self.monthly_data, self.daily_data, self.rets_full, self.metrics_to_optimize, self.is_multi_objective, windows)
-            objectives_values = evaluator.evaluate(mock_trial)
+            objectives_values = evaluator.evaluate(current_params)
 
             if self.is_multi_objective:
                 # PyGAD's NSGA-II expects a list/tuple of objective values.
@@ -252,7 +212,7 @@ class GeneticOptimizer:
         gene_space = self._validate_gene_space(gene_space)
         return gene_space, gene_type
 
-    def run(self, save_plot=True):
+    def optimize(self, save_plot=True):
         logger.debug("Setting up Genetic Algorithm...")
         
         # Initialize variables that might be referenced in exception handling
@@ -265,7 +225,7 @@ class GeneticOptimizer:
 
             if num_genes == 0:
                 logger.error("No optimization parameters specified.")
-                return self.scenario_config["strategy_params"].copy(), 0
+                return self.scenario_config["strategy_params"].copy(), 0, None
 
             # ------------------------------------------------------------------
             # Adaptive parameter control setup
@@ -348,11 +308,12 @@ class GeneticOptimizer:
                         # Snapshot population and fitness arrays immediately
                         population = ga_instance.population
                         fitness_arr = np.asarray(ga_instance.last_generation_fitness, dtype=float)
+                        generation_no = ga_instance.generations_completed
 
                         # -----------------------------
                         # Timeout handling
                         # -----------------------------
-                        if self.backtester.args.timeout is not None:
+                        if self.backtester.args.timeout is not None and self.start_time is not None:
                             elapsed_time = time.time() - self.start_time
                             if elapsed_time > self.backtester.args.timeout:
                                 logger.warning(
@@ -388,11 +349,10 @@ class GeneticOptimizer:
                         # -----------------------------
                         # Adaptive parameter control
                         # -----------------------------
-                        if adaptive_enabled and diversity_calc is not None:
+                        if adaptive_enabled and diversity_calc is not None and mutation_controller is not None and crossover_controller is not None:
                             pop_diversity = diversity_calc.phenotypic_diversity(population)
                             fitness_var = float(np.var(fitness_arr))
-                            generation_no = ga_instance.generations_completed
-
+                            
                             new_mut_rate = mutation_controller.rate(pop_diversity, fitness_var, generation_no)
                             new_cx_rate = crossover_controller.rate(pop_diversity, 1.0 - pop_diversity)
 
@@ -417,7 +377,7 @@ class GeneticOptimizer:
                             elite_count = max(min_elites, 1)
                             top_idx = np.argsort(fitness_arr)[-elite_count:][::-1]
                             for idx in top_idx:
-                                archive.add(population[idx], fitness_arr[idx], generation_no)
+                                archive.add(population[idx], float(fitness_arr[idx]), generation_no)
 
                             # Periodic injection
                             if injection_frequency > 0 and generation_no % injection_frequency == 0:
@@ -504,6 +464,8 @@ class GeneticOptimizer:
 
             # Process results
             num_evaluations = self.ga_instance.generations_completed * sol_per_pop
+            solution = None
+            solution_fitness = None
 
             if self.is_multi_objective and hasattr(self.ga_instance, 'best_solutions'):
                 # Multi-objective results
@@ -512,7 +474,7 @@ class GeneticOptimizer:
 
                 if not pareto_chromosomes:
                     logger.error("GA (multi-objective): No solutions found on Pareto front.")
-                    return self.scenario_config["strategy_params"].copy(), num_evaluations
+                    return self.scenario_config["strategy_params"].copy(), num_evaluations, None
 
                 # Select the first solution from the Pareto front as representative
                 solution = pareto_chromosomes[0]
@@ -525,7 +487,7 @@ class GeneticOptimizer:
                 # Single objective results
                 if self.ga_instance.best_solution_generation == -1 and not globals().get("CENTRAL_INTERRUPTED_FLAG", False):
                      logger.error("GA (single-objective): No best solution found and not due to interruption.")
-                     return self.scenario_config["strategy_params"].copy(), num_evaluations
+                     return self.scenario_config["strategy_params"].copy(), num_evaluations, None
 
                 solution, solution_fitness, _ = self.ga_instance.best_solution(pop_fitness=self.ga_instance.last_generation_fitness)
                 if logger.isEnabledFor(logging.DEBUG):
@@ -567,16 +529,17 @@ class GeneticOptimizer:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(f"Best parameters found by GA: {optimal_params}")
                 print(f"Genetic Optimizer - Best parameters found: {optimal_params}")
-                return optimal_params, num_evaluations
+                return optimal_params, num_evaluations, solution
             else:
                 logger.warning("GA: No valid solution to decode, returning default parameters.")
-                return self.scenario_config["strategy_params"].copy(), 0
+                return self.scenario_config["strategy_params"].copy(), 0, None
 
         except Exception as e:
             logger.error(f"Error during GA optimization: {e}")
             # Return original base parameters and calculated evaluations up to interruption
-            num_evals_on_error = getattr(self.ga_instance, 'generations_completed', 0) * sol_per_pop if hasattr(self, 'ga_instance') else 0
-            return self.scenario_config["strategy_params"].copy(), num_evals_on_error
+            sol_per_pop_safe = ga_params_config.get("sol_per_pop", self.global_config.get("optimizer_parameter_defaults", {}).get("ga_sol_per_pop", {}).get("default", 50))
+            num_evals_on_error = getattr(self.ga_instance, 'generations_completed', 0) * sol_per_pop_safe if hasattr(self, 'ga_instance') else 0
+            return self.scenario_config["strategy_params"].copy(), num_evals_on_error, None
 
 def get_ga_optimizer_parameter_defaults():
     """Returns default parameters for GA specific settings."""

@@ -7,7 +7,7 @@ from .. import strategies
 from ..reporting.performance_metrics import calculate_metrics
 from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
 from ..constants import ZERO_RET_EPS
-from ..portfolio.position_sizer import get_position_sizer
+from ..portfolio.position_sizer import get_position_sizer_from_config
 from ..portfolio.rebalancing import rebalance
 from ..api_stability import api_stable
 
@@ -44,8 +44,7 @@ def _run_scenario_static(
         price_monthly[global_cfg["benchmark"]],
     )
 
-    sizer_name = scenario_cfg.get("position_sizer", "equal_weight")
-    sizer_func = get_position_sizer(sizer_name)
+    sizer_func = get_position_sizer_from_config(scenario_cfg)
 
     sizer_params = scenario_cfg.get("strategy_params", {}).copy()
     sizer_param_mapping = {

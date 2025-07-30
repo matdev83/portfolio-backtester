@@ -72,11 +72,24 @@ def mock_backtester_instance():
     mock_bt = MagicMock(spec=Backtester)
     mock_bt.args = MagicMock()
     mock_bt.args.early_stop_patience = 3
+    mock_bt.args.timeout = None
     mock_bt.n_jobs = 1 # Set n_jobs directly on the mock_bt
     mock_bt.features = None # Add features attribute to mock
     mock_bt.logger = MagicMock() # Add logger attribute
+    
+    # Mock strategy_map which is needed by TrialEvaluator
+    mock_strategy = MagicMock()
+    mock_strategy_instance = MagicMock()
+    mock_strategy_instance.generate_signals.return_value = pd.DataFrame(
+        index=MOCK_DAILY_DATA.index, 
+        data={'signal': np.ones(len(MOCK_DAILY_DATA))}
+    )
+    mock_strategy.return_value = mock_strategy_instance
+    mock_bt.strategy_map = {'momentum': mock_strategy}
+    
     # Mock the evaluation function that the GeneticOptimizer will call
     mock_bt._evaluate_params_walk_forward = MagicMock()
+    mock_bt.evaluate_fast_numba = MagicMock()
     return mock_bt
 
 def test_genetic_optimizer_initialization(mock_backtester_instance):
@@ -177,7 +190,7 @@ def test_run_single_objective(mock_pygad_ga, mock_backtester_instance):
     mock_ga_instance.generations_completed = MOCK_SCENARIO_CONFIG_SINGLE_OBJECTIVE["genetic_algorithm_params"]["num_generations"]
     mock_pygad_ga.return_value = mock_ga_instance
 
-    best_params, num_evals = optimizer.run()
+    best_params, num_evals, _ = optimizer.optimize()
 
     mock_pygad_ga.assert_called_once() # Check if pygad.GA was initialized
     ga_call_args = mock_pygad_ga.call_args[1] # Get keyword arguments
@@ -229,7 +242,7 @@ def test_run_multi_objective(mock_pygad_ga, mock_backtester_instance):
     mock_ga_instance.generations_completed = MOCK_SCENARIO_CONFIG_MULTI_OBJECTIVE["genetic_algorithm_params"]["num_generations"]
     mock_pygad_ga.return_value = mock_ga_instance
 
-    best_params, num_evals = optimizer.run()
+    best_params, num_evals, _ = optimizer.optimize()
 
     mock_pygad_ga.assert_called_once()
     ga_call_args = mock_pygad_ga.call_args[1]
@@ -411,7 +424,7 @@ class TestGeneticOptimizerWithWalkForward:
         # Replace the fitness function with our capturing wrapper
         optimizer.fitness_func_wrapper = fitness_func_wrapper_capture
 
-        optimizer.run(save_plot=False)
+        optimizer.optimize(save_plot=False)
 
         # Check that multiple, different solutions were evaluated
         assert len(evaluated_solutions) > 1

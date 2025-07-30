@@ -233,7 +233,7 @@ class IntramonthSeasonalStrategy(BaseStrategy):
             if not_in_position.any():
                 if direction == "long":
                     target_weights_np[valid_indices[not_in_position]] = 1.0
-                else:
+                elif direction == "short":
                     target_weights_np[valid_indices[not_in_position]] = -1.0
                 # Set exit dates for new positions
                 exit_date = np.datetime64(current_date + self._bday_offset * hold_days)
@@ -245,13 +245,14 @@ class IntramonthSeasonalStrategy(BaseStrategy):
             logger.debug(f"Date: {current_date}, New weights: {target_weights_np[target_weights_np != 0]}")
 
         # Normalize weights to sum to 1 (or -1 for short)
-        num_positions = np.count_nonzero(target_weights_np)
-        if num_positions > 0:
-            if direction == "long":
-                target_weights_np[target_weights_np > 0] = 1.0 / num_positions
-            else:
-                target_weights_np[target_weights_np < 0] = -1.0 / num_positions
-                target_weights_np[target_weights_np > 0] = -1.0 / num_positions
+        num_long = np.count_nonzero(target_weights_np > 0)
+        num_short = np.count_nonzero(target_weights_np < 0)
+
+        if num_long > 0:
+            target_weights_np[target_weights_np > 0] = 1.0 / num_long
+        
+        if num_short > 0:
+            target_weights_np[target_weights_np < 0] = -1.0 / num_short
 
         self._last_weights_np = target_weights_np.copy()
 

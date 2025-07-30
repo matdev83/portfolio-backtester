@@ -99,7 +99,7 @@ class TestAdvancedCrossoverIntegration:
         )
         
         # Run optimization
-        best_params, num_evaluations = optimizer.run(save_plot=False)
+        best_params, num_evaluations, _ = optimizer.optimize(save_plot=False)
         
         # Verify that PyGAD was called with the correct crossover function
         call_kwargs = mock_pygad_ga.call_args[1]

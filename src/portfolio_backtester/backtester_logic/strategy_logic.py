@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 
-from ..portfolio.position_sizer import get_position_sizer, SIZER_PARAM_MAPPING
+from ..portfolio.position_sizer import get_position_sizer_from_config, SIZER_PARAM_MAPPING
 
 logger = logging.getLogger(__name__)
 
@@ -130,8 +130,7 @@ def generate_signals(strategy, scenario_config, price_data_daily_ohlc, universe_
     return signals
 
 def size_positions(signals, scenario_config, price_data_monthly_closes, price_data_daily_ohlc, universe_tickers, benchmark_ticker):
-    sizer_name = scenario_config.get("position_sizer", "equal_weight")
-    sizer_func = get_position_sizer(sizer_name)
+    sizer_func = get_position_sizer_from_config(scenario_config)
 
     sizer_param_mapping = SIZER_PARAM_MAPPING
 
@@ -159,7 +158,7 @@ def size_positions(signals, scenario_config, price_data_monthly_closes, price_da
 
     sizer_args = [signals, strategy_monthly_closes, benchmark_monthly_closes]
 
-    if sizer_name == "rolling_downside_volatility":
+    if scenario_config.get("position_sizer", "equal_weight") == "rolling_downside_volatility":
         if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and \
            'Close' in price_data_daily_ohlc.columns.get_level_values(1):
             daily_closes_for_sizer = price_data_daily_ohlc.xs('Close', level='Field', axis=1)[universe_tickers]
@@ -169,6 +168,7 @@ def size_positions(signals, scenario_config, price_data_monthly_closes, price_da
             raise ValueError("rolling_downside_volatility sizer: Could not extract daily close prices from price_data_daily_ohlc.")
         sizer_args.append(daily_closes_for_sizer)
 
+    sizer_name = scenario_config.get("position_sizer", "equal_weight")
     if sizer_name in ["rolling_sharpe", "rolling_sortino", "rolling_beta", "rolling_benchmark_corr", "rolling_downside_volatility"]:
         if window_param is None:
             raise ValueError(f"Sizer '{sizer_name}' requires a 'window' parameter, but it was not found in strategy_params.")

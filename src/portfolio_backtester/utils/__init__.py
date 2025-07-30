@@ -79,7 +79,7 @@ def _run_scenario_static(
         Daily benchmark prices (needed by *calculate_metrics* in the caller).
     """
 
-    from ..portfolio.position_sizer import get_position_sizer
+    from ..portfolio.position_sizer import get_position_sizer_from_config
     from ..portfolio.rebalancing import rebalance
 
     strat_cls = _resolve_strategy(scenario_cfg["strategy"])
@@ -95,8 +95,7 @@ def _run_scenario_static(
         price_monthly[global_cfg["benchmark"]],
     )
 
-    sizer_name = scenario_cfg.get("position_sizer", "equal_weight")
-    sizer_func = get_position_sizer(sizer_name)
+    sizer_func = get_position_sizer_from_config(scenario_cfg)
 
     sizer_params = scenario_cfg.get("strategy_params", {}).copy()
     # Map sizer-specific parameters from strategy_params to expected sizer argument names

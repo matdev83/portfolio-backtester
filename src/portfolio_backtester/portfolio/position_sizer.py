@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, Dict
+from typing import Callable, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -348,3 +348,22 @@ def get_position_sizer(name: str) -> Callable:
         return SIZER_REGISTRY[name]
     except KeyError as exc:
         raise ValueError(f"Unknown position sizer: {name}") from exc
+
+
+def get_position_sizer_from_config(config: Dict[str, Any]) -> Callable:
+    """Get a position sizer function from a configuration dictionary.
+    
+    This function centralizes the logic for getting a position sizer from configuration,
+    avoiding repetition of the same pattern across the codebase.
+    
+    Args:
+        config: Configuration dictionary that may contain a "position_sizer" key
+        
+    Returns:
+        Callable: The position sizer function
+        
+    Example:
+        sizer_func = get_position_sizer_from_config(scenario_cfg)
+    """
+    sizer_name = config.get("position_sizer", "equal_weight")
+    return get_position_sizer(sizer_name)

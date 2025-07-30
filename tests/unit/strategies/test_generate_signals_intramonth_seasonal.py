@@ -21,9 +21,8 @@ def test_generate_signals_basic(direction, entry_day, hold_days, expected_weight
     assert all(signals.loc[entry_date] == expected_weights)
 
 
-@pytest.mark.xfail(reason="Short entry/exit logic not yet implemented in IntramonthSeasonalStrategy")
 def test_generate_signals_short_entry():
-    dates = pd.bdate_range(start="2023-01-01", end="2023-01-10")
+    dates = pd.bdate_range(start="2023-01-01", end="2023-01-31")
     data = pd.DataFrame({"AAPL": 100, "GOOG": 200}, index=dates)
     config = {
         "strategy_params": {

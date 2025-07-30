@@ -9,8 +9,9 @@ strategy_params:
   lookback_months: 12
   long_only: false
   beta_lookback_days: 21
-  num_high_beta_to_exclude: 1
+  num_high_beta_to_exclude: 3
   rsi_length: 2
-  rsi_overbought: 90
+  rsi_overbought: 70
+  short_max_holding_days: 30
 mc_simulations: 100
 mc_years: 5

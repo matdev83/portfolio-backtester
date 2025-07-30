@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Set
 
 import numpy as np
 import pandas as pd
+from ta.momentum import RSIIndicator
 
 from .momentum_unfiltered_atr_strategy import MomentumUnfilteredAtrStrategy
 
@@ -40,7 +41,8 @@ class MomentumBetaFilteredStrategy(MomentumUnfilteredAtrStrategy):
             "beta_lookback_days": 21,
             "num_high_beta_to_exclude": 3,  # must be >=1
             "rsi_length": 3,
-            "rsi_overbought": 85,
+            "rsi_overbought": 70,  # Reduced from 85 for more short opportunities
+            "short_max_holding_days": 30,  # Maximum holding period for short positions
             # Force long_only = False so that shorts are permitted
             "long_only": False,
         }
@@ -55,6 +57,7 @@ class MomentumBetaFilteredStrategy(MomentumUnfilteredAtrStrategy):
         # Per-rebalancing state — populated inside *generate_signals*
         self._assets_to_exclude_from_longs: Set[str] = set()
         self._short_assets: List[str] = []
+        self._short_entry_dates: Dict[str, pd.Timestamp] = {}  # Track entry dates for time-based exit
 
     # ------------------------------------------------------------------
     # Optimiser support
@@ -66,6 +69,7 @@ class MomentumBetaFilteredStrategy(MomentumUnfilteredAtrStrategy):
             "num_high_beta_to_exclude",
             "rsi_length",
             "rsi_overbought",
+            "short_max_holding_days",
         }
 
     # ------------------------------------------------------------------
@@ -87,22 +91,13 @@ class MomentumBetaFilteredStrategy(MomentumUnfilteredAtrStrategy):
 
     @staticmethod
     def _calculate_rsi(price_series: pd.Series, window: int) -> float:
-        """Simple (SMA-based) Relative Strength Index for the **latest** value."""
+        """Calculate RSI (Relative Strength Index) for the **latest** value using ta library."""
         if price_series.size < window + 1:
             return np.nan
-
-        delta = price_series.diff()
-        gains = delta.clip(lower=0)
-        losses = -delta.clip(upper=0)
-
-        avg_gain = gains.tail(window).mean()
-        avg_loss = losses.tail(window).mean()
-
-        if avg_loss == 0 or np.isnan(avg_loss):
-            return 100.0  # Extreme overbought
-
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
+        
+        # Use ta library for RSI calculation
+        rsi = RSIIndicator(close=price_series, window=window).rsi()
+        return rsi.iloc[-1] if len(rsi) > 0 else np.nan
 
     @staticmethod
     def _latest_rolling_betas(asset_returns: pd.DataFrame, bench_returns: pd.Series, window: int) -> pd.Series:
@@ -138,7 +133,8 @@ class MomentumBetaFilteredStrategy(MomentumUnfilteredAtrStrategy):
         beta_window = int(params.get("beta_lookback_days", 21))
         num_exclude = max(1, int(params.get("num_high_beta_to_exclude", 3)))
         rsi_len = int(params.get("rsi_length", 3))
-        rsi_over = float(params.get("rsi_overbought", 85))
+        rsi_over = float(params.get("rsi_overbought", 70))  # Updated default
+        short_max_holding_days = int(params.get("short_max_holding_days", 30))
 
         # --------------------------------------------------------------
         # Discard any extra kwargs supplied by the Backtester interface
@@ -196,19 +192,13 @@ class MomentumBetaFilteredStrategy(MomentumUnfilteredAtrStrategy):
         short_candidates = []
         if top_beta_assets:
             high_beta_prices = asset_close[top_beta_assets].dropna(how='all')
-            # Compute RSI for each asset
+            # Compute RSI for each asset using library implementation
             def rsi_vec(prices):
                 if prices.size < rsi_len + 1:
                     return np.nan
-                delta = prices.diff()
-                gains = delta.clip(lower=0)
-                losses = -delta.clip(upper=0)
-                avg_gain = gains.tail(rsi_len).mean()
-                avg_loss = losses.tail(rsi_len).mean()
-                if avg_loss == 0 or np.isnan(avg_loss):
-                    return 100.0
-                rs = avg_gain / avg_loss
-                return 100.0 - (100.0 / (1.0 + rs))
+                # Use ta library for RSI calculation
+                rsi = RSIIndicator(close=prices, window=rsi_len).rsi()
+                return rsi.iloc[-1] if len(rsi) > 0 else np.nan
             rsi_vals = high_beta_prices.apply(rsi_vec, axis=0)
             short_candidates = rsi_vals[rsi_vals >= rsi_over].index.tolist()
 
@@ -225,6 +215,24 @@ class MomentumBetaFilteredStrategy(MomentumUnfilteredAtrStrategy):
                 if not isinstance(price_df.index, pd.DatetimeIndex):
                     price_df.index = pd.to_datetime(price_df.index)
                 current_close = price_df.iloc[-1]
+                
+                # Time-based exit logic
+                assets_to_remove = []
+                for asset in prev_shorts:
+                    # Check if maximum holding period has been reached
+                    if asset in self._short_entry_dates:
+                        entry_date = self._short_entry_dates[asset]
+                        holding_days = (current_date - entry_date).days
+                        if holding_days >= short_max_holding_days:
+                            assets_to_remove.append(asset)
+                            # Remove from entry dates tracking
+                            if asset in self._short_entry_dates:
+                                del self._short_entry_dates[asset]
+                
+                # Filter out assets that have reached maximum holding period
+                prev_shorts = [asset for asset in prev_shorts if asset not in assets_to_remove]
+                
+                # Original exit logic - close when current month's close falls below prior month's low
                 prev_month_date = current_date - pd.DateOffset(months=1)
                 mask_prev_month = (price_df.index.month == prev_month_date.month) & (price_df.index.year == prev_month_date.year)
                 prev_month_lows = price_df[mask_prev_month].min(axis=0)
@@ -235,6 +243,17 @@ class MomentumBetaFilteredStrategy(MomentumUnfilteredAtrStrategy):
                         shorts_to_keep.append(asset)
 
         # Final list of shorts for this rebalance
+        # Update entry dates for new short positions
+        for asset in short_candidates:
+            if asset not in self._short_entry_dates:
+                self._short_entry_dates[asset] = current_date
+        
+        # Remove entry dates for assets that are no longer shorted
+        current_shorts = set(shorts_to_keep + short_candidates)
+        for asset in list(self._short_entry_dates.keys()):
+            if asset not in current_shorts:
+                del self._short_entry_dates[asset]
+        
         self._short_assets = list({*shorts_to_keep, *short_candidates})
 
         # --------------------------------------------------------------

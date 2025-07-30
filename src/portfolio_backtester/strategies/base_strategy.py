@@ -13,6 +13,7 @@ from ..universe_resolver import resolve_universe_config
 # from ..signal_generators import BaseSignalGenerator
 from ..roro_signals import BaseRoRoSignal
 from .stop_loss import AtrBasedStopLoss, BaseStopLoss, NoStopLoss
+from ..portfolio.position_sizer import get_position_sizer
 from ..api_stability import api_stable
 
 if TYPE_CHECKING:
@@ -146,9 +147,6 @@ class BaseStrategy(ABC):
             self._stop_loss_handler_instance = handler_class(self.strategy_config, sl_config)
         return self._stop_loss_handler_instance
 
-    def get_position_sizer(self) -> Callable[[pd.DataFrame], pd.DataFrame]:
-        name = self.strategy_config.get("position_sizer", "equal_weight")
-        return get_position_sizer(name)
 
     # Removed get_required_features as features are now internal to strategies
     # @classmethod

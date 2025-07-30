@@ -13,7 +13,7 @@ from . import strategies
 from .strategies.base_strategy import BaseStrategy
 from .strategies import enumerate_strategies_with_params
 from .backtester_logic.execution import run_backtest_mode, run_optimize_mode
-from .backtester_logic.optimization import run_optimization
+from .backtester_logic.optimizer import run_optimization
 from .backtester_logic.strategy_logic import generate_signals, size_positions
 from .config_initializer import populate_default_optimizations
 from .config_loader import OPTIMIZER_PARAMETER_DEFAULTS
@@ -282,6 +282,7 @@ class Backtester:
         is_multi_objective: bool,
     ) -> float | tuple[float, ...]:
         from .reporting.metrics import calculate_metrics
+        logger.debug("Starting _evaluate_params_walk_forward.")
         
         if not self._windows_precomputed:
             if logger.isEnabledFor(logging.DEBUG):
@@ -309,7 +310,9 @@ class Backtester:
         trial_threshold = self._get_monte_carlo_trial_threshold(optimization_mode)
         
         trial_number = getattr(trial, 'number', 0) if trial else 0
+        logger.debug(f"Getting strategy for trial {trial_number}.")
         strategy = self._get_strategy(scenario_config["strategy"], scenario_config["strategy_params"])
+        logger.debug(f"Successfully got strategy for trial {trial_number}.")
         mc_adaptive_enabled = mc_enabled and mc_during_optimization and (trial_number >= trial_threshold) and strategy.get_synthetic_data_requirements()
         
         if mc_adaptive_enabled and 'asset_replacement_manager' not in scenario_config:
@@ -399,7 +402,9 @@ class Backtester:
                 trial_synthetic_data = None
                 replacement_info = None
 
+        logger.debug("Starting window loop.")
         for window_idx, (tr_start, tr_end, te_start, te_end) in enumerate(windows):
+            logger.debug(f"Processing window {window_idx+1}.")
             if self.has_timed_out:
                 logger.warning("Timeout reached during walk-forward evaluation. Stopping further windows.")
                 return float("nan") if not is_multi_objective else tuple([float("nan")] * len(metrics_to_optimize))
@@ -439,10 +444,13 @@ class Backtester:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(f"Stage 1 MC: Applied synthetic data to current_daily_data_ohlc for window {window_idx+1}")
             
+            logger.debug("Getting cached window returns.")
             cached_window_returns = self.data_cache.get_window_returns_by_dates(
                 current_daily_data_ohlc, tr_start, te_end
             )
+            logger.debug("Successfully got cached window returns.")
             
+            logger.debug("Running scenario for window.")
             window_returns = self.run_scenario(
                 scenario_config, 
                 m_slice, 
@@ -450,6 +458,7 @@ class Backtester:
                 rets_daily=cached_window_returns, 
                 verbose=False
             )
+            logger.debug("Successfully ran scenario for window.")
 
             if window_returns is None or window_returns.empty:
                 if self.logger.isEnabledFor(logging.WARNING):
@@ -808,6 +817,7 @@ class Backtester:
 
             # Determine the list of tickers (same order as the price
             # matrix extracted via ``_df_to_float32_array``).
+            logger.debug("Determining tickers for signal generation.")
             if isinstance(daily_data.columns, pd.MultiIndex):
                 # Extract just the *Close* field to obtain single-level
                 # columns that represent tickers only.
@@ -816,19 +826,24 @@ class Backtester:
                 price_df_for_cols = daily_data
 
             tickers = list(price_df_for_cols.columns)
+            logger.debug(f"Tickers for signal generation: {tickers}")
 
             # Initialise signals DataFrame with NaNs so we can detect
             # unfilled periods explicitly (filled with 0.0 later).
+            logger.debug("Initializing signals DataFrame.")
             signals_df = pd.DataFrame(
                 data=np.nan,
                 index=daily_data.index,
                 columns=tickers,
                 dtype=np.float32,
             )
+            logger.debug("Successfully initialized signals DataFrame.")
 
             # Generate signals only on each test window *start* date.
+            logger.debug("Starting signal generation loop.")
             for _, _, te_start, _ in windows:
                 try:
+                    logger.debug(f"Generating signal for window starting at {te_start}")
                     window_signal = strategy_instance.generate_signals(
                         monthly_data,
                         daily_data,
@@ -837,19 +852,23 @@ class Backtester:
                         None,
                         None,
                     )
+                    logger.debug(f"Successfully generated signal for window starting at {te_start}")
 
                     if window_signal is not None and not window_signal.empty:
+                        logger.debug(f"Signal for {te_start}:\n{window_signal}")
                         # Align columns – some strategies may return a
                         # subset of tickers; missing tickers default to 0.
                         for col in window_signal.columns:
                             if col in signals_df.columns:
                                 signals_df.at[te_start, col] = window_signal.iloc[0][col]
+                        logger.debug(f"Successfully assigned signal for window starting at {te_start}")
                 except Exception as sig_exc:
                     logger.error(
                         "Signal generation failed for window start %s: %s",
                         te_start,
                         sig_exc,
                     )
+            logger.debug("Finished signal generation loop.")
 
             # Forward-fill to make positions persistent until next signal
             # update, then replace any leading NaNs (prior to first
@@ -866,6 +885,11 @@ class Backtester:
             if prices_np is None or signals_np is None:
                 logger.error("prices_np or signals_np is None. Cannot run numba backtest.")
                 return np.nan, pd.Series(dtype=float)
+            
+            # Ensure correct dtype for Numba kernel
+            prices_np = prices_np.astype(np.float32)
+            signals_np = signals_np.astype(np.float32)
+            
             portfolio_returns = run_backtest_numba(prices_np, signals_np, start_indices, end_indices)
             
             # For now, we'll just return the mean of the portfolio returns as the objective value

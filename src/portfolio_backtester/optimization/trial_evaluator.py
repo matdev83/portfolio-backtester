@@ -28,10 +28,38 @@ from typing import Any, Tuple, List
 
 def _is_valid_window(daily_index: pd.Index, window: tuple) -> bool:
     """Return True when the slice between window[2] and window[3] spans ≥2 rows."""
-
-    start_idx = daily_index.searchsorted(pd.Timestamp(window[2]))
-    end_idx = daily_index.searchsorted(pd.Timestamp(window[3]))
-    return (end_idx - start_idx) >= 2
+    # Extract start and end dates from window
+    start_date = window[2]
+    end_date = window[3]
+    
+    # Handle different types of date representations
+    if isinstance(start_date, (list, tuple)):
+        start_date = start_date[0] if start_date else daily_index[0]
+    if isinstance(end_date, (list, tuple)):
+        end_date = end_date[0] if end_date else daily_index[-1]
+    
+    # If we have Timestamp objects, find their positions in the index
+    if isinstance(start_date, pd.Timestamp) and isinstance(end_date, pd.Timestamp):
+        try:
+            start_idx = daily_index.get_loc(start_date)
+        except KeyError:
+            # Find the nearest date if exact match not found
+            start_idx = daily_index.searchsorted(start_date)
+        
+        try:
+            end_idx = daily_index.get_loc(end_date)
+        except KeyError:
+            # Find the nearest date if exact match not found
+            end_idx = daily_index.searchsorted(end_date)
+        
+        return (end_idx - start_idx) >= 2
+    
+    # If we have integer indices, use them directly
+    elif isinstance(start_date, (int, np.integer)) and isinstance(end_date, (int, np.integer)):
+        return (end_date - start_date) >= 2
+    
+    # Fallback: assume valid window
+    return True
 
 # ---------------------------------------------------------------------------
 # Module-level globals for worker initialisation.  They will be populated by
@@ -122,8 +150,22 @@ def _evaluate_window(window) -> Tuple[Any, Any]:
         raise RuntimeError("Worker caches not initialised")
 
     # Translate window (tuple) start/end dates to indices
-    start_idx = np.searchsorted(_DATE_INDEX, np.datetime64(window[2]))
-    end_idx = np.searchsorted(_DATE_INDEX, np.datetime64(window[3]))
+    start_date = window[2]
+    end_date = window[3]
+    
+    # Handle different date formats
+    if isinstance(start_date, pd.Timestamp):
+        start_dt64 = start_date.to_datetime64()
+    else:
+        start_dt64 = np.datetime64(start_date)
+        
+    if isinstance(end_date, pd.Timestamp):
+        end_dt64 = end_date.to_datetime64()
+    else:
+        end_dt64 = np.datetime64(end_date)
+    
+    start_idx = np.searchsorted(_DATE_INDEX, start_dt64)
+    end_idx = np.searchsorted(_DATE_INDEX, end_dt64)
 
     # Skip invalid slices with <2 rows
     if end_idx - start_idx < 2:
@@ -231,20 +273,30 @@ class TrialEvaluator:
     # ---------------------------------------------------------------------
     # Public interface
     # ---------------------------------------------------------------------
-    def evaluate(self, trial):
-        """Evaluate *trial* across all WFO windows and aggregate the objective.
-
-        1. Ask the optimizer to suggest parameter values (when trial is provided).
-        2. Run the backtester for each walk-forward window in parallel.
-        3. Aggregate objective values (mean) and full-PnL returns (concatenate).
-        4. Attach the full returns to the Optuna trial for later analysis.
+    def evaluate(self, trial_or_params):
+        """Evaluate parameters across all WFO windows and aggregate the objective.
+        
+        This method can work with either:
+        1. An Optuna trial object (for Optuna optimization)
+        2. A dictionary of parameters (for other optimizers like Genetic Algorithm)
+        
+        Args:
+            trial_or_params: Either an Optuna trial object or a dictionary of parameters
+            
+        Returns:
+            The aggregated objective value across all windows
         """
         # ------------------------------------------------------------------
         # 1. Resolve the concrete parameter set for this trial
         # ------------------------------------------------------------------
-        current_params = self._suggest_optuna_params(
-            trial, self.scenario_config["strategy_params"], self.scenario_config.get("optimize", [])
-        )
+        if isinstance(trial_or_params, dict):
+            # If it's already a dictionary of parameters, use it directly
+            current_params = trial_or_params
+        else:
+            # Otherwise, it's a trial object, so suggest parameters as before
+            current_params = self._suggest_optuna_params(
+                trial_or_params, self.scenario_config["strategy_params"], self.scenario_config.get("optimize", [])
+            )
         trial_scenario_cfg = self.scenario_config.copy()
         trial_scenario_cfg["strategy_params"] = current_params
 
@@ -268,9 +320,9 @@ class TrialEvaluator:
         # Do not spawn more workers than windows – that only wastes resources.
         worker_count = min(len(self.windows), max_workers_cfg)
 
-        objective_values: list[float | np.ndarray] = []
+        objective_values: list = []
         window_lengths: list[int] = []
-        full_pnl_returns: list[np.ndarray] = []
+        full_pnl_returns: list = []
 
         from sys import platform
 
@@ -285,7 +337,7 @@ class TrialEvaluator:
             try:
                 _init_worker(
                     self.backtester,
-                    trial,
+                    trial_or_params if not isinstance(trial_or_params, dict) else None,
                     trial_scenario_cfg,
                     self.monthly_data,
                     self.daily_data,
@@ -303,39 +355,101 @@ class TrialEvaluator:
             # By passing the heavy, read-only inputs only once via *initializer*
             # we avoid re-serialising them for every individual task.
             # ------------------------------------------------------------------
-            exec_kwargs = {"max_workers": worker_count}
             if executor_cls is ProcessPoolExecutor:
-                exec_kwargs.update(
+                # Create the executor with the initializer and initargs directly
+                with ProcessPoolExecutor(
+                    max_workers=worker_count,
                     initializer=_init_worker,
                     initargs=(
                         self.backtester,
-                        trial,
+                        trial_or_params if not isinstance(trial_or_params, dict) else None,
                         trial_scenario_cfg,
                         self.monthly_data,
                         self.daily_data,
                         self.rets_full,
                         self.metrics_to_optimize,
                         self.is_multi_objective,
-                    ),
-                )
+                    )
+                ) as process_executor:
+                    futures = []
+                    for window in self.windows:
+                        # Safeguard against windows with fewer than two trading days –
+                        # they cannot yield a valid return series.
+                        if not _is_valid_window(self.daily_data.index, window):  # type: ignore[arg-type]
+                            objective_values.append(np.nan)
+                            full_pnl_returns.append(np.asarray([np.nan], dtype=float))
+                            window_lengths.append(0)
+                            continue
+                        futures.append(process_executor.submit(_evaluate_window, window))
 
-            with executor_cls(**exec_kwargs) as executor:
-                futures = []
-                for window in self.windows:
-                    # Safeguard against windows with fewer than two trading days –
-                    # they cannot yield a valid return series.
-                    if not _is_valid_window(self.daily_data.index, window):  # type: ignore[arg-type]
-                        objective_values.append(np.nan)
-                        full_pnl_returns.append(np.asarray([np.nan], dtype=float))
-                        window_lengths.append(0)
-                        continue
-                    futures.append(executor.submit(_evaluate_window, window))
+                    for fut in as_completed(futures):
+                        obj_val, pnl_ret = fut.result()
+                        objective_values.append(obj_val)
+                        full_pnl_returns.append(pnl_ret)
+                        window_lengths.append(pnl_ret.shape[0] if isinstance(pnl_ret, np.ndarray) else len(pnl_ret))
+            else:
+                # For ThreadPoolExecutor, initialize caches first
+                try:
+                    _init_worker(
+                        self.backtester,
+                        trial_or_params if not isinstance(trial_or_params, dict) else None,
+                        trial_scenario_cfg,
+                        self.monthly_data,
+                        self.daily_data,
+                        self.rets_full,
+                        self.metrics_to_optimize,
+                        self.is_multi_objective,
+                    )
+                except Exception as init_exc:
+                    self.logger.error("ThreadPool cache initialisation failed: %s", init_exc)
+                    # Fallback to single-thread serial path
+                    use_multiprocessing = False
 
-                for fut in as_completed(futures):
-                    obj_val, pnl_ret = fut.result()
-                    objective_values.append(obj_val)
-                    full_pnl_returns.append(pnl_ret)
-                    window_lengths.append(pnl_ret.shape[0] if isinstance(pnl_ret, np.ndarray) else len(pnl_ret))
+                if use_multiprocessing and worker_count > 1:
+                    with executor_cls(max_workers=worker_count) as thread_executor:
+                        futures = []
+                        for window in self.windows:
+                            # Safeguard against windows with fewer than two trading days –
+                            # they cannot yield a valid return series.
+                            if not _is_valid_window(self.daily_data.index, window):  # type: ignore[arg-type]
+                                objective_values.append(np.nan)
+                                full_pnl_returns.append(np.asarray([np.nan], dtype=float))
+                                window_lengths.append(0)
+                                continue
+                            futures.append(thread_executor.submit(_evaluate_window, window))
+
+                        for fut in as_completed(futures):
+                            obj_val, pnl_ret = fut.result()
+                            objective_values.append(obj_val)
+                            full_pnl_returns.append(pnl_ret)
+                            window_lengths.append(pnl_ret.shape[0] if isinstance(pnl_ret, np.ndarray) else len(pnl_ret))
+                else:
+                    # Serial evaluation (safer for mocked objects and debug runs)
+                    for window in self.windows:
+                        if not _is_valid_window(self.daily_data.index, window):  # type: ignore[arg-type]
+                            objective_values.append(-1e9)
+                            full_pnl_returns.append(np.asarray([np.nan]))
+                            window_lengths.append(0)
+                            continue
+
+                        obj_val, pnl_ret = self.backtester.evaluate_fast_numba(
+                            trial_or_params if not isinstance(trial_or_params, dict) else None,
+                            trial_scenario_cfg,
+                            [window],
+                            self.monthly_data,
+                            self.daily_data,
+                            self.rets_full,
+                            self.metrics_to_optimize,
+                            self.is_multi_objective,
+                        )
+                        objective_values.append(obj_val)
+                        if pnl_ret is not None:
+                            if isinstance(pnl_ret, np.ndarray):
+                                full_pnl_returns.append(pnl_ret)
+                                window_lengths.append(pnl_ret.shape[0])
+                            elif not pnl_ret.empty:
+                                full_pnl_returns.append(pnl_ret.to_numpy())
+                                window_lengths.append(len(pnl_ret))
         else:
             # Serial evaluation (safer for mocked objects and debug runs)
             for window in self.windows:
@@ -346,7 +460,7 @@ class TrialEvaluator:
                     continue
 
                 obj_val, pnl_ret = self.backtester.evaluate_fast_numba(
-                    trial,
+                    trial_or_params if not isinstance(trial_or_params, dict) else None,
                     trial_scenario_cfg,
                     [window],
                     self.monthly_data,
@@ -369,30 +483,69 @@ class TrialEvaluator:
         # ------------------------------------------------------------------
         if self.is_multi_objective:
             # Values are arrays/tuples; compute vector average element-wise.
-            obj_matrix = np.asarray(objective_values, dtype=float)
-            if self.scenario_config.get("aggregate_length_weighted", False) and len(window_lengths) == len(objective_values):
-                weights = np.asarray(window_lengths, dtype=float)
-                weights /= weights.sum()
-                aggregate_objective = tuple(np.average(obj_matrix, axis=0, weights=weights))
+            # Convert to numpy array for proper handling
+            obj_array = []
+            for val in objective_values:
+                if isinstance(val, np.ndarray):
+                    obj_array.append(val)
+                elif isinstance(val, (list, tuple)):
+                    obj_array.append(np.array(val))
+                else:
+                    obj_array.append(np.array([val]))
+            
+            if obj_array:
+                obj_matrix = np.array(obj_array, dtype=float)
+                if self.scenario_config.get("aggregate_length_weighted", False) and len(window_lengths) == len(objective_values):
+                    weights = np.asarray(window_lengths, dtype=float)
+                    weights /= weights.sum()
+                    aggregate_objective = tuple(np.average(obj_matrix, axis=0, weights=weights))
+                else:
+                    aggregate_objective = tuple(np.mean(obj_matrix, axis=0))
             else:
-                aggregate_objective = tuple(np.mean(obj_matrix, axis=0))
+                aggregate_objective = tuple([0.0])
         else:
-            if self.scenario_config.get("aggregate_length_weighted", False) and len(window_lengths) == len(objective_values):
+            # Convert to proper numeric values for mean calculation
+            numeric_values = []
+            for val in objective_values:
+                if isinstance(val, np.ndarray):
+                    if val.size == 1:
+                        numeric_values.append(float(val))
+                    else:
+                        numeric_values.append(float(np.mean(val)))
+                elif isinstance(val, (list, tuple)):
+                    numeric_values.append(float(np.mean(val)))
+                else:
+                    numeric_values.append(float(val))
+                    
+            if self.scenario_config.get("aggregate_length_weighted", False) and len(window_lengths) == len(numeric_values):
                 weights = np.asarray(window_lengths, dtype=float)
                 weights /= weights.sum()
-                aggregate_objective = float(np.average(np.asarray(objective_values, dtype=float), weights=weights))
+                aggregate_objective = float(np.average(np.asarray(numeric_values, dtype=float), weights=weights))
             else:
-                aggregate_objective = float(np.mean(objective_values, axis=0))
+                aggregate_objective = float(np.mean(numeric_values))
 
-        aggregate_returns = np.concatenate(full_pnl_returns) if full_pnl_returns else np.array([], dtype=float)
+        # Handle returns aggregation
+        if full_pnl_returns:
+            # Convert all to numpy arrays if needed
+            processed_returns = []
+            for ret in full_pnl_returns:
+                if isinstance(ret, np.ndarray):
+                    processed_returns.append(ret)
+                elif isinstance(ret, (list, tuple)):
+                    processed_returns.append(np.array(ret))
+                else:
+                    processed_returns.append(np.array([ret]))
+            aggregate_returns = np.concatenate(processed_returns) if processed_returns else np.array([], dtype=float)
+        else:
+            aggregate_returns = np.array([], dtype=float)
 
         # ------------------------------------------------------------------
         # 4. Attach aggregated returns to the trial for downstream diagnostics
         # ------------------------------------------------------------------
-        if trial is not None:
+        if trial_or_params is not None and not isinstance(trial_or_params, dict):
             # Convert numpy array to list for JSON serialisation in Optuna storage
             try:
-                trial.set_user_attr("full_pnl_returns", aggregate_returns.tolist())
+                trial_or_params.set_user_attr("full_pnl_returns", aggregate_returns.tolist())
             except Exception:
                 # Optuna might throw if trial is a mock object without set_user_attr
                 pass
