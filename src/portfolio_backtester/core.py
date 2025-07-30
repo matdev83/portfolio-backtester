@@ -93,15 +93,7 @@ class Backtester:
         # Remove dynamic method binding to fix multiprocessing pickling issues
         # Methods will be called directly from their modules
 
-    def run_optimization(
-        self, 
-        scenario_config: Dict[str, Any], 
-        monthly_data: pd.DataFrame, 
-        daily_data: pd.DataFrame, 
-        rets_full: pd.DataFrame
-    ) -> Any:
-        """Call run_optimization directly from module to fix multiprocessing pickling issue."""
-        return run_optimization(self, scenario_config, monthly_data, daily_data, rets_full)
+
     
     @property
     def has_timed_out(self):
@@ -210,7 +202,14 @@ class Backtester:
 
         sized_signals = size_positions(signals, scenario_config, price_data_monthly_closes, price_data_daily_ohlc, universe_tickers, benchmark_ticker)
 
-        portfolio_rets_net = calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily_ohlc, rets_daily, universe_tickers, self.global_config)
+        # Calculate portfolio returns (no trade tracking for optimization)
+        result = calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily_ohlc, rets_daily, universe_tickers, self.global_config, track_trades=False)
+        
+        # Handle both old and new return formats
+        if isinstance(result, tuple):
+            portfolio_rets_net, _ = result
+        else:
+            portfolio_rets_net = result
 
         if verbose:
             if logger.isEnabledFor(logging.DEBUG):
@@ -255,313 +254,45 @@ class Backtester:
                 return avg_metric if not is_multi_objective else (avg_metric,)
             except Exception as exc:
                 logger.error("Fast walk-forward path failed – falling back to legacy: %s", exc)
-        # Fallback: ensure all *_np variables are valid arrays
+        # Fallback: use new architecture components
+        from .backtesting.strategy_backtester import StrategyBacktester
+        from .backtesting.results import OptimizationData
+        from .optimization.evaluator import BacktestEvaluator
+        
         monthly_data = pd.DataFrame(monthly_data_np) if monthly_data_np is not None else pd.DataFrame()
         daily_data = pd.DataFrame(daily_data_np) if daily_data_np is not None else pd.DataFrame()
         rets_full = pd.DataFrame(rets_full_np) if rets_full_np is not None else pd.DataFrame()
-        return self._evaluate_params_walk_forward(
-            trial,
-            scenario_config,
-            windows,
-            monthly_data,
-            daily_data,
-            rets_full,
-            metrics_to_optimize,
-            is_multi_objective,
+        
+        # Create new architecture components
+        strategy_backtester = StrategyBacktester(self.global_config, self.data_source)
+        evaluator = BacktestEvaluator(
+            metrics_to_optimize=metrics_to_optimize,
+            is_multi_objective=is_multi_objective
         )
-
-    def _evaluate_params_walk_forward(
-        self,
-        trial: Any,
-        scenario_config: dict,
-        windows: list,
-        monthly_data: pd.DataFrame,
-        daily_data: pd.DataFrame,
-        rets_full: pd.DataFrame,
-        metrics_to_optimize: list,
-        is_multi_objective: bool,
-    ) -> float | tuple[float, ...]:
-        from .reporting.metrics import calculate_metrics
-        logger.debug("Starting _evaluate_params_walk_forward.")
         
-        if not self._windows_precomputed:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug("Pre-computing returns for all windows")
-            self.data_cache.precompute_window_returns(daily_data, windows)
-            self._windows_precomputed = True
+        # Create optimization data
+        optimization_data = OptimizationData(
+            monthly=monthly_data,
+            daily=daily_data,
+            returns=rets_full,
+            windows=windows
+        )
         
-        from .backtester_logic.optimization import _global_progress_tracker
-        from .utils import calculate_stability_metrics, INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
+        # Extract parameters from trial
+        parameters = scenario_config.get('strategy_params', {}).copy()
+        if hasattr(trial, 'params') and trial.params is not None:
+            parameters.update(trial.params)
+        elif hasattr(trial, 'user_attrs') and 'parameters' in trial.user_attrs:
+            parameters.update(trial.user_attrs['parameters'])
         
-        metric_values_per_objective: list[list[float]] = [[] for _ in metrics_to_optimize]
-        processed_steps_for_pruning = 0
-
-        pruning_enabled = getattr(self.args, "pruning_enabled", False)
-        pruning_interval_steps = getattr(self.args, "pruning_interval_steps", 1)
-
-        monte_carlo_config = self.global_config.get('monte_carlo_config', {})
-        asset_replacement_manager = None
-        trial_synthetic_data = None
+        # Evaluate using new architecture
+        evaluation_result = evaluator.evaluate_parameters(
+            parameters, scenario_config, optimization_data, strategy_backtester
+        )
         
-        mc_enabled = monte_carlo_config.get('enable_synthetic_data', False)
-        mc_during_optimization = monte_carlo_config.get('enable_during_optimization', True)
-        
-        optimization_mode = monte_carlo_config.get('optimization_mode', 'balanced')
-        trial_threshold = self._get_monte_carlo_trial_threshold(optimization_mode)
-        
-        trial_number = getattr(trial, 'number', 0) if trial else 0
-        logger.debug(f"Getting strategy for trial {trial_number}.")
-        strategy = self._get_strategy(scenario_config["strategy"], scenario_config["strategy_params"])
-        logger.debug(f"Successfully got strategy for trial {trial_number}.")
-        mc_adaptive_enabled = mc_enabled and mc_during_optimization and (trial_number >= trial_threshold) and strategy.get_synthetic_data_requirements()
-        
-        if mc_adaptive_enabled and 'asset_replacement_manager' not in scenario_config:
-            from .monte_carlo.asset_replacement import AssetReplacementManager
-            
-            stage1_config = monte_carlo_config.copy()
-            stage1_config['stage1_optimization'] = True
-            stage1_config['replacement_percentage'] = monte_carlo_config.get('replacement_percentage', 0.05)
-            
-            stage1_config['generation_config'] = {
-                'buffer_multiplier': 1.0, 'max_attempts': 1, 'validation_tolerance': 1.0
-            }
-            stage1_config['validation_config'] = {'enable_validation': False}
-            
-            asset_replacement_manager = AssetReplacementManager(stage1_config)
-            asset_replacement_manager.set_full_data_source(self.data_source, self.global_config)
-            scenario_config['asset_replacement_manager'] = asset_replacement_manager
-            
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Stage 1 MC: Initialized AssetReplacementManager for optimization robustness (mode: {optimization_mode})")
-
-        asset_replacement_manager = scenario_config.get('asset_replacement_manager')
-
-        all_window_returns = []
-        
-        if _global_progress_tracker and trial and hasattr(trial, 'number'):
-            trial_num = trial.number + 1
-            total_trials = _global_progress_tracker['total_trials']
-            progress = _global_progress_tracker.get('progress')
-            if progress and hasattr(progress, 'update'):
-                progress.update(
-                    _global_progress_tracker['task'], 
-                    description=f"[cyan]Trial {trial_num}/{total_trials} running ({len(windows)} windows/trial)..."
-                )
-        
-        replacement_info = None
-        if asset_replacement_manager is not None:
-            try:
-                universe = scenario_config.get('universe', self.global_config.get('universe', []))
-                
-                all_start_dates = [tr_start for tr_start, _, _, _ in windows]
-                all_end_dates = [te_end for _, _, _, te_end in windows]
-                overall_start = min(all_start_dates)
-                overall_end = max(all_end_dates)
-                
-                full_data_slice = daily_data.loc[overall_start:overall_end]
-                
-                daily_data_dict = {}
-                
-                if isinstance(full_data_slice.columns, pd.MultiIndex):
-                    for ticker in universe:
-                        ticker_data = full_data_slice.xs(ticker, level='Ticker', axis=1, drop_level=True)
-                        if not ticker_data.empty:
-                            daily_data_dict[ticker] = ticker_data
-                else:
-                    for ticker in universe:
-                        if ticker in full_data_slice.columns:
-                            ticker_data = pd.DataFrame({
-                                'Open': full_data_slice[ticker],
-                                'High': full_data_slice[ticker],
-                                'Low': full_data_slice[ticker],
-                                'Close': full_data_slice[ticker]
-                            })
-                            daily_data_dict[ticker] = ticker_data
-                
-                trial_seed = None
-                if monte_carlo_config.get('random_seed') is not None:
-                    trial_seed = monte_carlo_config['random_seed'] + getattr(trial, 'number', 0)
-                
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Stage 1 MC: Generating lightweight synthetic data for trial {getattr(trial, 'number', 0)}")
-                trial_synthetic_data, replacement_info = asset_replacement_manager.create_monte_carlo_dataset(
-                    original_data=daily_data_dict,
-                    universe=universe,
-                    test_start=overall_start,
-                    test_end=overall_end,
-                    run_id=f"trial_{getattr(trial, 'number', 0)}",
-                    random_seed=trial_seed
-                )
-                
-                if replacement_info and replacement_info.selected_assets:
-                    if logger.isEnabledFor(logging.DEBUG):
-                        logger.debug(f"Stage 1 MC: Trial {getattr(trial, 'number', 0)} using synthetic data for {len(replacement_info.selected_assets)} assets")
-                
-            except Exception as e:
-                logger.error(f"Stage 1 MC: Failed to generate synthetic data for trial {getattr(trial, 'number', 0)}: {e}")
-                trial_synthetic_data = None
-                replacement_info = None
-
-        logger.debug("Starting window loop.")
-        for window_idx, (tr_start, tr_end, te_start, te_end) in enumerate(windows):
-            logger.debug(f"Processing window {window_idx+1}.")
-            if self.has_timed_out:
-                logger.warning("Timeout reached during walk-forward evaluation. Stopping further windows.")
-                return float("nan") if not is_multi_objective else tuple([float("nan")] * len(metrics_to_optimize))
-            if CENTRAL_INTERRUPTED_FLAG:
-                self.logger.warning("Evaluation interrupted by user via central flag.")
-                return float("nan") if not is_multi_objective else tuple([float("nan")] * len(metrics_to_optimize))
-
-            m_slice = monthly_data.loc[tr_start:tr_end]
-            d_slice = daily_data.loc[tr_start:te_end]
-
-            current_daily_data_ohlc = d_slice
-
-            if mc_adaptive_enabled and trial_synthetic_data is not None and replacement_info is not None:
-                current_daily_data_ohlc = d_slice.copy()
-                
-                for asset in replacement_info.selected_assets:
-                    if asset in trial_synthetic_data:
-                        synthetic_ohlc_for_asset = trial_synthetic_data[asset]
-                        
-                        window_synthetic_ohlc = synthetic_ohlc_for_asset.loc[te_start:te_end]
-                        
-                        if not window_synthetic_ohlc.empty:
-                            if isinstance(current_daily_data_ohlc.columns, pd.MultiIndex):
-                                for field in window_synthetic_ohlc.columns:
-                                    if (asset, field) in current_daily_data_ohlc.columns:
-                                        current_daily_data_ohlc.loc[window_synthetic_ohlc.index, (asset, field)] = window_synthetic_ohlc[field]
-                            else:
-                                for field in window_synthetic_ohlc.columns:
-                                    col_name = f"{asset}_{field}"
-                                    if col_name in current_daily_data_ohlc.columns:
-                                        current_daily_data_ohlc.loc[window_synthetic_ohlc.index, col_name] = window_synthetic_ohlc[field]
-                                    elif field == 'Close' and asset in current_daily_data_ohlc.columns:
-                                        current_daily_data_ohlc.loc[window_synthetic_ohlc.index, asset] = window_synthetic_ohlc[field]
-                                    else:
-                                        if logger.isEnabledFor(logging.WARNING):
-                                            logger.warning(f"Could not find column {col_name} or {asset} for synthetic data replacement in current_daily_data_ohlc.")
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Stage 1 MC: Applied synthetic data to current_daily_data_ohlc for window {window_idx+1}")
-            
-            logger.debug("Getting cached window returns.")
-            cached_window_returns = self.data_cache.get_window_returns_by_dates(
-                current_daily_data_ohlc, tr_start, te_end
-            )
-            logger.debug("Successfully got cached window returns.")
-            
-            logger.debug("Running scenario for window.")
-            window_returns = self.run_scenario(
-                scenario_config, 
-                m_slice, 
-                current_daily_data_ohlc, 
-                rets_daily=cached_window_returns, 
-                verbose=False
-            )
-            logger.debug("Successfully ran scenario for window.")
-
-            if window_returns is None or window_returns.empty:
-                if self.logger.isEnabledFor(logging.WARNING):
-                    self.logger.warning(f"No returns generated for window {tr_start}-{te_end}. Skipping.")
-                for i in range(len(metrics_to_optimize)):
-                    metric_values_per_objective[i].append(np.nan)
-                progress = _global_progress_tracker.get('progress') if _global_progress_tracker else None
-                task = _global_progress_tracker['task'] if _global_progress_tracker and 'task' in _global_progress_tracker else None
-                if progress and hasattr(progress, 'update') and task is not None:
-                    progress.update(task, advance=1)
-                continue
-
-            all_window_returns.append(window_returns)
-
-            test_rets = window_returns.loc[te_start:te_end]
-            if test_rets.empty:
-                if self.logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Test returns empty for window {tr_start}-{te_end} with params {scenario_config['strategy_params']}.")
-                progress = _global_progress_tracker.get('progress') if _global_progress_tracker else None
-                task = _global_progress_tracker['task'] if _global_progress_tracker and 'task' in _global_progress_tracker else None
-                if progress and hasattr(progress, 'update') and task is not None:
-                    progress.update(task, advance=1)
-                return float("nan") if not is_multi_objective else tuple([float("nan")] * len(metrics_to_optimize))
-
-            if abs(test_rets.mean()) < 1e-9 and abs(test_rets.std()) < 1e-9:
-                if trial and hasattr(trial, "set_user_attr"):
-                    trial.set_user_attr("zero_returns", True)
-                    if hasattr(trial, "number") and logger.isEnabledFor(logging.DEBUG):
-                        logger.debug(f"Trial {trial.number}, window {window_idx+1}: Marked with zero_returns.")
-
-            bench_ser = d_slice[self.global_config["benchmark"]].loc[te_start:te_end]
-            bench_period_rets = bench_ser.pct_change(fill_method=None).fillna(0)
-            metrics = calculate_metrics(test_rets, bench_period_rets, self.global_config["benchmark"])
-            current_metrics = np.array([metrics.get(m, np.nan) for m in metrics_to_optimize], dtype=float)
-
-            for i, metric_val in enumerate(current_metrics):
-                metric_values_per_objective[i].append(metric_val)
-
-            progress = _global_progress_tracker.get('progress') if _global_progress_tracker else None
-            task = _global_progress_tracker['task'] if _global_progress_tracker and 'task' in _global_progress_tracker else None
-            if progress and hasattr(progress, 'update') and task is not None:
-                progress.update(task, advance=1)
-
-            processed_steps_for_pruning += 1
-            if pruning_enabled and processed_steps_for_pruning % pruning_interval_steps == 0:
-                if trial and hasattr(trial, "should_prune"):
-                    current_score = np.nanmean(metric_values_per_objective[0])
-                    if hasattr(trial, "report"):
-                        trial.report(current_score, processed_steps_for_pruning)
-                    if trial.should_prune():
-                        if logger.isEnabledFor(logging.DEBUG):
-                            logger.debug(f"Trial {getattr(trial, 'number', 'N/A')} pruned at step {processed_steps_for_pruning}")
-                        raise optuna.exceptions.TrialPruned()
-
-        if trial and hasattr(trial, "set_user_attr"):
-            if all_window_returns:
-                try:
-                    stability_metrics = calculate_stability_metrics(metric_values_per_objective, metrics_to_optimize, self.global_config)
-                    trial.set_user_attr("stability_metrics", stability_metrics)
-                    if hasattr(trial, "number"):
-                        if logger.isEnabledFor(logging.DEBUG):
-                            logger.debug(f"Trial {trial.number} stability metrics: {stability_metrics}")
-                except Exception as e:
-                    if logger.isEnabledFor(logging.WARNING):
-                        logger.warning(f"Failed to calculate stability metrics for trial {getattr(trial, 'number', 'N/A')}: {e}")
-            else:
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Trial {getattr(trial, 'number', 'N/A')} has no window returns for stability metrics")
-
-        if asset_replacement_manager is not None and trial and hasattr(trial, "set_user_attr"):
-            replacement_stats = asset_replacement_manager.get_replacement_statistics()
-            trial.set_user_attr("monte_carlo_replacement_stats", replacement_stats)
-
-        if all_window_returns:
-            full_pnl_returns = pd.concat(all_window_returns).sort_index()
-            full_pnl_returns = full_pnl_returns[~full_pnl_returns.index.duplicated(keep='first')]
-            
-            bench_ser = daily_data[self.global_config["benchmark"]].loc[full_pnl_returns.index]
-            bench_period_rets = bench_ser.pct_change(fill_method=None).fillna(0)
-            
-            final_metrics = calculate_metrics(full_pnl_returns, bench_period_rets, self.global_config["benchmark"])
-            metric_avgs = [final_metrics.get(m, np.nan) for m in metrics_to_optimize]
-
-        else:
-            full_pnl_returns = pd.Series(dtype=float)
-            metric_avgs = [np.nan for _ in metrics_to_optimize]
+        return evaluation_result.objective_value
 
 
-        if all(np.isnan(np.array(metric_avgs))):
-            if logger.isEnabledFor(logging.WARNING):
-                logger.warning(f"No valid windows produced results for params: {scenario_config['strategy_params']}. Returning NaN.")
-            if is_multi_objective:
-                return tuple([float("nan")] * len(metrics_to_optimize))
-            else:
-                return float("nan")
-
-        if trial and hasattr(trial, "set_user_attr"):
-            trial.set_user_attr("full_pnl_returns", full_pnl_returns.to_json())
-
-        if is_multi_objective:
-            return tuple(float(v) for v in metric_avgs)
-        else:
-            return float(metric_avgs[0])
     
     def _evaluate_single_window(self, window_config: Dict[str, Any], scenario_config: Dict[str, Any], shared_data: Dict[str, Any]) -> Tuple[List[float], pd.Series]:
         from .reporting.performance_metrics import calculate_metrics
@@ -653,10 +384,39 @@ class Backtester:
         
         use_fast = os.environ.get("ENABLE_NUMBA_WALKFORWARD", "0") == "1"
         if not use_fast:
-            objective_value = self._evaluate_params_walk_forward(
-                trial, scenario_config, windows, monthly_data, daily_data, rets_full,
-                metrics_to_optimize, is_multi_objective
+            # Use new architecture components
+            from .backtesting.strategy_backtester import StrategyBacktester
+            from .backtesting.results import OptimizationData
+            from .optimization.evaluator import BacktestEvaluator
+            
+            # Create new architecture components
+            strategy_backtester = StrategyBacktester(self.global_config, self.data_source)
+            evaluator = BacktestEvaluator(
+                metrics_to_optimize=metrics_to_optimize,
+                is_multi_objective=is_multi_objective
             )
+            
+            # Create optimization data
+            optimization_data = OptimizationData(
+                monthly=monthly_data,
+                daily=daily_data,
+                returns=rets_full,
+                windows=windows
+            )
+            
+            # Extract parameters from trial
+            parameters = scenario_config.get('strategy_params', {}).copy()
+            if hasattr(trial, 'params') and trial.params is not None:
+                parameters.update(trial.params)
+            elif hasattr(trial, 'user_attrs') and 'parameters' in trial.user_attrs:
+                parameters.update(trial.user_attrs['parameters'])
+            
+            # Evaluate using new architecture
+            evaluation_result = evaluator.evaluate_parameters(
+                parameters, scenario_config, optimization_data, strategy_backtester
+            )
+            
+            objective_value = evaluation_result.objective_value
             full_pnl_returns = pd.Series(dtype=float)
             if trial and hasattr(trial, 'user_attrs') and 'full_pnl_returns' in trial.user_attrs:
                 pnl_dict = trial.user_attrs['full_pnl_returns']
@@ -752,11 +512,40 @@ class Backtester:
             return objective_value, full_pnl_returns
             
         except Exception as exc:
-            logger.error("Fast evaluation failed - falling back to legacy: %s", exc)
-            objective_value = self._evaluate_params_walk_forward(
-                trial, scenario_config, windows, monthly_data, daily_data, rets_full,
-                metrics_to_optimize, is_multi_objective
+            logger.error("Fast evaluation failed - falling back to new architecture: %s", exc)
+            # Use new architecture components as fallback
+            from .backtesting.strategy_backtester import StrategyBacktester
+            from .backtesting.results import OptimizationData
+            from .optimization.evaluator import BacktestEvaluator
+            
+            # Create new architecture components
+            strategy_backtester = StrategyBacktester(self.global_config, self.data_source)
+            evaluator = BacktestEvaluator(
+                metrics_to_optimize=metrics_to_optimize,
+                is_multi_objective=is_multi_objective
             )
+            
+            # Create optimization data
+            optimization_data = OptimizationData(
+                monthly=monthly_data,
+                daily=daily_data,
+                returns=rets_full,
+                windows=windows
+            )
+            
+            # Extract parameters from trial
+            parameters = scenario_config.get('strategy_params', {}).copy()
+            if hasattr(trial, 'params') and trial.params is not None:
+                parameters.update(trial.params)
+            elif hasattr(trial, 'user_attrs') and 'parameters' in trial.user_attrs:
+                parameters.update(trial.user_attrs['parameters'])
+            
+            # Evaluate using new architecture
+            evaluation_result = evaluator.evaluate_parameters(
+                parameters, scenario_config, optimization_data, strategy_backtester
+            )
+            
+            objective_value = evaluation_result.objective_value
             full_pnl_returns = pd.Series(dtype=float)
             if trial and hasattr(trial, 'user_attrs') and 'full_pnl_returns' in trial.user_attrs:
                 pnl_dict = trial.user_attrs['full_pnl_returns']
@@ -984,11 +773,12 @@ class Backtester:
         rets_full = self.data_cache.get_cached_returns(daily_closes, "full_period_returns")
         self.rets_full = rets_full.to_frame() if isinstance(rets_full, pd.Series) else rets_full
 
-        if self.args.mode == "optimize":
-            # Updated call: run_optimize_mode now handles report generation internally
+        if FeatureFlags.use_new_optimization_architecture():
+            # Use new architecture with OptimizationOrchestrator
+            self._run_optimize_mode_new_architecture(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
+        else:
+            # Fallback to existing implementation
             run_optimize_mode(self, self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
-        elif self.args.mode == "backtest":
-            run_backtest_mode(self, self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         
         if CENTRAL_INTERRUPTED_FLAG:
             self.logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
@@ -1009,4 +799,243 @@ class Backtester:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug("Optimization mode completed. Reports generated.")
 
+    def _run_backtest_mode_new_architecture(
+        self, 
+        scenario_config: Dict[str, Any], 
+        monthly_data: pd.DataFrame, 
+        daily_data: pd.DataFrame, 
+        rets_full: pd.DataFrame
+    ) -> None:
+        """Run backtest mode using the new StrategyBacktester architecture.
+        
+        This method uses the pure StrategyBacktester directly for backtesting,
+        maintaining backward compatibility while using the new architecture.
+        
+        Args:
+            scenario_config: Scenario configuration
+            monthly_data: Monthly price data
+            daily_data: Daily OHLC data
+            rets_full: Full period returns data
+        """
+        from .backtesting.strategy_backtester import StrategyBacktester
+        from .backtester_logic.execution import run_backtest_mode
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Running backtest using new architecture for scenario: {scenario_config['name']}")
+        
+        # For now, delegate to existing implementation to maintain compatibility
+        # TODO: Fully migrate to pure StrategyBacktester once all components are ready
+        run_backtest_mode(self, scenario_config, monthly_data, daily_data, rets_full)
+
+    def _run_optimize_mode_new_architecture(
+        self, 
+        scenario_config: Dict[str, Any], 
+        monthly_data: pd.DataFrame, 
+        daily_data: pd.DataFrame, 
+        rets_full: pd.DataFrame
+    ) -> None:
+        """Run optimization mode using the new OptimizationOrchestrator architecture.
+        
+        This method uses the new architecture with OptimizationOrchestrator,
+        parameter generators, and BacktestEvaluator to perform optimization.
+        
+        Args:
+            scenario_config: Scenario configuration
+            monthly_data: Monthly price data
+            daily_data: Daily OHLC data
+            rets_full: Full period returns data
+        """
+        from .optimization.factory import create_parameter_generator
+        from .optimization.orchestrator import OptimizationOrchestrator
+        from .optimization.evaluator import BacktestEvaluator
+        from .backtesting.strategy_backtester import StrategyBacktester
+        from .backtesting.results import OptimizationData
+        from .utils import generate_randomized_wfo_windows
+        from .backtester_logic.execution import run_optimize_mode
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Running optimization using new architecture for scenario: {scenario_config['name']}")
+        
+        # Get optimizer type from CLI args (this is the key integration point)
+        optimizer_type = getattr(self.args, 'optimizer', 'optuna')
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Using optimizer type from CLI: {optimizer_type}")
+        
+        try:
+            # Create parameter generator using factory
+            parameter_generator = create_parameter_generator(
+                optimizer_type=optimizer_type,
+                random_state=self.random_state
+            )
+            
+            # Create StrategyBacktester for pure backtesting
+            strategy_backtester = StrategyBacktester(
+                global_config=self.global_config,
+                data_source=self.data_source
+            )
+            
+            # Generate walk-forward windows
+            windows = generate_randomized_wfo_windows(
+                monthly_data.index,
+                scenario_config,
+                self.global_config,
+                self.random_state
+            )
+            
+            if not windows:
+                raise ValueError("Not enough data for the requested walk-forward windows.")
+            
+            # Determine optimization targets and metrics
+            optimization_targets_config = scenario_config.get("optimization_targets", [])
+            metrics_to_optimize = [t["name"] for t in optimization_targets_config] or \
+                                  [scenario_config.get("optimization_metric", "Calmar")]
+            is_multi_objective = len(metrics_to_optimize) > 1
+            
+            # Create BacktestEvaluator
+            evaluator = BacktestEvaluator(
+                metrics_to_optimize=metrics_to_optimize,
+                is_multi_objective=is_multi_objective
+            )
+            
+            # Create OptimizationOrchestrator
+            orchestrator = OptimizationOrchestrator(
+                parameter_generator=parameter_generator,
+                evaluator=evaluator,
+                timeout_seconds=getattr(self.args, 'optuna_timeout_sec', None),
+                early_stop_patience=getattr(self.args, 'early_stop_patience', 10)
+            )
+            
+            # Prepare optimization data
+            optimization_data = OptimizationData(
+                monthly=monthly_data,
+                daily=daily_data,
+                returns=rets_full,
+                windows=windows
+            )
+            
+            # Convert scenario optimization specs to parameter space format
+            parameter_space = self._convert_optimization_specs_to_parameter_space(scenario_config)
+            
+            # Create optimization config from CLI args and scenario config
+            optimization_config = {
+                'parameter_space': parameter_space,
+                'max_evaluations': getattr(self.args, 'optuna_trials', 200),
+                'timeout_seconds': getattr(self.args, 'optuna_timeout_sec', None),
+                'optimization_targets': optimization_targets_config,
+                'metrics_to_optimize': metrics_to_optimize,
+                'pruning_enabled': getattr(self.args, 'pruning_enabled', False),
+                'pruning_n_startup_trials': getattr(self.args, 'pruning_n_startup_trials', 5),
+                'pruning_n_warmup_steps': getattr(self.args, 'pruning_n_warmup_steps', 0),
+                'pruning_interval_steps': getattr(self.args, 'pruning_interval_steps', 1),
+                'study_name': getattr(self.args, 'study_name', None),
+                'storage_url': getattr(self.args, 'storage_url', None),
+                'random_seed': self.random_state
+            }
+            
+            # Run optimization using new architecture
+            optimization_result = orchestrator.optimize(
+                scenario_config=scenario_config,
+                optimization_config=optimization_config,
+                data=optimization_data,
+                backtester=strategy_backtester
+            )
+            
+            # Process results and update self.results for compatibility
+            optimal_params = optimization_result.best_parameters
+            optimized_scenario = scenario_config.copy()
+            optimized_scenario["strategy_params"] = optimal_params
+            
+            # Run full backtest with optimal parameters
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Running full backtest with optimal parameters: {optimal_params}")
+            
+            full_backtest_result = strategy_backtester.backtest_strategy(
+                optimized_scenario, monthly_data, daily_data, rets_full
+            )
+            
+            # Store results in the expected format for compatibility
+            optimized_name = f"{scenario_config['name']}_Optimized"
+            train_end_date = pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
+            
+            self.results[optimized_name] = {
+                "returns": full_backtest_result.returns,
+                "display_name": optimized_name,
+                "optimal_params": optimal_params,
+                "num_trials_for_dsr": optimization_result.n_evaluations,
+                "train_end_date": train_end_date,
+                "best_trial_obj": optimization_result.best_trial,
+                "constraint_status": "passed",  # TODO: Implement constraint handling
+                "constraint_message": "",
+                "constraint_violations": [],
+                "constraints_config": {},
+                "trade_stats": full_backtest_result.trade_stats,
+                "trade_history": full_backtest_result.trade_history,
+                "performance_stats": full_backtest_result.performance_stats,
+                "charts_data": full_backtest_result.charts_data
+            }
+            
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"New architecture optimization completed for {scenario_config['name']}")
+                
+        except Exception as e:
+            logger.error(f"New architecture optimization failed: {e}")
+            # TODO: Add more specific error handling
+            raise e
+
+    def _convert_optimization_specs_to_parameter_space(self, scenario_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert scenario optimization specs to parameter space format.
+        
+        This method converts the scenario configuration's 'optimize' section
+        to the parameter space format expected by parameter generators.
+        
+        Args:
+            scenario_config: Scenario configuration containing 'optimize' section
+            
+        Returns:
+            Dictionary defining the parameter space for optimization
+        """
+        parameter_space = {}
+        optimization_specs = scenario_config.get("optimize", [])
+        
+        for spec in optimization_specs:
+            param_name = spec["parameter"]
+            
+            # Get parameter type from spec or defaults
+            param_type = spec.get("type")
+            if not param_type:
+                param_type = self.global_config.get("optimizer_parameter_defaults", {}).get(param_name, {}).get("type", "float")
+            
+            # Convert to parameter space format
+            if param_type == "int":
+                parameter_space[param_name] = {
+                    "type": "int",
+                    "low": spec["min_value"],
+                    "high": spec["max_value"],
+                    "step": spec.get("step", 1)
+                }
+            elif param_type == "float":
+                parameter_space[param_name] = {
+                    "type": "float", 
+                    "low": spec["min_value"],
+                    "high": spec["max_value"],
+                    "step": spec.get("step", None)
+                }
+            elif param_type == "categorical":
+                parameter_space[param_name] = {
+                    "type": "categorical",
+                    "choices": spec["values"]
+                }
+            else:
+                logger.warning(f"Unknown parameter type '{param_type}' for parameter '{param_name}'. Defaulting to float.")
+                parameter_space[param_name] = {
+                    "type": "float",
+                    "low": spec["min_value"], 
+                    "high": spec["max_value"]
+                }
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Converted optimization specs to parameter space: {parameter_space}")
+        
+        return parameter_space
 

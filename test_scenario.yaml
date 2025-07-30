@@ -1,0 +1,21 @@
+name: test_trade_stats
+strategy: momentum
+rebalance_frequency: ME
+position_sizer: equal_weight
+transaction_costs_bps: 10
+train_window_months: 12
+test_window_months: 6
+
+# Simple fixed universe for quick testing
+universe_config:
+  type: "fixed"
+  tickers: ["AAPL", "MSFT", "GOOGL"]
+
+strategy_params:
+  lookback_months: 3
+  num_holdings: 2
+  top_decile_fraction: 0.7
+  smoothing_lambda: 0.0
+  leverage: 1.0
+  long_only: true
+  apply_trading_lag: false

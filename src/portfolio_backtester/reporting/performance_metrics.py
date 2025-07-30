@@ -51,7 +51,7 @@ def _infer_steps_per_year(idxs: pd.DatetimeIndex) -> int:
 
 EPSILON_FOR_DIVISION = 1e-9  # Small epsilon to prevent division by zero or near-zero
 
-def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_trials=1):
+def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_trials=1, trade_stats=None):
     """Calculates performance metrics for a given returns series."""
     
     if logger.isEnabledFor(logging.DEBUG):
@@ -539,7 +539,8 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
     equity_curve = (1 + rets).cumprod()
     avg_dd_duration, avg_recovery_time = drawdown_duration_and_recovery(equity_curve)
 
-    metrics = pd.Series({
+    # Base metrics
+    base_metrics = {
         "Total Return": total_ret(active_rets),
         "Ann. Return": ann(active_rets),
         "Ann. Vol": ann_vol(active_rets),
@@ -561,5 +562,105 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
         "ADF Statistic": adf_stat,
         "ADF p-value": adf_p_value,
         "Deflated Sharpe": deflated_sharpe_ratio(active_rets, num_trials)
-    }, name=name)
+    }
+    
+    # Add trade-based metrics if available
+    if trade_stats is not None:
+        trade_metrics = {}
+        
+        # Add directional trade statistics (All/Long/Short)
+        for direction in ['all', 'long', 'short']:
+            direction_title = direction.title()
+            prefix = f"{direction}_"
+            
+            trade_metrics.update({
+                f"Number of Trades ({direction_title})": trade_stats.get(f'{prefix}num_trades', 0),
+                f"Win Rate % ({direction_title})": trade_stats.get(f'{prefix}win_rate_pct', 0.0),
+                f"Number of Winners ({direction_title})": trade_stats.get(f'{prefix}num_winners', 0),
+                f"Number of Losers ({direction_title})": trade_stats.get(f'{prefix}num_losers', 0),
+                f"Total P&L Net ({direction_title})": trade_stats.get(f'{prefix}total_pnl_net', 0.0),
+                f"Largest Single Profit ({direction_title})": trade_stats.get(f'{prefix}largest_profit', 0.0),
+                f"Largest Single Loss ({direction_title})": trade_stats.get(f'{prefix}largest_loss', 0.0),
+                f"Mean Profit ({direction_title})": trade_stats.get(f'{prefix}mean_profit', 0.0),
+                f"Mean Loss ({direction_title})": trade_stats.get(f'{prefix}mean_loss', 0.0),
+                f"Mean Trade P&L ({direction_title})": trade_stats.get(f'{prefix}mean_trade_pnl', 0.0),
+                f"Reward/Risk Ratio ({direction_title})": trade_stats.get(f'{prefix}reward_risk_ratio', 0.0),
+                f"Commissions Paid ({direction_title})": trade_stats.get(f'{prefix}total_commissions_paid', 0.0),
+                f"Avg MFE ({direction_title})": trade_stats.get(f'{prefix}avg_mfe', 0.0),
+                f"Avg MAE ({direction_title})": trade_stats.get(f'{prefix}avg_mae', 0.0),
+                f"Information Score ({direction_title})": trade_stats.get(f'{prefix}information_score', 0.0),
+                f"Min Trade Duration Days ({direction_title})": trade_stats.get(f'{prefix}min_trade_duration_days', 0),
+                f"Max Trade Duration Days ({direction_title})": trade_stats.get(f'{prefix}max_trade_duration_days', 0),
+                f"Mean Trade Duration Days ({direction_title})": trade_stats.get(f'{prefix}mean_trade_duration_days', 0.0),
+                f"Trades per Month ({direction_title})": trade_stats.get(f'{prefix}trades_per_month', 0.0)
+            })
+        
+        # Add portfolio-level metrics (not direction-specific)
+        trade_metrics.update({
+            "Max Margin Load": trade_stats.get('max_margin_load', 0.0),
+            "Mean Margin Load": trade_stats.get('mean_margin_load', 0.0)
+        })
+        
+        base_metrics.update(trade_metrics)
+    
+    # Calculate additional derived metrics
+    max_dd_recovery_time = calculate_max_dd_recovery_time(rets)
+    max_flat_period = calculate_max_flat_period(rets)
+    
+    base_metrics.update({
+        "Max DD Recovery Time (days)": max_dd_recovery_time,
+        "Max Flat Period (days)": max_flat_period
+    })
+    
+    metrics = pd.Series(base_metrics, name=name)
     return metrics
+
+
+def calculate_max_dd_recovery_time(rets):
+    """Calculate maximum drawdown recovery time in days."""
+    if rets.empty:
+        return 0
+    
+    # Calculate cumulative returns
+    cumulative = (1 + rets).cumprod()
+    
+    # Calculate running maximum and drawdown
+    running_max = cumulative.expanding().max()
+    drawdown = (cumulative / running_max - 1)
+    
+    # Find recovery periods
+    max_recovery_time = 0
+    in_drawdown = False
+    drawdown_start = None
+    
+    for i, (date, dd_value) in enumerate(drawdown.items()):
+        if dd_value < -1e-6 and not in_drawdown:
+            # Start of drawdown
+            in_drawdown = True
+            drawdown_start = date
+        elif dd_value >= -1e-6 and in_drawdown:
+            # End of drawdown (recovery)
+            in_drawdown = False
+            if drawdown_start is not None:
+                recovery_time = (date - drawdown_start).days
+                max_recovery_time = max(max_recovery_time, recovery_time)
+    
+    return max_recovery_time
+
+
+def calculate_max_flat_period(rets):
+    """Calculate maximum flat period (consecutive days with zero returns)."""
+    if rets.empty:
+        return 0
+    
+    max_flat = 0
+    current_flat = 0
+    
+    for ret in rets:
+        if abs(ret) < 1e-8:  # Essentially zero return
+            current_flat += 1
+            max_flat = max(max_flat, current_flat)
+        else:
+            current_flat = 0
+    
+    return max_flat

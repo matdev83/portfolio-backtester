@@ -2,10 +2,11 @@ import logging
 import pandas as pd
 
 from ..portfolio.rebalancing import rebalance
+from ..trading.trade_tracker import TradeTracker
 
 logger = logging.getLogger(__name__)
 
-def calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily_ohlc, rets_daily, universe_tickers, global_config):
+def calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily_ohlc, rets_daily, universe_tickers, global_config, track_trades=False):
     weights_monthly = rebalance(
         sized_signals, scenario_config["rebalance_frequency"]
     )
@@ -36,7 +37,7 @@ def calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily
 
     turnover = (weights_daily - weights_daily.shift(1)).abs().sum(axis=1).fillna(0.0)
 
-    from ..trading.transaction_costs import get_transaction_cost_model
+    from ..trading import get_transaction_cost_model
     
     tx_cost_model = get_transaction_cost_model(global_config)
     transaction_costs, _ = tx_cost_model.calculate(
@@ -47,5 +48,49 @@ def calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily
     )
 
     portfolio_rets_net = (daily_portfolio_returns_gross - transaction_costs).fillna(0.0)
+    
+    # Initialize trade tracker if requested
+    trade_tracker = None
+    if track_trades:
+        portfolio_value = global_config.get("portfolio_value", 100000.0)
+        trade_tracker = TradeTracker(portfolio_value)
+        
+        # Track positions and calculate trade statistics
+        _track_trades(trade_tracker, weights_daily, price_data_daily_ohlc, transaction_costs)
+    
+    return portfolio_rets_net, trade_tracker
 
-    return portfolio_rets_net
+
+def _track_trades(trade_tracker, weights_daily, price_data_daily_ohlc, transaction_costs):
+    """Track trades using the trade tracker."""
+    # Extract close prices
+    if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
+        close_prices = price_data_daily_ohlc.xs('Close', level='Field', axis=1)
+    else:
+        close_prices = price_data_daily_ohlc
+    
+    # Process each day
+    for date in weights_daily.index:
+        if date in close_prices.index:
+            current_weights = weights_daily.loc[date]
+            current_prices = close_prices.loc[date]
+            
+            # Calculate transaction cost per ticker (simplified)
+            total_turnover = (weights_daily.loc[date] - weights_daily.shift(1).loc[date]).abs().sum()
+            cost_per_ticker = transaction_costs.loc[date] / max(len(current_weights[current_weights != 0]), 1)
+            
+            # Update positions
+            trade_tracker.update_positions(
+                date, 
+                current_weights, 
+                current_prices, 
+                cost_per_ticker
+            )
+            
+            # Update MFE/MAE
+            trade_tracker.update_mfe_mae(date, current_prices)
+    
+    # Close all positions at the end
+    final_date = weights_daily.index[-1]
+    final_prices = close_prices.loc[final_date] if final_date in close_prices.index else close_prices.iloc[-1]
+    trade_tracker.close_all_positions(final_date, final_prices)

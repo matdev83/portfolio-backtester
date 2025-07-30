@@ -25,9 +25,26 @@ def run_backtest_mode(self, scenario_config, monthly_data, daily_data, rets_full
         except Exception as e:
             self.logger.error(f"Error loading Optuna study: {e}. Using default parameters.")
 
-    rets = self.run_scenario(scenario_config, monthly_data, daily_data, rets_full)
+    # Use StrategyBacktester for comprehensive results including trade statistics
+    from ..backtesting.strategy_backtester import StrategyBacktester
+    
+    strategy_backtester = StrategyBacktester(self.global_config, self.data_source)
+    backtest_result = strategy_backtester.backtest_strategy(
+        scenario_config, monthly_data, daily_data, rets_full
+    )
+    
     train_end_date = pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
-    self.results[scenario_config["name"]] = {"returns": rets, "display_name": scenario_config["name"], "train_end_date": train_end_date}
+    
+    # Store comprehensive results including trade statistics
+    self.results[scenario_config["name"]] = {
+        "returns": backtest_result.returns, 
+        "display_name": scenario_config["name"], 
+        "train_end_date": train_end_date,
+        "trade_stats": backtest_result.trade_stats,
+        "trade_history": backtest_result.trade_history,
+        "performance_stats": backtest_result.performance_stats,
+        "charts_data": backtest_result.charts_data
+    }
 
 def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full):
     if self.logger.isEnabledFor(logging.DEBUG):
