@@ -7,8 +7,9 @@ from ..trading.trade_tracker import TradeTracker
 logger = logging.getLogger(__name__)
 
 def calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily_ohlc, rets_daily, universe_tickers, global_config, track_trades=False):
+    rebalance_frequency = scenario_config.get("timing_config", {}).get("rebalance_frequency", "M")
     weights_monthly = rebalance(
-        sized_signals, scenario_config["rebalance_frequency"]
+        sized_signals, rebalance_frequency
     )
 
     weights_monthly = weights_monthly.reindex(columns=universe_tickers).fillna(0.0)

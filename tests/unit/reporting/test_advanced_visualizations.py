@@ -1,3 +1,5 @@
+
+
 """
 Advanced Visualization Tests
 
@@ -17,6 +19,7 @@ matplotlib.use('Agg')  # Use non-interactive backend for testing
 
 from src.portfolio_backtester.backtester import Backtester
 from src.portfolio_backtester.backtester_logic import reporting
+from src.portfolio_backtester.optimization.results import OptimizationResult
 
 
 class TestAdvancedVisualizations:
@@ -34,6 +37,9 @@ class TestAdvancedVisualizations:
                 'enable_stage2_stress_testing': True,
                 'replacement_percentage': 0.05,
                 'min_historical_observations': 252
+            },
+            'advanced_reporting_config': {
+                'enable_advanced_parameter_analysis': True
             }
         }
         backtester.scenarios = [{
@@ -56,6 +62,27 @@ class TestAdvancedVisualizations:
         backtester.run_scenario = Mock(return_value=pd.Series([0.01, 0.02, -0.01], index=pd.date_range('2020-01-01', periods=3)))
         return backtester
     
+    @pytest.fixture
+    def mock_optimization_result(self, mock_optuna_study):
+        """Create a mock OptimizationResult object."""
+        
+        history = []
+        for trial in mock_optuna_study.trials:
+            history.append({
+                'evaluation': trial.number,
+                'objective_value': trial.value,
+                'parameters': trial.params,
+                'metrics': {'trial_returns': trial.user_attrs['trial_returns']}
+            })
+
+        return OptimizationResult(
+            best_parameters={'lookback_months': 9, 'num_holdings': 15, 'leverage': 1.2},
+            best_value=0.85,
+            n_evaluations=len(history),
+            optimization_history=history,
+            best_trial=mock_optuna_study.best_trial
+        )
+
     @pytest.fixture
     def mock_optuna_study(self):
         """Create a mock Optuna study with trial data."""
@@ -127,7 +154,7 @@ class TestAdvancedVisualizations:
         returns = np.random.randn(252) * 0.015 + 0.0008
         return pd.Series(returns, index=dates)
     
-    def test_plot_stability_measures(self, mock_backtester, mock_best_trial, sample_returns):
+    def test_plot_stability_measures(self, mock_backtester, mock_optimization_result, sample_returns):
         """Test trial P&L curve visualization."""
         with patch('matplotlib.pyplot.savefig') as mock_savefig, \
              patch('matplotlib.pyplot.close') as mock_close, \
@@ -140,17 +167,17 @@ class TestAdvancedVisualizations:
             mock_subplots.return_value = (mock_fig, mock_ax)
             
             # Import the function directly from where it's defined
-            from src.portfolio_backtester.backtester_logic.reporting import _plot_stability_measures
+            from src.portfolio_backtester.reporting.monte_carlo_analyzer import plot_stability_measures
             
             # Create a minimal mock backtester with required attributes
             mock_backtester.logger = Mock()
             mock_backtester.output_dir = "test_output"
             
             # Call the function as a method (pass mock_backtester as self)
-            _plot_stability_measures(
+            plot_stability_measures(
                 mock_backtester,
                 "Test_Scenario", 
-                mock_best_trial, 
+                mock_optimization_result, 
                 sample_returns
             )
             
@@ -163,16 +190,15 @@ class TestAdvancedVisualizations:
     def test_plot_stability_measures_insufficient_trials(self, mock_backtester, sample_returns):
         """Test stability measures with insufficient trial data."""
         # Create best trial with insufficient study data
-        best_trial = Mock()
-        study = Mock()
-        study.trials = [Mock()]  # Only one trial
-        best_trial.study = study
+        optimization_result = Mock()
+        optimization_result.optimization_history = [] # No trials
         
         with patch('matplotlib.pyplot.savefig') as mock_savefig:
-            reporting._plot_stability_measures(
+            from src.portfolio_backtester.reporting.monte_carlo_analyzer import plot_stability_measures
+            plot_stability_measures(
                 mock_backtester, 
                 "Test_Scenario", 
-                best_trial, 
+                optimization_result, 
                 sample_returns
             )
             
@@ -187,7 +213,7 @@ class TestAdvancedVisualizations:
              patch('os.makedirs') as mock_makedirs:
             
             # Test parameter impact analysis
-            from src.portfolio_backtester.backtester_logic.reporting import _plot_parameter_impact_analysis
+            from src.portfolio_backtester.reporting.parameter_analysis import _plot_parameter_impact_analysis
             timestamp = "20240101_120000"
             _plot_parameter_impact_analysis(
                 mock_backtester, 
@@ -217,7 +243,7 @@ class TestAdvancedVisualizations:
              patch('matplotlib.pyplot.close') as mock_close, \
              patch('seaborn.heatmap') as mock_heatmap:
             
-            from src.portfolio_backtester.backtester_logic.reporting import _create_parameter_heatmaps
+            from src.portfolio_backtester.reporting.parameter_analysis import _create_parameter_heatmaps
             _create_parameter_heatmaps(
                 mock_backtester, df, param_names, "Test_Scenario", "20240101_120000"
             )
@@ -248,7 +274,7 @@ class TestAdvancedVisualizations:
         with patch('matplotlib.pyplot.savefig') as mock_savefig, \
              patch('matplotlib.pyplot.close') as mock_close:
             
-            from src.portfolio_backtester.backtester_logic.reporting import _create_parameter_sensitivity_analysis
+            from src.portfolio_backtester.reporting.parameter_analysis import _create_parameter_sensitivity_analysis
             _create_parameter_sensitivity_analysis(
                 mock_backtester, df, param_names, "Test_Scenario", "20240101_120000"
             )
@@ -276,7 +302,7 @@ class TestAdvancedVisualizations:
              patch('matplotlib.pyplot.close') as mock_close, \
              patch('seaborn.heatmap') as mock_heatmap:
             
-            from src.portfolio_backtester.backtester_logic.reporting import _create_parameter_correlation_analysis
+            from src.portfolio_backtester.reporting.parameter_analysis import _create_parameter_correlation_analysis
             _create_parameter_correlation_analysis(
                 mock_backtester, df, param_names, "Test_Scenario", "20240101_120000"
             )
@@ -308,7 +334,7 @@ class TestAdvancedVisualizations:
         with patch('matplotlib.pyplot.savefig') as mock_savefig, \
              patch('matplotlib.pyplot.close') as mock_close:
             
-            from src.portfolio_backtester.backtester_logic.reporting import _create_parameter_importance_ranking
+            from src.portfolio_backtester.reporting.parameter_analysis import _create_parameter_importance_ranking
             _create_parameter_importance_ranking(
                 mock_backtester, df, param_names, "Test_Scenario", "20240101_120000"
             )
@@ -350,7 +376,7 @@ class TestAdvancedVisualizations:
              patch('matplotlib.pyplot.close') as mock_close, \
              patch('os.makedirs') as mock_makedirs:
             
-            from src.portfolio_backtester.backtester_logic.reporting import _plot_monte_carlo_robustness_analysis
+            from src.portfolio_backtester.reporting.monte_carlo_stage2 import _plot_monte_carlo_robustness_analysis
             _plot_monte_carlo_robustness_analysis(
                 mock_backtester,
                 "Test_Scenario",
@@ -373,7 +399,7 @@ class TestAdvancedVisualizations:
         optimal_params = {}
         
         with patch('matplotlib.pyplot.savefig') as mock_savefig:
-            from src.portfolio_backtester.backtester_logic.reporting import _plot_monte_carlo_robustness_analysis
+            from src.portfolio_backtester.reporting.monte_carlo_stage2 import _plot_monte_carlo_robustness_analysis
             _plot_monte_carlo_robustness_analysis(
                 mock_backtester,
                 "Test_Scenario",
@@ -397,7 +423,7 @@ class TestAdvancedVisualizations:
         optimal_params = {}
         
         with patch('matplotlib.pyplot.savefig') as mock_savefig:
-            from src.portfolio_backtester.backtester_logic.reporting import _plot_monte_carlo_robustness_analysis
+            from src.portfolio_backtester.reporting.monte_carlo_stage2 import _plot_monte_carlo_robustness_analysis
             _plot_monte_carlo_robustness_analysis(
                 mock_backtester,
                 "Test_Scenario",
@@ -440,7 +466,7 @@ class TestAdvancedVisualizations:
              patch('matplotlib.pyplot.close') as mock_close, \
              patch('os.makedirs') as mock_makedirs:
             
-            from src.portfolio_backtester.backtester_logic.reporting import _create_monte_carlo_robustness_plot
+            from src.portfolio_backtester.reporting.monte_carlo_stage2 import _create_monte_carlo_robustness_plot
             _create_monte_carlo_robustness_plot(
                 mock_backtester,
                 "Test_Scenario",
@@ -460,7 +486,7 @@ class TestAdvancedVisualizations:
         
         with patch('matplotlib.pyplot.savefig') as mock_savefig:
             # Should handle errors gracefully
-            from src.portfolio_backtester.backtester_logic.reporting import _create_parameter_heatmaps, _create_parameter_sensitivity_analysis, _create_parameter_correlation_analysis
+            from src.portfolio_backtester.reporting.parameter_analysis import _create_parameter_heatmaps, _create_parameter_sensitivity_analysis, _create_parameter_correlation_analysis
             _create_parameter_heatmaps(
                 mock_backtester, invalid_df, [], "Test_Scenario", "20240101_120000"
             )
@@ -477,17 +503,17 @@ class TestAdvancedVisualizations:
             # Error handling should be logged
             assert mock_backtester.logger.error.call_count >= 0  # May or may not log errors
     
-    def test_plot_file_naming_and_paths(self, mock_backtester, mock_best_trial, sample_returns):
+    def test_plot_file_naming_and_paths(self, mock_backtester, mock_optimization_result, sample_returns):
         """Test that plot files are named correctly and saved to proper paths."""
         with patch('matplotlib.pyplot.savefig') as mock_savefig, \
              patch('matplotlib.pyplot.close'), \
              patch('os.makedirs') as mock_makedirs:
             
-            from src.portfolio_backtester.backtester_logic.reporting import _plot_stability_measures
-            _plot_stability_measures(
+            from src.portfolio_backtester.reporting.monte_carlo_analyzer import plot_stability_measures
+            plot_stability_measures(
                 mock_backtester, 
                 "Test_Scenario_With_Special_Chars", 
-                mock_best_trial, 
+                mock_optimization_result, 
                 sample_returns
             )
             
@@ -507,8 +533,8 @@ class TestAdvancedVisualizations:
              patch('matplotlib.pyplot.close'):
             
             # Should not call show() in non-interactive mode
-            from src.portfolio_backtester.backtester_logic.reporting import _plot_performance_summary
-            _plot_performance_summary(
+            from src.portfolio_backtester.reporting.plot_generator import plot_performance_summary
+            plot_performance_summary(
                 mock_backtester, sample_returns, None
             )
             
@@ -522,7 +548,8 @@ class TestAdvancedVisualizations:
              patch('matplotlib.pyplot.close'), \
              patch('matplotlib.pyplot.pause'):
             
-            _plot_performance_summary(
+            from src.portfolio_backtester.reporting.plot_generator import plot_performance_summary
+            plot_performance_summary(
                 mock_backtester, sample_returns, None
             )
             

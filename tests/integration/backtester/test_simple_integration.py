@@ -7,6 +7,7 @@ import unittest
 import pytest
 import pandas as pd
 import numpy as np
+from unittest.mock import Mock
 from src.portfolio_backtester.strategies.momentum_strategy import MomentumStrategy
 from src.portfolio_backtester.timing.time_based_timing import TimeBasedTiming
 
@@ -42,6 +43,74 @@ class TestSimpleIntegration(unittest.TestCase):
             'Close': 100 * np.cumprod(1 + np.random.normal(0.0008, 0.015, len(dates)))
         }, index=dates)
     
+    def test_integration_smoke(self):
+        """Smoke test for basic component integration."""
+        # Test strategy initialization
+        strategy_config = {'strategy_params': {'lookback_months': 1}}
+        strategy = MomentumStrategy(strategy_config)
+        self.assertIsInstance(strategy, MomentumStrategy)
+
+        # Test timing controller initialization
+        timing_config = {'mode': 'time_based', 'rebalance_frequency': 'M'}
+        timing_controller = TimeBasedTiming(timing_config)
+        self.assertIsInstance(timing_controller, TimeBasedTiming)
+    
+    def test_end_to_end_workflow_smoke(self):
+        """Smoke test for the end-to-end backtesting workflow."""
+        from src.portfolio_backtester.core import Backtester
+
+        # Create a complete backtest configuration
+        self.test_data[('SPY', 'Close')] = self.benchmark_data['Close']
+        config = {
+            "GLOBAL_CONFIG": {
+                "benchmark": "SPY",
+                "data_source": "memory",
+                "start_date": "2020-01-01",
+                "end_date": "2020-12-31",
+                "output_dir": "test_output",
+                "universe": ["AAPL", "MSFT"],
+                "data_source_config": {
+                    "data_frames": {
+                        "daily_data": self.test_data,
+                        "benchmark_data": self.benchmark_data
+                    }
+                }
+            },
+            "BACKTEST_SCENARIOS": [
+                {
+                    "name": "test_scenario",
+                    "strategy": "momentum",
+                    "strategy_params": {
+                        "lookback_months": 1,
+                        "num_holdings": 1
+                    },
+                    "timing_config": {
+                        "mode": "time_based",
+                        "rebalance_frequency": "M"
+                    },
+                    "universe_config": {
+                        "type": "fixed",
+                        "tickers": ["AAPL", "MSFT"]
+                    }
+                }
+            ]
+        }
+
+        # Run the backtester
+        backtester = Backtester(
+            global_config=config["GLOBAL_CONFIG"],
+            scenarios=config["BACKTEST_SCENARIOS"],
+            args=Mock(scenario_name="test_scenario")
+        )
+        backtester.run()
+
+        # Validate the results
+        self.assertIn("test_scenario", backtester.results)
+        results = backtester.results["test_scenario"]
+        self.assertIn("returns", results)
+        self.assertIsInstance(results["returns"], pd.Series)
+        self.assertFalse(results["returns"].empty)
+
     def test_strategy_timing_integration(self):
         """Test strategy and timing integration."""
         # Test strategy initialization

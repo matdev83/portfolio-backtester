@@ -7,11 +7,13 @@ def get_data_source(global_config):
     from ..data_sources.stooq_data_source import StooqDataSource
     from ..data_sources.yfinance_data_source import YFinanceDataSource
     from ..data_sources.hybrid_data_source import HybridDataSource
+    from ..data_sources.memory_data_source import MemoryDataSource
 
     data_source_map = {
         "stooq": StooqDataSource,
         "yfinance": YFinanceDataSource,
         "hybrid": HybridDataSource,
+        "memory": MemoryDataSource,
     }
 
     ds_name = global_config.get("data_source", "hybrid").lower()
@@ -26,6 +28,8 @@ def get_data_source(global_config):
                 prefer_stooq=prefer_stooq,
                 negative_cache_timeout_hours=4
             )
+        if ds_name == "memory":
+            return MemoryDataSource(global_config.get("data_source_config", {}))
         return data_source_class()
     else:
         logger.error(f"Unsupported data source: {ds_name}")

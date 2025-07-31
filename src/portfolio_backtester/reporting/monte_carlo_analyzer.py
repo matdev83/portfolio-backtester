@@ -7,6 +7,10 @@ import numpy as np
 import optuna
 import pandas as pd
 import seaborn as sns
+from portfolio_backtester.optimization.results import OptimizationResult
+
+# Import the parameter analysis function
+from .parameter_analysis import _plot_parameter_impact_analysis
 
 logger = logging.getLogger(__name__)
 

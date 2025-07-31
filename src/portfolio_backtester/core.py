@@ -698,10 +698,18 @@ class Backtester:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Starting backtest data retrieval.")
 
-        all_tickers = set(self.global_config["universe"])
+        if self.args.scenario_name:
+            scenarios_to_run = [s for s in self.scenarios if s["name"] == self.args.scenario_name]
+            if not scenarios_to_run:
+                self.logger.error(f"Scenario '{self.args.scenario_name}' not found in the loaded scenarios.")
+                return
+        else:
+            scenarios_to_run = self.scenarios
+
+        all_tickers = set(self.global_config.get("universe", []))
         all_tickers.add(self.global_config["benchmark"])
 
-        for scenario_config in self.scenarios:
+        for scenario_config in scenarios_to_run:
             if "universe" in scenario_config:
                 all_tickers.update(scenario_config["universe"])
             strategy = self._get_strategy(
@@ -774,10 +782,10 @@ class Backtester:
         self.rets_full = rets_full.to_frame() if isinstance(rets_full, pd.Series) else rets_full
 
         # Determine mode and use appropriate architecture
-        if self.args.mode == "backtest":
-            self._run_backtest_mode_new_architecture(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
-        elif self.args.mode == "optimize":
-            self._run_optimize_mode_new_architecture(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
+        if self.args and hasattr(self.args, 'mode') and self.args.mode == "optimize":
+            self._run_optimize_mode_new_architecture(scenarios_to_run[0], self.monthly_data, self.daily_data_ohlc, rets_full)
+        else:
+            self._run_backtest_mode_new_architecture(scenarios_to_run[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         
         if CENTRAL_INTERRUPTED_FLAG:
             self.logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
