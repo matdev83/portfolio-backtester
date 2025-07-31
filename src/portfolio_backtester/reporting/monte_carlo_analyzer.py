@@ -10,55 +10,42 @@ import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
-def plot_stability_measures(backtester, scenario_name: str, best_trial_obj, optimal_returns: pd.Series):
+def plot_stability_measures(backtester, scenario_name: str, optimization_result: OptimizationResult, optimal_returns: pd.Series):
     """
     Create a Monte Carlo-style visualization showing P&L curves from all optimization trials.
     
     Args:
         scenario_name: Name of the scenario
-        best_trial_obj: Best trial object from Optuna containing the study
+        optimization_result: The result object from the optimization run
         optimal_returns: Returns series from the final optimized strategy
     """
     logger = backtester.logger
     
     try:
-        if not hasattr(best_trial_obj, 'study') or best_trial_obj.study is None:
-            logger.warning("No study object found in best_trial_obj. Cannot create trial P&L visualization.")
-            return
-            
-        study = best_trial_obj.study
-        completed_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
-        
-        if len(completed_trials) < 2:
-            if logger.isEnabledFor(logging.WARNING):
-
-                logger.warning(f"Only {len(completed_trials)} completed trials found. Need at least 2 for meaningful visualization.")
+        optimization_history = optimization_result.optimization_history
+        if not optimization_history or len(optimization_history) < 2:
+            logger.warning(f"Only {len(optimization_history)} completed trials found. Need at least 2 for meaningful visualization.")
             return
             
         trial_returns_data = []
-        for trial in completed_trials:
-            if 'trial_returns' in trial.user_attrs:
+        for trial in optimization_history:
+            if 'metrics' in trial and 'trial_returns' in trial['metrics']:
                 try:
-                    returns_dict = trial.user_attrs['trial_returns']
+                    returns_dict = trial['metrics']['trial_returns']
                     dates = pd.to_datetime(returns_dict['dates'])
                     returns = pd.Series(returns_dict['returns'], index=dates)
                     
-                    try:
-                        trial_value = trial.value
-                    except RuntimeError:
-                        trial_value = trial.values[0] if trial.values else 0.0
+                    trial_value = trial['objective_value']
                     
                     trial_returns_data.append({
-                        'trial_number': trial.number,
+                        'trial_number': trial['evaluation'],
                         'returns': returns,
-                        'params': trial.user_attrs.get('trial_params', trial.params),
+                        'params': trial['parameters'],
                         'value': trial_value
                     })
                 except Exception as e:
                     if logger.isEnabledFor(logging.DEBUG):
-                        if logger.isEnabledFor(logging.DEBUG):
-
-                            logger.debug(f"Failed to extract returns for trial {trial.number}: {e}")
+                        logger.debug(f"Failed to extract returns for trial {trial['evaluation']}: {e}")
                     continue
         
         if len(trial_returns_data) < 2:

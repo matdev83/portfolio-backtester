@@ -326,7 +326,7 @@ def validate_parameter_space(parameter_space: Dict[str, Any]) -> bool:
             )
         
         param_type = param_config.get('type')
-        if param_type not in ['int', 'float', 'categorical']:
+        if param_type not in ['int', 'float', 'categorical', 'multi-categorical']:
             raise InvalidParameterSpaceError(
                 f"Parameter '{param_name}' has invalid type '{param_type}'. "
                 f"Must be one of: 'int', 'float', 'categorical'"

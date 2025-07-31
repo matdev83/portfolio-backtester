@@ -12,7 +12,7 @@ from ..universe_resolver import resolve_universe_config
 # Removed BaseSignalGenerator as it's being phased out
 # from ..signal_generators import BaseSignalGenerator
 from ..roro_signals import BaseRoRoSignal
-from .stop_loss import AtrBasedStopLoss, BaseStopLoss, NoStopLoss
+from .stop_loss_strategy import AtrBasedStopLoss, BaseStopLoss, NoStopLoss
 from ..portfolio.position_sizer import get_position_sizer
 from ..api_stability import api_stable
 

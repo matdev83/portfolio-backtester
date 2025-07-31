@@ -1077,16 +1077,41 @@ class Backtester:
                     "type": "categorical",
                     "choices": choices
                 }
-            else:
-                logger.warning(f"Unknown parameter type '{param_type}' for parameter '{param_name}'. Defaulting to float.")
+            elif param_type == "multi-categorical":
+                choices = spec.get("choices") or spec.get("values")
+                if not choices:
+                    logger.error(f"Multi-categorical parameter '{param_name}' is missing 'choices' or 'values' in spec: {spec}")
+                    raise KeyError(f"Multi-categorical parameter '{param_name}' must have 'choices' or 'values' defined.")
                 parameter_space[param_name] = {
-                    "type": "float",
-                    "low": spec["min_value"], 
-                    "high": spec["max_value"]
+                    "type": "multi-categorical",
+                    "values": choices
                 }
         
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Converted optimization specs to parameter space: {parameter_space}")
         
         return parameter_space
+
+    def evaluate_trial_parameters(self, scenario_config: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, float]:
+        """Evaluates a single set of parameters and returns performance metrics."""
+        temp_scenario_config = scenario_config.copy()
+        temp_scenario_config['strategy_params'] = params
+        
+        # This is a simplified call for demonstration.
+        # A real implementation would need to handle the full backtest process.
+        returns = self.run_scenario(
+            temp_scenario_config, 
+            self.monthly_data, 
+            self.daily_data_ohlc, 
+            self.rets_full, 
+            verbose=False
+        )
+        
+        if returns is None or returns.empty:
+            return {metric: 0.0 for metric in self.metrics_to_optimize}
+
+        from .reporting.performance_metrics import calculate_metrics
+        benchmark_rets = self.daily_data_ohlc[self.global_config["benchmark"]].pct_change().fillna(0)
+        metrics = calculate_metrics(returns, benchmark_rets, self.global_config["benchmark"])
+        return {metric: metrics.get(metric, 0.0) for metric in self.metrics_to_optimize}
 

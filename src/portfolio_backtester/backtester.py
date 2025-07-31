@@ -78,11 +78,23 @@ def main():
     if args.mode == "optimize" and args.scenario_name is None:
         parser.error("--scenario-name is required for 'optimize' mode.")
 
+    import os
+
+    from pathlib import Path
+
     if args.scenario_name is not None:
-        scenario_name = args.scenario_name.strip("'\"")
-        selected_scenarios = [s for s in BACKTEST_SCENARIOS_RELOADED if s["name"] == scenario_name]
-        if not selected_scenarios:
-            parser.error(f"Scenario '{scenario_name}' not found in BACKTEST_SCENARIOS_RELOADED.")
+        scenario_path = Path("config/scenarios") / f"{args.scenario_name}.yaml"
+        if not scenario_path.exists():
+            # try without the .yaml extension
+            scenario_path = Path("config/scenarios") / args.scenario_name
+            if not scenario_path.exists():
+                 parser.error(f"Scenario file not found: {scenario_path}")
+
+        is_valid, scenario_data, error_message = config_loader_module.validate_yaml_file(scenario_path)
+        if not is_valid:
+            parser.error(f"Invalid scenario file: {scenario_path}\n{error_message}")
+
+        selected_scenarios = [config_loader_module.merge_optimizer_config(scenario_data, args.optimizer)]
     else:
         selected_scenarios = BACKTEST_SCENARIOS_RELOADED
 

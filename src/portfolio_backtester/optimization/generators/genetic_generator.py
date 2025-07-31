@@ -107,6 +107,7 @@ class GeneticParameterGenerator(ParameterGenerator):
         # Parameter space configuration
         self.parameter_space = {}
         self.gene_space = []
+        self.gene_type = []
         self.gene_types = []
         self.param_names = []
         
@@ -384,11 +385,13 @@ class GeneticParameterGenerator(ParameterGenerator):
                         f"Categorical parameter '{param_name}': {len(choices)} choices -> {gene_config}"
                     )
                 
-            else:
-                raise InvalidParameterSpaceError(
-                    f"Unsupported parameter type '{param_type}' for parameter '{param_name}'. "
-                    f"Supported types: 'int', 'float', 'categorical'"
-                )
+            elif param_type == "multi-categorical":
+                choices = param_config.get("values", [])
+                if not choices:
+                    raise InvalidParameterSpaceError(f"Multi-categorical parameter '{param_name}' must have 'values' defined.")
+                # For multi-categorical, we use a single integer gene that acts as a bitmask
+                self.gene_space.append({"low": 0, "high": (1 << len(choices)) - 1})
+                self.gene_type.append("int")
         
         # Validate the complete gene space
         self._validate_gene_space()
@@ -581,49 +584,16 @@ class GeneticParameterGenerator(ParameterGenerator):
                 "Generator is finished, cannot suggest more parameters"
             )
         
-        # Generate random parameters within the parameter space
-        parameters = {}
-        
-        for param_name, param_config in self.parameter_space.items():
-            param_type = param_config.get('type', 'float')
-            
-            if param_type == 'int':
-                low = int(param_config['low'])
-                high = int(param_config['high'])
-                step = int(param_config.get('step', 1))
-                
-                # Generate random integer within bounds and step
-                if step > 1:
-                    num_steps = (high - low) // step + 1
-                    step_idx = np.random.randint(0, num_steps)
-                    value = low + step_idx * step
-                    value = min(value, high)  # Ensure within bounds
-                else:
-                    value = np.random.randint(low, high + 1)
-                
-                parameters[param_name] = value
-                
-            elif param_type == 'float':
-                low = float(param_config['low'])
-                high = float(param_config['high'])
-                step = param_config.get('step')
-                
-                if step is not None:
-                    step = float(step)
-                    # Generate random float within bounds and step
-                    num_steps = int((high - low) / step) + 1
-                    step_idx = np.random.randint(0, num_steps)
-                    value = low + step_idx * step
-                    value = min(value, high)  # Ensure within bounds
-                else:
-                    value = np.random.uniform(low, high)
-                
-                parameters[param_name] = value
-                
-            elif param_type == 'categorical':
-                choices = param_config['choices']
-                value = np.random.choice(choices)
-                parameters[param_name] = value
+        if not self.ga_instance.population.any():
+            self.ga_instance.create_initial_population()
+
+        # Get the next chromosome to evaluate
+        population = self.ga_instance.population
+        chromosome_idx = self.current_evaluation % self.population_size
+        chromosome = population[chromosome_idx]
+
+        # Decode the chromosome to parameters
+        parameters = self._decode_chromosome(chromosome)
         
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Suggesting parameters: {parameters}")

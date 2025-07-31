@@ -15,7 +15,17 @@ from typing import Any, Dict, List, Union, Optional
 from .results import EvaluationResult, OptimizationData
 from ..backtesting.results import WindowResult
 from ..backtesting.strategy_backtester import StrategyBacktester
-# Optional performance optimizer imports
+
+# New performance optimization imports
+try:
+    from .performance import AbstractPerformanceOptimizer, AbstractTradeTracker
+    PERFORMANCE_ABSTRACTION_AVAILABLE = True
+except ImportError:
+    PERFORMANCE_ABSTRACTION_AVAILABLE = False
+    AbstractPerformanceOptimizer = None
+    AbstractTradeTracker = None
+
+# Legacy performance optimizer imports (for backward compatibility)
 try:
     from .performance_optimizer import (
         optimize_dataframe_memory, 

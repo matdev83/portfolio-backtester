@@ -42,6 +42,20 @@ class ConfigurationError(Exception):
     pass
 
 
+def merge_optimizer_config(scenario_data, optimizer_type):
+    if 'optimizers' in scenario_data:
+        optimizer_config = scenario_data['optimizers'].get(optimizer_type)
+        if optimizer_config:
+            for key, value in optimizer_config.items():
+                if key not in scenario_data:
+                    scenario_data[key] = value
+                elif isinstance(scenario_data[key], dict) and isinstance(value, dict):
+                    scenario_data[key].update(value)
+                else:
+                    scenario_data[key] = value
+        del scenario_data['optimizers']
+    return scenario_data
+
 def load_config():
     """
     Loads configurations from YAML files with comprehensive error handling.
@@ -107,6 +121,7 @@ def load_config():
                             raise ConfigurationError(f"Invalid scenario file: {scenario_file}. See error details above.")
                         if scenario_data is None:
                             raise ConfigurationError(f"Scenario file is empty: {scenario_path}")
+                        
                         BACKTEST_SCENARIOS.append(scenario_data)
 
         if not BACKTEST_SCENARIOS:

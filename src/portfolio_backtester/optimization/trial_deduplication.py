@@ -3,10 +3,12 @@ Trial deduplication for optimization to avoid repeating identical parameter comb
 """
 
 import logging
-import hashlib
-import json
-from typing import Dict, Any, Set, Optional
 import optuna
+from typing import Dict, Any, Optional
+
+# Import the new abstract deduplication interfaces
+from .performance.deduplication import GenericTrialDeduplicator
+from .performance.deduplication_factory import DeduplicationFactory
 
 logger = logging.getLogger(__name__)
 
@@ -17,30 +19,19 @@ class TrialDeduplicator:
     
     This is especially important when the parameter space is small and discrete,
     where many trials might end up with the same parameter values.
+    
+    This class now uses the new abstract deduplication interfaces for better
+    separation of concerns and consistency across optimizers.
     """
     
-    def __init__(self, enable_deduplication: bool = True):
+    def __init__(self, enable_deduplication: bool = True, optimizer_type: str = 'optuna'):
         self.enable_deduplication = enable_deduplication
-        self.seen_parameter_hashes: Set[str] = set()
-        self.parameter_to_value: Dict[str, float] = {}
+        # Use the factory to create the appropriate deduplicator
+        self.deduplicator = DeduplicationFactory.create_deduplicator(
+            optimizer_type,
+            {'enable_deduplication': enable_deduplication}
+        )
         
-    def _hash_parameters(self, parameters: Dict[str, Any]) -> str:
-        """
-        Create a deterministic hash of parameter values.
-        
-        Args:
-            parameters: Dictionary of parameter names to values
-            
-        Returns:
-            String hash of the parameters
-        """
-        # Sort parameters by key for deterministic hashing
-        sorted_params = dict(sorted(parameters.items()))
-        
-        # Convert to JSON string and hash
-        param_str = json.dumps(sorted_params, sort_keys=True, default=str)
-        return hashlib.md5(param_str.encode()).hexdigest()
-    
     def is_duplicate(self, parameters: Dict[str, Any]) -> bool:
         """
         Check if these parameters have been seen before.
@@ -53,9 +44,7 @@ class TrialDeduplicator:
         """
         if not self.enable_deduplication:
             return False
-            
-        param_hash = self._hash_parameters(parameters)
-        return param_hash in self.seen_parameter_hashes
+        return self.deduplicator.is_duplicate(parameters)
     
     def register_parameters(self, parameters: Dict[str, Any], objective_value: Optional[float] = None) -> None:
         """
@@ -67,12 +56,7 @@ class TrialDeduplicator:
         """
         if not self.enable_deduplication:
             return
-            
-        param_hash = self._hash_parameters(parameters)
-        self.seen_parameter_hashes.add(param_hash)
-        
-        if objective_value is not None:
-            self.parameter_to_value[param_hash] = objective_value
+        self.deduplicator.add_trial(parameters, objective_value)
     
     def get_cached_value(self, parameters: Dict[str, Any]) -> Optional[float]:
         """
@@ -86,9 +70,7 @@ class TrialDeduplicator:
         """
         if not self.enable_deduplication:
             return None
-            
-        param_hash = self._hash_parameters(parameters)
-        return self.parameter_to_value.get(param_hash)
+        return self.deduplicator.get_cached_value(parameters)
     
     def get_stats(self) -> Dict[str, Any]:
         """
@@ -97,21 +79,26 @@ class TrialDeduplicator:
         Returns:
             Dictionary with deduplication stats
         """
-        return {
-            'enabled': self.enable_deduplication,
-            'unique_parameter_combinations': len(self.seen_parameter_hashes),
-            'cached_values': len(self.parameter_to_value)
-        }
+        if not self.enable_deduplication:
+            return {
+                'enabled': False,
+                'unique_parameter_combinations': 0,
+                'cached_values': 0
+            }
+        return self.deduplicator.get_stats()
 
 
 class DedupOptunaObjectiveAdapter:
     """
     Wrapper around OptunaObjectiveAdapter that adds deduplication capabilities.
+    
+    This class now uses the new abstract deduplication interfaces for better
+    separation of concerns and consistency across optimizers.
     """
     
     def __init__(self, base_objective, enable_deduplication: bool = True):
         self.base_objective = base_objective
-        self.deduplicator = TrialDeduplicator(enable_deduplication)
+        self.deduplicator = TrialDeduplicator(enable_deduplication, 'optuna')
         self.duplicate_count = 0
         self.cache_hits = 0
         

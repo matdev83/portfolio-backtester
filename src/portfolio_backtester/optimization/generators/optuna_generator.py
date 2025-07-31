@@ -349,6 +349,13 @@ class OptunaParameterGenerator(ParameterGenerator):
                     choices = param_config.get('choices', ['A', 'B', 'C'])
                     value = self._current_trial.suggest_categorical(param_name, choices)
                     parameters[param_name] = value
+                elif param_type == 'multi-categorical':
+                    choices = param_config.get('values', [])
+                    selected_values = []
+                    for choice in choices:
+                        if self._current_trial.suggest_categorical(f"{param_name}_{choice}", [True, False]):
+                            selected_values.append(choice)
+                    parameters[param_name] = selected_values
                     
                 else:
                     raise ValueError(f"Unsupported parameter type '{param_type}' for parameter '{param_name}'")

@@ -63,23 +63,6 @@ def calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily
 
 def _track_trades(trade_tracker, weights_daily, price_data_daily_ohlc, transaction_costs):
     """Track trades using the trade tracker."""
-    # Try to use vectorized implementation first
-    try:
-        from ..trading.numba_trade_tracker import track_trades_vectorized, NUMBA_AVAILABLE
-        
-        if NUMBA_AVAILABLE:
-            # Use vectorized implementation for much better performance
-            portfolio_value = getattr(trade_tracker, 'portfolio_value', 100000.0)
-            vectorized_stats = track_trades_vectorized(
-                weights_daily, price_data_daily_ohlc, transaction_costs, portfolio_value
-            )
-            
-            # Store the vectorized stats in the trade tracker for later retrieval
-            trade_tracker._vectorized_stats = vectorized_stats
-            return
-    except ImportError:
-        logger.warning("Vectorized trade tracking not available, falling back to original implementation")
-    
     # Fallback to original implementation
     _track_trades_original(trade_tracker, weights_daily, price_data_daily_ohlc, transaction_costs)
 

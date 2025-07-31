@@ -212,7 +212,7 @@ python -m src.portfolio_backtester.backtester \
 ```bash
 python -m src.portfolio_backtester.backtester \
   --mode optimize \
-  --scenario-name "VAMS_Momentum" \
+  --scenario-name vams_momentum_strategy/default \
   --optimizer genetic \
   --optuna-trials 200 \
   --study-name "genetic_vams_opt"
@@ -307,40 +307,30 @@ This file establishes the foundational parameters for the entire backtesting env
   - `OPTIMIZER_PARAMETER_DEFAULTS`: Defines the default search space (min, max, step) for every optimizable parameter (e.g., `leverage`, `lookback_months`).
   - `wfo_robustness_config`, `monte_carlo_config`, etc.: Configure advanced features like Walk-Forward Optimization and Monte Carlo simulations.
 
-### 2. `scenarios.yaml` (Backtest Experiments)
+### 2. Scenario-Based Configuration (`config/scenarios/`)
 
-This is the primary file for defining and managing your specific backtesting experiments. Each entry in this file represents a complete, runnable test.
+This is the primary location for defining and managing your specific backtesting experiments. Each strategy has its own subdirectory, and each YAML file within that directory represents a complete, runnable scenario.
 
 - **Purpose**: To define specific combinations of strategies, parameters, and optimization goals.
-- **Example Scenario**:
+- **Example Scenario (`config/scenarios/momentum_strategy/simple.yaml`)**:
 
   ```yaml
-  - name: "Momentum_Simple_Test"
-    strategy: "momentum"
-    rebalance_frequency: "ME"
-    position_sizer: "equal_weight"
-    transaction_costs_bps: 10
-    train_window_months: 36
-    test_window_months: 12
-    optimization_targets:
-      - name: "Sortino"
-        direction: "maximize"
-    optimize:
-      - parameter: "num_holdings"
-        min_value: 10
-        max_value: 25
-        step: 5
-    strategy_params:
-      lookback_months: 12
-      long_only: True
+  name: "momentum_simple"
+  strategy: "momentum"
+  # ... common parameters ...
+
+  optimizers:
+    genetic:
+      ga_num_generations: 10
+      # ... other GA params ...
+    optuna:
+      n_trials: 200
+      # ... other Optuna params ...
+
+  strategy_params:
+    lookback_months: 12
+    long_only: True
   ```
-
-### 3. `timing_examples.yaml` (How-To Guide for Timing)
-
-This file is a supplementary resource dedicated to showcasing the capabilities of the flexible timing framework. It is not used directly by the backtester but serves as a valuable source of examples.
-
-- **Purpose**: To provide clear, ready-to-use examples for different timing configurations (time-based, signal-based, and custom controllers).
-- **Usage**: Copy and paste configurations from this file into your `scenarios.yaml` to implement advanced timing strategies.
 
 ## Detailed Configuration Sections
 
@@ -668,6 +658,29 @@ This ensures all existing functionality remains intact while providing performan
 - **15-30× faster** Monte-Carlo synthetic data generation (when Numba kernels are used)
 
 Performance gains are most significant during optimization runs with many trials and windows.
+
+### Core Genetic Algorithm Parameters
+
+The genetic optimizer's performance and the trade-off between precision and time are primarily controlled by three key parameters. Understanding these is crucial for effective optimization. These parameters are configured within the `genetic_algorithm_params` section of your scenario file or in the global `parameters.yaml`.
+
+| Parameter | YAML Alias | Default | Description | Trade-off |
+|---|---|---|---|---|
+| **Population Size** | `sol_per_pop` | `50` | The number of individual solutions (chromosomes) in each generation. | A larger population explores the parameter space more broadly, reducing the risk of getting stuck in local optima, but significantly increases the number of backtests per generation and thus the total runtime. |
+| **Number of Generations** | `num_generations` | `100` | The number of evolutionary cycles the algorithm will run. | More generations allow the algorithm to refine solutions and converge towards a better result, but directly increases the total optimization time. |
+| **Max Evaluations** | `max_evaluations` | `1000` | A hard limit on the total number of backtests performed. The optimization will stop when this limit is reached. | This provides direct control over the total time spent. If set too low, it may terminate the optimization before a good solution is found. |
+
+**Parameter Adaptability:**
+
+The genetic optimizer has some built-in intelligence:
+
+*   **Adaptive:**
+    *   **Mutation:** The mutation strategy automatically adjusts based on the number of parameters being optimized. For small parameter spaces (fewer than 10), it ensures at least one parameter is mutated per generation.
+    *   **Parameter Validation:** The system validates parameters like `num_parents_mating` to ensure they are logical relative to the `population_size`.
+
+*   **Not Adaptive:**
+    *   The core parameters (`sol_per_pop` and `num_generations`) are **not** automatically adjusted based on the complexity of your parameter space. For complex problems with many parameters, you will likely need to **manually increase** these values for a thorough search. For simpler problems, you can reduce them to save time.
+
+A good approach is to start with the defaults and then adjust these parameters based on the complexity of your strategy and the time you have available for optimization.
 
 ## Genetic Algorithm Enhancements (v3)
 

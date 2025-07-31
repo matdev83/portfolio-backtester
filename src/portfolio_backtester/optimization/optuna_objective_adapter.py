@@ -107,7 +107,10 @@ class OptunaObjectiveAdapter:
                     step=param_def.get("step"),
                 )
             elif ptype == "categorical":
-                params[name] = trial.suggest_categorical(name, param_def["choices"])
+                choices = param_def.get("choices") or param_def.get("values")
+                if not choices:
+                    raise ValueError(f"Categorical parameter '{name}' must have 'choices' or 'values' defined.")
+                params[name] = trial.suggest_categorical(name, choices)
             else:
                 raise ValueError(f"Unsupported parameter type: {ptype}")
         return params

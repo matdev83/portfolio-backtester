@@ -1,0 +1,45 @@
+name: momentum_find_best_sizer
+strategy: momentum
+rebalance_frequency: "ME"
+transaction_costs_bps: 10
+
+# --- Define the Goal of the Optimization ---
+optimization_metric: Sharpe Ratio
+optimization_target:
+  name: Sharpe Ratio
+  direction: maximize
+
+# --- Optimizer Configurations ---
+optimizers:
+  optuna:
+    n_trials: 20 # More than enough to test all sizers
+    optimize:
+      # --- This is the key section ---
+      - parameter: position_sizer
+        type: categorical
+        values:
+          - "equal_weight"
+          - "rolling_sharpe"
+          - "rolling_sortino"
+          - "rolling_benchmark_corr"
+          - "rolling_downside_volatility"
+
+  genetic:
+    ga_num_generations: 4
+    ga_sol_per_pop: 10 # A small population is fine
+    optimize:
+      # --- The same configuration for the genetic optimizer ---
+      - parameter: position_sizer
+        type: categorical
+        values:
+          - "equal_weight"
+          - "rolling_sharpe"
+          - "rolling_sortino"
+          - "rolling_benchmark_corr"
+          - "rolling_downside_volatility"
+
+# --- Base Strategy Parameters (kept fixed during this optimization) ---
+strategy_params:
+  lookback_months: 12
+  num_holdings: 20
+  long_only: true
