@@ -1,0 +1,3 @@
+Warning: Scenario 'intramonth_seasonal_strategy' contains invalid parameters not defined in OPTIMIZER_PARAMETER_DEFAULTS: ['hold_days', 'entry_day']
+Downloading data... ---------------------------------------- 100% 0:00:00 0:00:00
+Fetching from stooq... ---------------------------------------- 100% 0:00:00 0:00:00

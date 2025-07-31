@@ -33,10 +33,12 @@ class IntramonthSeasonalStrategy(SignalStrategy):
         self._exit_dates_np = None  # Numpy array of exit dates (as int64 timestamps)
 
         defaults = {
-            "direction": "long",
+            "direction": "long",  # legacy field, retained for backward compatibility
             "entry_day": 5,
             "hold_days": 10,
             "price_column_asset": "Close",
+            "trade_longs": True,
+            "trade_shorts": True,
         }
         # Add trade_month_i defaults
         for i in range(1, 13):
@@ -57,6 +59,14 @@ class IntramonthSeasonalStrategy(SignalStrategy):
         self.slow_ema_multiplier = max(1.1, params_dict_to_update.get("slow_ema_multiplier", 2.0))
         self.slow_ema_len = int(math.ceil(self.fast_ema_len * self.slow_ema_multiplier))
 
+        # Long/short trade toggles
+        self.trade_longs = params_dict_to_update.get("trade_longs", True)
+        self.trade_shorts = params_dict_to_update.get("trade_shorts", True)
+
+        # Maintain legacy 'long_only' config for compatibility with sizing logic
+        # If user explicitly provided long_only we keep it, otherwise derive it.
+        params_dict_to_update.setdefault("long_only", not self.trade_shorts)
+
         # PERFORMANCE: cache reusable objects -------------------------------
         # 1. Business-day offset is the same for the whole simulation, build it once.
         self._bday_offset = get_bday_offset()
@@ -73,6 +83,8 @@ class IntramonthSeasonalStrategy(SignalStrategy):
             "use_ema_filter",
             "fast_ema_len",
             "slow_ema_multiplier",
+            "trade_longs",
+            "trade_shorts",
         } | {f"trade_month_{i}" for i in range(1, 13)}
 
     def get_minimum_required_periods(self) -> int:
@@ -272,9 +284,9 @@ class IntramonthSeasonalStrategy(SignalStrategy):
                 # Debugging
                 logger.debug("Trade Mask: %s", trade_mask)
 
-                if direction == "long":
+                if direction == "long" and self.trade_longs:
                     target_weights_np[valid_indices[trade_mask]] = 1.0
-                elif direction == "short":
+                elif direction == "short" and self.trade_shorts:
                     target_weights_np[valid_indices[trade_mask]] = -1.0
 
                 exit_date = np.datetime64(current_date + self._bday_offset * hold_days)

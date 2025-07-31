@@ -54,9 +54,14 @@ def generate_performance_table(backtester, console: Console, period_returns: dic
         integer_metrics.extend([
             f"Number of Trades ({direction})", f"Number of Winners ({direction})", 
             f"Number of Losers ({direction})", f"Min Trade Duration Days ({direction})", 
-            f"Max Trade Duration Days ({direction})", f"Max DD Recovery Time (days)", 
-            f"Max Flat Period (days)"
+            f"Max Trade Duration Days ({direction})"
         ])
+    
+    # Add non-directional metrics
+    integer_metrics.extend([
+        "Max DD Recovery Time (days)", 
+        "Max Flat Period (days)"
+    ])
 
     if not bench_metrics.empty:
         for metric_name in bench_metrics.index:

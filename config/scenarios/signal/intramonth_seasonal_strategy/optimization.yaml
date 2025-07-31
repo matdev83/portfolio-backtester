@@ -17,56 +17,38 @@ optimization_targets:
   direction: maximize
 optimize:
 - parameter: entry_day
-  type: int
-  min_value: -14
-  max_value: 14
-  step: 1
+  type: categorical
+  values: [-14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 - parameter: hold_days
   type: int
   min_value: 3
   max_value: 14
   step: 1
-- parameter: trade_month_1
+- parameter: use_ema_filter
   type: categorical
   choices: [true, false]
-- parameter: trade_month_2
-  type: categorical
-  choices: [true, false]
-- parameter: trade_month_3
-  type: categorical
-  choices: [true, false]
-- parameter: trade_month_4
-  type: categorical
-  choices: [true, false]
-- parameter: trade_month_5
-  type: categorical
-  choices: [true, false]
-- parameter: trade_month_6
-  type: categorical
-  choices: [true, false]
-- parameter: trade_month_7
-  type: categorical
-  choices: [true, false]
-- parameter: trade_month_8
-  type: categorical
-  choices: [true, false]
-- parameter: trade_month_9
-  type: categorical
-  choices: [true, false]
-- parameter: trade_month_10
-  type: categorical
-  choices: [true, false]
-- parameter: trade_month_11
-  type: categorical
-  choices: [true, false]
-- parameter: trade_month_12
+- parameter: long_only
   type: categorical
   choices: [true, false]
 
 strategy_params:
   direction: long
-  long_only: true
+  long_only: false
   leverage: 1.0
+  use_ema_filter: false
+  # Keep trading enabled for all months by default
+  trade_month_1: true
+  trade_month_2: true
+  trade_month_3: true
+  trade_month_4: true
+  trade_month_5: true
+  trade_month_6: true
+  trade_month_7: true
+  trade_month_8: true
+  trade_month_9: true
+  trade_month_10: true
+  trade_month_11: true
+  trade_month_12: true
 enable_monte_carlo_during_optimization: false
 universe:
 - TLT
