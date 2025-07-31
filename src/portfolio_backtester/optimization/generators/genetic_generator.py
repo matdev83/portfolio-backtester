@@ -459,22 +459,27 @@ class GeneticParameterGenerator(ParameterGenerator):
         coordinates with the optimization orchestrator for parameter evaluation.
         """
         # Create PyGAD configuration
+        num_genes = len(self.gene_space)
         ga_kwargs = {
             "num_generations": self.max_generations,
             "num_parents_mating": self.num_parents_mating,
             "fitness_func": self._external_fitness_function,
             "sol_per_pop": self.population_size,
-            "num_genes": len(self.gene_space),
+            "num_genes": num_genes,
             "gene_space": self.gene_space,
             "parent_selection_type": self.parent_selection_type,
             "crossover_type": self.crossover_type,
             "mutation_type": self.mutation_type,
-            "mutation_percent_genes": self.mutation_percent_genes,
             "keep_elitism": self.keep_elitism,
             "on_generation": self._on_generation_callback,
             "random_seed": self.random_state,
         }
-        
+        # Fix mutation warnings for small gene spaces
+        if num_genes < 10:
+            ga_kwargs["mutation_percent_genes"] = None
+            ga_kwargs["mutation_num_genes"] = 1
+        else:
+            ga_kwargs["mutation_percent_genes"] = self.mutation_percent_genes
         # Handle multi-objective optimization if supported
         if self.is_multi_objective:
             try:

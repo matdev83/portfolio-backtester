@@ -377,12 +377,6 @@ class MomentumStrategy(BaseStrategy):
         roro_signal_instance = self.get_roro_signal()
         roro_signal_value = None
         if roro_signal_instance:
-            # TODO: roro_signal_instance.generate_signal needs to be updated to accept
-            # (all_historical_data, benchmark_historical_data, current_date)
-            # This is part of Step 3 of the plan.
-            # For now, assume it might take current_date and use internal data, or needs full history.
-            # Let's assume it needs the same data as the strategy for now.
-            # roro_signal_values = roro_signal_instance.generate_signal(all_historical_data, benchmark_historical_data, current_date)
             # Awaiting RoRo refactor. For now, let's assume it works on a date index.
 
             # Placeholder call assuming it works on a single date or small window around it

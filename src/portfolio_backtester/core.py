@@ -12,8 +12,7 @@ import pandas as pd
 from . import strategies
 from .strategies.base_strategy import BaseStrategy
 from .strategies import enumerate_strategies_with_params
-from .backtester_logic.execution import run_backtest_mode, run_optimize_mode
-from .backtester_logic.optimizer import run_optimization
+from .backtester_logic.execution import run_backtest_mode
 from .backtester_logic.strategy_logic import generate_signals, size_positions
 from .config_initializer import populate_default_optimizations
 from .config_loader import OPTIMIZER_PARAMETER_DEFAULTS
@@ -28,6 +27,7 @@ from .api_stability import api_stable
 from .backtester_logic.reporting_logic import generate_optimization_report as _generate_optimization_report
 from .utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
 from .utils.timeout import TimeoutManager
+from .optimization.results import OptimizationData
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +256,7 @@ class Backtester:
                 logger.error("Fast walk-forward path failed – falling back to legacy: %s", exc)
         # Fallback: use new architecture components
         from .backtesting.strategy_backtester import StrategyBacktester
-        from .backtesting.results import OptimizationData
+        from .optimization.results import OptimizationData
         from .optimization.evaluator import BacktestEvaluator
         
         monthly_data = pd.DataFrame(monthly_data_np) if monthly_data_np is not None else pd.DataFrame()
@@ -386,7 +386,7 @@ class Backtester:
         if not use_fast:
             # Use new architecture components
             from .backtesting.strategy_backtester import StrategyBacktester
-            from .backtesting.results import OptimizationData
+            from .optimization.results import OptimizationData
             from .optimization.evaluator import BacktestEvaluator
             
             # Create new architecture components
@@ -515,7 +515,7 @@ class Backtester:
             logger.error("Fast evaluation failed - falling back to new architecture: %s", exc)
             # Use new architecture components as fallback
             from .backtesting.strategy_backtester import StrategyBacktester
-            from .backtesting.results import OptimizationData
+            from .optimization.results import OptimizationData
             from .optimization.evaluator import BacktestEvaluator
             
             # Create new architecture components
@@ -773,12 +773,11 @@ class Backtester:
         rets_full = self.data_cache.get_cached_returns(daily_closes, "full_period_returns")
         self.rets_full = rets_full.to_frame() if isinstance(rets_full, pd.Series) else rets_full
 
-        if FeatureFlags.use_new_optimization_architecture():
-            # Use new architecture with OptimizationOrchestrator
+        # Determine mode and use appropriate architecture
+        if self.args.mode == "backtest":
+            self._run_backtest_mode_new_architecture(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
+        elif self.args.mode == "optimize":
             self._run_optimize_mode_new_architecture(self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
-        else:
-            # Fallback to existing implementation
-            run_optimize_mode(self, self.scenarios[0], self.monthly_data, self.daily_data_ohlc, rets_full)
         
         if CENTRAL_INTERRUPTED_FLAG:
             self.logger.warning("Operation interrupted by user. Skipping final results display and plotting.")
@@ -808,8 +807,7 @@ class Backtester:
     ) -> None:
         """Run backtest mode using the new StrategyBacktester architecture.
         
-        This method uses the pure StrategyBacktester directly for backtesting,
-        maintaining backward compatibility while using the new architecture.
+        This method uses the pure StrategyBacktester directly for backtesting.
         
         Args:
             scenario_config: Scenario configuration
@@ -818,14 +816,40 @@ class Backtester:
             rets_full: Full period returns data
         """
         from .backtesting.strategy_backtester import StrategyBacktester
-        from .backtester_logic.execution import run_backtest_mode
         
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Running backtest using new architecture for scenario: {scenario_config['name']}")
+
+        if self.args.study_name:
+            try:
+                import optuna
+                study = optuna.load_study(study_name=self.args.study_name, storage="sqlite:///optuna_studies.db")
+                optimal_params = scenario_config["strategy_params"].copy()
+                optimal_params.update(study.best_params)
+                scenario_config["strategy_params"] = optimal_params
+                if self.logger.isEnabledFor(logging.DEBUG):
+                    self.logger.debug(f"Loaded best parameters from study '{self.args.study_name}': {optimal_params}")
+            except KeyError:
+                self.logger.warning(f"Study '{self.args.study_name}' not found. Using default parameters for scenario '{scenario_config['name']}'.")
+            except Exception as e:
+                self.logger.error(f"Error loading Optuna study: {e}. Using default parameters.")
+
+        strategy_backtester = StrategyBacktester(self.global_config, self.data_source)
+        backtest_result = strategy_backtester.backtest_strategy(
+            scenario_config, monthly_data, daily_data, rets_full
+        )
         
-        # For now, delegate to existing implementation to maintain compatibility
-        # TODO: Fully migrate to pure StrategyBacktester once all components are ready
-        run_backtest_mode(self, scenario_config, monthly_data, daily_data, rets_full)
+        train_end_date = pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
+        
+        self.results[scenario_config["name"]] = {
+            "returns": backtest_result.returns, 
+            "display_name": scenario_config["name"], 
+            "train_end_date": train_end_date,
+            "trade_stats": backtest_result.trade_stats,
+            "trade_history": backtest_result.trade_history,
+            "performance_stats": backtest_result.performance_stats,
+            "charts_data": backtest_result.charts_data
+        }
 
     def _run_optimize_mode_new_architecture(
         self, 
@@ -849,7 +873,7 @@ class Backtester:
         from .optimization.orchestrator import OptimizationOrchestrator
         from .optimization.evaluator import BacktestEvaluator
         from .backtesting.strategy_backtester import StrategyBacktester
-        from .backtesting.results import OptimizationData
+        from .optimization.results import OptimizationData
         from .utils import generate_randomized_wfo_windows
         from .backtester_logic.execution import run_optimize_mode
         
@@ -868,7 +892,11 @@ class Backtester:
                 optimizer_type=optimizer_type,
                 random_state=self.random_state
             )
-            
+        except (ImportError, ValueError) as e:
+            logger.error(f"Failed to create parameter generator '{optimizer_type}': {e}")
+            raise
+
+        try:
             # Create StrategyBacktester for pure backtesting
             strategy_backtester = StrategyBacktester(
                 global_config=self.global_config,
@@ -892,20 +920,6 @@ class Backtester:
                                   [scenario_config.get("optimization_metric", "Calmar")]
             is_multi_objective = len(metrics_to_optimize) > 1
             
-            # Create BacktestEvaluator
-            evaluator = BacktestEvaluator(
-                metrics_to_optimize=metrics_to_optimize,
-                is_multi_objective=is_multi_objective
-            )
-            
-            # Create OptimizationOrchestrator
-            orchestrator = OptimizationOrchestrator(
-                parameter_generator=parameter_generator,
-                evaluator=evaluator,
-                timeout_seconds=getattr(self.args, 'optuna_timeout_sec', None),
-                early_stop_patience=getattr(self.args, 'early_stop_patience', 10)
-            )
-            
             # Prepare optimization data
             optimization_data = OptimizationData(
                 monthly=monthly_data,
@@ -926,20 +940,44 @@ class Backtester:
                 'metrics_to_optimize': metrics_to_optimize,
                 'pruning_enabled': getattr(self.args, 'pruning_enabled', False),
                 'pruning_n_startup_trials': getattr(self.args, 'pruning_n_startup_trials', 5),
-                'pruning_n_warmup_steps': getattr(self.args, 'pruning_n_warmup_steps', 0),
+                'pruning_n_warmup_steps': getattr(self.args, 'pruning_n_warmup_trials', 0),
                 'pruning_interval_steps': getattr(self.args, 'pruning_interval_steps', 1),
                 'study_name': getattr(self.args, 'study_name', None),
                 'storage_url': getattr(self.args, 'storage_url', None),
                 'random_seed': self.random_state
             }
             
-            # Run optimization using new architecture
-            optimization_result = orchestrator.optimize(
-                scenario_config=scenario_config,
-                optimization_config=optimization_config,
-                data=optimization_data,
-                backtester=strategy_backtester
+            # Create BacktestEvaluator
+            evaluator = BacktestEvaluator(
+                metrics_to_optimize=metrics_to_optimize,
+                is_multi_objective=is_multi_objective
             )
+            
+            # Create OptimizationOrchestrator or ParallelOptimizationRunner
+            optimization_result = None
+            if optimizer_type == 'optuna':
+                from .optimization.parallel_optimization_runner import ParallelOptimizationRunner
+                parallel_runner = ParallelOptimizationRunner(
+                    scenario_config=scenario_config,
+                    optimization_config=optimization_config,
+                    data=optimization_data,
+                    n_jobs=getattr(self.args, 'n_jobs', 1),
+                    storage_url=optimization_config.get('storage_url', 'sqlite:///optuna_studies.db'),
+                )
+                optimization_result = parallel_runner.run()
+            else:
+                orchestrator = OptimizationOrchestrator(
+                    parameter_generator=parameter_generator,
+                    evaluator=evaluator,
+                    timeout_seconds=getattr(self.args, 'optuna_timeout_sec', None),
+                    early_stop_patience=getattr(self.args, 'early_stop_patience', 10)
+                )
+                optimization_result = orchestrator.optimize(
+                    scenario_config=scenario_config,
+                    optimization_config=optimization_config,
+                    data=optimization_data,
+                    backtester=strategy_backtester
+                )
             
             # Process results and update self.results for compatibility
             optimal_params = optimization_result.best_parameters
@@ -978,10 +1016,12 @@ class Backtester:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"New architecture optimization completed for {scenario_config['name']}")
                 
+        except (ValueError, TypeError) as e:
+            logger.error(f"Error during optimization setup: {e}")
+            raise
         except Exception as e:
-            logger.error(f"New architecture optimization failed: {e}")
-            # TODO: Add more specific error handling
-            raise e
+            logger.error(f"An unexpected error occurred during optimization: {e}")
+            raise
 
     def _convert_optimization_specs_to_parameter_space(self, scenario_config: Dict[str, Any]) -> Dict[str, Any]:
         """Convert scenario optimization specs to parameter space format.
@@ -1004,7 +1044,14 @@ class Backtester:
             # Get parameter type from spec or defaults
             param_type = spec.get("type")
             if not param_type:
-                param_type = self.global_config.get("optimizer_parameter_defaults", {}).get(param_name, {}).get("type", "float")
+                if "min_value" in spec and "max_value" in spec:
+                    # Infer type from min/max value
+                    if isinstance(spec["min_value"], int) and isinstance(spec["max_value"], int):
+                        param_type = "int"
+                    else:
+                        param_type = "float"
+                else:
+                    param_type = self.global_config.get("optimizer_parameter_defaults", {}).get(param_name, {}).get("type", "float")
             
             # Convert to parameter space format
             if param_type == "int":
@@ -1022,9 +1069,13 @@ class Backtester:
                     "step": spec.get("step", None)
                 }
             elif param_type == "categorical":
+                choices = spec.get("choices") or spec.get("values")
+                if not choices:
+                    logger.error(f"Categorical parameter '{param_name}' is missing 'choices' or 'values' in spec: {spec}")
+                    raise KeyError(f"Categorical parameter '{param_name}' must have 'choices' or 'values' defined.")
                 parameter_space[param_name] = {
                     "type": "categorical",
-                    "choices": spec["values"]
+                    "choices": choices
                 }
             else:
                 logger.warning(f"Unknown parameter type '{param_type}' for parameter '{param_name}'. Defaulting to float.")

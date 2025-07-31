@@ -96,7 +96,19 @@ def simulated_binary_crossover(parents: np.ndarray,
         idx += 2
     
     # Trim to exact offspring size
-    return np.array(offspring[:offspring_size[0]])
+    offspring = np.array(offspring[:offspring_size[0]])
+
+    # Final clamping: ensure all offspring genes are within bounds
+    if hasattr(ga_instance, 'gene_space') and ga_instance.gene_space:
+        for i in range(offspring.shape[0]):
+            for j in range(offspring.shape[1]):
+                gene_space = ga_instance.gene_space[j] if isinstance(ga_instance.gene_space, list) else ga_instance.gene_space
+                if isinstance(gene_space, dict):
+                    low = gene_space.get('low', -np.inf)
+                    high = gene_space.get('high', np.inf)
+                    offspring[i, j] = max(low, min(high, offspring[i, j]))
+
+    return offspring
 
 def multi_point_crossover(parents: np.ndarray,
                          offspring_size: Tuple[int, int],

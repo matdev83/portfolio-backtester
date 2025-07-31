@@ -447,8 +447,9 @@ class TestParameterGeneratorInterface:
             'metrics_to_optimize': ['sharpe_ratio'],
             'max_evaluations': 10,
             'genetic_algorithm_params': {
-                'num_generations': 2,
-                'sol_per_pop': 4
+                'num_generations': 5,
+                'sol_per_pop': 10,
+                'mutation_percent_genes': 10
             }
         }
         
@@ -497,8 +498,9 @@ class TestParameterGeneratorInterface:
             ],
             'max_evaluations': 10,
             'genetic_algorithm_params': {
-                'num_generations': 2,
-                'sol_per_pop': 4
+                'num_generations': 5,
+                'sol_per_pop': 10,
+                'mutation_percent_genes': 10
             }
         }
         

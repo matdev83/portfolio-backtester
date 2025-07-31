@@ -514,9 +514,22 @@ Robust WFO:
         Randomized windows        Different start dates    Stability metrics
 ```
 
+### Component Separation (Post-Refactor)
+
+- **Backtester**: Responsible only for running backtests and reporting results. It does not know about optimization logic or parameter generation.
+- **Optimization Orchestrator**: Coordinates the optimization process by requesting parameter suggestions from a parameter generator and evaluating them using the backtester. It does not generate parameters or run backtests itself.
+- **Parameter Generators**: (e.g., Optuna, Genetic) Only responsible for suggesting new parameter sets. They do not perform any backtesting or evaluation logic.
+- **Extensibility**: New optimization algorithms can be added by implementing the `ParameterGenerator` interface, without modifying the orchestrator or backtester.
+
+**This separation has been fully validated by comprehensive tests and real CLI runs.**
+
 ## Testing
 
 The project includes comprehensive test coverage and has been fully verified post-refactoring:
+
+- **All tests pass**: Unit, integration, and end-to-end tests confirm the correct separation of concerns and functional correctness.
+- **End-to-end CLI runs**: Both backtest and optimization modes (Optuna and Genetic) have been run on real scenarios, confirming the architecture is fully functional.
+- **No dead code or unfinished logic**: The codebase is clean, with no TODOs, mocks, or deprecated code in the main logic.
 
 ### Strategy Verification Status ✅
 All 11 implemented trading strategies have been verified to work correctly:

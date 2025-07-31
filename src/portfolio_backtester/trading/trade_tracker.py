@@ -159,6 +159,11 @@ class TradeTracker:
     
     def get_trade_statistics(self) -> Dict[str, Any]:
         """Calculate comprehensive trade statistics split by direction (All/Long/Short)."""
+        # Check if we have vectorized stats available (much faster)
+        if hasattr(self, '_vectorized_stats') and self._vectorized_stats:
+            return self._vectorized_stats
+        
+        # Fallback to original implementation
         if not self.trades:
             return self._get_empty_trade_stats()
         

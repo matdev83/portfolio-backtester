@@ -108,11 +108,8 @@ def test_comprehensive_directional_functionality():
         
         print("✅ Integration with performance metrics verified")
         
-        return True
-        
     except Exception as e:
         print(f"❌ TEST FAILED: {e}")
-        return False
 
 def main():
     if test_comprehensive_directional_functionality():
@@ -124,11 +121,9 @@ def main():
         print("\u2022 Formatted table output for easy comparison")
         print("\u2022 Full integration with performance metrics system")
         print("\u2022 Comprehensive directional summary views")
-        return 0
     else:
         print("\n❌ TESTS FAILED!\n")
         print("Please check the implementation.")
-        return 1
 
 if __name__ == "__main__":
     sys.exit(main())

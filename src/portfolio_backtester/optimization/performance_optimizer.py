@@ -196,6 +196,11 @@ class ParallelOptimizer:
         self.n_jobs = min(n_jobs, os.cpu_count())
         self.chunk_size = chunk_size or max(1, self.n_jobs * 2)
         
+        # Persistent ThreadPoolExecutor reused across calls
+        from concurrent.futures import ThreadPoolExecutor
+        self._executor = ThreadPoolExecutor(max_workers=self.n_jobs)
+        import atexit
+        atexit.register(self._executor.shutdown, wait=True)
         # Thread-local storage for worker state
         self._local = threading.local()
         
@@ -236,26 +241,21 @@ class ParallelOptimizer:
         chunk_size = self.get_optimal_chunk_size(len(items))
         chunks = [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
         
-        results = []
+        results: List[Any] = []
         
-        with ThreadPoolExecutor(max_workers=self.n_jobs) as executor:
-            # Submit all chunks
-            future_to_chunk = {
-                executor.submit(self._process_chunk, func, chunk, **kwargs): chunk
-                for chunk in chunks
-            }
-            
-            # Collect results as they complete
-            for future in as_completed(future_to_chunk):
-                try:
-                    chunk_results = future.result()
-                    results.extend(chunk_results)
-                except Exception as e:
-                    logger.error(f"Chunk processing failed: {e}")
-                    # Add None results for failed chunk
-                    chunk = future_to_chunk[future]
-                    results.extend([None] * len(chunk))
-        
+        # Submit all chunks once; reuse persistent executor
+        future_to_chunk = {
+            self._executor.submit(self._process_chunk, func, chunk, **kwargs): chunk
+            for chunk in chunks
+        }
+        for future in as_completed(future_to_chunk):
+            try:
+                chunk_results = future.result()
+                results.extend(chunk_results)
+            except Exception as e:
+                logger.error(f"Chunk processing failed: {e}")
+                chunk = future_to_chunk[future]
+                results.extend([None] * len(chunk))
         return results
     
     def _process_chunk(self, func, chunk: List[Any], **kwargs) -> List[Any]:

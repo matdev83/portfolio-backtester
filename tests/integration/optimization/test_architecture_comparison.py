@@ -202,41 +202,39 @@ class TestArchitectureComparison(BaseIntegrationTest):
     def _create_deterministic_mock_backtester(self, seed: int = 42):
         """Create a deterministic mock strategy backtester for comparison testing."""
         mock_backtester = Mock(spec=StrategyBacktester)
-        
-        # Set random seed for deterministic results
-        np.random.seed(seed)
-        
+        rs = np.random.RandomState(seed)
+
         # Mock evaluate_window to return deterministic results
         def deterministic_evaluate_window(scenario_config, window, monthly_data, daily_data, returns_data):
             from src.portfolio_backtester.backtesting.results import WindowResult
-            
+
             # Generate deterministic returns based on window and parameters
             test_start, test_end = window[2], window[3]
             num_days = (test_end - test_start).days
-            
+
             # Use parameters to influence results deterministically
             params = scenario_config.get('strategy_params', {})
             lookback = params.get('lookback_period', 12)
             position_size = params.get('position_size', 0.1)
-            
+
             # Create deterministic seed based on window and parameters
             window_seed = hash((str(test_start), str(test_end), lookback, position_size)) % 10000
-            np.random.seed(window_seed)
-            
+            rs_window = np.random.RandomState(window_seed)
+
             # Generate deterministic returns
             base_return = 0.001 * (lookback / 12) * position_size * 10
             volatility = 0.02 * (1 + position_size)
-            
+
             mock_returns = pd.Series(
-                np.random.normal(base_return, volatility, num_days),
+                rs_window.normal(base_return, volatility, num_days),
                 index=pd.date_range(test_start, test_end, freq='D')[:num_days]
             )
-            
+
             # Generate deterministic metrics
             total_return = mock_returns.sum()
             volatility_metric = mock_returns.std() * np.sqrt(252)
             sharpe_ratio = (mock_returns.mean() * 252) / volatility_metric if volatility_metric > 0 else 0
-            
+
             metrics = {
                 "total_return": total_return,
                 "annualized_return": mock_returns.mean() * 252,
@@ -245,7 +243,7 @@ class TestArchitectureComparison(BaseIntegrationTest):
                 "max_drawdown": -0.05 * position_size,
                 "calmar_ratio": sharpe_ratio * 0.8
             }
-            
+
             return WindowResult(
                 window_returns=mock_returns,
                 metrics=metrics,
@@ -254,7 +252,7 @@ class TestArchitectureComparison(BaseIntegrationTest):
                 test_start=window[2],
                 test_end=window[3]
             )
-        
+
         mock_backtester.evaluate_window.side_effect = deterministic_evaluate_window
         return mock_backtester
     

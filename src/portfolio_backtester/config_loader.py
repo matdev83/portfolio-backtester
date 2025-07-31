@@ -4,8 +4,25 @@ from pathlib import Path
 import os
 
 # Import our YAML validator
-from .optimization.genetic_optimizer import get_ga_optimizer_parameter_defaults
 from .yaml_validator import validate_yaml_file
+
+
+def get_ga_optimizer_parameter_defaults():
+    """Returns default parameters for GA specific settings."""
+    return {
+        "ga_num_generations": {"default": 100, "type": "int", "low": 10, "high": 1000, "help": "Number of generations for GA."},
+        "ga_num_parents_mating": {"default": 10, "type": "int", "low": 2, "high": 50, "help": "Number of parents to mate in GA."},
+        "ga_sol_per_pop": {"default": 50, "type": "int", "low": 10, "high": 200, "help": "Solutions per population in GA."},
+        "ga_parent_selection_type": {"default": "sss", "type": "categorical", "values": ["sss", "rws", "sus", "rank", "random", "tournament"], "help": "Parent selection type for GA."},
+        "ga_crossover_type": {"default": "single_point", "type": "categorical", "values": ["single_point", "two_points", "uniform", "scattered"], "help": "Crossover type for GA."},
+        "ga_advanced_crossover_type": {"default": None, "type": "categorical", "values": [None, "simulated_binary", "multi_point", "uniform_variant", "arithmetic"], "help": "Advanced crossover operator for GA."},
+        "ga_sbx_distribution_index": {"default": 20.0, "type": "float", "low": 1.0, "high": 100.0, "help": "Distribution index for Simulated Binary Crossover."},
+        "ga_num_crossover_points": {"default": 3, "type": "int", "low": 2, "high": 10, "help": "Number of crossover points for Multi-point crossover."},
+        "ga_uniform_crossover_bias": {"default": 0.5, "type": "float", "low": 0.1, "high": 0.9, "help": "Bias parameter for Uniform crossover variant."},
+        "ga_mutation_type": {"default": "random", "type": "categorical", "values": ["random", "swap", "inversion", "scramble", "adaptive"], "help": "Mutation type for GA."},
+        "ga_mutation_percent_genes": {"default": "default", "type": "str", "help": "Percentage of genes to mutate (e.g., 'default', 10 for 10%)."}
+    }
+
 
 # Set up logger
 logger = logging.getLogger(__name__)

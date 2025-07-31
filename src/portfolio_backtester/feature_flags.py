@@ -52,96 +52,67 @@ class FeatureFlags:
             del cls._local.overrides[flag_name]
     
     @classmethod
-    def use_new_optimization_architecture(cls) -> bool:
+    def get_flag(cls, flag_name: str, default: bool = False) -> bool:
         """
-        Check if new optimization architecture should be used.
-        
+        Generic method to get the current value of a feature flag.
+
+        This method checks for a thread-local override first, then checks
+        the corresponding environment variable, and finally falls back to the
+        provided default.
+
+        Args:
+            flag_name (str): The snake_case name of the flag.
+            default (bool): The default value if no override or env var is set.
+
         Returns:
-            bool: True if new optimization architecture is enabled
+            bool: The current value of the flag.
         """
-        override = cls._get_override('use_new_optimization_architecture')
+        override = cls._get_override(flag_name)
         if override is not None:
             return override
-        return cls._get_env_flag("USE_NEW_OPTIMIZATION_ARCHITECTURE")
-    
+        
+        env_var_name = flag_name.upper()
+        return cls._get_env_flag(env_var_name, str(default))
+
+    @classmethod
+    def use_new_optimization_architecture(cls) -> bool:
+        """Check if new optimization architecture should be used."""
+        return cls.get_flag('use_new_optimization_architecture', default=True)
+
+    @classmethod
+    def use_new_backtesting_architecture(cls) -> bool:
+        """Check if new backtesting architecture should be used."""
+        return cls.get_flag('use_new_backtesting_architecture', default=True)
+
     @classmethod
     def use_new_backtester(cls) -> bool:
-        """
-        Check if new pure backtester should be used.
-        
-        Returns:
-            bool: True if new backtester is enabled
-        """
-        override = cls._get_override('use_new_backtester')
-        if override is not None:
-            return override
-        return cls._get_env_flag("USE_NEW_BACKTESTER")
-    
+        """Check if new pure backtester should be used."""
+        return cls.get_flag('use_new_backtester')
+
     @classmethod
     def use_optimization_orchestrator(cls) -> bool:
-        """
-        Check if optimization orchestrator should be used.
-        
-        Returns:
-            bool: True if optimization orchestrator is enabled
-        """
-        override = cls._get_override('use_optimization_orchestrator')
-        if override is not None:
-            return override
-        return cls._get_env_flag("USE_OPTIMIZATION_ORCHESTRATOR")
-    
+        """Check if optimization orchestrator should be used."""
+        return cls.get_flag('use_optimization_orchestrator')
+
     @classmethod
     def enable_optuna_generator(cls) -> bool:
-        """
-        Check if Optuna parameter generator is enabled.
-        
-        Returns:
-            bool: True if Optuna generator is enabled
-        """
-        override = cls._get_override('enable_optuna_generator')
-        if override is not None:
-            return override
-        return cls._get_env_flag("ENABLE_OPTUNA_GENERATOR", "true")
-    
+        """Check if Optuna parameter generator is enabled."""
+        return cls.get_flag('enable_optuna_generator', default=True)
+
     @classmethod
     def enable_genetic_generator(cls) -> bool:
-        """
-        Check if genetic parameter generator is enabled.
-        
-        Returns:
-            bool: True if genetic generator is enabled
-        """
-        override = cls._get_override('enable_genetic_generator')
-        if override is not None:
-            return override
-        return cls._get_env_flag("ENABLE_GENETIC_GENERATOR", "true")
-    
+        """Check if genetic parameter generator is enabled."""
+        return cls.get_flag('enable_genetic_generator', default=True)
 
-    
     @classmethod
     def enable_backward_compatibility(cls) -> bool:
-        """
-        Check if backward compatibility layer is enabled.
-        Returns:
-            bool: True if legacy compatibility is enabled (default True)
-        """
-        override = cls._get_override('enable_backward_compatibility')
-        if override is not None:
-            return override
-        return cls._get_env_flag("ENABLE_BACKWARD_COMPATIBILITY", "true")
+        """Check if backward compatibility layer is enabled."""
+        return cls.get_flag('enable_backward_compatibility', default=True)
 
     @classmethod
     def enable_deprecation_warnings(cls) -> bool:
-        """
-        Check if deprecation warnings should be shown.
-        
-        Returns:
-            bool: True if deprecation warnings are enabled
-        """
-        override = cls._get_override('enable_deprecation_warnings')
-        if override is not None:
-            return override
-        return cls._get_env_flag("ENABLE_DEPRECATION_WARNINGS", "true")
+        """Check if deprecation warnings should be shown."""
+        return cls.get_flag('enable_deprecation_warnings', default=True)
     
     @classmethod
     @contextmanager
@@ -326,9 +297,7 @@ def is_new_architecture_enabled() -> bool:
             FeatureFlags.use_optimization_orchestrator())
 
 
-def is_legacy_mode() -> bool:
-    """Check if running in legacy mode (no new architecture components)."""
-    return not is_new_architecture_enabled()
+
 
 
 def should_show_migration_warnings() -> bool:

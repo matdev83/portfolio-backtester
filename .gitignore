@@ -159,3 +159,4 @@ data/reports/*
 .cursor/
 GEMINI.md
 .agent.md
+.numba_cache/

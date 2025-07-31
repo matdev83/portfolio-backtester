@@ -166,7 +166,7 @@ class StrategyBacktester:
         
         # Create trade history from trade tracker
         if trade_tracker:
-            trade_history = trade_tracker.get_trade_history_dataframe()
+            trade_history = pd.DataFrame([t.__dict__ for t in trade_tracker.trades])
         else:
             trade_history = self._create_trade_history(sized_signals, daily_data)
         

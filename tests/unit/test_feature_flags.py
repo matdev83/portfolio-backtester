@@ -14,7 +14,6 @@ from unittest.mock import patch
 from src.portfolio_backtester.feature_flags import (
     FeatureFlags,
     is_new_architecture_enabled,
-    is_legacy_mode,
     should_show_migration_warnings
 )
 
@@ -35,16 +34,17 @@ class TestFeatureFlags:
     def test_default_flag_values(self):
         """Test that flags have correct default values."""
         with patch.dict(os.environ, {}, clear=True):
-            # Most flags default to False
-            assert not FeatureFlags.use_new_optimization_architecture()
-            assert not FeatureFlags.use_new_backtester()
-            assert not FeatureFlags.use_optimization_orchestrator()
-            
             # These flags default to True
+            assert FeatureFlags.use_new_optimization_architecture()
+            assert FeatureFlags.use_new_backtesting_architecture()
             assert FeatureFlags.enable_optuna_generator()
             assert FeatureFlags.enable_genetic_generator()
             assert FeatureFlags.enable_backward_compatibility()
             assert FeatureFlags.enable_deprecation_warnings()
+
+            # These flags default to False
+            assert not FeatureFlags.use_new_backtester()
+            assert not FeatureFlags.use_optimization_orchestrator()
     
     def test_environment_variable_support(self):
         """Test that environment variables control flag values."""
@@ -117,7 +117,7 @@ class TestFeatureFlags:
         """Test the enable_new_architecture context manager."""
         # Initially disabled
         with patch.dict(os.environ, {}, clear=True):
-            assert not FeatureFlags.use_new_optimization_architecture()
+            assert FeatureFlags.use_new_optimization_architecture()
             assert not FeatureFlags.use_new_backtester()
             assert not FeatureFlags.use_optimization_orchestrator()
             
@@ -127,7 +127,7 @@ class TestFeatureFlags:
                 assert FeatureFlags.use_optimization_orchestrator()
             
             # Restored after context
-            assert not FeatureFlags.use_new_optimization_architecture()
+            assert FeatureFlags.use_new_optimization_architecture()
             assert not FeatureFlags.use_new_backtester()
             assert not FeatureFlags.use_optimization_orchestrator()
     
@@ -240,7 +240,7 @@ class TestConvenienceFunctions:
     def test_is_new_architecture_enabled(self):
         """Test the is_new_architecture_enabled function."""
         with patch.dict(os.environ, {}, clear=True):
-            assert not is_new_architecture_enabled()
+            assert is_new_architecture_enabled()
         
         with patch.dict(os.environ, {"USE_NEW_OPTIMIZATION_ARCHITECTURE": "true"}):
             assert is_new_architecture_enabled()
@@ -251,13 +251,7 @@ class TestConvenienceFunctions:
         with patch.dict(os.environ, {"USE_OPTIMIZATION_ORCHESTRATOR": "true"}):
             assert is_new_architecture_enabled()
     
-    def test_is_legacy_mode(self):
-        """Test the is_legacy_mode function."""
-        with patch.dict(os.environ, {}, clear=True):
-            assert is_legacy_mode()
-        
-        with patch.dict(os.environ, {"USE_NEW_OPTIMIZATION_ARCHITECTURE": "true"}):
-            assert not is_legacy_mode()
+    
     
     def test_should_show_migration_warnings(self):
         """Test the should_show_migration_warnings function."""
@@ -295,36 +289,4 @@ class TestFeatureFlagIntegration:
             assert not FeatureFlags.use_optimization_orchestrator()
             assert not FeatureFlags.use_new_optimization_architecture()
     
-    def test_gradual_migration_scenario(self):
-        """Test a realistic scenario for gradual migration."""
-        # Start with legacy mode
-        with patch.dict(os.environ, {}, clear=True):
-            assert is_legacy_mode()
-            assert FeatureFlags.enable_backward_compatibility()
-            
-            # Enable new backtester first
-            with patch.dict(os.environ, {"USE_NEW_BACKTESTER": "true"}):
-                assert FeatureFlags.use_new_backtester()
-                assert not FeatureFlags.use_new_optimization_architecture()
-                assert is_new_architecture_enabled()  # Because backtester is new
-                
-                # Then enable optimization orchestrator
-                with patch.dict(os.environ, {
-                    "USE_NEW_BACKTESTER": "true",
-                    "USE_OPTIMIZATION_ORCHESTRATOR": "true"
-                }):
-                    assert FeatureFlags.use_new_backtester()
-                    assert FeatureFlags.use_optimization_orchestrator()
-                    assert not FeatureFlags.use_new_optimization_architecture()
-                    
-                    # Finally enable full new architecture
-                    with patch.dict(os.environ, {
-                        "USE_NEW_BACKTESTER": "true",
-                        "USE_OPTIMIZATION_ORCHESTRATOR": "true",
-                        "USE_NEW_OPTIMIZATION_ARCHITECTURE": "true"
-                    }):
-                        assert FeatureFlags.use_new_backtester()
-                        assert FeatureFlags.use_optimization_orchestrator()
-                        assert FeatureFlags.use_new_optimization_architecture()
-                        assert is_new_architecture_enabled()
-                        assert not is_legacy_mode()
+    

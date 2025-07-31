@@ -15,12 +15,33 @@ from typing import Any, Dict, List, Union, Optional
 from .results import EvaluationResult, OptimizationData
 from ..backtesting.results import WindowResult
 from ..backtesting.strategy_backtester import StrategyBacktester
-from .performance_optimizer import (
-    optimize_dataframe_memory, 
-    cleanup_memory_if_needed,
-    record_evaluation_performance,
-    ParallelOptimizer
-)
+# Optional performance optimizer imports
+try:
+    from .performance_optimizer import (
+        optimize_dataframe_memory, 
+        cleanup_memory_if_needed,
+        record_evaluation_performance,
+        ParallelOptimizer
+    )
+    PERFORMANCE_OPTIMIZER_AVAILABLE = True
+except ImportError:
+    PERFORMANCE_OPTIMIZER_AVAILABLE = False
+    # Provide fallback implementations
+    def optimize_dataframe_memory(df):
+        return df
+    
+    def cleanup_memory_if_needed():
+        pass
+    
+    def record_evaluation_performance(time_seconds):
+        pass
+    
+    class ParallelOptimizer:
+        def __init__(self, n_jobs=1):
+            self.n_jobs = n_jobs
+        
+        def parallel_map(self, func, items, **kwargs):
+            return [func(item, **kwargs) for item in items]
 
 logger = logging.getLogger(__name__)
 
@@ -118,67 +139,69 @@ class BacktestEvaluator:
         trial_scenario_config["strategy_params"] = parameters
         
         # Evaluate each window
-        window_results = []
+        if self.enable_parallel_optimization and self.n_jobs > 1 and self.parallel_optimizer is not None:
+            window_results = self._evaluate_windows_parallel(
+                data.windows,
+                trial_scenario_config,
+                data,
+                backtester
+            )
+        else:
+            window_results = []
+            for window in data.windows:
+                try:
+                    window_result = backtester.evaluate_window(
+                        trial_scenario_config,
+                        window,
+                        data.monthly,
+                        data.daily,
+                        data.returns
+                    )
+                    if window_result is None:
+                        train_start, train_end, test_start, test_end = window
+                        window_result = WindowResult(
+                            window_returns=pd.Series(dtype=float),
+                            metrics={metric: -1e9 for metric in self.metrics_to_optimize},
+                            train_start=train_start,
+                            train_end=train_end,
+                            test_start=test_start,
+                            test_end=test_end,
+                        )
+                    window_results.append(window_result)
+                except Exception as e:
+                    logger.warning(f"Failed to evaluate window {window}: {e}")
+                    # Create empty window result for failed evaluation
+                    train_start, train_end, test_start, test_end = window
+                    empty_window = WindowResult(
+                        window_returns=pd.Series(dtype=float),
+                        metrics={metric: -1e9 for metric in self.metrics_to_optimize},
+                        train_start=train_start,
+                        train_end=train_end,
+                        test_start=test_start,
+                        test_end=test_end
+                    )
+                    window_results.append(empty_window)
+        
+        # Extract objective values and window lengths
         objective_values = []
         window_lengths = []
-        
-        for window in data.windows:
-            try:
-                window_result = backtester.evaluate_window(
-                    trial_scenario_config,
-                    window,
-                    data.monthly,
-                    data.daily,
-                    data.returns
-                )
-                
-                window_results.append(window_result)
-                
-                # Extract objective value(s) from window metrics
-                if self.is_multi_objective:
-                    # For multi-objective, extract all requested metrics
-                    obj_values = []
-                    for metric_name in self.metrics_to_optimize:
-                        metric_value = window_result.metrics.get(metric_name, 0.0)
-                        # Handle NaN values
-                        if pd.isna(metric_value):
-                            metric_value = -1e9  # Large negative value for invalid results
-                        obj_values.append(float(metric_value))
-                    objective_values.append(obj_values)
-                else:
-                    # For single objective, use the first (and only) metric
-                    metric_name = self.metrics_to_optimize[0]
+        for window_result in window_results:
+            # Extract objective value(s) from window metrics
+            if self.is_multi_objective:
+                obj_values = []
+                for metric_name in self.metrics_to_optimize:
                     metric_value = window_result.metrics.get(metric_name, 0.0)
-                    # Handle NaN values
                     if pd.isna(metric_value):
-                        metric_value = -1e9  # Large negative value for invalid results
-                    objective_values.append(float(metric_value))
-                
-                # Track window length for potential length-weighted aggregation
-                window_lengths.append(len(window_result.window_returns))
-                
-            except Exception as e:
-                logger.warning(f"Failed to evaluate window {window}: {e}")
-                
-                # Create empty window result for failed evaluation
-                train_start, train_end, test_start, test_end = window
-                empty_window = WindowResult(
-                    window_returns=pd.Series(dtype=float),
-                    metrics={metric: -1e9 for metric in self.metrics_to_optimize},
-                    train_start=train_start,
-                    train_end=train_end,
-                    test_start=test_start,
-                    test_end=test_end
-                )
-                window_results.append(empty_window)
-                
-                # Add failed objective values
-                if self.is_multi_objective:
-                    objective_values.append([-1e9] * len(self.metrics_to_optimize))
-                else:
-                    objective_values.append(-1e9)
-                
-                window_lengths.append(0)
+                        metric_value = -1e9
+                    obj_values.append(float(metric_value))
+                objective_values.append(obj_values)
+            else:
+                metric_name = self.metrics_to_optimize[0]
+                metric_value = window_result.metrics.get(metric_name, 0.0)
+                if pd.isna(metric_value):
+                    metric_value = -1e9
+                objective_values.append(float(metric_value))
+            window_lengths.append(len(window_result.window_returns))
         
         # Aggregate results across windows
         aggregated_objective = self._aggregate_objective_values(
