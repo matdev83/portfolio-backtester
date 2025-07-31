@@ -460,3 +460,21 @@ OPTIMIZER_PARAMETER_DEFAULTS:
   active_months:
     type: "multi-categorical"
     values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  rebalance_frequency:
+    type: "categorical"
+    values: ["M", "Q", "A"]
+  spy_weight:
+    type: "float"
+    low: 0.05
+    high: 0.95
+    step: 0.05
+  gld_weight:
+    type: "float"
+    low: 0.05
+    high: 0.95
+    step: 0.05
+  vol_window:
+    type: "int"
+    low: 63
+    high: 252
+    step: 63

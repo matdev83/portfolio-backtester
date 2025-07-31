@@ -41,8 +41,8 @@ class BaseStrategy(ABC):
     stop_loss_handler_class: type[BaseStopLoss] = NoStopLoss
 
 
-    def __init__(self, strategy_config: Dict[str, Any]) -> None:
-        self.strategy_config = strategy_config
+    def __init__(self, strategy_params: Dict[str, Any]):
+        self.strategy_params = strategy_params
         self._roro_signal_instance: BaseRoRoSignal | None = None
         self._stop_loss_handler_instance: BaseStopLoss | None = None
         self.entry_prices: pd.Series | None = None
@@ -64,13 +64,13 @@ class BaseStrategy(ABC):
         try:
             # Ensure backward compatibility and migrate legacy configuration
             # Pass strategy instance for method override detection
-            migrated_config = ensure_backward_compatibility_with_strategy(self.strategy_config, self)
+            migrated_config = ensure_backward_compatibility_with_strategy(self.strategy_params, self)
             
             # Update strategy config with migrated version
-            self.strategy_config = migrated_config
+            self.strategy_params = migrated_config
             
             # Get timing configuration (guaranteed to exist after migration)
-            timing_config = self.strategy_config['timing_config']
+            timing_config = self.strategy_params['timing_config']
             timing_mode = timing_config.get('mode', 'time_based')
             
             # Initialize appropriate timing controller
@@ -97,7 +97,7 @@ class BaseStrategy(ABC):
             self._timing_controller = TimeBasedTiming(fallback_config)
             
             # Update strategy config with fallback timing config
-            self.strategy_config['timing_config'] = fallback_config
+            self.strategy_params['timing_config'] = fallback_config
     
     def get_timing_controller(self) -> Optional['TimingController']:
         """Get the timing controller for this strategy."""
@@ -124,33 +124,33 @@ class BaseStrategy(ABC):
     # def get_signal_generator(self) -> BaseSignalGenerator:
     #     if self.signal_generator_class is None:
     #         raise NotImplementedError("signal_generator_class must be set")
-    #     return self.signal_generator_class(self.strategy_config)
+    #     return self.signal_generator_class(self.strategy_params)
 
     @api_stable(version="1.0", strict_params=True, strict_return=False)
     def get_roro_signal(self) -> Optional[BaseRoRoSignal]:
         if self.roro_signal_class is None:
             return None
         if self._roro_signal_instance is None:
-            roro_config = self.strategy_config.get("roro_signal_params", self.strategy_config)
+            roro_config = self.strategy_params.get("roro_signal_params", self.strategy_params)
             self._roro_signal_instance = self.roro_signal_class(roro_config)
         return self._roro_signal_instance
 
     def get_stop_loss_handler(self) -> BaseStopLoss:
         if self._stop_loss_handler_instance is None:
-            sl_config = self.strategy_config.get("stop_loss_config", {})
+            sl_config = self.strategy_params.get("stop_loss_config", {})
             sl_type_name = sl_config.get("type", "NoStopLoss")
 
             handler_class = NoStopLoss
             if sl_type_name == "AtrBasedStopLoss":
                 handler_class = AtrBasedStopLoss
 
-            self._stop_loss_handler_instance = handler_class(self.strategy_config, sl_config)
+            self._stop_loss_handler_instance = handler_class(self.strategy_params, sl_config)
         return self._stop_loss_handler_instance
 
 
     # Removed get_required_features as features are now internal to strategies
     # @classmethod
-    # def get_required_features(cls, strategy_config: dict) -> Set[Feature]:
+    # def get_required_features(cls, strategy_params: dict) -> Set[Feature]:
     #     features: Set[Feature] = set()
     #     # ... (old logic removed) ...
     #     return features
@@ -177,7 +177,7 @@ class BaseStrategy(ABC):
             ValueError: If the universe is empty (contains no symbols).
         """
         # Check if strategy has universe_config
-        universe_config = self.strategy_config.get("universe_config")
+        universe_config = self.strategy_params.get("universe_config")
         
         if universe_config:
             try:

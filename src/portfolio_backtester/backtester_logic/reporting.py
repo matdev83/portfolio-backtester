@@ -23,6 +23,7 @@ from rich.console import Console
 # ---------------------------------------------------------------------------
 from portfolio_backtester.reporting.plot_generator import (
     plot_performance_summary as _plot_performance_summary,
+    plot_price_with_trades as _plot_price_with_trades,
 )
 from portfolio_backtester.reporting.table_generator import (
     generate_performance_table as _generate_performance_table,
@@ -62,6 +63,7 @@ __all__ = [
     "_generate_performance_table",
 "_generate_transaction_history_csv",
     "_plot_performance_summary",
+    "_plot_price_with_trades",
 ]
 
 # ---------------------------------------------------------------------------
@@ -157,6 +159,27 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
         plt.savefig(plot_path)
         plt.close()
         logger.info("Performance summary saved to %s", plot_path)
+
+        # --------------------------------------------------------------
+        # 3) Price charts with trade markers for strategies trading ≤2 symbols
+        # --------------------------------------------------------------
+        for name, result_data in self.results.items():
+            trade_hist = result_data.get("trade_history")
+            if trade_hist is None or trade_hist.empty:
+                continue
+            unique_symbols = trade_hist["ticker"].unique()
+            if len(unique_symbols) > 2:
+                continue  # Skip – too many symbols
+            for sym in unique_symbols:
+                output_file = os.path.join(report_dir, f"price_with_trades_{name}_{sym}.png")
+                _plot_price_with_trades(
+                    self,
+                    daily_data_for_display,
+                    trade_hist,
+                    sym,
+                    output_file,
+                    getattr(self.args, "interactive", False),
+                )
 
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to generate summary table/plot: %s", exc) 

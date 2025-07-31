@@ -1,5 +1,5 @@
 name: momentum_optimize_sizer
-strategy: momentum
+strategy: momentum_dvol_sizer
 rebalance_frequency: ME
 transaction_costs_bps: 10
 train_window_months: 36
@@ -7,6 +7,8 @@ test_window_months: 48
 optimization_metric: Sharpe
 optimize:
 - parameter: position_sizer
+  type: categorical
+  values: ["equal_weight", "rolling_sharpe", "rolling_sortino", "rolling_beta", "rolling_benchmark_corr", "rolling_downside_volatility"]
 - parameter: num_holdings
   min_value: 15
   max_value: 25

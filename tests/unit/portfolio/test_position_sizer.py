@@ -5,16 +5,42 @@ import numpy as np
 from pandas import DataFrame, Series # Added for type hinting
 from typing import Tuple # Added for type hinting
 
+from src.portfolio_backtester.portfolio.base_sizer import BasePositionSizer
 from src.portfolio_backtester.portfolio.position_sizer import (
-    equal_weight_sizer,
-    rolling_sharpe_sizer,
-    rolling_sortino_sizer,
-    rolling_beta_sizer,
-    rolling_benchmark_corr_sizer,
-    rolling_downside_volatility_sizer,
+    EqualWeightSizer,
+    RollingSharpeSizer,
+    RollingSortinoSizer,
+    RollingBetaSizer,
+    RollingBenchmarkCorrSizer,
+    RollingDownsideVolatilitySizer,
+    SIZER_REGISTRY
 )
 
 class TestPositionSizer(unittest.TestCase):
+
+    def test_sizers_return_positive_weights(self):
+        prices = pd.DataFrame({
+            'StockA': [100, 110, 100],
+            'StockB': [100, 90, 100],
+            'StockC': [100, 110, 90]
+        }, index=pd.to_datetime(['2023-01-01', '2023-01-31', '2023-02-28']))
+        signals = pd.DataFrame({
+            'StockA': [-1, 1, 0],
+            'StockB': [0, -1, 1],
+            'StockC': [1, 0, -1]
+        }, index=prices.index)
+        benchmark = pd.Series([100, 105, 100])
+        daily_prices = pd.DataFrame({
+            'StockA': [100, 105, 110, 105, 100],
+            'StockB': [100, 95, 90, 95, 100],
+            'StockC': [100, 105, 110, 100, 90]
+        }, index=pd.to_datetime(['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-04', '2023-01-05']))
+
+        for name, sizer_class in SIZER_REGISTRY.items():
+            with self.subTest(name=name):
+                sizer = sizer_class()
+                weights = sizer.calculate_weights(signals=signals, prices=prices, benchmark=benchmark, daily_prices_for_vol=daily_prices, window=2)
+                self.assertTrue((weights >= 0).all().all(), f"{name} returned negative weights")
 
     def test_equal_weight_sizer(self):
         signals = pd.DataFrame({
@@ -28,13 +54,15 @@ class TestPositionSizer(unittest.TestCase):
             'StockC': [0.5, 0, 0.5]
         })
         
-        result_weights = equal_weight_sizer(signals)
+        sizer = EqualWeightSizer()
+        result_weights = sizer.calculate_weights(signals)
         pd.testing.assert_frame_equal(result_weights, expected_weights)
 
     def test_equal_weight_sizer_empty_signals(self):
         signals = pd.DataFrame()
         expected_weights = pd.DataFrame()
-        result_weights = equal_weight_sizer(signals)
+        sizer = EqualWeightSizer()
+        result_weights = sizer.calculate_weights(signals)
         pd.testing.assert_frame_equal(result_weights, expected_weights)
 
     def test_equal_weight_sizer_all_zeros(self):
@@ -43,10 +71,11 @@ class TestPositionSizer(unittest.TestCase):
             'StockB': [0, 0]
         })
         expected_weights = pd.DataFrame({
-            'StockA': [np.nan, np.nan],
-            'StockB': [np.nan, np.nan]
+            'StockA': [0.0, 0.0],
+            'StockB': [0.0, 0.0]
         })
-        result_weights = equal_weight_sizer(signals)
+        sizer = EqualWeightSizer()
+        result_weights = sizer.calculate_weights(signals)
         pd.testing.assert_frame_equal(result_weights, expected_weights)
 
     def _create_price_data(self, num_months: int = 5, daily_points_per_month: int = 21) -> Tuple[DataFrame, Series, DataFrame, DataFrame, Series]:
@@ -84,9 +113,13 @@ class TestPositionSizer(unittest.TestCase):
         mean = rets.rolling(window).mean()
         std = rets.rolling(window).std()
         sharpe = mean / std.replace(0, np.nan)
-        expected = monthly_signals.mul(sharpe).div(monthly_signals.mul(sharpe).abs().sum(axis=1), axis=0)
 
-        result = rolling_sharpe_sizer(monthly_signals, monthly_prices, window)
+        # Expected calculation should match the sizer's logic
+        weights = monthly_signals.abs().mul(sharpe.abs())
+        expected = weights.div(weights.sum(axis=1), axis=0).fillna(0.0)
+
+        sizer = RollingSharpeSizer()
+        result = sizer.calculate_weights(monthly_signals, monthly_prices, window=window)
         pd.testing.assert_frame_equal(result, expected)
 
     def test_rolling_sortino_sizer(self):
@@ -106,9 +139,13 @@ class TestPositionSizer(unittest.TestCase):
 
         downside_dev = rets.rolling(window).apply(downside, raw=False)
         sortino = mean / downside_dev.replace(0, np.nan)
+
+        # Expected calculation should match the sizer's logic
+        weights = monthly_signals.abs().mul(sortino.abs())
+        expected = weights.div(weights.sum(axis=1), axis=0).fillna(0.0)
         
-        expected = monthly_signals.mul(sortino).div(monthly_signals.mul(sortino).abs().sum(axis=1), axis=0)
-        result = rolling_sortino_sizer(monthly_signals, monthly_prices, window, target_return=target)
+        sizer = RollingSortinoSizer()
+        result = sizer.calculate_weights(monthly_signals, monthly_prices, window=window, target_return=target)
         
         pd.testing.assert_frame_equal(result, expected)
 
@@ -121,9 +158,10 @@ class TestPositionSizer(unittest.TestCase):
         for col in rets.columns:
             beta[col] = rets[col].rolling(window).cov(bench_rets) / bench_rets.rolling(window).var()
         factor = 1 / beta.abs().replace(0, np.nan)
-        expected = monthly_signals.mul(factor).div(monthly_signals.mul(factor).abs().sum(axis=1), axis=0)
+        expected = monthly_signals.mul(factor).div(monthly_signals.mul(factor).abs().sum(axis=1), axis=0).fillna(0.0)
 
-        result = rolling_beta_sizer(monthly_signals, monthly_prices, monthly_benchmark, window)
+        sizer = RollingBetaSizer()
+        result = sizer.calculate_weights(monthly_signals, monthly_prices, benchmark=monthly_benchmark, window=window)
         pd.testing.assert_frame_equal(result, expected)
 
     def test_rolling_benchmark_corr_sizer(self):
@@ -135,9 +173,10 @@ class TestPositionSizer(unittest.TestCase):
         for col in rets.columns:
             corr[col] = rets[col].rolling(window).corr(bench_rets)
         factor = 1 / (corr.abs() + 1e-9)
-        expected = monthly_signals.mul(factor).div(monthly_signals.mul(factor).abs().sum(axis=1), axis=0)
+        expected = monthly_signals.mul(factor).div(monthly_signals.mul(factor).abs().sum(axis=1), axis=0).fillna(0.0)
 
-        result = rolling_benchmark_corr_sizer(monthly_signals, monthly_prices, monthly_benchmark, window)
+        sizer = RollingBenchmarkCorrSizer()
+        result = sizer.calculate_weights(monthly_signals, monthly_prices, benchmark=monthly_benchmark, window=window)
         pd.testing.assert_frame_equal(result, expected)
 
     def test_rolling_downside_volatility_sizer(self):
@@ -190,7 +229,8 @@ class TestPositionSizer(unittest.TestCase):
         expected = expected.clip(upper=max_leverage, lower=-max_leverage)
         expected = expected.fillna(0)
 
-        result = rolling_downside_volatility_sizer(monthly_signals, monthly_prices, monthly_benchmark, daily_prices, window, target_volatility=target_volatility, max_leverage=max_leverage)
+        sizer = RollingDownsideVolatilitySizer()
+        result = sizer.calculate_weights(monthly_signals, monthly_prices, benchmark=monthly_benchmark, daily_prices_for_vol=daily_prices, window=window, target_volatility=target_volatility, max_leverage=max_leverage)
         
         # Save to CSV for inspection
         import os

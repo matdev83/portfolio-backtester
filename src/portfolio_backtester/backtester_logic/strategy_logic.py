@@ -127,38 +127,63 @@ def generate_signals(strategy, scenario_config, price_data_daily_ohlc, universe_
         signals = pd.concat(all_monthly_weights)
         signals = signals.reindex(rebalance_dates).fillna(0.0)
 
+    # Enforce trade direction limitations at framework level
+    strategy_params = scenario_config.get("strategy_params", {})
+    trade_longs = strategy_params.get("trade_longs", True)
+    trade_shorts = strategy_params.get("trade_shorts", True)
+
+    if not trade_longs or not trade_shorts:
+        signals_filtered = signals.copy()
+        masked = pd.DataFrame(False, index=signals.index, columns=signals.columns)
+        if not trade_longs:
+            mask_pos = signals_filtered > 0
+            signals_filtered[mask_pos] = 0.0
+            masked |= mask_pos
+        if not trade_shorts:
+            mask_neg = signals_filtered < 0
+            signals_filtered[mask_neg] = 0.0
+            masked |= mask_neg
+        if masked.any().any():
+            num_filtered = int(masked.sum().sum())
+            logger.warning(
+                "Filtered %d signal weights that violated trade direction constraints (trade_longs=%s, trade_shorts=%s).",
+                num_filtered,
+                trade_longs,
+                trade_shorts,
+            )
+        signals = signals_filtered
+
     return signals
 
 def size_positions(signals, scenario_config, price_data_monthly_closes, price_data_daily_ohlc, universe_tickers, benchmark_ticker):
-    sizer_func = get_position_sizer_from_config(scenario_config)
+    # If the position_sizer is set to "direct", bypass the sizing logic
+    if scenario_config.get("position_sizer") == "direct":
+        return signals
+
+    sizer = get_position_sizer_from_config(scenario_config)
 
     sizer_param_mapping = SIZER_PARAM_MAPPING
 
     filtered_sizer_params = {}
     strategy_params = scenario_config.get("strategy_params", {})
 
-    window_param = None
-    target_return_param = None
-    max_leverage_param = None
-
     for key, value in strategy_params.items():
         if key in sizer_param_mapping:
             new_key = sizer_param_mapping[key]
-            if new_key == "window":
-                window_param = value
-            elif new_key == "target_return":
-                target_return_param = value
-            elif new_key == "max_leverage":
-                max_leverage_param = value
-            else:
-                filtered_sizer_params[new_key] = value
+            filtered_sizer_params[new_key] = value
 
     strategy_monthly_closes = price_data_monthly_closes[universe_tickers]
     benchmark_monthly_closes = price_data_monthly_closes[benchmark_ticker]
 
-    sizer_args = [signals, strategy_monthly_closes, benchmark_monthly_closes]
+    # Prepare the arguments for the sizer's calculate_weights method
+    sizer_kwargs = {
+        "signals": signals,
+        "prices": strategy_monthly_closes,
+        "benchmark": benchmark_monthly_closes,
+        **filtered_sizer_params
+    }
 
-    if scenario_config.get("position_sizer", "equal_weight") == "rolling_downside_volatility":
+    if scenario_config.get("position_sizer") == "rolling_downside_volatility":
         if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and \
            'Close' in price_data_daily_ohlc.columns.get_level_values(1):
             daily_closes_for_sizer = price_data_daily_ohlc.xs('Close', level='Field', axis=1)[universe_tickers]
@@ -166,26 +191,9 @@ def size_positions(signals, scenario_config, price_data_monthly_closes, price_da
             daily_closes_for_sizer = price_data_daily_ohlc[universe_tickers]
         else:
             raise ValueError("rolling_downside_volatility sizer: Could not extract daily close prices from price_data_daily_ohlc.")
-        sizer_args.append(daily_closes_for_sizer)
+        sizer_kwargs["daily_prices_for_vol"] = daily_closes_for_sizer
 
-    sizer_name = scenario_config.get("position_sizer", "equal_weight")
-    if sizer_name in ["rolling_sharpe", "rolling_sortino", "rolling_beta", "rolling_benchmark_corr", "rolling_downside_volatility"]:
-        if window_param is None:
-            raise ValueError(f"Sizer '{sizer_name}' requires a 'window' parameter, but it was not found in strategy_params.")
-        sizer_args.append(window_param)
-
-    if sizer_name == "rolling_sortino":
-        if target_return_param is None:
-            sizer_args.append(0.0)
-        else:
-            sizer_args.append(target_return_param)
-
-    if sizer_name == "rolling_downside_volatility" and max_leverage_param is not None:
-        filtered_sizer_params["max_leverage"] = max_leverage_param
-
-    sized_signals = sizer_func(
-        *sizer_args,
-        **filtered_sizer_params,
-    )
+    sized_signals = sizer.calculate_weights(**sizer_kwargs)
 
     return sized_signals
+

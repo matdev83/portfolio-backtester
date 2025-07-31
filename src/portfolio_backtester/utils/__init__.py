@@ -95,7 +95,7 @@ def _run_scenario_static(
         price_monthly[global_cfg["benchmark"]],
     )
 
-    sizer_func = get_position_sizer_from_config(scenario_cfg)
+    sizer = get_position_sizer_from_config(scenario_cfg)
 
     sizer_params = scenario_cfg.get("strategy_params", {}).copy()
     # Map sizer-specific parameters from strategy_params to expected sizer argument names
@@ -111,12 +111,14 @@ def _run_scenario_static(
         if old_key in sizer_params:
             sizer_params[new_key] = sizer_params.pop(old_key)
 
-    sized = sizer_func(
-        signals,
-        price_monthly[universe_cols],
-        price_monthly[global_cfg["benchmark"]],
-        **sizer_params,
-    )
+    sizer_kwargs = {
+        "signals": signals,
+        "prices": price_monthly[universe_cols],
+        "benchmark": price_monthly[global_cfg["benchmark"]],
+        **sizer_params
+    }
+
+    sized = sizer.calculate_weights(**sizer_kwargs)
     weights_monthly = rebalance(sized, scenario_cfg["rebalance_frequency"])
 
     # --- 2) Expand weights to daily frequency -------------------------------
