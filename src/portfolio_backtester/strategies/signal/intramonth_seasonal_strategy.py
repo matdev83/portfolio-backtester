@@ -162,10 +162,12 @@ class IntramonthSeasonalStrategy(SignalStrategy):
 
                 # Print for demonstration
                 asset_to_print = valid_assets[0]
-                print(
-                    f"Date: {current_date.date()} | Asset: {asset_to_print} | "
-                    f"Fast EMA: {fast_ema_values.get(asset_to_print, 'N/A'):.2f} | "
-                    f"Slow EMA: {slow_ema_values.get(asset_to_print, 'N/A'):.2f}"
+                logger.debug(
+                    "Date: %s | Asset: %s | Fast EMA: %.2f | Slow EMA: %.2f",
+                    current_date.date(),
+                    asset_to_print,
+                    fast_ema_values.get(asset_to_print, float('nan')),
+                    slow_ema_values.get(asset_to_print, float('nan')),
                 )
                 return fast_ema_values, slow_ema_values
 
@@ -195,8 +197,14 @@ class IntramonthSeasonalStrategy(SignalStrategy):
         if not valid_assets:
             return pd.DataFrame(0.0, index=[current_date], columns=all_assets)
 
-        # --- Debugging --- #
-        print(f"[DEBUG] Date: {current_date.date()} | Strategy Params: fast_ema_len={self.fast_ema_len}, slow_ema_multiplier={self.slow_ema_multiplier}, use_ema_filter={self.use_ema_filter}")
+        # Debugging output via logger
+        logger.debug(
+            "Date: %s | Strategy Params: fast_ema_len=%d, slow_ema_multiplier=%.2f, use_ema_filter=%s",
+            current_date.date(),
+            self.fast_ema_len,
+            self.slow_ema_multiplier,
+            self.use_ema_filter,
+        )
 
         fast_ema_values, slow_ema_values = self._calculate_ema_values(
             all_historical_data, valid_assets, current_date
@@ -256,13 +264,13 @@ class IntramonthSeasonalStrategy(SignalStrategy):
                     # Align ema_condition_met with valid_indices
                     ema_condition_met = ema_condition_met.reindex(valid_assets).fillna(False).values
 
-                    # --- Debugging ---
-                    print(f"[DEBUG] EMA Condition Met: {ema_condition_met}")
+                    # Debugging
+                    logger.debug("EMA Condition Met: %s", ema_condition_met)
                 
                 trade_mask = not_in_position & ema_condition_met
 
-                # --- Debugging ---
-                print(f"[DEBUG] Trade Mask: {trade_mask}")
+                # Debugging
+                logger.debug("Trade Mask: %s", trade_mask)
 
                 if direction == "long":
                     target_weights_np[valid_indices[trade_mask]] = 1.0

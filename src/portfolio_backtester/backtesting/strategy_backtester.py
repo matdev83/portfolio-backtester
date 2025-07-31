@@ -320,12 +320,18 @@ class StrategyBacktester:
         else:
             universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
         
-        # Filter missing tickers
-        missing_cols = [t for t in universe_tickers if t not in monthly_data.columns]
+        # Filter missing tickers using daily_data (more reliable for presence)
+        if isinstance(daily_data.columns, pd.MultiIndex):
+            available_tickers = set(daily_data.columns.get_level_values(0))
+        else:
+            available_tickers = set(daily_data.columns)
+
+        missing_cols = [t for t in universe_tickers if t not in available_tickers]
         if missing_cols:
             universe_tickers = [t for t in universe_tickers if t not in missing_cols]
-        
+
         if not universe_tickers:
+            logger.warning("No available universe tickers for this window after filtering missing data. Skipping window.")
             return None
         
         benchmark_ticker = self.global_config["benchmark"]
