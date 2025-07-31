@@ -286,7 +286,7 @@ def _detect_timing_mode(config: Dict[str, Any], strategy_instance=None) -> str:
     if strategy_instance is not None:
         # Import here to avoid circular imports
         try:
-            from ..strategies.base_strategy import BaseStrategy
+            from ..strategies.base.base_strategy import BaseStrategy
             
             # Check if the method is overridden in the subclass
             base_method = BaseStrategy.__dict__.get('supports_daily_signals')

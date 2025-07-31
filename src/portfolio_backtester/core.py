@@ -10,7 +10,7 @@ import optuna
 import pandas as pd
 
 from . import strategies
-from .strategies.base_strategy import BaseStrategy
+from .strategies.base.base_strategy import BaseStrategy
 from .strategies import enumerate_strategies_with_params
 from .backtester_logic.execution import run_backtest_mode
 from .backtester_logic.strategy_logic import generate_signals, size_positions

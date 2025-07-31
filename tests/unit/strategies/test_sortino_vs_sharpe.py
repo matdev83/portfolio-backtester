@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
-from portfolio_backtester.strategies.sharpe_momentum_strategy import SharpeMomentumStrategy
-from portfolio_backtester.strategies.sortino_momentum_strategy import SortinoMomentumStrategy
+from portfolio_backtester.strategies.portfolio.sharpe_momentum_strategy import SharpeMomentumStrategy
+from portfolio_backtester.strategies.portfolio.sortino_momentum_strategy import SortinoMomentumStrategy
 # from portfolio_backtester.feature_engineering import precompute_features # Removed
 
 def create_sample_data():

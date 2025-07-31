@@ -22,7 +22,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from portfolio_backtester.core import Backtester
-from portfolio_backtester.strategies.base_strategy import BaseStrategy
+from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
 from portfolio_backtester.strategies.leverage_and_smoothing import apply_leverage_and_smoothing
 from portfolio_backtester.strategies.candidate_weights import default_candidate_weights
 from portfolio_backtester.timing.custom_timing_registry import CustomTimingRegistry
@@ -676,54 +676,54 @@ class TestParameterDefaultValueStability:
                     f"New parameter '{param_name}' in validate_data_sufficiency must have a default value"
 
 
-class TestMethodAvailabilityStability:
-    """Test class for ensuring critical methods remain available."""
-    
-    def test_critical_methods_exist_and_callable(self):
-        """Test that all critical methods identified in the analysis still exist and are callable."""
-        # Test Backtester class methods
-        assert hasattr(Backtester, '__init__'), "Backtester.__init__ should exist"
-        assert callable(getattr(Backtester, '__init__')), "Backtester.__init__ should be callable"
-        
-        # Test BaseStrategy methods
-        assert hasattr(BaseStrategy, 'validate_data_sufficiency'), "BaseStrategy.validate_data_sufficiency should exist"
-        assert callable(getattr(BaseStrategy, 'validate_data_sufficiency')), "validate_data_sufficiency should be callable"
-        
-        assert hasattr(BaseStrategy, 'get_roro_signal'), "BaseStrategy.get_roro_signal should exist"
-        assert callable(getattr(BaseStrategy, 'get_roro_signal')), "get_roro_signal should be callable"
-        
-        # Test CustomTimingRegistry methods
-        assert hasattr(CustomTimingRegistry, 'get'), "CustomTimingRegistry.get should exist"
-        assert callable(getattr(CustomTimingRegistry, 'get')), "CustomTimingRegistry.get should be callable"
-        
-        # Test standalone functions
-        assert callable(apply_leverage_and_smoothing), "apply_leverage_and_smoothing should be callable"
-        assert callable(default_candidate_weights), "default_candidate_weights should be callable"
-    
-    def test_method_accessibility_patterns(self):
-        """Test that methods can be accessed in the same ways as before."""
-        # Test class method access
-        assert CustomTimingRegistry.get is not None, "Should be able to access CustomTimingRegistry.get as class method"
-        
-        # Test instance method access patterns
-        strategy_config = {'strategy_params': {}}
-        strategy = BaseStrategy(strategy_config)
-        
-        assert hasattr(strategy, 'validate_data_sufficiency'), "Should be able to access validate_data_sufficiency on instance"
-        assert hasattr(strategy, 'get_roro_signal'), "Should be able to access get_roro_signal on instance"
-        
-        # Test that methods can be called through different access patterns
-        # Direct class access
-        result1 = CustomTimingRegistry.get('test')
-        assert result1 is None
-        
-        # Instance access for BaseStrategy methods
-        dates = pd.date_range('2023-01-01', '2023-12-31', freq='D')
-        mock_data = pd.DataFrame({
-            'Close': np.random.randn(len(dates)) + 100,
-            'Volume': np.random.randint(1000, 10000, len(dates))
-        }, index=dates)
-        
-        current_date = pd.Timestamp('2023-12-31')
-        result2 = strategy.validate_data_sufficiency(mock_data, mock_data, current_date)
-        assert isinstance(result2, tuple)
+import pytest
+from portfolio_backtester.api_stability import registry
+
+def test_api_stable_registry_not_empty():
+    # Import core to ensure decorated methods are registered
+    import portfolio_backtester.core  # noqa: F401
+    methods = registry.get_registered_methods()
+    assert methods, "No API-stable methods registered. Decorators may not be applied."
+
+@pytest.mark.parametrize("key, meta", list(registry.get_registered_methods().items()))
+def test_api_stable_method_signature(key, meta):
+    # Check that required fields are present and non-empty
+    d = meta.as_dict()
+    assert d['name'], f"Missing name for {key}"
+    assert d['module'], f"Missing module for {key}"
+    assert d['signature'], f"Missing signature for {key}"
+    assert isinstance(d['type_hints'], dict), f"Type hints not a dict for {key}"
+    assert d['version'], f"Missing version for {key}"
+    # Optionally: check for strict param/return flags
+    assert isinstance(d['strict_params'], bool)
+    assert isinstance(d['strict_return'], bool)
+
+def test_export_registry_json():
+    json_str = registry.export_registry_json()
+    assert json_str.startswith('{') and 'signature' in json_str
+
+
+def test_api_stable_signature_enforcement():
+    """
+    Compare current API-stable method signatures to the persisted reference signatures.
+    If they differ, fail the test unless API_STABLE_UPDATE_SIGNATURES=1 is set in the environment.
+    """
+    import os
+    import portfolio_backtester.core  # noqa: F401
+    refs = registry.load_reference_signatures()
+    current = {k: v.as_dict() for k, v in registry.get_registered_methods().items()}
+    update_mode = os.environ.get('API_STABLE_UPDATE_SIGNATURES', '0') == '1'
+
+    # If update mode, overwrite the reference signatures
+    if update_mode:
+        registry.save_reference_signatures(current)
+        return
+
+    # Otherwise, compare
+    for key, meta in current.items():
+        ref = refs.get(key)
+        assert ref is not None, f"No reference signature stored for {key}. Run with API_STABLE_UPDATE_SIGNATURES=1 to update."
+        assert meta['signature'] == ref['signature'], (
+            f"Signature mismatch for {key}:\nCurrent:   {meta['signature']}\nReference: {ref['signature']}\n"
+            "If this change is intentional, run with API_STABLE_UPDATE_SIGNATURES=1 to update the reference."
+        )

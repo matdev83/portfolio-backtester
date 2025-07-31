@@ -618,34 +618,43 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
 
 def calculate_max_dd_recovery_time(rets):
     """Calculate maximum drawdown recovery time in days."""
-    if rets.empty:
+    if rets.empty or not isinstance(rets.index, pd.DatetimeIndex):
+        logger.warning("Cannot calculate max_dd_recovery_time: rets is empty or index is not a DatetimeIndex.")
         return 0
     
-    # Calculate cumulative returns
-    cumulative = (1 + rets).cumprod()
+    logger.debug(f"Calculating max_dd_recovery_time for rets with length {len(rets)} and index from {rets.index.min()} to {rets.index.max()}")
     
-    # Calculate running maximum and drawdown
-    running_max = cumulative.expanding().max()
-    drawdown = (cumulative / running_max - 1)
-    
-    # Find recovery periods
-    max_recovery_time = 0
-    in_drawdown = False
-    drawdown_start = None
-    
-    for i, (date, dd_value) in enumerate(drawdown.items()):
-        if dd_value < -1e-6 and not in_drawdown:
-            # Start of drawdown
-            in_drawdown = True
-            drawdown_start = date
-        elif dd_value >= -1e-6 and in_drawdown:
-            # End of drawdown (recovery)
-            in_drawdown = False
-            if drawdown_start is not None:
-                recovery_time = (date - drawdown_start).days
-                max_recovery_time = max(max_recovery_time, recovery_time)
-    
-    return max_recovery_time
+    try:
+        # Calculate cumulative returns
+        cumulative = (1 + rets).cumprod()
+        
+        # Calculate running maximum and drawdown
+        running_max = cumulative.expanding().max()
+        drawdown = (cumulative / running_max - 1)
+        
+        # Find recovery periods
+        max_recovery_time = 0
+        in_drawdown = False
+        drawdown_start = None
+        
+        for i, (date, dd_value) in enumerate(drawdown.items()):
+            if dd_value < -1e-6 and not in_drawdown:
+                # Start of drawdown
+                in_drawdown = True
+                drawdown_start = date
+            elif dd_value >= -1e-6 and in_drawdown:
+                # End of drawdown (recovery)
+                in_drawdown = False
+                if drawdown_start is not None:
+                    recovery_time = (date - drawdown_start).days
+                    max_recovery_time = max(max_recovery_time, recovery_time)
+        
+        logger.debug(f"Successfully calculated max_dd_recovery_time: {max_recovery_time}")
+        return max_recovery_time
+    except Exception as e:
+        logger.warning(f"Could not calculate max drawdown recovery time: {e}")
+        logger.debug(f"rets that caused the error:\n{rets.to_string()}")
+        return np.nan
 
 
 def calculate_max_flat_period(rets):

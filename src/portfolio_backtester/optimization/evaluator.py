@@ -7,6 +7,7 @@ backends and supports both single and multi-objective optimization.
 """
 
 import logging
+import copy
 import numpy as np
 import pandas as pd
 import time
@@ -145,8 +146,10 @@ class BacktestEvaluator:
             data = self._optimize_data_memory(data)
         
         # Create scenario config with the parameters to evaluate
-        trial_scenario_config = scenario_config.copy()
-        trial_scenario_config["strategy_params"] = parameters
+        trial_scenario_config = copy.deepcopy(scenario_config)
+        if "strategy_params" not in trial_scenario_config:
+            trial_scenario_config["strategy_params"] = {}
+        trial_scenario_config["strategy_params"].update(parameters)
         
         # Evaluate each window
         if self.enable_parallel_optimization and self.n_jobs > 1 and self.parallel_optimizer is not None:

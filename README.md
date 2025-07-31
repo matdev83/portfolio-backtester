@@ -139,7 +139,7 @@ python -m src.portfolio_backtester.backtester
     - `backtest`: Single scenario backtesting
     - `optimize`: Walk-forward optimization with robustness features
     - `monte_carlo`: Full Monte Carlo stress testing analysis
-* `--scenario-name`: Name of the scenario from `config/scenarios.yaml`
+* `--scenario-name`: Name of the scenario from `config/scenarios/` subdirectories
   * **Required:** Yes for optimize/monte_carlo modes
 * `--log-level`: Set the logging level
   * **Choices:** `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`

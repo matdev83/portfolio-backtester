@@ -61,11 +61,11 @@ This approach works because WSL can execute Windows binaries directly. The virtu
 - **Verification**: Before marking a task as complete, an agent **MUST** verify its work. This includes running specific tests related to the changes and executing the full test suite to ensure no regressions were introduced.
 - **Codebase Integrity**: Agents are expected to only make changes that improve the codebase. This includes adding new functions/methods, improving existing ones, performing maintenance tasks (improving the shape of the code), and adding new functionalities. Agents are **NOT ALLOWED** to degrade the project's shape by removing functions, functionalities, files, or features, unless **EXPLICITLY** requested by the user.
 - **Architectural Principles**: Adhere to the following software design principles:
-    - **TDD (Test-Driven Development)**
-    - **SOLID**
-    - **DRY (Don't Repeat Yourself)**
-    - **KISS (Keep It Simple, Stupid)**
-    - **Convention over Configuration**
+  - **TDD (Test-Driven Development)**
+  - **SOLID**
+  - **DRY (Don't Repeat Yourself)**
+  - **KISS (Keep It Simple, Stupid)**
+  - **Convention over Configuration**
 
 ---
 
@@ -100,6 +100,7 @@ The `@api_stable` decorator protects critical methods from breaking changes by v
 ### Update Command
 
 When one of the above situations occurs, run:
+
 ```bash
 ./.venv/Scripts/python.exe scripts/update_protected_signatures.py --quiet
 ```

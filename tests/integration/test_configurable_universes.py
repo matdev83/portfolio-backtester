@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 import pandas as pd
 
-from src.portfolio_backtester.strategies.momentum_strategy import MomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.momentum_strategy import MomentumStrategy
 from src.portfolio_backtester.universe_loader import clear_universe_cache
 
 

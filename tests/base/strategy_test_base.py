@@ -233,14 +233,7 @@ class BaseStrategyTest(unittest.TestCase):
         """
         self.skipTest("Smoke test should be implemented in concrete strategy classes")
     
-    def test_strategy_initialization_smoke(self):
-        """
-        Standard smoke test for strategy initialization.
-        
-        This test should be overridden in concrete strategy test classes
-        with strategy-specific implementation.
-        """
-        self.skipTest("Initialization test should be implemented in concrete strategy classes")
+    
 
 
 class BaseMomentumStrategyTest(BaseStrategyTest):

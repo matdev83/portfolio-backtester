@@ -1,0 +1,72 @@
+name: intramonth_seasonal_optimization
+strategy: intramonth_seasonal
+rebalance_frequency: D
+position_sizer: equal_weight
+transaction_costs_bps: 10
+train_window_months: 12
+test_window_months: 12
+
+# Universe Configuration: Use method-based universe for seasonal strategy
+universe_config:
+  type: "method"
+  method_name: "get_top_weight_sp500_components"
+  n_holdings: 30
+  exact: false
+optimization_targets:
+- name: Sortino
+  direction: maximize
+optimize:
+- parameter: entry_day
+  type: int
+  min_value: -14
+  max_value: 14
+  step: 1
+- parameter: hold_days
+  type: int
+  min_value: 3
+  max_value: 14
+  step: 1
+- parameter: trade_month_1
+  type: categorical
+  choices: [true, false]
+- parameter: trade_month_2
+  type: categorical
+  choices: [true, false]
+- parameter: trade_month_3
+  type: categorical
+  choices: [true, false]
+- parameter: trade_month_4
+  type: categorical
+  choices: [true, false]
+- parameter: trade_month_5
+  type: categorical
+  choices: [true, false]
+- parameter: trade_month_6
+  type: categorical
+  choices: [true, false]
+- parameter: trade_month_7
+  type: categorical
+  choices: [true, false]
+- parameter: trade_month_8
+  type: categorical
+  choices: [true, false]
+- parameter: trade_month_9
+  type: categorical
+  choices: [true, false]
+- parameter: trade_month_10
+  type: categorical
+  choices: [true, false]
+- parameter: trade_month_11
+  type: categorical
+  choices: [true, false]
+- parameter: trade_month_12
+  type: categorical
+  choices: [true, false]
+
+strategy_params:
+  direction: long
+  long_only: true
+  leverage: 1.0
+enable_monte_carlo_during_optimization: false
+universe:
+- TLT

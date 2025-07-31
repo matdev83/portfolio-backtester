@@ -11,7 +11,7 @@ from src.portfolio_backtester.timing.backward_compatibility import (
     migrate_legacy_config,
     ensure_backward_compatibility
 )
-from src.portfolio_backtester.strategies.base_strategy import BaseStrategy
+from src.portfolio_backtester.strategies.base.base_strategy import BaseStrategy
 from src.portfolio_backtester.timing.time_based_timing import TimeBasedTiming
 from src.portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
 from src.portfolio_backtester.timing.timing_state import TimingState

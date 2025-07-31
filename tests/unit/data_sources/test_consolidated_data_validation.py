@@ -208,73 +208,7 @@ class TestConsolidatedDataValidation(unittest.TestCase):
         self.assertFalse(self.validation_utils.validate_date_index(duplicate_data))
 
 
-class TestHybridDataSourceValidation(unittest.TestCase):
-    """Test hybrid data source specific validation."""
-    
-    def setUp(self):
-        """Set up hybrid data source tests."""
-        self.hybrid_source = HybridDataSource()
-        self.validation_utils = DataValidationUtilities()
-    
-    def test_hybrid_data_source_validation_integration(self):
-        """Test integration of validation utilities with hybrid data source."""
-        # Mock successful data retrieval
-        mock_data = pd.DataFrame({
-            ('AAPL', 'Close'): [100, 101, 102],
-            ('AAPL', 'Volume'): [1000, 1100, 1200]
-        })
-        mock_data.index = pd.date_range('2023-01-01', periods=3)
-        mock_data.columns = pd.MultiIndex.from_tuples(mock_data.columns, names=['Ticker', 'Field'])
-        
-        with patch.object(self.hybrid_source, 'get_data', return_value=mock_data):
-            result = self.hybrid_source.get_data(['AAPL'], '2023-01-01', '2023-01-03')
-            
-            # Should pass basic validation
-            self.assertTrue(isinstance(result, pd.DataFrame))
-            self.assertFalse(result.empty)
-    
-    def test_validation_with_real_data_patterns(self):
-        """Test validation with realistic data patterns."""
-        # Test with data that might come from real sources
-        realistic_data = self.create_realistic_market_data()
-        
-        # Should pass all validations
-        self.assertTrue(self.validation_utils.validate_ohlcv_structure(realistic_data))
-        self.assertTrue(self.validation_utils.validate_price_consistency(realistic_data))
-        self.assertTrue(self.validation_utils.validate_data_completeness(realistic_data))
-        self.assertTrue(self.validation_utils.validate_date_index(realistic_data))
-    
-    def create_realistic_market_data(self):
-        """Create realistic market data for testing."""
-        dates = pd.date_range('2020-01-01', '2023-12-31', freq='D')
-        tickers = ['AAPL', 'MSFT', 'GOOGL']
-        
-        np.random.seed(42)
-        data_frames = []
-        
-        for ticker in tickers:
-            # Simulate realistic price movements
-            returns = np.random.normal(0.0005, 0.02, len(dates))
-            prices = 100 * np.cumprod(1 + returns)
-            
-            # Create OHLCV with realistic relationships
-            df = pd.DataFrame(index=dates)
-            df['Close'] = prices
-            df['Open'] = prices * (1 + np.random.normal(0, 0.001, len(dates)))
-            df['High'] = prices * (1 + np.abs(np.random.normal(0, 0.005, len(dates))))
-            df['Low'] = prices * (1 - np.abs(np.random.normal(0, 0.005, len(dates))))
-            df['Volume'] = np.random.randint(1000000, 50000000, len(dates))
-            
-            # Ensure price consistency
-            df['High'] = df[['Open', 'High', 'Low', 'Close']].max(axis=1)
-            df['Low'] = df[['Open', 'High', 'Low', 'Close']].min(axis=1)
-            
-            df.columns = pd.MultiIndex.from_product([[ticker], df.columns])
-            data_frames.append(df)
-        
-        result = pd.concat(data_frames, axis=1)
-        result.columns.names = ['Ticker', 'Field']
-        return result
+
 
 
 if __name__ == '__main__':

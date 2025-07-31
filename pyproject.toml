@@ -42,7 +42,8 @@ dependencies = [
     "ta",
     "edgar",
     "httpx",
-    "tqdm"
+    "tqdm",
+    "psutil"
 ]
 
 [project.optional-dependencies]

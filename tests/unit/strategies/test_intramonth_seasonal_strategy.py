@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.portfolio_backtester.strategies.intramonth_seasonal_strategy import (
+from src.portfolio_backtester.strategies.signal.intramonth_seasonal_strategy import (
     IntramonthSeasonalStrategy,
 )
 

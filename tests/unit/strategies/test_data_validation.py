@@ -10,17 +10,15 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-from src.portfolio_backtester.strategies import (
-    MomentumStrategy,
-    MomentumUnfilteredAtrStrategy,
-    CalmarMomentumStrategy,
-    SortinoMomentumStrategy,
-    SharpeMomentumStrategy,
-    VAMSMomentumStrategy,
-    VAMSNoDownsideStrategy,
-    FilteredLaggedMomentumStrategy,
-    MomentumDvolSizerStrategy,
-)
+from src.portfolio_backtester.strategies.portfolio.momentum_strategy import MomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.momentum_unfiltered_atr_strategy import MomentumUnfilteredAtrStrategy
+from src.portfolio_backtester.strategies.portfolio.calmar_momentum_strategy import CalmarMomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.sortino_momentum_strategy import SortinoMomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.sharpe_momentum_strategy import SharpeMomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.vams_momentum_strategy import VAMSMomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.vams_no_downside_strategy import VAMSNoDownsideStrategy
+from src.portfolio_backtester.strategies.portfolio.filtered_lagged_momentum_strategy import FilteredLaggedMomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.momentum_dvol_sizer_strategy import MomentumDvolSizerStrategy
 
 
 class TestStrategyDataValidation:

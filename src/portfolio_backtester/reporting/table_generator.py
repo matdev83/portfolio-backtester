@@ -437,3 +437,68 @@ def generate_enhanced_performance_table(backtester, console: Console, period_ret
                         params_table.add_row("Constraint Details", constraint_message)
             
             console.print(params_table)
+
+
+def generate_transaction_history_csv(backtest_results: dict, report_dir: str):
+    """Generate CSV file with transaction history for all strategies.
+    
+    Args:
+        backtest_results: Dictionary of backtest results
+        report_dir: Directory to save the CSV file
+    """
+    for name, result_data in backtest_results.items():
+        if "trade_history" not in result_data or result_data["trade_history"].empty:
+            continue
+            
+        trade_history = result_data["trade_history"]
+        transactions = []
+        
+        # Process each trade to create entry and exit transactions
+        for _, trade in trade_history.iterrows():
+            ticker = trade["ticker"]
+            quantity = trade["quantity"]
+            entry_date = trade["entry_date"]
+            exit_date = trade["exit_date"]
+            entry_price = trade["entry_price"]
+            exit_price = trade["exit_price"]
+            commission_entry = trade["commission_entry"]
+            commission_exit = trade["commission_exit"]
+            pnl_net = trade["pnl_net"]
+            
+            # Determine trade types
+            if quantity > 0:
+                entry_type = "BTO"  # Buy To Open
+                exit_type = "STC"   # Sell To Close
+            else:
+                entry_type = "STO"  # Sell To Open
+                exit_type = "BTC"   # Buy To Close
+            
+            # Add entry transaction
+            transactions.append({
+                "datetime": entry_date,
+                "symbol": ticker,
+                "trade_type": entry_type,
+                "amount_of_shares": abs(quantity),
+                "trade_price": entry_price,
+                "calculated_commissions": commission_entry,
+                "profit_loss": None  # No P&L for entry trades
+            })
+            
+            # Add exit transaction
+            if pd.notna(exit_date) and exit_price is not None:
+                transactions.append({
+                    "datetime": exit_date,
+                    "symbol": ticker,
+                    "trade_type": exit_type,
+                    "amount_of_shares": abs(quantity),
+                    "trade_price": exit_price,
+                    "calculated_commissions": commission_exit,
+                    "profit_loss": pnl_net  # P&L only for exit trades
+                })
+        
+        # Create DataFrame and save to CSV
+        if transactions:
+            transactions_df = pd.DataFrame(transactions)
+            csv_path = os.path.join(report_dir, f"transaction_history_{name}.csv")
+            transactions_df.to_csv(csv_path, index=False)
+            logger.info("Transaction history for %s saved to %s", name, csv_path)

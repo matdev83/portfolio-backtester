@@ -10,7 +10,7 @@ from .timing_state import TimingState
 from ..api_stability import api_stable
 
 if TYPE_CHECKING:
-    from ..strategies.base_strategy import BaseStrategy
+    from ..strategies.base.base_strategy import BaseStrategy
 
 
 class TimingController(ABC):

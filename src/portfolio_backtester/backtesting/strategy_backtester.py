@@ -12,7 +12,7 @@ import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
 
 from .results import BacktestResult, WindowResult
-from ..strategies.base_strategy import BaseStrategy
+from ..strategies.base.base_strategy import BaseStrategy
 from ..strategies import enumerate_strategies_with_params
 from ..backtester_logic.strategy_logic import generate_signals, size_positions
 from ..backtester_logic.portfolio_logic import calculate_portfolio_returns
@@ -48,6 +48,7 @@ class StrategyBacktester:
         self.strategy_map: Dict[str, type] = {
             name: klass for name, klass in enumerate_strategies_with_params().items()
         }
+        self.strategy: Optional[BaseStrategy] = None
         
         # Import data cache here to avoid optimization dependencies
         from ..data_cache import get_global_cache
@@ -288,6 +289,7 @@ class StrategyBacktester:
         if not isinstance(result, BaseStrategy):
             raise TypeError(f"Strategy class {strategy_class} did not return a BaseStrategy instance.")
         
+        self.strategy = result
         return result
     
     def _run_scenario_for_window(

@@ -79,7 +79,12 @@ general_optimizer_config:
   optimizer_timeout_sec: 3600 # 1 hour
 
 optimizer_config:
-  optimizer_type: "optuna" # "optuna" or "grid_search"
+  optimizer_type: "genetic" # "optuna" or "grid_search"
+
+# Genetic Algorithm Configuration
+pygad_config:
+  population_size: 100
+  num_generations: 3
 
 # Walk-Forward Optimization Robustness Configuration
 wfo_robustness_config:

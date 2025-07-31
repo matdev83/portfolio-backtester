@@ -1,39 +1,15 @@
 from __future__ import annotations
 
-from .base_strategy import BaseStrategy
-from .momentum_strategy import MomentumStrategy
-from .momentum_unfiltered_atr_strategy import MomentumUnfilteredAtrStrategy
-from .sharpe_momentum_strategy import SharpeMomentumStrategy
-from .vams_momentum_strategy import VAMSMomentumStrategy
-from .sortino_momentum_strategy import SortinoMomentumStrategy
-from .calmar_momentum_strategy import CalmarMomentumStrategy
-from .vams_no_downside_strategy import VAMSNoDownsideStrategy
-from .momentum_dvol_sizer_strategy import MomentumDvolSizerStrategy
-from .filtered_lagged_momentum_strategy import FilteredLaggedMomentumStrategy
-from .ema_crossover_strategy import EMAStrategy
-from .ema_roro_strategy import EMARoRoStrategy
-from .low_volatility_factor_strategy import LowVolatilityFactorStrategy
-from .momentum_beta_filtered_strategy import MomentumBetaFilteredStrategy
-from .uvxy_rsi_strategy import UvxyRsiStrategy
-from .intramonth_seasonal_strategy import IntramonthSeasonalStrategy
+# Only import the base classes that are commonly used
+from .base.base_strategy import BaseStrategy
+from .base.portfolio_strategy import PortfolioStrategy
+from .base.signal_strategy import SignalStrategy
 
 __all__ = [
     "BaseStrategy",
-    "MomentumStrategy",
-    "MomentumUnfilteredAtrStrategy",
-    "SharpeMomentumStrategy",
-    "VAMSMomentumStrategy",
-    "SortinoMomentumStrategy",
-    "CalmarMomentumStrategy",
-    "VAMSNoDownsideStrategy",
-    "MomentumDvolSizerStrategy",
-    "FilteredLaggedMomentumStrategy",
-    "EMAStrategy",
-    "EMARoRoStrategy",
-    "LowVolatilityFactorStrategy",
-    "MomentumBetaFilteredStrategy",
-    "UvxyRsiStrategy",
-    "IntramonthSeasonalStrategy",
+    "PortfolioStrategy", 
+    "SignalStrategy",
+    "enumerate_strategies_with_params",
 ]
 
 # --------------------------------------------------------------------
@@ -45,7 +21,7 @@ import inspect
 import pkgutil
 import re
 from typing import Dict, List
-
+import os
 
 def _camel_to_snake(name: str) -> str:
     """Convert *CamelCase* class names to *snake_case* identifiers.
@@ -68,7 +44,7 @@ def enumerate_strategies_with_params() -> Dict[str, type]:  # pragma: no cover
 
     The function performs the following steps:
     1. Dynamically imports every module in this *strategies* package so that all
-       subclasses of :class:`~portfolio_backtester.strategies.base_strategy.BaseStrategy`
+       subclasses of :class:`~portfolio_backtester.strategies.base.base_strategy.BaseStrategy`
        are registered.
     2. Traverses the inheritance tree to collect every *concrete* subclass
        (i.e. not abstract) of ``BaseStrategy``.
@@ -83,15 +59,20 @@ def enumerate_strategies_with_params() -> Dict[str, type]:  # pragma: no cover
     """
     # 1. Import all sub-modules to ensure classes are registered
     package_name = __name__
-    for module_info in pkgutil.walk_packages(__path__, prefix=f"{package_name}."):
-        try:
-            importlib.import_module(module_info.name)
-        except Exception:
-            # If a module fails to import we skip it so that discovery continues
-            continue
+    package_path = os.path.dirname(__file__)
+
+    for subdir in ['portfolio', 'signal']:
+        subdir_path = os.path.join(package_path, subdir)
+        if os.path.isdir(subdir_path):
+            for module_info in pkgutil.walk_packages([subdir_path], prefix=f"{package_name}.{subdir}."):
+                try:
+                    importlib.import_module(module_info.name)
+                except Exception:
+                    # If a module fails to import we skip it so that discovery continues
+                    continue
 
     # Local import to avoid circular dependencies at module import time
-    from .base_strategy import BaseStrategy
+    from .base.base_strategy import BaseStrategy
 
     def is_concrete_strategy(cls) -> bool:
         """Check if *cls* is a concrete subclass of BaseStrategy."""
@@ -134,5 +115,4 @@ def enumerate_strategies_with_params() -> Dict[str, type]:  # pragma: no cover
     return discovered
 
 
-# Ensure the helper is publicly importable
-__all__.append("enumerate_strategies_with_params")
+# The enumerate_strategies_with_params function is already included in __all__ above

@@ -1,12 +1,11 @@
-
 import unittest
 import pandas as pd
 import numpy as np
 import pytest
-from src.portfolio_backtester.strategies.momentum_strategy import MomentumStrategy
-from src.portfolio_backtester.strategies.calmar_momentum_strategy import CalmarMomentumStrategy
-from src.portfolio_backtester.strategies.sortino_momentum_strategy import SortinoMomentumStrategy
-from src.portfolio_backtester.strategies.momentum_dvol_sizer_strategy import MomentumDvolSizerStrategy
+from src.portfolio_backtester.strategies.portfolio.momentum_strategy import MomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.calmar_momentum_strategy import CalmarMomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.sortino_momentum_strategy import SortinoMomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.momentum_dvol_sizer_strategy import MomentumDvolSizerStrategy
 from src.portfolio_backtester.features.calmar_ratio import CalmarRatio
 from src.portfolio_backtester.features.sortino_ratio import SortinoRatio
 
@@ -162,3 +161,29 @@ class TestSortinoMomentumStrategySpecific:
         assert pd.isna(rolling_sortino.iloc[0]).all() or (rolling_sortino.iloc[0] == 0).all()
         final_sortino = rolling_sortino.iloc[-1]
         assert final_sortino['StockA'] > final_sortino['StockB']
+
+def test_strategy_signal_generation(momentum_test_data):
+    """Test strategy signal generation with real data."""
+    config = {
+        'strategy_params': {
+            'lookback_months': 1,
+            'num_holdings': 1,
+            'smoothing_lambda': 0.0,
+            'price_column_asset': 'Close',
+            'price_column_benchmark': 'Close'
+        }
+    }
+    
+    strategy = MomentumStrategy(config)
+    
+    # Test signal generation
+    current_date = momentum_test_data['daily_ohlc_data'].index[-1]
+    signals = strategy.generate_signals(
+        momentum_test_data['daily_ohlc_data'],
+        momentum_test_data['benchmark_ohlc_data'],
+        current_date=current_date
+    )
+    
+    # Verify signals are generated
+    assert isinstance(signals, pd.DataFrame)
+    assert not signals.empty

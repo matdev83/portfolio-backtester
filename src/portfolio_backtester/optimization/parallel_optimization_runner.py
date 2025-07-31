@@ -38,6 +38,7 @@ def _optuna_worker(
     study_name: str,
     n_trials: int,
     enable_deduplication: bool = True,
+    lock: mp.Lock = None,
 ) -> None:
     """Run ``n_trials`` optimisation steps in *this* process.
 
@@ -45,17 +46,18 @@ def _optuna_worker(
     in parallel without the GIL contention seen with ThreadPoolExecutor.
     """
     # Re-create / load the study from the shared storage.
-    study = optuna.create_study(
-        study_name=study_name,
-        storage=storage_url,
-        direction="maximize",
-        load_if_exists=True,
-    )
+    with lock:
+        study = optuna.create_study(
+            study_name=study_name,
+            storage=storage_url,
+            direction="maximize",
+            load_if_exists=True,
+        )
 
     base_objective = OptunaObjectiveAdapter(
         scenario_config=scenario_config,
         data=data,
-        n_jobs=1,  # single-threaded inside the worker
+        n_jobs=1,  # Keep at 1 to avoid nested parallelization conflicts
     )
     
     # Wrap with deduplication if enabled
@@ -146,6 +148,7 @@ class ParallelOptimizationRunner:
             trials_per_worker = math.ceil(requested_trials / self.n_jobs)
 
             ctx = mp.get_context("spawn")  # Safe on Windows
+            lock = ctx.Manager().Lock() # Create a lock
             processes: List[mp.Process] = []
             remaining = requested_trials
             for _ in range(self.n_jobs):
@@ -162,6 +165,7 @@ class ParallelOptimizationRunner:
                         study_name,
                         n_this,
                         self.enable_deduplication,
+                        lock,
                     ),
                 )
                 p.start()

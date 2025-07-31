@@ -135,7 +135,9 @@ class TestBacktestEvaluator:
         # Check that strategy_params were updated correctly
         for call in mock_backtester.evaluate_window.call_args_list:
             called_config = call[0][0]  # First argument (scenario_config)
-            assert called_config['strategy_params'] == parameters
+            expected_params = scenario_config['strategy_params'].copy()
+            expected_params.update(parameters)
+            assert called_config['strategy_params'] == expected_params
     
     def test_evaluate_parameters_multi_objective_success(self):
         """Test successful parameter evaluation for multi-objective."""

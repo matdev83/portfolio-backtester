@@ -8,7 +8,7 @@ import pandas as pd
 from .timing_controller import TimingController
 
 if TYPE_CHECKING:
-    from ..strategies.base_strategy import BaseStrategy
+    from ..strategies.base.base_strategy import BaseStrategy
 
 
 class SignalBasedTiming(TimingController):

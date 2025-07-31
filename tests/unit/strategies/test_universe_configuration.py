@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pandas as pd
 
-from src.portfolio_backtester.strategies.base_strategy import BaseStrategy
+from src.portfolio_backtester.strategies.base.base_strategy import BaseStrategy
 from src.portfolio_backtester.universe_loader import UniverseLoaderError, clear_universe_cache
 
 
@@ -431,7 +431,7 @@ class TestErrorHandlingAndLogging:
         shutil.rmtree(self.temp_dir)
         clear_universe_cache()
     
-    @patch('src.portfolio_backtester.strategies.base_strategy.logger')
+    @patch('src.portfolio_backtester.strategies.base.base_strategy.logger')
     def test_error_logging_and_fallback(self, mock_logger):
         """Test that errors are logged and fallback works."""
         global_config = {"universe": ["FALLBACK1", "FALLBACK2"]}
@@ -453,7 +453,7 @@ class TestErrorHandlingAndLogging:
         mock_logger.error.assert_called_once()
         mock_logger.info.assert_called_once_with("Falling back to global universe")
     
-    @patch('src.portfolio_backtester.strategies.base_strategy.logger')
+    @patch('src.portfolio_backtester.strategies.base.base_strategy.logger')
     def test_universe_loader_error_handling(self, mock_logger):
         """Test handling of UniverseLoaderError."""
         global_config = {"universe": ["FALLBACK"]}

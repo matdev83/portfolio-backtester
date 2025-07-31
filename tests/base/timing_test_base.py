@@ -289,14 +289,7 @@ class BaseTimingTest(unittest.TestCase):
         """
         self.skipTest("Timing initialization test should be implemented in concrete timing classes")
     
-    def test_rebalance_date_generation_smoke(self):
-        """
-        Standard smoke test for rebalance date generation.
-        
-        This test should be overridden in concrete timing test classes
-        with timing-specific implementation.
-        """
-        self.skipTest("Rebalance date test should be implemented in concrete timing classes")
+    
     
     def test_migration_compatibility_smoke(self):
         """

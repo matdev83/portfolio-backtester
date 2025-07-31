@@ -8,8 +8,8 @@ import pandas as pd
 import numpy as np
 import time
 from unittest.mock import Mock, patch
-from src.portfolio_backtester.strategies.momentum_strategy import MomentumStrategy
-from src.portfolio_backtester.strategies.uvxy_rsi_strategy import UvxyRsiStrategy
+from src.portfolio_backtester.strategies.portfolio.momentum_strategy import MomentumStrategy
+from src.portfolio_backtester.strategies.signal.uvxy_rsi_strategy import UvxyRsiStrategy
 from src.portfolio_backtester.timing.time_based_timing import TimeBasedTiming
 from src.portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
 from src.portfolio_backtester.timing.backward_compatibility import ensure_backward_compatibility

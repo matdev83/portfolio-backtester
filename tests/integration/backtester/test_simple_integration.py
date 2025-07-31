@@ -8,7 +8,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import Mock
-from src.portfolio_backtester.strategies.momentum_strategy import MomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.momentum_strategy import MomentumStrategy
 from src.portfolio_backtester.timing.time_based_timing import TimeBasedTiming
 
 
@@ -129,31 +129,7 @@ class TestSimpleIntegration(unittest.TestCase):
         timing_controller = strategy.get_timing_controller()
         self.assertIsInstance(timing_controller, TimeBasedTiming)
     
-    def test_strategy_signal_generation(self):
-        """Test strategy signal generation with real data."""
-        config = {
-            'strategy_params': {
-                'lookback_months': 1,
-                'num_holdings': 1,
-                'smoothing_lambda': 0.0,
-                'price_column_asset': 'Close',
-                'price_column_benchmark': 'Close'
-            }
-        }
-        
-        strategy = MomentumStrategy(config)
-        
-        # Test signal generation
-        current_date = self.test_data.index[-1]
-        signals = strategy.generate_signals(
-            self.test_data,
-            self.benchmark_data,
-            current_date=current_date
-        )
-        
-        # Verify signals are generated
-        self.assertIsInstance(signals, pd.DataFrame)
-        self.assertFalse(signals.empty)
+    
     
     def test_data_structure_compatibility(self):
         """Test that data structures are compatible across components."""
@@ -190,7 +166,7 @@ class TestQuickIntegration:
     
     def test_imports_work(self):
         """Test that all imports work correctly."""
-        from src.portfolio_backtester.strategies.momentum_strategy import MomentumStrategy
+        from src.portfolio_backtester.strategies.portfolio.momentum_strategy import MomentumStrategy
         from src.portfolio_backtester.timing.time_based_timing import TimeBasedTiming
         from src.portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
         

@@ -54,9 +54,18 @@ class OptunaObjectiveAdapter:
         if not hasattr(local, "backtester"):
             local.backtester = StrategyBacktester(global_config=GLOBAL_CONFIG, data_source=None)
         if not hasattr(local, "evaluator"):
+            # Extract metrics to optimize from either optimization_targets or optimization_metric
+            optimization_targets = self.scenario_config.get("optimization_targets", [])
+            if optimization_targets:
+                metrics_to_optimize = [target["name"] for target in optimization_targets]
+                is_multi_objective = len(metrics_to_optimize) > 1
+            else:
+                metrics_to_optimize = [self.scenario_config.get("optimization_metric", "Calmar")]
+                is_multi_objective = False
+            
             local.evaluator = BacktestEvaluator(
-                metrics_to_optimize=[self.scenario_config["optimization_metric"]],
-                is_multi_objective=False,
+                metrics_to_optimize=metrics_to_optimize,
+                is_multi_objective=is_multi_objective,
                 n_jobs=self.n_jobs,
                 enable_parallel_optimization=True,
             )

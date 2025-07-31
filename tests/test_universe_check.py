@@ -8,7 +8,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 # Direct import to avoid dependency issues
-from src.portfolio_backtester.strategies.base_strategy import BaseStrategy
+from src.portfolio_backtester.strategies.base.base_strategy import BaseStrategy
 
 
 class MockStrategyForTest(BaseStrategy):

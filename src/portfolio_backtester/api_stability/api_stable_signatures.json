@@ -79,8 +79,8 @@
     },
     "version": "1.0"
   },
-  "portfolio_backtester.strategies.base_strategy.BaseStrategy.generate_signals": {
-    "module": "portfolio_backtester.strategies.base_strategy",
+  "portfolio_backtester.strategies.base.base_strategy.BaseStrategy.generate_signals": {
+    "module": "portfolio_backtester.strategies.base.base_strategy",
     "name": "BaseStrategy.generate_signals",
     "signature": "(self, all_historical_data: 'pd.DataFrame', benchmark_historical_data: 'pd.DataFrame', non_universe_historical_data: 'pd.DataFrame', current_date: 'pd.Timestamp', start_date: 'Optional[pd.Timestamp]' = None, end_date: 'Optional[pd.Timestamp]' = None) -> 'pd.DataFrame'",
     "strict_params": true,
@@ -96,8 +96,8 @@
     },
     "version": "1.0"
   },
-  "portfolio_backtester.strategies.base_strategy.BaseStrategy.get_roro_signal": {
-    "module": "portfolio_backtester.strategies.base_strategy",
+  "portfolio_backtester.strategies.base.base_strategy.BaseStrategy.get_roro_signal": {
+    "module": "portfolio_backtester.strategies.base.base_strategy",
     "name": "BaseStrategy.get_roro_signal",
     "signature": "(self) -> 'Optional[BaseRoRoSignal]'",
     "strict_params": true,
@@ -107,8 +107,8 @@
     },
     "version": "1.0"
   },
-  "portfolio_backtester.strategies.base_strategy.BaseStrategy.validate_data_sufficiency": {
-    "module": "portfolio_backtester.strategies.base_strategy",
+  "portfolio_backtester.strategies.base.base_strategy.BaseStrategy.validate_data_sufficiency": {
+    "module": "portfolio_backtester.strategies.base.base_strategy",
     "name": "BaseStrategy.validate_data_sufficiency",
     "signature": "(self, all_historical_data: 'pd.DataFrame', benchmark_historical_data: 'pd.DataFrame', current_date: 'pd.Timestamp') -> 'tuple[bool, str]'",
     "strict_params": true,

@@ -121,6 +121,9 @@ def load_config():
                             raise ConfigurationError(f"Invalid scenario file: {scenario_file}. See error details above.")
                         if scenario_data is None:
                             raise ConfigurationError(f"Scenario file is empty: {scenario_path}")
+
+                        if "name" in scenario_data and isinstance(scenario_data["name"], str):
+                            scenario_data["name"] = scenario_data["name"].replace("\\", "/")
                         
                         BACKTEST_SCENARIOS.append(scenario_data)
 

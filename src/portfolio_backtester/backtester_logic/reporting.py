@@ -26,6 +26,7 @@ from portfolio_backtester.reporting.plot_generator import (
 )
 from portfolio_backtester.reporting.table_generator import (
     generate_performance_table as _generate_performance_table,
+generate_transaction_history_csv as _generate_transaction_history_csv,
 )
 from portfolio_backtester.reporting.monte_carlo_analyzer import (
     plot_stability_measures as _plot_stability_measures,
@@ -59,6 +60,7 @@ __all__ = [
     "_plot_monte_carlo_robustness_analysis",
     "_create_monte_carlo_robustness_plot",
     "_generate_performance_table",
+"_generate_transaction_history_csv",
     "_plot_performance_summary",
 ]
 
@@ -145,8 +147,9 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
             benchmark_rets,
             "Full-Period Performance",
             trials_map,
-            report_dir,
+            report_dir
         )
+        _generate_transaction_history_csv(self.results, report_dir)
 
         _plot_performance_summary(self, benchmark_rets, None)
         plt.tight_layout()

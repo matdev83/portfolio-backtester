@@ -55,7 +55,7 @@ def main():
 Examples:
   %(prog)s config/parameters.yaml
   %(prog)s config/*.yaml
-  %(prog)s --verbose config/parameters.yaml config/scenarios.yaml
+  %(prog)s --verbose config/parameters.yaml config/scenarios/portfolio/momentum_strategy/simple.yaml
   %(prog)s --config-check  # Check default configuration files
         """
     )
@@ -75,7 +75,7 @@ Examples:
     parser.add_argument(
         '--config-check', '-c',
         action='store_true',
-        help='Check default configuration files (parameters.yaml and scenarios.yaml)'
+        help='Check default configuration files (parameters.yaml and all scenario files)'
     )
     
     parser.add_argument(
@@ -91,10 +91,16 @@ Examples:
     if args.config_check:
         # Check default configuration files
         config_dir = Path(__file__).parent.parent.parent / "config"
-        files_to_check = [
-            str(config_dir / "parameters.yaml"),
-            str(config_dir / "scenarios.yaml")
-        ]
+        files_to_check = [str(config_dir / "parameters.yaml")]
+        
+        # Add all scenario files from subdirectories
+        scenarios_dir = config_dir / "scenarios"
+        if scenarios_dir.exists():
+            import os
+            for root, dirs, files in os.walk(scenarios_dir):
+                for file in files:
+                    if file.endswith(".yaml"):
+                        files_to_check.append(str(Path(root) / file))
     elif args.files:
         files_to_check = args.files
     else:

@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-from src.portfolio_backtester.strategies.intramonth_seasonal_strategy import IntramonthSeasonalStrategy
+from src.portfolio_backtester.strategies.signal.intramonth_seasonal_strategy import IntramonthSeasonalStrategy
 
 @pytest.fixture
 def sample_historical_data():
@@ -11,14 +11,16 @@ def sample_historical_data():
         df[col] = data[col]
     return df
 
-def test_month_filter_with_string_param(sample_historical_data):
-    """Strategy should handle comma-separated string for allowed_months."""
+def test_month_filter_with_bool_params(sample_historical_data):
+    """Strategy should handle boolean flags for allowed_months."""
     config = {
         "strategy_params": {
             "direction": "long",
             "entry_day": 1,
             "hold_days": 3,
-            "allowed_months": "1, 3",
+            "trade_month_1": True,
+            "trade_month_2": False,
+            "trade_month_3": True,
         }
     }
     strategy = IntramonthSeasonalStrategy(config)

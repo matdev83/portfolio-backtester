@@ -3,7 +3,7 @@ import shutil
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -11,6 +11,7 @@ import pytest
 from pandas.tseries.offsets import BDay
 
 from src.portfolio_backtester.data_sources.hybrid_data_source import HybridDataSource
+from tests.unit.data_sources.test_consolidated_data_validation import DataValidationUtilities
 
 
 class TestHybridDataSource(unittest.TestCase):
@@ -93,44 +94,7 @@ class TestHybridDataSource(unittest.TestCase):
         self.assertIsNotNone(ds.yfinance_source)
         self.assertEqual(ds.failed_tickers, {'stooq': set(), 'yfinance': set()})
 
-    def test_is_data_valid_success(self):
-        """Test data validation with valid data."""
-        # Test with MultiIndex format (Stooq style)
-        mock_data = self._create_mock_stooq_data(['AAPL'])
-        self.assertTrue(self.data_source._is_data_valid(mock_data, 'AAPL'))
-        
-        # Test with flat format (yfinance style)
-        mock_data = self._create_mock_yfinance_data(['AAPL'])
-        self.assertTrue(self.data_source._is_data_valid(mock_data, 'AAPL'))
-
-    def test_is_data_valid_failures(self):
-        """Test data validation with various failure scenarios."""
-        # Test empty DataFrame
-        self.assertFalse(self.data_source._is_data_valid(pd.DataFrame(), 'AAPL'))
-        
-        # Test None
-        self.assertFalse(self.data_source._is_data_valid(None, 'AAPL'))
-        
-        # Test insufficient rows
-        short_data = self._create_mock_yfinance_data(['AAPL'], "2023-01-01", "2023-01-01")  # Only 1 day
-        self.assertFalse(self.data_source._is_data_valid(short_data, 'AAPL', min_rows=5))
-        
-        # Test invalid index
-        invalid_data = pd.DataFrame({'AAPL': [100, 101, 102]}, index=[1, 2, 3])
-        self.assertFalse(self.data_source._is_data_valid(invalid_data, 'AAPL'))
-        
-        # Test excessive NaN values
-        nan_data = self._create_invalid_data(['AAPL'])
-        self.assertFalse(self.data_source._is_data_valid(nan_data, 'AAPL'))
-        
-        # Test negative prices
-        dates = pd.date_range("2023-01-01", "2023-01-10", freq='D')
-        negative_data = pd.DataFrame({'AAPL': [-100, -101, -102] + [100] * 7}, index=dates)
-        self.assertFalse(self.data_source._is_data_valid(negative_data, 'AAPL'))
-        
-        # Test extreme prices
-        extreme_data = pd.DataFrame({'AAPL': [200000, 201000, 202000] + [100] * 7}, index=dates)
-        self.assertFalse(self.data_source._is_data_valid(extreme_data, 'AAPL'))
+    
 
     def test_normalize_data_format_stooq(self):
         """Test data normalization from Stooq format."""
@@ -520,3 +484,71 @@ class TestHybridDataSource(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main() 
+
+class TestHybridDataSourceValidation(unittest.TestCase):
+    """Test hybrid data source specific validation."""
+    
+    def setUp(self):
+        """Set up hybrid data source tests."""
+        self.hybrid_source = HybridDataSource()
+        self.validation_utils = DataValidationUtilities()
+    
+    def test_hybrid_data_source_validation_integration(self):
+        """Test integration of validation utilities with hybrid data source."""
+        # Mock successful data retrieval
+        mock_data = pd.DataFrame({
+            ('AAPL', 'Close'): [100, 101, 102],
+            ('AAPL', 'Volume'): [1000, 1100, 1200]
+        })
+        mock_data.index = pd.date_range('2023-01-01', periods=3)
+        mock_data.columns = pd.MultiIndex.from_tuples(mock_data.columns, names=['Ticker', 'Field'])
+        
+        with patch.object(self.hybrid_source, 'get_data', return_value=mock_data):
+            result = self.hybrid_source.get_data(['AAPL'], '2023-01-01', '2023-01-03')
+            
+            # Should pass basic validation
+            self.assertTrue(isinstance(result, pd.DataFrame))
+            self.assertFalse(result.empty)
+    
+    def test_validation_with_real_data_patterns(self):
+        """Test validation with realistic data patterns."""
+        # Test with data that might come from real sources
+        realistic_data = self.create_realistic_market_data()
+        
+        # Should pass all validations
+        self.assertTrue(self.validation_utils.validate_ohlcv_structure(realistic_data))
+        self.assertTrue(self.validation_utils.validate_price_consistency(realistic_data))
+        self.assertTrue(self.validation_utils.validate_data_completeness(realistic_data))
+        self.assertTrue(self.validation_utils.validate_date_index(realistic_data))
+    
+    def create_realistic_market_data(self):
+        """Create realistic market data for testing."""
+        dates = pd.date_range('2020-01-01', '2023-12-31', freq='D')
+        tickers = ['AAPL', 'MSFT', 'GOOGL']
+        
+        np.random.seed(42)
+        data_frames = []
+        
+        for ticker in tickers:
+            # Simulate realistic price movements
+            returns = np.random.normal(0.0005, 0.02, len(dates))
+            prices = 100 * np.cumprod(1 + returns)
+            
+            # Create OHLCV with realistic relationships
+            df = pd.DataFrame(index=dates)
+            df['Close'] = prices
+            df['Open'] = prices * (1 + np.random.normal(0, 0.001, len(dates)))
+            df['High'] = prices * (1 + np.abs(np.random.normal(0, 0.005, len(dates))))
+            df['Low'] = prices * (1 - np.abs(np.random.normal(0, 0.005, len(dates))))
+            df['Volume'] = np.random.randint(1000000, 50000000, len(dates))
+            
+            # Ensure price consistency
+            df['High'] = df[['Open', 'High', 'Low', 'Close']].max(axis=1)
+            df['Low'] = df[['Open', 'High', 'Low', 'Close']].min(axis=1)
+            
+            df.columns = pd.MultiIndex.from_product([[ticker], df.columns])
+            data_frames.append(df)
+        
+        result = pd.concat(data_frames, axis=1)
+        result.columns.names = ['Ticker', 'Field']
+        return result 

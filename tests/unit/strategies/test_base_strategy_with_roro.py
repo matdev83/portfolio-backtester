@@ -2,7 +2,7 @@ import unittest
 import pandas as pd
 import numpy as np
 
-from src.portfolio_backtester.strategies.momentum_strategy import MomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.momentum_strategy import MomentumStrategy
 from src.portfolio_backtester.roro_signals import DummyRoRoSignal, BaseRoRoSignal
 
 class StrategyWithDummyRoRo(MomentumStrategy):

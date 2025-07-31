@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-from src.portfolio_backtester.strategies.intramonth_seasonal_strategy import IntramonthSeasonalStrategy
+from src.portfolio_backtester.strategies.signal.intramonth_seasonal_strategy import IntramonthSeasonalStrategy
 
 @pytest.mark.parametrize("direction,entry_day,hold_days,expected_weights", [
     ("long", 1, 2, 0.5),
@@ -61,7 +61,9 @@ def test_generate_signals_allowed_months():
             "direction": "long",
             "entry_day": 1,
             "hold_days": 2,
-            "allowed_months": [2],
+            "trade_month_1": False,
+            "trade_month_2": True,
+            "trade_month_3": False,
         }
     }
     strategy = IntramonthSeasonalStrategy(config)
