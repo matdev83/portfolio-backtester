@@ -40,20 +40,10 @@ def register_signal_handler():
 
 @api_stable(version="1.0", strict_params=True, strict_return=False)
 def _resolve_strategy(name: str):
-    class_name = "".join(w.capitalize() for w in name.split('_')) + "Strategy"
-    if name == "momentum_unfiltered_atr":
-        class_name = "MomentumUnfilteredAtrStrategy"
-    elif name == "vams_momentum":
-        class_name = "VAMSMomentumStrategy"
-    elif name == "vams_no_downside":
-        class_name = "VAMSNoDownsideStrategy"
-    elif name == "ema_crossover":
-        class_name = "EMAStrategy"
-    elif name == "low_volatility_factor":
-        class_name = "LowVolatilityFactorStrategy"
-    elif name == "uvxy_rsi":
-        class_name = "UvxyRsiStrategy"
-    return getattr(strategies, class_name, None)
+    """Resolve strategy name to strategy class using the discovery mechanism."""
+    # Use the proper strategy discovery mechanism
+    discovered_strategies = strategies.enumerate_strategies_with_params()
+    return discovered_strategies.get(name, None)
 
 
 def _run_scenario_static(

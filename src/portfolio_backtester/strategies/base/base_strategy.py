@@ -43,6 +43,8 @@ class BaseStrategy(ABC):
 
     def __init__(self, strategy_params: Dict[str, Any]):
         self.strategy_params = strategy_params
+        # For backward compatibility, also set strategy_config
+        self.strategy_config = strategy_params
         self._roro_signal_instance: BaseRoRoSignal | None = None
         self._stop_loss_handler_instance: BaseStopLoss | None = None
         self.entry_prices: pd.Series | None = None

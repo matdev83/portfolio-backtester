@@ -52,7 +52,26 @@ class FixedWeightStrategy(BaseStrategy):
     @classmethod
     def tunable_parameters(cls) -> set:
         """
-        This strategy's tunable parameters are dynamically determined by the universe.
-        The optimization configuration should define them (e.g., 'spy_weight').
+        Returns tunable parameters for the fixed weight strategy.
+        
+        This strategy supports dynamic weight parameters for any asset.
+        The framework will automatically recognize parameters ending with '_weight'
+        as tunable asset weight parameters.
+        
+        Always tunable parameters:
+        - rebalance_frequency: How often to rebalance the portfolio
+        
+        Dynamically tunable parameters:
+        - Any parameter ending with '_weight' (e.g., 'spy_weight', 'gld_weight')
         """
-        return set()
+        # Return a comprehensive set that includes common weight parameters
+        # The optimization system will filter based on what's actually defined
+        # in the scenario configuration
+        return {
+            'rebalance_frequency',
+            # Common asset weight parameters - these will be recognized if defined in optimization config
+            'spy_weight', 'gld_weight', 'qqq_weight', 'tlt_weight', 'vti_weight', 'vea_weight',
+            'vwo_weight', 'ief_weight', 'tip_weight', 'vnq_weight', 'vym_weight', 'vxf_weight',
+            'bnd_weight', 'vteb_weight', 'vgit_weight', 'vglt_weight', 'vmot_weight', 'vtv_weight',
+            'vug_weight', 'vb_weight', 'vo_weight', 'vt_weight', 'vtiax_weight', 'vtsax_weight'
+        }

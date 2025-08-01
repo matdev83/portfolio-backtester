@@ -226,7 +226,20 @@ class TestTimingConfigValidator:
     
     def test_validate_all_valid_frequencies(self):
         """Test validation of all valid frequencies."""
-        valid_frequencies = ['D', 'W', 'M', 'ME', 'Q', 'A', 'Y']
+        valid_frequencies = [
+            # Daily and weekly
+            'D', 'B', 'W', 'W-MON', 'W-TUE', 'W-WED', 'W-THU', 'W-FRI', 'W-SAT', 'W-SUN',
+            # Monthly
+            'M', 'ME', 'BM', 'BMS', 'MS',
+            # Quarterly  
+            'Q', 'QE', 'QS', 'BQ', 'BQS', '2Q',
+            # Semi-annual
+            '6M', '6ME', '6MS',
+            # Annual
+            'A', 'AS', 'Y', 'YE', 'YS', 'BA', 'BAS', 'BY', 'BYS', '2A',
+            # Hourly (for high-frequency strategies)
+            'H', '2H', '3H', '4H', '6H', '8H', '12H'
+        ]
         
         for freq in valid_frequencies:
             config = {'rebalance_frequency': freq}

@@ -34,9 +34,25 @@ class TimingConfigValidator:
         errors = []
         
         frequency = config.get('rebalance_frequency', 'M')
-        valid_frequencies = ['D', 'W', 'M', 'ME', 'Q', 'A', 'Y']
+        # Comprehensive list of pandas frequencies for rebalancing
+        valid_frequencies = [
+            # Daily and weekly
+            'D', 'B', 'W', 'W-MON', 'W-TUE', 'W-WED', 'W-THU', 'W-FRI', 'W-SAT', 'W-SUN',
+            # Monthly
+            'M', 'ME', 'BM', 'BMS', 'MS',
+            # Quarterly  
+            'Q', 'QE', 'QS', 'BQ', 'BQS', '2Q',
+            # Semi-annual
+            '6M', '6ME', '6MS',
+            # Annual
+            'A', 'AS', 'Y', 'YE', 'YS', 'BA', 'BAS', 'BY', 'BYS', '2A',
+            # Hourly (for high-frequency strategies)
+            'H', '2H', '3H', '4H', '6H', '8H', '12H'
+        ]
         if frequency not in valid_frequencies:
-            errors.append(f"Invalid rebalance_frequency '{frequency}'. Must be one of {valid_frequencies}")
+            errors.append(f"Invalid rebalance_frequency '{frequency}'. Must be one of {valid_frequencies}. "
+                         f"Common values: 'M' (monthly), 'ME' (month-end), 'Q' (quarterly), 'QE' (quarter-end), "
+                         f"'6M' (semi-annual), 'A' (annual), 'YE' (year-end), 'D' (daily), 'W' (weekly)")
         
         offset = config.get('rebalance_offset', 0)
         if not isinstance(offset, int) or abs(offset) > 30:

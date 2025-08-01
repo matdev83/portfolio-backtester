@@ -1,0 +1,302 @@
+2025-08-01 09:27:15,782 - INFO - Loading parameters from: C:\Users\Mateusz\source\repos\portfolio-backtester\config\parameters.yaml
+2025-08-01 09:27:15,834 - INFO - Loading scenarios from: C:\Users\Mateusz\source\repos\portfolio-backtester\config\scenarios
+2025-08-01 09:27:16,035 - INFO - Successfully loaded configuration: 41 scenarios found
+2025-08-01 09:27:16,035 - INFO - Configuration loaded successfully
+2025-08-01 09:27:16,690 - INFO - Loaded negative cache with 3 entries.
+2025-08-01 09:27:16,750 - INFO - Skipping 3 tickers found in negative cache for the range 2013-01-01-2025-06-30.
+2025-08-01 09:27:16,750 - INFO - Fetching data for 55 tickers from 2013-01-01 to 2025-06-30
+2025-08-01 09:27:16,753 - INFO - Fetching data from stooq for 55 tickers
+2025-08-01 09:27:16,754 - INFO - Fetching data from Stooq for 55 tickers from 2013-01-01 to 2025-06-30.
+Downloading data... -------------------------------------- 100% 0:00:00 0:00:00
+2025-08-01 09:27:17,196 - INFO - Data fetching from Stooq complete.
+2025-08-01 09:27:17,271 - INFO - stooq results: 55 successful, 0 failed
+Fetching from stooq... ----------------------------------- 100% 0:00:00 0:00:00
+2025-08-01 09:27:17,287 - INFO - Data fetching complete: 55/55 tickers successful
+2025-08-01 09:27:17,287 - INFO - Source usage: 0 from Stooq only, 0 from yfinance fallback
+[I 2025-08-01 09:27:17,769] Using an existing study with name 'fixed_weight_spy_gld_sortino_optimization_optuna' instead of creating a new one.
+2025-08-01 09:27:17,779 - INFO - Running optimisation in a single process (100 trials)
+[I 2025-08-01 09:27:17,845] Using an existing study with name 'fixed_weight_spy_gld_sortino_optimization_optuna' instead of creating a new one.
+2025-08-01 09:27:17,853 - INFO - Worker 1004 starting 100 trials
+2025-08-01 09:27:18,018 - INFO - Trial 100 started
+[I 2025-08-01 09:27:20,414] Trial 100 finished with value: 1.4180224426862413 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.35000000000000003, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:20,467 - INFO - Trial 101 started
+[I 2025-08-01 09:27:22,496] Trial 101 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:22,544 - INFO - Trial 102: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:22,563] Trial 102 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:22,613 - INFO - Trial 103 started
+[I 2025-08-01 09:27:24,670] Trial 103 finished with value: 1.6496694517073227 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:24,737 - INFO - Trial 104 started
+[I 2025-08-01 09:27:26,697] Trial 104 finished with value: 1.6457203935909963 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:26,746 - INFO - Trial 105 started
+[I 2025-08-01 09:27:28,624] Trial 105 finished with value: 1.6468102933675182 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:28,672 - INFO - Trial 106: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:28,691] Trial 106 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:28,740 - INFO - Trial 107: Using cached value 1.649669 for duplicate parameters
+[I 2025-08-01 09:27:28,757] Trial 107 finished with value: 1.6496694517073227 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:28,807 - INFO - Trial 108 started
+[I 2025-08-01 09:27:30,680] Trial 108 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:30,732 - INFO - Trial 109 started
+[I 2025-08-01 09:27:32,621] Trial 109 finished with value: 1.6466350727400814 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.8500000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:32,670 - INFO - Trial 110: Using cached value 1.649669 for duplicate parameters
+[I 2025-08-01 09:27:32,690] Trial 110 finished with value: 1.6496694517073227 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:32,740 - INFO - Trial 111: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:32,758] Trial 111 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:32,809 - INFO - Trial 112: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:32,830] Trial 112 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:32,879 - INFO - Trial 113: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:32,897] Trial 113 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:32,943 - INFO - Trial 114: Using cached value 1.649669 for duplicate parameters
+[I 2025-08-01 09:27:32,963] Trial 114 finished with value: 1.6496694517073227 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:33,012 - INFO - Trial 115: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:33,030] Trial 115 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:33,076 - INFO - Trial 116 started
+[I 2025-08-01 09:27:33,794] Trial 116 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'Q', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:33,842 - INFO - Trial 117: Using cached value 1.645720 for duplicate parameters
+[I 2025-08-01 09:27:33,862] Trial 117 finished with value: 1.6457203935909963 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:33,912 - INFO - Trial 118: Using cached value 1.649669 for duplicate parameters
+[I 2025-08-01 09:27:33,930] Trial 118 finished with value: 1.6496694517073227 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:33,988 - INFO - Trial 119: Using cached value 1.646635 for duplicate parameters
+[I 2025-08-01 09:27:34,007] Trial 119 finished with value: 1.6466350727400814 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.8500000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:34,066 - INFO - Trial 120: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:34,085] Trial 120 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:34,140 - INFO - Trial 121: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:34,159] Trial 121 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:34,212 - INFO - Trial 122: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:34,231] Trial 122 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:34,281 - INFO - Trial 123: Using cached value 1.649669 for duplicate parameters
+[I 2025-08-01 09:27:34,300] Trial 123 finished with value: 1.6496694517073227 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:34,352 - INFO - Trial 124: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:34,372] Trial 124 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:34,426 - INFO - Trial 125: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:34,444] Trial 125 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:34,495 - INFO - Trial 126: Using cached value 1.646810 for duplicate parameters
+[I 2025-08-01 09:27:34,513] Trial 126 finished with value: 1.6468102933675182 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:34,566 - INFO - Trial 127 started
+[I 2025-08-01 09:27:36,455] Trial 127 finished with value: 1.6486481853524118 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:36,507 - INFO - Trial 128 started
+[I 2025-08-01 09:27:38,469] Trial 128 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:38,518 - INFO - Trial 129 started
+[I 2025-08-01 09:27:40,472] Trial 129 finished with value: 1.6008989300160714 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.6500000000000001, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:40,519 - INFO - Trial 130 started
+[I 2025-08-01 09:27:42,513] Trial 130 finished with value: 1.6496504132942078 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.8500000000000001, 'gld_weight': 0.8}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:42,562 - INFO - Trial 131: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:42,579] Trial 131 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:42,629 - INFO - Trial 132: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:42,647] Trial 132 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:42,697 - INFO - Trial 133: Using cached value 1.648648 for duplicate parameters
+[I 2025-08-01 09:27:42,717] Trial 133 finished with value: 1.6486481853524118 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:42,766 - INFO - Trial 134: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:42,783] Trial 134 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:42,833 - INFO - Trial 135: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:42,852] Trial 135 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:42,901 - INFO - Trial 136 started
+[I 2025-08-01 09:27:44,779] Trial 136 finished with value: 1.5332793200066668 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.45, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:44,827 - INFO - Trial 137: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:44,844] Trial 137 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:44,890 - INFO - Trial 138 started
+[I 2025-08-01 09:27:45,618] Trial 138 finished with value: 1.6304247088474564 and parameters: {'rebalance_frequency': 'Q', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.6500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:45,671 - INFO - Trial 139: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:45,691] Trial 139 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:45,743 - INFO - Trial 140: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:45,761] Trial 140 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:45,812 - INFO - Trial 141: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:45,830] Trial 141 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:45,880 - INFO - Trial 142: Using cached value 1.648648 for duplicate parameters
+[I 2025-08-01 09:27:45,900] Trial 142 finished with value: 1.6486481853524118 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:45,951 - INFO - Trial 143: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:45,970] Trial 143 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:46,018 - INFO - Trial 144: Using cached value 1.646810 for duplicate parameters
+[I 2025-08-01 09:27:46,035] Trial 144 finished with value: 1.6468102933675182 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:46,083 - INFO - Trial 145: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:46,101] Trial 145 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:46,151 - INFO - Trial 146: Using cached value 1.648648 for duplicate parameters
+[I 2025-08-01 09:27:46,169] Trial 146 finished with value: 1.6486481853524118 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:46,219 - INFO - Trial 147: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:46,236] Trial 147 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:46,284 - INFO - Trial 148 started
+[I 2025-08-01 09:27:48,385] Trial 148 finished with value: 1.1875158657146612 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.15000000000000002, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:48,437 - INFO - Trial 149: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:48,455] Trial 149 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:48,508 - INFO - Trial 150: Using cached value 1.649669 for duplicate parameters
+[I 2025-08-01 09:27:48,526] Trial 150 finished with value: 1.6496694517073227 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:48,574 - INFO - Trial 151: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:48,595] Trial 151 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:48,644 - INFO - Trial 152: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:48,662] Trial 152 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:48,714 - INFO - Trial 153: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:48,733] Trial 153 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:48,785 - INFO - Trial 154: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:48,805] Trial 154 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:48,855 - INFO - Trial 155 started
+[I 2025-08-01 09:27:50,903] Trial 155 finished with value: 1.5923891652480853 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.55}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:50,954 - INFO - Trial 156: Using cached value 1.649669 for duplicate parameters
+[I 2025-08-01 09:27:50,973] Trial 156 finished with value: 1.6496694517073227 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:51,025 - INFO - Trial 157: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:51,044] Trial 157 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:51,096 - INFO - Trial 158 started
+[I 2025-08-01 09:27:53,064] Trial 158 finished with value: 1.6484208929305986 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:53,117 - INFO - Trial 159 started
+[I 2025-08-01 09:27:53,861] Trial 159 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'Q', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:53,911 - INFO - Trial 160: Using cached value 1.648648 for duplicate parameters
+[I 2025-08-01 09:27:53,930] Trial 160 finished with value: 1.6486481853524118 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:53,983 - INFO - Trial 161: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:54,001] Trial 161 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:54,093 - INFO - Trial 162: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:54,112] Trial 162 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:54,167 - INFO - Trial 163: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:54,186] Trial 163 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:54,237 - INFO - Trial 164: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:54,254] Trial 164 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:54,307 - INFO - Trial 165: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:54,327] Trial 165 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:54,377 - INFO - Trial 166 started
+[I 2025-08-01 09:27:56,343] Trial 166 finished with value: 1.2796987576179564 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.55, 'gld_weight': 0.05}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:56,393 - INFO - Trial 167: Using cached value 1.648648 for duplicate parameters
+[I 2025-08-01 09:27:56,412] Trial 167 finished with value: 1.6486481853524118 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:56,464 - INFO - Trial 168 started
+[I 2025-08-01 09:27:56,749] Trial 168 finished with value: 1.6468102933675182 and parameters: {'rebalance_frequency': 'A', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:56,809 - INFO - Trial 169: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:56,829] Trial 169 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:56,884 - INFO - Trial 170: Using cached value 1.649669 for duplicate parameters
+[I 2025-08-01 09:27:56,903] Trial 170 finished with value: 1.6496694517073227 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:56,961 - INFO - Trial 171: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:56,982] Trial 171 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,048 - INFO - Trial 172: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:57,071] Trial 172 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,126 - INFO - Trial 173: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:57,144] Trial 173 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,196 - INFO - Trial 174: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:57,216] Trial 174 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,284 - INFO - Trial 175: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:57,308] Trial 175 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,359 - INFO - Trial 176: Using cached value 1.649669 for duplicate parameters
+[I 2025-08-01 09:27:57,376] Trial 176 finished with value: 1.6496694517073227 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,425 - INFO - Trial 177: Using cached value 1.646810 for duplicate parameters
+[I 2025-08-01 09:27:57,443] Trial 177 finished with value: 1.6468102933675182 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,494 - INFO - Trial 178: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:57,514] Trial 178 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,566 - INFO - Trial 179: Using cached value 1.648648 for duplicate parameters
+[I 2025-08-01 09:27:57,583] Trial 179 finished with value: 1.6486481853524118 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,633 - INFO - Trial 180: Using cached value 1.646810 for duplicate parameters
+[I 2025-08-01 09:27:57,652] Trial 180 finished with value: 1.6468102933675182 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,708 - INFO - Trial 181: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:57,728] Trial 181 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,782 - INFO - Trial 182: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:57,802] Trial 182 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,851 - INFO - Trial 183: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:57,869] Trial 183 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,917 - INFO - Trial 184: Using cached value 1.648648 for duplicate parameters
+[I 2025-08-01 09:27:57,937] Trial 184 finished with value: 1.6486481853524118 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:57,985 - INFO - Trial 185: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:58,003] Trial 185 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:58,054 - INFO - Trial 186: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:58,072] Trial 186 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:58,123 - INFO - Trial 187: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:58,142] Trial 187 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:58,196 - INFO - Trial 188: Using cached value 1.649669 for duplicate parameters
+[I 2025-08-01 09:27:58,214] Trial 188 finished with value: 1.6496694517073227 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:58,263 - INFO - Trial 189: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:27:58,281] Trial 189 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:58,334 - INFO - Trial 190: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:58,353] Trial 190 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'Q', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:58,406 - INFO - Trial 191: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:27:58,424] Trial 191 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:27:58,475 - INFO - Trial 192 started
+[I 2025-08-01 09:28:00,399] Trial 192 finished with value: 1.548553240422263 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.45}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:28:00,451 - INFO - Trial 193: Using cached value 1.649681 for duplicate parameters
+[I 2025-08-01 09:28:00,469] Trial 193 finished with value: 1.649680931444815 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:28:00,518 - INFO - Trial 194: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:28:00,541] Trial 194 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:28:00,596 - INFO - Trial 195: Using cached value 1.648648 for duplicate parameters
+[I 2025-08-01 09:28:00,614] Trial 195 finished with value: 1.6486481853524118 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:28:00,662 - INFO - Trial 196: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:28:00,680] Trial 196 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.9000000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:28:00,730 - INFO - Trial 197: Using cached value 1.649039 for duplicate parameters
+[I 2025-08-01 09:28:00,747] Trial 197 finished with value: 1.6490388356607917 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.95}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:28:00,797 - INFO - Trial 198: Using cached value 1.648648 for duplicate parameters
+[I 2025-08-01 09:28:00,815] Trial 198 finished with value: 1.6486481853524118 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.95, 'gld_weight': 0.8500000000000001}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:28:00,863 - INFO - Trial 199 started
+[I 2025-08-01 09:28:02,745] Trial 199 finished with value: 1.468875251626124 and parameters: {'rebalance_frequency': 'ME', 'spy_weight': 0.9000000000000001, 'gld_weight': 0.3}. Best is trial 14 with value: 1.649680931444815.
+2025-08-01 09:28:02,745 - INFO - Worker 1004 finished
+[I 2025-08-01 09:28:02,783] Using an existing study with name 'fixed_weight_spy_gld_sortino_optimization_optuna' instead of creating a new one.
+2025-08-01 09:28:08,251 - INFO - Generating performance report …
+                            Full-Period Performance                            
+┌─────────────────────────────┬──────────────────────────────────┬────────────┐
+│ Metric                      │ fixed_weight_spy_gld_sortino_op… │ SPY        │
+├─────────────────────────────┼──────────────────────────────────┼────────────┤
+│ Total Return                │ 241.28%                          │ 425.30%    │
+│ Ann. Return                 │ 10.42%                           │ 14.29%     │
+│ Ann. Vol                    │ 0.1173                           │ 0.1716     │
+│ Sharpe                      │ 0.8883                           │ 0.8328     │
+│ Sortino                     │ 1.2851                           │ 1.2180     │
+│ Calmar                      │ 0.5056                           │ 0.4238     │
+│ Alpha (ann)                 │ 0.0289                           │ -0.0000    │
+│ Beta                        │ 0.5299                           │ 1.0000     │
+│ Max Drawdown                │ -0.2061                          │ -0.3372    │
+│ VaR (5%)                    │ -0.0109                          │ -0.0162    │
+│ CVaR (5%)                   │ -0.0172                          │ -0.0261    │
+│ Tail Ratio                  │ 0.8687                           │ 0.8011     │
+│ Avg DD Duration             │ 17.3813                          │ 11.2596    │
+│ Avg Recovery Time           │ 1.0000                           │ 1.0043     │
+│ Skew                        │ -0.2297                          │ -0.3244    │
+│ Kurtosis                    │ 12.8409                          │ 14.5975    │
+│ R^2                         │ 0.6024                           │ 1.0000     │
+│ K-Ratio                     │ 12688.7554                       │ 18515.9082 │
+│ ADF Statistic               │ 3.2630                           │ 0.9863     │
+│ ADF p-value                 │ 1.000000                         │ 0.994120   │
+│ Deflated Sharpe             │ 1.0000                           │ 1.0000     │
+│ Max DD Recovery Time (days) │ 445                              │ 708        │
+│ Max Flat Period (days)      │ 21                               │ 1          │
+└─────────────────────────────┴──────────────────────────────────┴────────────┘
+
+
+                         Trade Statistics -                         
+        fixed_weight_spy_gld_sortino_optimization_Optimized         
+┌───────────────────────┬─────────────┬─────────────┬──────────────┐
+│ Metric                │  All Trades │ Long Trades │ Short Trades │
+├───────────────────────┼─────────────┼─────────────┼──────────────┤
+│ Number of Trades      │           2 │           2 │            0 │
+│ Number of Winners     │           2 │           2 │            0 │
+│ Number of Losers      │ 2025-08-01 09:28:08,493 - INFO - Performance metrics saved to data\reports\fixed_weight_spy_gld_sortino_optimization_20250801_092808\performance_metrics.csv
+          0 │2025-08-01 09:28:08,494 - INFO - Optimal parameters for fixed_weight_spy_gld_sortino_optimization_Optimized saved to data\reports\fixed_weight_spy_gld_sortino_optimization_20250801_092808\optimal_params_fixed_weight_spy_gld_sortino_optimization_Optimized.txt
+           0 │            0 │
+│ Win Rate (%)          │     100.00% │     100.00% │        0.00% │
+│ Total P&L Net         │ $252,359.59 │ $252,359.59 │        $0.00 │
+2025-08-01 09:28:08,499 - INFO - Transaction history for fixed_weight_spy_gld_sortino_optimization_Optimized saved to data\reports\fixed_weight_spy_gld_sortino_optimization_20250801_092808\transaction_history_fixed_weight_spy_gld_sortino_optimization_Optimized.csv
+│ Largest Single Profit │ $209,155.85 │ $209,155.85 │        $0.00 │
+│ Largest Single Loss   │       $0.00 │       $0.00 │        $0.00 │
+│ Mean Profit           │ $126,179.79 │ $126,179.79 │        $0.00 │
+│ Mean Loss             │       $0.00 │       $0.00 │        $0.00 │
+│ Mean Trade P&L        │ $126,179.79 │ $126,179.79 │        $0.00 │
+│ Reward/Risk Ratio     │           ∞ │           ∞ │        0.000 │
+│ Commissions Paid      │       $0.00 │       $0.00 │        $0.00 │
+│ Avg MFE               │ $127,906.38 │ $127,906.38 │        $0.00 │
+│ Avg MAE               │  $-9,564.20 │  $-9,564.20 │        $0.00 │
+│ Min Duration (days)   │        4532 │        4532 │            0 │
+│ Max Duration (days)   │        4532 │        4532 │            0 │
+│ Mean Duration (days)  │     4532.00 │     4532.00 │         0.00 │
+│ Information Score     │       1.558 │       1.558 │        0.000 │
+│ Trades per Month      │        0.01 │        0.01 │         0.00 │
+│                       │             │             │              │
+│ Max Margin Load       │     100.00% │     100.00% │      100.00% │
+│ Mean Margin Load      │      99.33% │      99.33% │       99.33% │
+└───────────────────────┴─────────────┴─────────────┴──────────────┘
+           Optimal Parameters for           
+fixed_weight_spy_gld_sortino_optimization_Op
+                  timized                   
+┌─────────────────────┬────────────────────┐
+│ Parameter           │ Value              │
+├─────────────────────┼────────────────────┤
+│ rebalance_frequency │ ME                 │
+│ spy_weight          │ 0.95               │
+│ gld_weight          │ 0.9000000000000001 │
+└─────────────────────┴────────────────────┘
+2025-08-01 09:28:09,259 - INFO - Performance plot saved to: plots\performance_summary_fixed_weight_spy_gld_sortino_optimization_20250801_092809.png
+2025-08-01 09:28:09,272 - INFO - Performance plots generated and saved.
+2025-08-01 09:28:09,333 - INFO - Performance summary saved to data\reports\fixed_weight_spy_gld_sortino_optimization_20250801_092808\equity_curve.png
+2025-08-01 09:28:09,566 - INFO - Trade price plot saved to data\reports\fixed_weight_spy_gld_sortino_optimization_20250801_092808\price_with_trades_fixed_weight_spy_gld_sortino_optimization_Optimized_SPY.png
+2025-08-01 09:28:09,807 - INFO - Trade price plot saved to data\reports\fixed_weight_spy_gld_sortino_optimization_20250801_092808\price_with_trades_fixed_weight_spy_gld_sortino_optimization_Optimized_GLD.png
+2025-08-01 09:28:09,821 - INFO - Backtester run completed.
+Running: C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\Scripts\python.exe -m cProfile -o profile_optuna.prof -m src.portfolio_backtester.backtester --mode optimize --scenario-name fixed_weight_spy_gld_sortino_optimization --optuna-trials 1 --n-jobs 1
+
+Profile saved to C:\Users\Mateusz\source\repos\portfolio-backtester\profile_optuna.prof

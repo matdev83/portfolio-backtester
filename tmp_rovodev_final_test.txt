@@ -1,0 +1,106 @@
+2025-08-01 09:05:30,339 - INFO - Loading parameters from: C:\Users\Mateusz\source\repos\portfolio-backtester\config\parameters.yaml
+2025-08-01 09:05:30,391 - INFO - Loading scenarios from: C:\Users\Mateusz\source\repos\portfolio-backtester\config\scenarios
+2025-08-01 09:05:30,598 - INFO - Successfully loaded configuration: 41 scenarios found
+2025-08-01 09:05:30,598 - INFO - Configuration loaded successfully
+2025-08-01 09:05:34,941 - INFO - Loaded negative cache with 3 entries.
+2025-08-01 09:05:34,958 - INFO - Skipping 3 tickers found in negative cache for the range 2013-01-01-2025-06-30.
+2025-08-01 09:05:34,958 - INFO - Fetching data for 55 tickers from 2013-01-01 to 2025-06-30
+2025-08-01 09:05:34,980 - INFO - Fetching data from stooq for 55 tickers
+2025-08-01 09:05:34,980 - INFO - Fetching data from Stooq for 55 tickers from 2013-01-01 to 2025-06-30.
+Warning: Parameter 'rebalance_frequency' in scenario 'fixed_weight_spy_gld_sortino_optimization' is not tunable by strategy 'fixed_weight'. It will be skipped during optimization.
+Warning: Parameter 'spy_weight' in scenario 'fixed_weight_spy_gld_sortino_optimization' is not tunable by strategy 'fixed_weight'. It will be skipped during optimization.
+Warning: Parameter 'gld_weight' in scenario 'fixed_weight_spy_gld_sortino_optimization' is not tunable by strategy 'fixed_weight'. It will be skipped during optimization.
+Downloading data... -------------------------------------- 100% 0:00:00 0:00:00
+2025-08-01 09:05:35,427 - INFO - Data fetching from Stooq complete.
+2025-08-01 09:05:35,500 - INFO - stooq results: 55 successful, 0 failed
+Fetching from stooq... ----------------------------------- 100% 0:00:00 0:00:00
+2025-08-01 09:05:35,575 - INFO - Data fetching complete: 55/55 tickers successful
+2025-08-01 09:05:35,575 - INFO - Source usage: 0 from Stooq only, 0 from yfinance fallback
+[I 2025-08-01 09:05:39,555] Using an existing study with name 'fixed_weight_spy_gld_sortino_optimization_optuna' instead of creating a new one.
+2025-08-01 09:05:39,564 - INFO - Running optimisation in a single process (100 trials)
+[I 2025-08-01 09:05:39,603] Using an existing study with name 'fixed_weight_spy_gld_sortino_optimization_optuna' instead of creating a new one.
+2025-08-01 09:05:39,609 - INFO - Worker 35016 starting 100 trials
+[W 2025-08-01 09:05:39,679] Trial 111 failed with parameters: {} because of the following error: IndexError('index 3 is out of bounds for axis 1 with size 3').
+Traceback (most recent call last):
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\study\_optimize.py", line 201, in _run_trial
+    value_or_values = func(trial)
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\optimization\trial_deduplication.py", line 116, in __call__
+    params = self._trial_to_params(trial)
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\optimization\trial_deduplication.py", line 143, in _trial_to_params
+    return self.base_objective._trial_to_params(trial)
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\optimization\optuna_objective_adapter.py", line 122, in _trial_to_params
+    params[name] = trial.suggest_categorical(name, choices)
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\trial\_trial.py", line 406, in suggest_categorical
+    return self._suggest(name, CategoricalDistribution(choices=choices))
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\trial\_trial.py", line 635, in _suggest
+    param_value = self.study.sampler.sample_independent(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\sampler.py", line 458, in sample_independent
+    return self._sample(study, trial, {param_name: param_distribution})[param_name]
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\sampler.py", line 491, in _sample
+    mpe_below = self._build_parzen_estimator(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\sampler.py", line 529, in _build_parzen_estimator
+    mpe = self._parzen_estimator_cls(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\parzen_estimator.py", line 68, in __init__
+    distributions=[
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\parzen_estimator.py", line 69, in <listcomp>
+    self._calculate_distributions(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\parzen_estimator.py", line 154, in _calculate_distributions
+    return self._calculate_categorical_distributions(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\parzen_estimator.py", line 207, in _calculate_categorical_distributions
+    weights[np.arange(len(observed_indices)), observed_indices] += 1
+IndexError: index 3 is out of bounds for axis 1 with size 3
+[W 2025-08-01 09:05:39,681] Trial 111 failed with value None.
+2025-08-01 09:05:39,681 - ERROR - An unexpected error occurred during optimization: index 3 is out of bounds for axis 1 with size 3
+2025-08-01 09:05:39,681 - ERROR - An unhandled exception occurred during backtester run: index 3 is out of bounds for axis 1 with size 3
+Traceback (most recent call last):
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\backtester.py", line 123, in main
+    backtester.run()
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\api_stability\protection.py", line 54, in wrapper
+    result = func(*args, **kwargs)
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\core.py", line 786, in run
+    self._run_optimize_mode_new_architecture(scenarios_to_run[0], self.monthly_data, self.daily_data_ohlc, rets_full)
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\core.py", line 975, in _run_optimize_mode_new_architecture
+    optimization_result = parallel_runner.run()
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\optimization\parallel_optimization_runner.py", line 146, in run
+    _optuna_worker(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\optimization\parallel_optimization_runner.py", line 79, in _optuna_worker
+    study.optimize(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\study\study.py", line 489, in optimize
+    _optimize(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\study\_optimize.py", line 64, in _optimize
+    _optimize_sequential(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\study\_optimize.py", line 161, in _optimize_sequential
+    frozen_trial = _run_trial(study, func, catch)
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\study\_optimize.py", line 253, in _run_trial
+    raise func_err
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\study\_optimize.py", line 201, in _run_trial
+    value_or_values = func(trial)
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\optimization\trial_deduplication.py", line 116, in __call__
+    params = self._trial_to_params(trial)
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\optimization\trial_deduplication.py", line 143, in _trial_to_params
+    return self.base_objective._trial_to_params(trial)
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\optimization\optuna_objective_adapter.py", line 122, in _trial_to_params
+    params[name] = trial.suggest_categorical(name, choices)
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\trial\_trial.py", line 406, in suggest_categorical
+    return self._suggest(name, CategoricalDistribution(choices=choices))
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\trial\_trial.py", line 635, in _suggest
+    param_value = self.study.sampler.sample_independent(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\sampler.py", line 458, in sample_independent
+    return self._sample(study, trial, {param_name: param_distribution})[param_name]
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\sampler.py", line 491, in _sample
+    mpe_below = self._build_parzen_estimator(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\sampler.py", line 529, in _build_parzen_estimator
+    mpe = self._parzen_estimator_cls(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\parzen_estimator.py", line 68, in __init__
+    distributions=[
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\parzen_estimator.py", line 69, in <listcomp>
+    self._calculate_distributions(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\parzen_estimator.py", line 154, in _calculate_distributions
+    return self._calculate_categorical_distributions(
+  File "C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\lib\site-packages\optuna\samplers\_tpe\parzen_estimator.py", line 207, in _calculate_categorical_distributions
+    weights[np.arange(len(observed_indices)), observed_indices] += 1
+IndexError: index 3 is out of bounds for axis 1 with size 3
+2025-08-01 09:05:39,683 - INFO - Backtester run completed.
+Running: C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\Scripts\python.exe -m cProfile -o profile_optuna.prof -m src.portfolio_backtester.backtester --mode optimize --scenario-name fixed_weight_spy_gld_sortino_optimization --optuna-trials 3 --n-jobs 1
+
+Profile saved to C:\Users\Mateusz\source\repos\portfolio-backtester\profile_optuna.prof
