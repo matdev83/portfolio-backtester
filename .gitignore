@@ -160,3 +160,4 @@ data/reports/*
 GEMINI.md
 .agent.md
 .numba_cache/
+*.prof

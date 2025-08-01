@@ -2,7 +2,6 @@ name: fixed_weight_spy_gld_sortino_optimization
 strategy: fixed_weight
 universe: ["SPY", "GLD"]
 position_sizer: direct
-transaction_costs_bps: 10
 optimization_metric: Sortino
 
 optimize:

@@ -2,10 +2,19 @@ import logging
 import pandas as pd
 
 from ..portfolio.position_sizer import get_position_sizer_from_config, SIZER_PARAM_MAPPING
+from ..strategies.base.meta_strategy import BaseMetaStrategy
 
 logger = logging.getLogger(__name__)
 
 def generate_signals(strategy, scenario_config, price_data_daily_ohlc, universe_tickers, benchmark_ticker, has_timed_out):
+    # Check if this is a meta strategy - if so, use trade-based approach
+    if isinstance(strategy, BaseMetaStrategy):
+        return _generate_meta_strategy_signals(
+            strategy, scenario_config, price_data_daily_ohlc, 
+            universe_tickers, benchmark_ticker, has_timed_out
+        )
+    
+    # Standard strategy signal generation
     timing_controller = strategy.get_timing_controller()
     timing_controller.reset_state()
 
@@ -154,6 +163,155 @@ def generate_signals(strategy, scenario_config, price_data_daily_ohlc, universe_
         signals = signals_filtered
 
     return signals
+
+
+def _generate_meta_strategy_signals(strategy, scenario_config, price_data_daily_ohlc, universe_tickers, benchmark_ticker, has_timed_out):
+    """
+    Generate signals for meta strategies using trade-based approach.
+    
+    Meta strategies track actual trades from sub-strategies rather than just aggregating signals.
+    This function coordinates the meta strategy's signal generation and returns signals that
+    represent the actual trades executed by sub-strategies.
+    """
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"Generating meta strategy signals for {strategy.__class__.__name__}")
+    
+    # Reset interceptor state for clean run
+    strategy.reset_interceptor_state()
+    
+    timing_controller = strategy.get_timing_controller()
+    timing_controller.reset_state()
+
+    start_date = price_data_daily_ohlc.index.min()
+    end_date = price_data_daily_ohlc.index.max()
+
+    wfo_start_date = pd.to_datetime(scenario_config.get("wfo_start_date", None))
+    wfo_end_date = pd.to_datetime(scenario_config.get("wfo_end_date", None))
+
+    if wfo_start_date is not None:
+        start_date = max(start_date, wfo_start_date)
+    if wfo_end_date is not None:
+        end_date = min(end_date, wfo_end_date)
+
+    rebalance_dates = timing_controller.get_rebalance_dates(
+        start_date=start_date,
+        end_date=end_date,
+        available_dates=price_data_daily_ohlc.index,
+        strategy_context=strategy
+    )
+
+    all_monthly_weights = []
+
+    for current_rebalance_date in rebalance_dates:
+        if has_timed_out():
+            logger.warning("Timeout reached during meta strategy scenario run. Halting signal generation.")
+            break
+
+        should_generate = timing_controller.should_generate_signal(
+            current_date=current_rebalance_date,
+            strategy_context=strategy
+        )
+
+        if not should_generate:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Timing controller skipped meta strategy signal generation for date: {current_rebalance_date}")
+            continue
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Generating meta strategy signals for date: {current_rebalance_date}")
+
+        # Prepare data for meta strategy (same as regular strategy)
+        if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and 'Ticker' in price_data_daily_ohlc.columns.names:
+            asset_hist_data_cols = pd.MultiIndex.from_product([universe_tickers, list(price_data_daily_ohlc.columns.get_level_values('Field').unique())], names=['Ticker', 'Field'])
+            asset_hist_data_cols = [col for col in asset_hist_data_cols if col in price_data_daily_ohlc.columns]
+            all_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, asset_hist_data_cols]
+
+            benchmark_hist_data_cols = pd.MultiIndex.from_product([[benchmark_ticker], list(price_data_daily_ohlc.columns.get_level_values('Field').unique())], names=['Ticker', 'Field'])
+            benchmark_hist_data_cols = [col for col in benchmark_hist_data_cols if col in price_data_daily_ohlc.columns]
+            benchmark_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, benchmark_hist_data_cols]
+        else:
+            all_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, universe_tickers]
+            benchmark_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, [benchmark_ticker]]
+
+        non_universe_tickers = strategy.get_non_universe_data_requirements()
+        non_universe_historical_data_for_strat = pd.DataFrame()
+        if non_universe_tickers:
+            if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and 'Ticker' in price_data_daily_ohlc.columns.names:
+                non_universe_hist_data_cols = pd.MultiIndex.from_product([non_universe_tickers, list(price_data_daily_ohlc.columns.get_level_values('Field').unique())], names=['Ticker', 'Field'])
+                non_universe_hist_data_cols = [col for col in non_universe_hist_data_cols if col in price_data_daily_ohlc.columns]
+                non_universe_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, non_universe_hist_data_cols]
+            else:
+                non_universe_historical_data_for_strat = price_data_daily_ohlc.loc[price_data_daily_ohlc.index <= current_rebalance_date, non_universe_tickers]
+
+        # Generate signals from meta strategy (this will trigger trade interceptors)
+        import inspect
+        sig = inspect.signature(strategy.generate_signals)
+        if 'non_universe_historical_data' in sig.parameters:
+            current_weights_df = strategy.generate_signals(
+                all_historical_data=all_historical_data_for_strat,
+                benchmark_historical_data=benchmark_historical_data_for_strat,
+                non_universe_historical_data=non_universe_historical_data_for_strat,
+                current_date=current_rebalance_date,
+                start_date=wfo_start_date,
+                end_date=wfo_end_date
+            )
+        else:
+            current_weights_df = strategy.generate_signals(
+                all_historical_data=all_historical_data_for_strat,
+                benchmark_historical_data=benchmark_historical_data_for_strat,
+                current_date=current_rebalance_date,
+                start_date=wfo_start_date,
+                end_date=wfo_end_date
+            )
+
+        if current_weights_df is not None and not current_weights_df.empty:
+            if len(current_weights_df) > 0:
+                current_weights_series = current_weights_df.iloc[0]
+                timing_controller.update_signal_state(current_rebalance_date, current_weights_series)
+
+                try:
+                    if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and 'Close' in price_data_daily_ohlc.columns.get_level_values(1):
+                        current_prices = price_data_daily_ohlc.loc[current_rebalance_date].xs('Close', level='Field')
+                    elif not isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
+                        current_prices = price_data_daily_ohlc.loc[current_rebalance_date]
+                    else:
+                        try:
+                            current_prices = price_data_daily_ohlc.loc[current_rebalance_date].xs('Close', level=-1)
+                        except:
+                            current_prices = price_data_daily_ohlc.loc[current_rebalance_date].iloc[:len(universe_tickers)]
+
+                    universe_prices = current_prices.reindex(universe_tickers).ffill()
+
+                    timing_controller.update_position_state(
+                        current_rebalance_date, 
+                        current_weights_series, 
+                        universe_prices
+                    )
+
+                except Exception as e:
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Could not update position state for meta strategy {current_rebalance_date}: {e}")
+
+        all_monthly_weights.append(current_weights_df)
+
+    if not all_monthly_weights:
+        if logger.isEnabledFor(logging.WARNING):
+            logger.warning(f"No signals generated for meta strategy scenario {scenario_config['name']}. This might be due to WFO window or other issues.")
+        signals = pd.DataFrame(columns=universe_tickers, index=rebalance_dates)
+    else:
+        signals = pd.concat(all_monthly_weights)
+        signals = signals.reindex(rebalance_dates).fillna(0.0)
+
+    # For meta strategies, we want to return signals that represent actual trades
+    # The trade interceptors have already captured the actual trades
+    # Now we need to convert those trades back to signal format for framework compatibility
+    
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"Meta strategy generated {len(strategy.get_aggregated_trades())} trades")
+        logger.debug(f"Returning signals with shape: {signals.shape}")
+    
+    return signals
+
 
 def size_positions(signals, scenario_config, price_data_monthly_closes, price_data_daily_ohlc, universe_tickers, benchmark_ticker):
     # If the position_sizer is set to "direct", bypass the sizing logic

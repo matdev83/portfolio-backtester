@@ -90,31 +90,7 @@ def main():
         if scenario_from_config:
             selected_scenarios = [scenario_from_config]
         else:
-            # Search for scenario file in subdirectories
-            scenario_path = None
-            scenarios_dir = Path("config/scenarios")
-            
-            # First try with .yaml extension
-            for root, dirs, files in os.walk(scenarios_dir):
-                if f"{args.scenario_name}.yaml" in files:
-                    scenario_path = Path(root) / f"{args.scenario_name}.yaml"
-                    break
-            
-            # If not found, try without .yaml extension
-            if scenario_path is None:
-                for root, dirs, files in os.walk(scenarios_dir):
-                    if args.scenario_name in files:
-                        scenario_path = Path(root) / args.scenario_name
-                        break
-            
-            if scenario_path is None:
-                parser.error(f"Scenario file not found: {args.scenario_name} (searched in {scenarios_dir} and subdirectories)")
-
-            is_valid, scenario_data, error_message = config_loader_module.validate_yaml_file(scenario_path)
-            if not is_valid:
-                parser.error(f"Invalid scenario file: {scenario_path}\n{error_message}")
-
-            selected_scenarios = [config_loader_module.merge_optimizer_config(scenario_data, args.optimizer)]
+            parser.error(f"Scenario '{args.scenario_name}' not found in any of the loaded configuration files.")
     else:
         selected_scenarios = BACKTEST_SCENARIOS_RELOADED
 

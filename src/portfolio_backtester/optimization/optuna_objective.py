@@ -75,7 +75,15 @@ def _run_scenario_static(
 
     gross = (weights_daily.shift(1).fillna(0.0) * rets_daily).sum(axis=1)
     turn = (weights_daily - weights_daily.shift(1)).abs().sum(axis=1)
-    tc = turn * (scenario_cfg["transaction_costs_bps"] / 10_000)
+
+    from ..trading import get_transaction_cost_model
+    tx_cost_model = get_transaction_cost_model(global_cfg)
+    tc, _ = tx_cost_model.calculate(
+        turnover=turn,
+        weights_daily=weights_daily,
+        price_data=price_daily,
+        portfolio_value=global_cfg.get("portfolio_value", 100000.0)
+    )
 
     return (gross - tc).reindex(price_daily.index).fillna(0)
 

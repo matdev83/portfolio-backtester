@@ -4,7 +4,6 @@ description: UVXY short strategy based on SPY RSI(2) signals - Daily signal-driv
 strategy: uvxy_rsi
 rebalance_frequency: D
 position_sizer: equal_weight
-transaction_costs_bps: 5
 train_window_months: 12
 test_window_months: 12
 
@@ -35,7 +34,6 @@ strategy_params:
   long_only: false
   leverage: 1.0
   smoothing_lambda: 0.0
-  shorting_fee_bps: 25
   rebalance_frequency: daily
 mc_simulations: 100
 mc_years: 3

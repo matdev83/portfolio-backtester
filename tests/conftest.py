@@ -59,7 +59,10 @@ def pytest_collection_modifyitems(config, items):
     """
     for item in items:
         # Get the test file path relative to tests directory
-        test_file = Path(item.fspath).relative_to(Path(__file__).parent)
+        try:
+            test_file = Path(item.fspath).relative_to(Path(__file__).parent)
+        except ValueError:
+            test_file = Path(item.fspath)
         test_path_parts = test_file.parts
         
         # Add markers based on directory structure

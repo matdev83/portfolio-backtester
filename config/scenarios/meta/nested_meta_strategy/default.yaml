@@ -1,0 +1,80 @@
+name: nested_meta_strategy
+strategy: simple_meta
+rebalance_frequency: ME
+position_sizer: equal_weight
+train_window_months: 36
+test_window_months: 48
+
+# Universe Configuration: Use a diverse set of assets
+universe_config:
+  type: "named"
+  universe_name: "sp500_top50"
+
+optimization_metric: Sharpe
+optimize: []  # No optimization for now, just run with fixed parameters
+
+strategy_params:
+  initial_capital: 2000000
+  min_allocation: 0.05
+  allocations:
+    # 80% allocation to an equity-focused meta strategy
+    - strategy_id: "equity_meta"
+      strategy_class: "SimpleMetaStrategy"
+      strategy_params:
+        initial_capital: 1600000  # Will be overridden by parent allocation
+        allocations:
+          - strategy_id: "momentum"
+            strategy_class: "CalmarMomentumStrategy"
+            strategy_params:
+              rolling_window: 6
+              num_holdings: 8
+              sma_filter_window: 15
+              price_column_asset: "Close"
+              price_column_benchmark: "Close"
+              lookback_months: 11
+              top_decile_fraction: 0.1
+              smoothing_lambda: 0.5
+              leverage: 0.5
+              long_only: true
+              timing_config:
+                mode: "time_based"
+                rebalance_frequency: "M"
+            weight: 0.6  # 60% of equity allocation
+          - strategy_id: "seasonal"
+            strategy_class: "IntramonthSeasonalStrategy"
+            strategy_params:
+              direction: "long"
+              entry_day: 5
+              hold_days: 10
+              price_column_asset: "Close"
+              trade_longs: true
+              trade_shorts: false
+              use_ema_filter: false
+              fast_ema_len: 0
+              slow_ema_multiplier: 2.0
+              timing_config:
+                mode: "signal_based"
+            weight: 0.4  # 40% of equity allocation
+      weight: 0.8  # 80% of total capital
+    
+    # 20% allocation to a conservative strategy
+    - strategy_id: "conservative"
+      strategy_class: "CalmarMomentumStrategy"
+      strategy_params:
+        rolling_window: 12  # Longer window for more conservative approach
+        num_holdings: 15    # More diversified
+        sma_filter_window: 50
+        price_column_asset: "Close"
+        price_column_benchmark: "Close"
+        lookback_months: 11
+        top_decile_fraction: 0.15
+        smoothing_lambda: 0.7
+        leverage: 0.3
+        long_only: true
+        timing_config:
+          mode: "time_based"
+          rebalance_frequency: "Q"  # Quarterly rebalancing
+      weight: 0.2  # 20% of total capital
+
+mc_simulations: 500
+mc_years: 20

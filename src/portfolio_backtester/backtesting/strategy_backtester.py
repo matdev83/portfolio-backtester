@@ -139,7 +139,8 @@ class StrategyBacktester:
             rets_daily, 
             universe_tickers, 
             self.global_config,
-            track_trades=True
+            track_trades=True,
+            strategy=strategy
         )
         
         # Handle both old and new return formats
@@ -370,7 +371,8 @@ class StrategyBacktester:
             rets_daily, 
             universe_tickers, 
             self.global_config,
-            track_trades=False
+            track_trades=False,
+            strategy=strategy
         )
         
         # Handle both old and new return formats

@@ -413,29 +413,7 @@ class LowVolatilityFactorStrategy(PortfolioStrategy):
         
         return weights
 
-    def _apply_transaction_costs(self, weights: pd.Series, current_date: pd.Timestamp) -> pd.Series:
-        """
-        Apply transaction costs and shorting fees to the portfolio weights.
-        This is a simplified implementation - in practice you'd need more sophisticated cost modeling.
-        """
-        params = self.strategy_config.get("strategy_params", self.strategy_config)
-        
-        if not params["account_for_costs"]:
-            return weights
-        
-        # Simple transaction cost model - reduce weights slightly to account for costs
-        # In practice, you'd use bid-ask spreads and more sophisticated models
-        transaction_cost_factor = 0.995  # Assume 0.5% transaction cost
-        
-        # Apply transaction costs
-        adjusted_weights = weights * transaction_cost_factor
-        
-        # Apply shorting fees to negative weights
-        shorting_fee_factor = 1.0 - (params["shorting_fee_annual"] / 12)  # Monthly fee
-        short_positions = adjusted_weights < 0
-        adjusted_weights[short_positions] *= shorting_fee_factor
-        
-        return adjusted_weights
+    
 
     def _create_long_only_weights(self, portfolios: Dict[str, list]) -> pd.Series:
         """

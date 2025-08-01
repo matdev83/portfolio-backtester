@@ -2,7 +2,6 @@ name: genetic_minimal
 strategy: momentum
 rebalance_frequency: ME
 position_sizer: equal_weight
-transaction_costs_bps: 5
 train_window_months: 36
 test_window_months: 48
 walk_forward_type: expanding

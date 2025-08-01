@@ -1,7 +1,6 @@
 name: momentum_find_best_sizer
 strategy: momentum
 rebalance_frequency: "ME"
-transaction_costs_bps: 10
 
 # --- Define the Goal of the Optimization ---
 optimization_metric: Sharpe Ratio

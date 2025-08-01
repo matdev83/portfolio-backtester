@@ -203,7 +203,7 @@ class Backtester:
         sized_signals = size_positions(signals, scenario_config, price_data_monthly_closes, price_data_daily_ohlc, universe_tickers, benchmark_ticker)
 
         # Calculate portfolio returns (no trade tracking for optimization)
-        result = calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily_ohlc, rets_daily, universe_tickers, self.global_config, track_trades=False)
+        result = calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily_ohlc, rets_daily, universe_tickers, self.global_config, track_trades=False, strategy=strategy)
         
         # Handle both old and new return formats
         if isinstance(result, tuple):
@@ -450,7 +450,16 @@ class Backtester:
             if strategy_class is None:
                 logger.error(f"Unsupported strategy: {scenario_config['strategy']}")
                 return np.nan, pd.Series(dtype=float)
-            strategy_instance = strategy_class(scenario_config["strategy_params"])
+            
+            # Check if this is a meta strategy that accepts global_config
+            if hasattr(strategy_class, '__name__') and 'MetaStrategy' in strategy_class.__name__:
+                try:
+                    strategy_instance = strategy_class(scenario_config["strategy_params"], self.global_config)
+                except TypeError:
+                    # Fallback for meta strategies that don't accept global_config yet
+                    strategy_instance = strategy_class(scenario_config["strategy_params"])
+            else:
+                strategy_instance = strategy_class(scenario_config["strategy_params"])
             # ----------------------------------------------------------
             # Build a *full-length* signal matrix aligned with the daily
             # price DataFrame – same logic as evaluate_fast_numba.
@@ -592,7 +601,16 @@ class Backtester:
             if strategy_class is None:
                 logger.error(f"Unsupported strategy: {scenario_config['strategy']}")
                 return np.nan, pd.Series(dtype=float)
-            strategy_instance = strategy_class(scenario_config["strategy_params"])
+            
+            # Check if this is a meta strategy that accepts global_config
+            if hasattr(strategy_class, '__name__') and 'MetaStrategy' in strategy_class.__name__:
+                try:
+                    strategy_instance = strategy_class(scenario_config["strategy_params"], self.global_config)
+                except TypeError:
+                    # Fallback for meta strategies that don't accept global_config yet
+                    strategy_instance = strategy_class(scenario_config["strategy_params"])
+            else:
+                strategy_instance = strategy_class(scenario_config["strategy_params"])
 
             # ----------------------------------------------------------
             # Build a *full-length* signals matrix that matches exactly

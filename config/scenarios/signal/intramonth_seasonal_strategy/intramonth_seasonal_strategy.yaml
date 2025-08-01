@@ -2,7 +2,6 @@ name: intramonth_seasonal_strategy
 strategy: intramonth_seasonal
 rebalance_frequency: D
 position_sizer: equal_weight
-transaction_costs_bps: 10
 train_window_months: 12
 test_window_months: 12
 optimization_targets:

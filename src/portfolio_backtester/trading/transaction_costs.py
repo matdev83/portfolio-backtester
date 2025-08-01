@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import logging
 from abc import ABC, abstractmethod
+from .unified_commission_calculator import get_unified_commission_calculator
 
 logger = logging.getLogger(__name__)
 
@@ -32,47 +33,51 @@ class RealisticTransactionCostModel(TransactionCostModel):
     """
     A realistic transaction cost model based on the IBKR commission
     structure and slippage estimates.
+    
+    This model now uses the unified commission calculator to ensure
+    consistency across all strategy types.
     """
 
     def __init__(self, global_config: dict):
-        self.slippage_bps = global_config.get("slippage_bps", 2.5)
-        self.commission_min_per_order = global_config.get("commission_min_per_order", 1.0)
-        self.commission_per_share = global_config.get("commission_per_share", 0.005)
-        self.commission_max_percent = global_config.get("commission_max_percent_of_trade", 0.005)
+        self.global_config = global_config
+        self.unified_calculator = get_unified_commission_calculator(global_config)
 
     def calculate(
         self,
         turnover: pd.Series,
         weights_daily: pd.DataFrame,
         price_data: pd.DataFrame,
-        portfolio_value: float = 100000.0
+        portfolio_value: float = 100000.0,
+        transaction_costs_bps: float = None
     ) -> tuple[pd.Series, dict]:
-        if isinstance(price_data.columns, pd.MultiIndex):
-            daily_closes = price_data.xs('Close', level='Field', axis=1)
-        else:
-            daily_closes = price_data
-
-        trade_value = turnover * portfolio_value
-        weight_changes = weights_daily.diff().abs()
-        shares_traded = (weight_changes * portfolio_value) / daily_closes
-        commission_per_trade = shares_traded * self.commission_per_share
-        commission_per_trade = np.maximum(commission_per_trade, self.commission_min_per_order)
-        commission_per_trade = np.minimum(commission_per_trade, (trade_value * self.commission_max_percent).values.reshape(-1, 1))
-        total_commission = commission_per_trade.sum(axis=1)
-        commission_costs = total_commission / portfolio_value
-
-        slippage_costs = turnover * (self.slippage_bps / 10000.0)
-
-        total_costs = commission_costs + slippage_costs
-        total_costs = total_costs.fillna(0)
-
-        breakdown = {
-            'commission_costs': commission_costs.fillna(0),
-            'slippage_costs': slippage_costs.fillna(0),
-            'total_costs': total_costs
-        }
-
+        """
+        Calculate transaction costs using the unified commission calculator.
+        
+        This method maintains backward compatibility while using the new
+        unified calculation system internally.
+        """
+        # Use the unified calculator for consistent results
+        total_costs, breakdown, detailed_trade_info = self.unified_calculator.calculate_portfolio_commissions(
+            turnover=turnover,
+            weights_daily=weights_daily,
+            price_data=price_data,
+            portfolio_value=portfolio_value,
+            transaction_costs_bps=transaction_costs_bps
+        )
+        
+        # Store detailed trade info for potential client access
+        self._last_detailed_trade_info = detailed_trade_info
+        
         return total_costs, breakdown
+    
+    def get_last_detailed_trade_info(self):
+        """
+        Get detailed trade information from the last calculation.
+        
+        Returns:
+            Dictionary with detailed per-trade commission information
+        """
+        return getattr(self, '_last_detailed_trade_info', {})
 
 
 def get_transaction_cost_model(config: dict) -> TransactionCostModel:

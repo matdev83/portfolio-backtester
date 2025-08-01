@@ -2,7 +2,6 @@ name: ema_roro
 strategy: "ema_roro"
 rebalance_frequency: "ME"
 position_sizer: "equal_weight"
-transaction_costs_bps: 10
 train_window_months: 24
 test_window_months: 12
 

@@ -4,11 +4,13 @@ from __future__ import annotations
 from .base.base_strategy import BaseStrategy
 from .base.portfolio_strategy import PortfolioStrategy
 from .base.signal_strategy import SignalStrategy
+from .base.meta_strategy import BaseMetaStrategy
 
 __all__ = [
     "BaseStrategy",
     "PortfolioStrategy", 
     "SignalStrategy",
+    "BaseMetaStrategy",
     "enumerate_strategies_with_params",
 ]
 
@@ -61,7 +63,7 @@ def enumerate_strategies_with_params() -> Dict[str, type]:  # pragma: no cover
     package_name = __name__
     package_path = os.path.dirname(__file__)
 
-    for subdir in ['portfolio', 'signal']:
+    for subdir in ['portfolio', 'signal', 'meta']:
         subdir_path = os.path.join(package_path, subdir)
         if os.path.isdir(subdir_path):
             for module_info in pkgutil.walk_packages([subdir_path], prefix=f"{package_name}.{subdir}."):
@@ -105,6 +107,8 @@ def enumerate_strategies_with_params() -> Dict[str, type]:  # pragma: no cover
     strategy_aliases = {
         'ema_crossover': 'ema',  # EMAStrategy should be accessible as both 'ema' and 'ema_crossover'
         'ema_roro': 'ema_ro_ro',  # EMARoRoStrategy should be accessible as both 'ema_ro_ro' and 'ema_roro'
+        'dummy': 'dummy_strategy_for_testing',
+        'dummy_strategy': 'dummy_strategy_for_testing',
     }
     
     # Add aliases to the discovered strategies

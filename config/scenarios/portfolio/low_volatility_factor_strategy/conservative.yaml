@@ -11,8 +11,6 @@ strategy_params:
   beta_max_low_vol: 1.0
   use_hedged_legs: true
   long_only: true
-  account_for_costs: true
-  shorting_fee_annual: 0.01
   leverage: 0.8
   smoothing_lambda: 0.7
   price_column: Close

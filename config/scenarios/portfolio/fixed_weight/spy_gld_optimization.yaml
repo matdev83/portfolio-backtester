@@ -2,7 +2,6 @@ name: fixed_weight_spy_gld_optimization
 strategy: fixed_weight
 position_sizer: direct
 universe: ["SPY", "GLD"]
-transaction_costs_bps: 10
 optimization_metric: Sharpe
 
 optimize:

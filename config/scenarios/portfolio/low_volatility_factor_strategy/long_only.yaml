@@ -8,7 +8,6 @@ strategy_params:
   beta_lookback_months: 36
   use_hedged_legs: true
   long_only: true
-  account_for_costs: false
   leverage: 1.0
   smoothing_lambda: 0.5
   price_column: Close

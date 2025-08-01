@@ -59,9 +59,19 @@ class TradeTracker:
         date: pd.Timestamp,
         new_weights: pd.Series,
         prices: pd.Series,
-        transaction_costs: float
+        commissions: Dict[str, float],
+        detailed_commission_info: Optional[Dict[str, Any]] = None
     ) -> None:
-        """Update positions based on new target weights."""
+        """
+        Update positions based on new target weights.
+        
+        Args:
+            date: Current date
+            new_weights: Target portfolio weights
+            prices: Asset prices
+            commissions: Commission costs per asset (for backward compatibility)
+            detailed_commission_info: Detailed commission information from unified calculator
+        """
         # Calculate target quantities
         target_quantities = {}
         for ticker, weight in new_weights.items():
@@ -78,12 +88,14 @@ class TradeTracker:
         # Close positions not in target
         for ticker in current_tickers - target_tickers:
             if ticker in prices:
-                self._close_position(date, ticker, prices[ticker], transaction_costs)
+                commission = commissions.get(ticker, 0.0)
+                self._close_position(date, ticker, prices[ticker], commission)
         
         # Open new positions
         for ticker in target_tickers - current_tickers:
             if ticker in prices:
-                self._open_position(date, ticker, target_quantities[ticker], prices[ticker], transaction_costs)
+                commission = commissions.get(ticker, 0.0)
+                self._open_position(date, ticker, target_quantities[ticker], prices[ticker], commission)
         
         # Update margin usage
         total_position_value = sum(abs(qty) * prices.get(ticker, 0) 
@@ -149,13 +161,14 @@ class TradeTracker:
         self.trades.append(trade)
         del self.open_positions[ticker]
     
-    def close_all_positions(self, date: pd.Timestamp, prices: pd.Series) -> None:
+    def close_all_positions(self, date: pd.Timestamp, prices: pd.Series, commissions: Dict[str, float]) -> None:
         """Close all open positions at the end of backtesting."""
         tickers_to_close = list(self.open_positions.keys())
         
         for ticker in tickers_to_close:
             if ticker in prices and not pd.isna(prices[ticker]):
-                self._close_position(date, ticker, prices[ticker], 0.0)
+                commission = commissions.get(ticker, 0.0)
+                self._close_position(date, ticker, prices[ticker], commission)
     
     def get_trade_statistics(self) -> Dict[str, Any]:
         """Calculate comprehensive trade statistics split by direction (All/Long/Short)."""

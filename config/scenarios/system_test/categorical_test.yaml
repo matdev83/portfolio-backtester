@@ -1,7 +1,6 @@
 name: categorical_test
 strategy: intramonth_seasonal
 rebalance_frequency: ME
-transaction_costs_bps: 10
 train_window_months: 36
 test_window_months: 48
 optimization_metric: Sharpe Ratio
