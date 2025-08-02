@@ -1,7 +1,20 @@
 # Simple Meta Strategy Example Configuration
 # This demonstrates a basic meta strategy that allocates 70% to momentum and 30% to seasonal
 
+name: "simple_meta_example"
+strategy: "simple_meta"
 strategy_class: "SimpleMetaStrategy"
+rebalance_frequency: "M"
+position_sizer: "equal_weight"
+train_window_months: 36
+test_window_months: 48
+
+optimization_targets:
+  - name: "Sharpe"
+    direction: "maximize"
+
+optimize: []
+
 strategy_params:
   initial_capital: 1000000  # Starting capital for this meta strategy
   min_allocation: 0.05      # Minimum allocation per strategy (5%)
@@ -34,12 +47,4 @@ strategy_params:
           mode: "signal_based"
       weight: 0.3  # 30% of available capital
 
-# Global configuration (would typically be in main config)
-universe:
-  - "AAPL"
-  - "MSFT"
-  - "GOOGL"
-  - "AMZN"
-  - "TSLA"
-
-benchmark: "SPY"
+# Meta strategies inherit universe from their sub-strategies

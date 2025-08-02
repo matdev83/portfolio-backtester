@@ -149,7 +149,20 @@ class BacktestEvaluator:
         trial_scenario_config = copy.deepcopy(scenario_config)
         if "strategy_params" not in trial_scenario_config:
             trial_scenario_config["strategy_params"] = {}
-        trial_scenario_config["strategy_params"].update(parameters)
+        
+        # Add strategy prefix to parameters if needed
+        strategy_name = trial_scenario_config.get("strategy", "")
+        prefixed_parameters = {}
+        for param_name, param_value in parameters.items():
+            # Check if parameter already has a prefix
+            if "." in param_name:
+                prefixed_parameters[param_name] = param_value
+            else:
+                # Add strategy prefix
+                prefixed_param_name = f"{strategy_name}.{param_name}"
+                prefixed_parameters[prefixed_param_name] = param_value
+        
+        trial_scenario_config["strategy_params"].update(prefixed_parameters)
         
         # Evaluate each window
         if self.enable_parallel_optimization and self.n_jobs > 1 and self.parallel_optimizer is not None:

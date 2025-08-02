@@ -147,16 +147,11 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         """
         allocated_capital = self._sub_strategy_capital_tracking.get(strategy_id, 0.0)
         
-        # Get transaction cost configuration
-        transaction_cost_bps = self.strategy_params.get("transaction_costs_bps", 10.0)
-        
-        # Create interceptor with callback to track trades
         interceptor = MetaStrategyTradeInterceptor(
             sub_strategy=strategy_instance,
             strategy_id=strategy_id,
             allocated_capital=allocated_capital,
             trade_callback=self._on_sub_strategy_trade,
-            transaction_cost_bps=transaction_cost_bps,
             global_config=self.global_config
         )
         
@@ -732,7 +727,8 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         return {
             "initial_capital",
             "min_allocation",
-            "rebalance_threshold"
+            "rebalance_threshold",
+            "allocations"
         }
     
     def get_universe(self, global_config: Dict[str, Any]) -> List[Tuple[str, float]]:

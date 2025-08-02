@@ -24,12 +24,14 @@ class StrategyFactory:
     def _populate_registry_if_needed(cls) -> None:
         """Populate the registry by discovering strategies if not already done."""
         if not cls._registry_populated:
+            from .meta.simple_meta_strategy import SimpleMetaStrategy
             # The snake_case keys from enumerate_strategies_with_params are not what's
             # used for strategy_class lookups. The class name itself is used.
             # We need to populate the registry with ClassName -> ClassType.
             discovered_strategies = enumerate_strategies_with_params()
             for strategy_cls in discovered_strategies.values():
                 cls.register_strategy(strategy_cls.__name__, strategy_cls)
+            cls.register_strategy("SimpleMetaStrategy", SimpleMetaStrategy)
             cls._registry_populated = True
 
     @classmethod
@@ -67,6 +69,21 @@ class StrategyFactory:
         if strategy_class.endswith("MetaStrategy"):
             cls._circular_detection.add(strategy_class)
         
+        # Process strategy_params to remove prefixes
+        processed_params = {}
+        if strategy_params:
+            # Determine the prefix from the first key
+            first_key = next(iter(strategy_params))
+            if '.' in first_key:
+                prefix = first_key.split('.')[0] + '.'
+                for key, value in strategy_params.items():
+                    if key.startswith(prefix):
+                        processed_params[key[len(prefix):]] = value
+                    else:
+                        processed_params[key] = value # Keep non-prefixed params as is
+            else:
+                processed_params = strategy_params # No prefixes found
+
         try:
             strategy_cls = cls._registry[strategy_class]
             
@@ -74,12 +91,12 @@ class StrategyFactory:
             if strategy_class.endswith("MetaStrategy") and global_config is not None:
                 # Try to pass global_config to meta strategies
                 try:
-                    instance = strategy_cls(strategy_params, global_config)
+                    instance = strategy_cls(processed_params, global_config)
                 except TypeError:
                     # Fallback for meta strategies that don't accept global_config yet
-                    instance = strategy_cls(strategy_params)
+                    instance = strategy_cls(processed_params)
             else:
-                instance = strategy_cls(strategy_params)
+                instance = strategy_cls(processed_params)
             
             return instance
         finally:

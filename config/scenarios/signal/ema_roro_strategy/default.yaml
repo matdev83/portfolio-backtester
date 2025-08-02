@@ -1,18 +1,16 @@
 name: ema_roro
-strategy: "ema_roro"
-rebalance_frequency: "ME"
-position_sizer: "equal_weight"
+strategy: ema_roro
+rebalance_frequency: ME
+position_sizer: equal_weight
 train_window_months: 24
 test_window_months: 12
-
-# Universe Configuration: Use NASDAQ top 20 for EMA RoRo strategy
 universe_config:
-  type: "named"
-  universe_name: "nasdaq_top20"
+  type: named
+  universe_name: nasdaq_top20
 optimization_targets:
-  - name: "Sortino"
-    direction: "maximize"
+- name: Sortino
+  direction: maximize
 strategy_params:
-  fast_ema_days: 20
-  slow_ema_days: 64
-  leverage: 1.5
+  ema_roro.fast_ema_days: 20
+  ema_roro.slow_ema_days: 64
+  ema_roro.leverage: 1.5

@@ -431,16 +431,21 @@ class TestMetaTradeTrackingIntegration:
     def test_transaction_cost_handling(self, market_data, meta_strategy_config):
         """Test that transaction costs are properly handled in aggregation."""
         # Add transaction costs to config
-        config_with_costs = meta_strategy_config.copy()
-        config_with_costs["transaction_costs_bps"] = 10.0  # 10 basis points
-        
-        meta_strategy = SimpleMetaStrategy(config_with_costs)
-        
+        global_config = {
+            "commission_per_share": 0.005,
+            "commission_min_per_order": 1.0,
+            "commission_max_percent_of_trade": 0.005,
+            "slippage_bps": 2.5,
+            "default_transaction_cost_bps": 10.0
+        }
+
+        meta_strategy = SimpleMetaStrategy(meta_strategy_config, global_config=global_config)
+
         scenario_config = {
-            "strategy_params": config_with_costs,
+            "strategy_params": meta_strategy_config,
             "timing_config": {"rebalance_frequency": "M"}
         }
-        
+
         generate_signals(
             strategy=meta_strategy,
             scenario_config=scenario_config,
@@ -449,16 +454,16 @@ class TestMetaTradeTrackingIntegration:
             benchmark_ticker="SPY",
             has_timed_out=lambda: False
         )
-        
+
         trades = meta_strategy.get_aggregated_trades()
-        
+
         # Verify transaction costs are applied
         total_costs = sum(trade.transaction_cost for trade in trades)
         assert total_costs > 0
-        
+
         # Verify costs are reasonable (should be around 10 bps of trade value)
         total_trade_value = sum(trade.trade_value for trade in trades)
         expected_costs = total_trade_value * 0.001  # 10 bps
-        
+
         # Allow some tolerance for rounding
         assert abs(total_costs - expected_costs) < expected_costs * 0.1

@@ -4,30 +4,28 @@ rebalance_frequency: ME
 position_sizer: equal_weight
 train_window_months: 36
 test_window_months: 48
-
-# Universe Configuration: Use fixed universe for VAMS strategy
 universe_config:
-  type: "fixed"
+  type: fixed
   tickers:
-    - "AAPL"
-    - "MSFT"
-    - "GOOGL"
-    - "AMZN"
-    - "NVDA"
-    - "META"
-    - "TSLA"
-    - "BRK.B"
-    - "UNH"
-    - "JNJ"
-    - "JPM"
-    - "V"
-    - "PG"
-    - "HD"
-    - "MA"
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - NVDA
+  - META
+  - TSLA
+  - BRK.B
+  - UNH
+  - JNJ
+  - JPM
+  - V
+  - PG
+  - HD
+  - MA
 optimization_metric: Sortino
 strategy_params:
-  long_only: true
-  sma_filter_window: null
+  vams_momentum.long_only: true
+  vams_momentum.sma_filter_window: null
 mc_simulations: 1000
 mc_years: 10
 optimize:

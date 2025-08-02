@@ -193,7 +193,7 @@ def build_objective(
             if param_name in SPECIAL_SCEN_CFG_KEYS:
                 scen_cfg_overrides[param_name] = suggested_value
             else:
-                p[param_name] = suggested_value
+                p[f"{strategy_name}.{param_name}"] = suggested_value
 
         if skipped_params:
             trial.set_user_attr("skipped_parameters", skipped_params)

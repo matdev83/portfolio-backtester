@@ -24,8 +24,9 @@ def calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily
         sized_signals, rebalance_frequency
     )
     
-    print(f"DEBUG: weights_monthly shape: {weights_monthly.shape}")
-    print(f"DEBUG: weights_monthly head:\n{weights_monthly.head()}")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("weights_monthly shape: %s", weights_monthly.shape)
+        logger.debug("weights_monthly head:\n%s", weights_monthly.head())
 
     weights_monthly = weights_monthly.reindex(columns=universe_tickers).fillna(0.0)
 

@@ -2,8 +2,21 @@ from typing import Set
 from .utils import _resolve_strategy
 from .api_stability import api_stable
 
-def _get_strategy_tunable_params(strategy_name: str) -> Set[str]:
-    """Resolves strategy and returns its tunable parameters."""
+def _get_strategy_tunable_params(strategy_spec) -> Set[str]:
+    """Resolve a strategy specification (string name or dict) to its tunable parameters."""
+    # Support both simple string ("momentum_strategy") and dict forms
+    if isinstance(strategy_spec, dict):
+        strategy_name = (
+            strategy_spec.get("name")
+            or strategy_spec.get("strategy")
+            or strategy_spec.get("type")
+        )
+    else:
+        strategy_name = strategy_spec
+
+    if not strategy_name:
+        return set()
+
     strat_cls = _resolve_strategy(strategy_name)
     if strat_cls:
         return set(strat_cls.tunable_parameters())
@@ -22,6 +35,10 @@ def populate_default_optimizations(scenarios: list, optimizer_parameter_defaults
     Min/max/step values for these parameters are sourced from
     OPTIMIZER_PARAMETER_DEFAULTS at runtime by the optimizer.
     Also populate strategy_params with default values for optimization parameters.
+    
+    This function supports both legacy and modern optimization parameter formats:
+    1. Legacy format: 'optimize' section with parameter specifications
+    2. Modern format: 'strategy.params.param_name.optimization' with range/step/exclude
     """
     sizer_param_map = {
         "rolling_sharpe": "sizer_sharpe_window",
@@ -40,7 +57,33 @@ def populate_default_optimizations(scenarios: list, optimizer_parameter_defaults
         if "strategy_params" not in scenario_config:
             scenario_config["strategy_params"] = {}
 
+        # Collect optimization parameters from both legacy and modern formats
         optimized_parameters_in_scenario = {opt_spec["parameter"] for opt_spec in scenario_config["optimize"]}
+        
+        # Handle modern format: strategy.params.param_name.optimization
+        strategy_config = scenario_config.get("strategy", {})
+        if isinstance(strategy_config, dict):
+            params_config = strategy_config.get("params", {})
+            if isinstance(params_config, dict):
+                for param_name, param_config in params_config.items():
+                    if isinstance(param_config, dict) and "optimization" in param_config:
+                        optimized_parameters_in_scenario.add(param_name)
+                        
+                        # Add default value to strategy_params if not present
+                        if param_name not in scenario_config["strategy_params"]:
+                            opt_config = param_config["optimization"]
+                            
+                            if "range" in opt_config:
+                                # For range-based parameters, use the first value as default
+                                range_values = opt_config["range"]
+                                if len(range_values) == 2:
+                                    default_value = range_values[0]  # Use minimum as default
+                                    scenario_config["strategy_params"][param_name] = default_value
+                            elif "choices" in opt_config:
+                                # For categorical parameters, use the first choice as default
+                                choices = opt_config["choices"]
+                                if choices:
+                                    scenario_config["strategy_params"][param_name] = choices[0]
         
         # Validate existing optimization parameters against strategy tunable parameters
         strategy_name = scenario_config.get("strategy", "unknown")

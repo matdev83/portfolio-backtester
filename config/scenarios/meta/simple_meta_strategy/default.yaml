@@ -4,51 +4,46 @@ rebalance_frequency: ME
 position_sizer: equal_weight
 train_window_months: 36
 test_window_months: 48
-
-# Universe Configuration: Use a diverse set of assets
-universe_config:
-  type: "named"
-  universe_name: "sp500_top50"
-
-optimization_metric: Sharpe
-optimize: []  # No optimization for now, just run with fixed parameters
-
+optimization_targets:
+  - name: Sharpe
+    direction: maximize
+optimize: []
 strategy_params:
-  initial_capital: 1000000
-  min_allocation: 0.05
+  simple_meta.initial_capital: 1000000
+  simple_meta.min_allocation: 0.05
+  simple_meta.rebalance_threshold: 0.05
   allocations:
-    - strategy_id: "momentum"
-      strategy_class: "CalmarMomentumStrategy"
-      strategy_params:
-        rolling_window: 6
-        num_holdings: 10
-        sma_filter_window: 20
-        price_column_asset: "Close"
-        price_column_benchmark: "Close"
-        lookback_months: 11
-        top_decile_fraction: 0.1
-        smoothing_lambda: 0.5
-        leverage: 0.5
-        long_only: true
-        timing_config:
-          mode: "time_based"
-          rebalance_frequency: "M"
-      weight: 0.7
-    - strategy_id: "seasonal"
-      strategy_class: "IntramonthSeasonalStrategy"
-      strategy_params:
-        direction: "long"
-        entry_day: 5
-        hold_days: 10
-        price_column_asset: "Close"
-        trade_longs: true
-        trade_shorts: false
-        use_ema_filter: false
-        fast_ema_len: 0
-        slow_ema_multiplier: 2.0
-        timing_config:
-          mode: "signal_based"
-      weight: 0.3
-
+  - strategy_id: momentum
+    strategy_class: CalmarMomentumStrategy
+    strategy_params:
+      rolling_window: 6
+      num_holdings: 10
+      sma_filter_window: 20
+      price_column_asset: Close
+      price_column_benchmark: Close
+      lookback_months: 11
+      top_decile_fraction: 0.1
+      smoothing_lambda: 0.5
+      leverage: 0.5
+      long_only: true
+      timing_config:
+        mode: time_based
+        rebalance_frequency: M
+    weight: 0.7
+  - strategy_id: seasonal
+    strategy_class: IntramonthSeasonalStrategy
+    strategy_params:
+      direction: long
+      entry_day: 5
+      hold_days: 10
+      price_column_asset: Close
+      trade_longs: true
+      trade_shorts: false
+      use_ema_filter: false
+      fast_ema_len: 0
+      slow_ema_multiplier: 2.0
+      timing_config:
+        mode: signal_based
+    weight: 0.3
 mc_simulations: 500
 mc_years: 20

@@ -101,7 +101,17 @@ class Backtester:
 
     
 
-    def _get_strategy(self, strategy_name: str, params: Dict[str, Any]) -> BaseStrategy:
+    def _get_strategy(self, strategy_spec, params: Dict[str, Any]) -> BaseStrategy:
+        # Support both string and dict specifications
+        if isinstance(strategy_spec, dict):
+            strategy_name = (
+                strategy_spec.get("name")
+                or strategy_spec.get("strategy")
+                or strategy_spec.get("type")
+            )
+        else:
+            strategy_name = strategy_spec
+
         strategy_class = self.strategy_map.get(strategy_name)
         if strategy_class is None:
             logger.error(f"Unsupported strategy: {strategy_name}")
@@ -170,9 +180,24 @@ class Backtester:
         )
         
         if "universe" in scenario_config:
-            universe_tickers = scenario_config["universe"]
+            if isinstance(scenario_config["universe"], list):
+                universe_tickers = scenario_config["universe"]
+            else:
+                # Treat as universe configuration dict
+                try:
+                    from .universe_resolver import resolve_universe_config
+                    universe_tickers = resolve_universe_config(scenario_config["universe"])
+                except Exception as e:
+                    logger.error(f"Failed to resolve universe config: {e}")
+                    universe_tickers = []
+        elif "universe_config" in scenario_config:
+            from .universe_resolver import resolve_universe_config
+            universe_tickers = resolve_universe_config(scenario_config["universe_config"])
         else:
             universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
+
+        # Persist resolved universe list back into scenario_config for downstream consistency
+        scenario_config["universe"] = universe_tickers
 
         missing_cols = [t for t in universe_tickers if t not in price_data_monthly_closes.columns]
         if missing_cols:
@@ -724,21 +749,55 @@ class Backtester:
         else:
             scenarios_to_run = self.scenarios
 
-        all_tickers = set(self.global_config.get("universe", []))
+        # Start with essential tickers (benchmark)
+        all_tickers = set()
         all_tickers.add(self.global_config["benchmark"])
-
+        
+        # Collect scenario-specific tickers first
+        scenario_has_universe = False
         for scenario_config in scenarios_to_run:
-            if "universe" in scenario_config:
-                all_tickers.update(scenario_config["universe"])
+            # Check if scenario defines its own universe
+            if "universe" in scenario_config or "universe_config" in scenario_config:
+                scenario_has_universe = True
+                if "universe" in scenario_config:
+                    if isinstance(scenario_config["universe"], list):
+                        all_tickers.update(scenario_config["universe"])
+                    else:
+                        # Handle universe_config dict
+                        try:
+                            from .universe_resolver import resolve_universe_config
+                            universe_tickers = resolve_universe_config(scenario_config["universe"])
+                            all_tickers.update(universe_tickers)
+                        except Exception as e:
+                            logger.error(f"Failed to resolve universe config: {e}")
+                elif "universe_config" in scenario_config:
+                    try:
+                        from .universe_resolver import resolve_universe_config
+                        universe_tickers = resolve_universe_config(scenario_config["universe_config"])
+                        all_tickers.update(universe_tickers)
+                    except Exception as e:
+                        logger.error(f"Failed to resolve universe config: {e}")
+            
+            # Add strategy-specific data requirements
             strategy = self._get_strategy(
                 scenario_config["strategy"], scenario_config["strategy_params"]
             )
             non_universe_tickers = strategy.get_non_universe_data_requirements()
             all_tickers.update(non_universe_tickers)
+        
+        # Only fall back to global universe if no scenario defines its own universe
+        if not scenario_has_universe:
+            logger.info("No scenario-specific universe found, using global universe")
+            all_tickers.update(self.global_config.get("universe", []))
+        else:
+            logger.info(f"Using scenario-specific universe with {len(all_tickers)} tickers (including benchmark)")
 
+        # Determine optimal start date based on data availability rules
+        start_date = self._determine_optimal_start_date(all_tickers)
+        
         daily_data = self.data_source.get_data(
             tickers=list(all_tickers),
-            start_date=self.global_config["start_date"],
+            start_date=start_date,
             end_date=self.global_config["end_date"],
         )
 
@@ -970,6 +1029,7 @@ class Backtester:
                 'pruning_interval_steps': getattr(self.args, 'pruning_interval_steps', 1),
                 'study_name': getattr(self.args, 'study_name', None),
                 'storage_url': getattr(self.args, 'storage_url', None),
+                'early_stop_zero_trials': getattr(self.args, 'early_stop_zero_trials', 20),
                 'random_seed': self.random_state
             }
             
@@ -1052,19 +1112,21 @@ class Backtester:
     def _convert_optimization_specs_to_parameter_space(self, scenario_config: Dict[str, Any]) -> Dict[str, Any]:
         """Convert scenario optimization specs to parameter space format.
         
-        This method converts the scenario configuration's 'optimize' section
-        to the parameter space format expected by parameter generators.
+        This method supports both legacy and modern optimization parameter formats:
+        1. Legacy format: 'optimize' section with min_value/max_value/step
+        2. Modern format: 'strategy.params.param_name.optimization' with range/step/exclude
         
         Args:
-            scenario_config: Scenario configuration containing 'optimize' section
+            scenario_config: Scenario configuration containing optimization parameters
             
         Returns:
             Dictionary defining the parameter space for optimization
         """
         parameter_space = {}
-        optimization_specs = scenario_config.get("optimize", [])
         
-        for spec in optimization_specs:
+        # Handle legacy format: top-level 'optimize' section
+        legacy_optimization_specs = scenario_config.get("optimize", [])
+        for spec in legacy_optimization_specs:
             param_name = spec["parameter"]
             
             # Get parameter type from spec or defaults
@@ -1091,7 +1153,7 @@ class Backtester:
                 parameter_space[param_name] = {
                     "type": "float", 
                     "low": spec["min_value"],
-                    "high": spec["max_value"],
+                    "high": spec.get("max_value"),
                     "step": spec.get("step", None)
                 }
             elif param_type == "categorical":
@@ -1113,10 +1175,185 @@ class Backtester:
                     "values": choices
                 }
         
+        # Handle modern format: strategy.params.param_name.optimization
+        strategy_config = scenario_config.get("strategy", {})
+        if isinstance(strategy_config, dict):
+            params_config = strategy_config.get("params", {})
+            if isinstance(params_config, dict):
+                for param_name, param_config in params_config.items():
+                    if isinstance(param_config, dict) and "optimization" in param_config:
+                        opt_config = param_config["optimization"]
+                        
+                        if "range" in opt_config:
+                            # Handle range-based optimization
+                            range_values = opt_config["range"]
+                            if len(range_values) == 2:
+                                min_val, max_val = range_values
+                                step = opt_config.get("step", 1)
+                                exclude_values = opt_config.get("exclude", [])
+                                
+                                # Determine parameter type
+                                if isinstance(min_val, int) and isinstance(max_val, int) and isinstance(step, int):
+                                    param_type = "int"
+                                else:
+                                    param_type = "float"
+                                
+                                # Generate the parameter space
+                                if exclude_values:
+                                    # If there are excluded values, generate choices instead of range
+                                    if param_type == "int":
+                                        choices = [x for x in range(min_val, max_val + 1, step) if x not in exclude_values]
+                                    else:
+                                        # For float ranges with exclude, we need to be more careful
+                                        choices = []
+                                        current = min_val
+                                        while current <= max_val:
+                                            if current not in exclude_values:
+                                                choices.append(current)
+                                            current += step
+                                    
+                                    parameter_space[param_name] = {
+                                        "type": "categorical",
+                                        "choices": choices
+                                    }
+                                else:
+                                    # No excluded values, use range
+                                    parameter_space[param_name] = {
+                                        "type": param_type,
+                                        "low": min_val,
+                                        "high": max_val,
+                                        "step": step
+                                    }
+                        elif "choices" in opt_config:
+                            # Handle categorical optimization
+                            parameter_space[param_name] = {
+                                "type": "categorical",
+                                "choices": opt_config["choices"]
+                            }
+        
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Converted optimization specs to parameter space: {parameter_space}")
         
         return parameter_space
+
+    def _determine_optimal_start_date(self, all_tickers: set) -> str:
+        """
+        Determine optimal start date based on data availability rules:
+        1. For single-stock universes: use the earliest available data date for that stock
+        2. For multi-stock universes: use the date where over 50% of universe members have data available
+        
+        Args:
+            all_tickers: Set of all tickers including benchmark
+            
+        Returns:
+            Optimal start date as string
+        """
+        # Remove benchmark from consideration for universe size calculation
+        benchmark = self.global_config["benchmark"]
+        universe_tickers = all_tickers - {benchmark}
+        
+        # Default fallback
+        default_start_date = self.global_config["start_date"]
+        
+        if len(universe_tickers) == 0:
+            logger.warning("No universe tickers found, using default start date")
+            return default_start_date
+        
+        if len(universe_tickers) == 1:
+            # Rule 1: Single-stock universe
+            single_ticker = next(iter(universe_tickers))
+            logger.info(f"Single ticker universe detected: {single_ticker}. Using earliest available data date.")
+            
+            try:
+                # Get minimal data to find the earliest available date
+                test_data = self.data_source.get_data(
+                    tickers=[single_ticker],
+                    start_date="1990-01-01",  # Very early date to get all available data
+                    end_date=self.global_config["end_date"],
+                )
+                if test_data is not None and not test_data.empty:
+                    earliest_date = test_data.index[0]
+                    logger.info(f"Using earliest available data date for {single_ticker}: {earliest_date}")
+                    return earliest_date.strftime('%Y-%m-%d')
+                else:
+                    logger.warning(f"No data found for {single_ticker}, using default start date")
+                    return default_start_date
+            except Exception as e:
+                logger.warning(f"Could not determine earliest data date for {single_ticker}, using configured start_date: {e}")
+                return default_start_date
+        
+        else:
+            # Rule 2: Multi-stock universe - find date where >50% of tickers have data
+            logger.info(f"Multi-ticker universe detected: {len(universe_tickers)} tickers. Finding date where >50% have data available.")
+            
+            try:
+                # Get data for all universe tickers to determine availability
+                test_data = self.data_source.get_data(
+                    tickers=list(universe_tickers),
+                    start_date="1990-01-01",  # Very early date to get all available data
+                    end_date=self.global_config["end_date"],
+                )
+                
+                if test_data is None or test_data.empty:
+                    logger.warning("No data found for any universe tickers, using default start date")
+                    return default_start_date
+                
+                # Count data availability by date
+                # Handle both MultiIndex and single-level columns
+                if isinstance(test_data.columns, pd.MultiIndex):
+                    # Extract close price columns for availability check
+                    close_data = test_data.xs('Close', level='Field', axis=1, drop_level=False)
+                    ticker_columns = close_data.columns.get_level_values('Ticker').unique()
+                else:
+                    close_data = test_data
+                    ticker_columns = test_data.columns
+                
+                # Filter to only universe tickers that actually have columns in the data
+                available_tickers = [t for t in universe_tickers if t in ticker_columns]
+                
+                if not available_tickers:
+                    logger.warning("No universe tickers found in data columns, using default start date")
+                    return default_start_date
+                
+                logger.info(f"Checking data availability for {len(available_tickers)} tickers: {available_tickers}")
+                
+                # Calculate threshold (greater than 50%)
+                threshold = len(available_tickers) / 2.0
+                
+                # Count non-null values for each date
+                if isinstance(test_data.columns, pd.MultiIndex):
+                    # For MultiIndex, select the close columns for available tickers
+                    availability_data = pd.DataFrame()
+                    for ticker in available_tickers:
+                        if (ticker, 'Close') in test_data.columns:
+                            availability_data[ticker] = test_data[(ticker, 'Close')]
+                        else:
+                            # Try other field names if Close is not available
+                            ticker_cols = [col for col in test_data.columns if col[0] == ticker]
+                            if ticker_cols:
+                                availability_data[ticker] = test_data[ticker_cols[0]]
+                else:
+                    # For single-level columns
+                    availability_data = test_data[available_tickers]
+                
+                # Count non-null values per date
+                daily_availability_count = availability_data.notna().sum(axis=1)
+                
+                # Find first date where more than 50% of tickers have data
+                qualifying_dates = daily_availability_count[daily_availability_count > threshold]
+                
+                if not qualifying_dates.empty:
+                    optimal_start_date = qualifying_dates.index[0]
+                    available_count = int(qualifying_dates.iloc[0])
+                    logger.info(f"Using optimal start date {optimal_start_date} where {available_count}/{len(available_tickers)} tickers ({available_count/len(available_tickers)*100:.1f}%) have data available")
+                    return optimal_start_date.strftime('%Y-%m-%d')
+                else:
+                    logger.warning(f"Could not find date where >50% of tickers have data available, using default start date")
+                    return default_start_date
+                    
+            except Exception as e:
+                logger.warning(f"Error determining optimal start date for multi-ticker universe: {e}, using default start date")
+                return default_start_date
 
     def evaluate_trial_parameters(self, scenario_config: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, float]:
         """Evaluates a single set of parameters and returns performance metrics."""

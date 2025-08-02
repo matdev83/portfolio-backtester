@@ -1,0 +1,29 @@
+name: momentum_with_fixed_universe
+strategy: momentum
+rebalance_frequency: ME
+position_sizer: equal_weight
+train_window_months: 36
+test_window_months: 48
+universe_config:
+  type: fixed
+  tickers:
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - NVDA
+  - META
+  - TSLA
+  - BRK.B
+  - UNH
+  - JNJ
+strategy_params:
+  momentum.lookback_months: 6
+  momentum.num_holdings: 5
+  momentum.top_decile_fraction: 0.1
+  momentum.smoothing_lambda: 0.0
+  momentum.leverage: 1.0
+  momentum.long_only: true
+  momentum.apply_trading_lag: false
+mc_simulations: 100
+mc_years: 5

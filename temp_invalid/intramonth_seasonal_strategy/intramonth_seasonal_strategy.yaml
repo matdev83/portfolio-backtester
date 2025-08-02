@@ -1,0 +1,67 @@
+name: intramonth_seasonal_strategy
+strategy: intramonth_seasonal
+rebalance_frequency: D
+position_sizer: equal_weight
+train_window_months: 12
+test_window_months: 12
+optimization_targets:
+- name: Sortino
+  direction: maximize
+optimize:
+- parameter: entry_day
+  type: categorical
+  values:
+  - -14
+  - -13
+  - -12
+  - -11
+  - -10
+  - -9
+  - -8
+  - -7
+  - -6
+  - -5
+  - -4
+  - -3
+  - -2
+  - -1
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+- parameter: hold_days
+  type: int
+  min_value: 3
+  max_value: 14
+  step: 1
+strategy_params:
+  intramonth_seasonal.direction: short
+  intramonth_seasonal.long_only: false
+  intramonth_seasonal.leverage: 1.0
+  intramonth_seasonal.trade_month_1: true
+  intramonth_seasonal.trade_month_2: true
+  intramonth_seasonal.trade_month_3: true
+  intramonth_seasonal.trade_month_4: true
+  intramonth_seasonal.trade_month_5: true
+  intramonth_seasonal.trade_month_6: true
+  intramonth_seasonal.trade_month_7: true
+  intramonth_seasonal.trade_month_8: true
+  intramonth_seasonal.trade_month_9: true
+  intramonth_seasonal.trade_month_10: true
+  intramonth_seasonal.trade_month_11: true
+  intramonth_seasonal.trade_month_12: true
+  intramonth_seasonal.use_ema_filter: true
+  intramonth_seasonal.fast_ema_len: 14
+  intramonth_seasonal.slow_ema_multiplier: 4.0
+universe:
+- TLT

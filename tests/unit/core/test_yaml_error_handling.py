@@ -11,8 +11,9 @@ from src.portfolio_backtester.yaml_validator import (
     YamlValidator, 
     YamlErrorType, 
     validate_yaml_file,
-    lint_yaml_file
+    lint_yaml_file,
 )
+from src.portfolio_backtester.scenario_validator import validate_scenario_file
 from src.portfolio_backtester.config_loader import ConfigurationError, load_config
 from src.portfolio_backtester import config_loader
 
@@ -230,6 +231,91 @@ GLOBAL_CONFIG:
             self.assertIn("Suggestion:", formatted_errors)
             self.assertIn("Context:", formatted_errors)
             
+        finally:
+            os.unlink(temp_file)
+
+    def test_type_mismatch(self):
+        invalid_yaml = '''
+strategy: dummy_strategy_for_testing
+name: test
+strategy_params:
+  open_long_prob: 'string'  # should be float
+'''
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(invalid_yaml)
+            temp_file = f.name
+        try:
+            errors = validate_scenario_file(temp_file)
+            self.assertGreater(len(errors), 0)
+            self.assertTrue(any('type mismatch' in e.message for e in errors))
+        finally:
+            os.unlink(temp_file)
+
+    def test_range_violation(self):
+        invalid_yaml = '''
+strategy: dummy_strategy_for_testing
+name: test
+strategy_params:
+  dummy_param_1: 0
+'''
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(invalid_yaml)
+            temp_file = f.name
+        try:
+            errors = validate_scenario_file(temp_file)
+            self.assertGreater(len(errors), 0)
+            self.assertTrue(any('below min' in e.message for e in errors))
+        finally:
+            os.unlink(temp_file)
+
+    def test_required_missing(self):
+        invalid_yaml = '''
+strategy: dummy_strategy_for_testing
+name: test
+strategy_params:
+  close_long_prob: 0.01
+'''
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(invalid_yaml)
+            temp_file = f.name
+        try:
+            errors = validate_scenario_file(temp_file)
+            self.assertGreater(len(errors), 0)
+            self.assertIn('missing in strategy_params', errors[0].message)
+        finally:
+            os.unlink(temp_file)
+
+    def test_positive_int(self):
+        invalid_yaml = '''
+strategy: dummy_strategy_for_testing
+name: test
+train_window_months: 0
+test_window_months: 0
+'''
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(invalid_yaml)
+            temp_file = f.name
+        try:
+            errors = validate_scenario_file(temp_file)
+            self.assertGreater(len(errors), 0)
+            self.assertTrue(any('must be positive' in e.message for e in errors))
+        finally:
+            os.unlink(temp_file)
+
+    def test_window_sum(self):
+        invalid_yaml = '''
+strategy: dummy_strategy_for_testing
+name: test
+train_window_months: 0
+test_window_months: 0
+'''
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(invalid_yaml)
+            temp_file = f.name
+        try:
+            errors = validate_scenario_file(temp_file)
+            self.assertGreater(len(errors), 0)
+            self.assertTrue(any('sum to non-positive' in e.message for e in errors))
         finally:
             os.unlink(temp_file)
 

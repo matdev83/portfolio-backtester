@@ -69,6 +69,16 @@ This approach works because WSL can execute Windows binaries directly. The virtu
 
 ---
 
+## Running the Optimizer
+
+To run the optimizer for a specific strategy, you can use the `--scenario-filename` argument to point to the scenario file. For example, to run the optimizer for the dummy strategy, use the following command:
+
+```bash
+./.venv/Scripts/python.exe -m src.portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/signal/dummy_strategy/dummy_strategy_test.yaml
+```
+
+---
+
 ## Pull Request Workflow
 
 1. Make atomic commits with clear messages

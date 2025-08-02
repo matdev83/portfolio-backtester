@@ -9,6 +9,7 @@ from .utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
 from .utils import register_signal_handler as register_central_signal_handler
 from .config_loader import ConfigurationError
 import src.portfolio_backtester.config_loader as config_loader_module
+from .scenario_validator import validate_scenario_semantics, YamlValidator
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -17,15 +18,16 @@ logger = logging.getLogger(__name__)
 
 def main():
     if sys.platform == "win32":
-        sys.stdout.reconfigure(encoding='utf-8')  # type: ignore
-        sys.stderr.reconfigure(encoding='utf-8')  # type: ignore
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
         
     register_central_signal_handler()
 
     parser = argparse.ArgumentParser(description="Run portfolio backtester.")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Set the logging level.")
     parser.add_argument("--mode", type=str, required=True, choices=["backtest", "optimize"], help="Mode to run the backtester in.")
-    parser.add_argument("--scenario-name", type=str, help="Name of the scenario to run/optimize from BACKTEST_SCENARIOS. Required for all modes.")
+    parser.add_argument("--scenario-name", type=str, help="Name of the scenario to run/optimize from BACKTEST_SCENARIOS.")
+    parser.add_argument("--scenario-filename", type=str, help="Path to a single scenario file to run/optimize.")
     parser.add_argument("--study-name", type=str, help="Name of the Optuna study to use for optimization or to load best parameters from.")
     parser.add_argument("--storage-url", type=str, help="Optuna storage URL. If not provided, SQLite will be used.")
     parser.add_argument("--random-seed", type=int, default=None, help="Set a random seed for reproducibility.")
@@ -37,6 +39,8 @@ def main():
                         help="Parallel worker processes to use (-1 ⇒ all cores).")
     parser.add_argument("--early-stop-patience", type=int, default=10,
                         help="Stop optimisation after N successive ~zero-return evaluations.")
+    parser.add_argument("--early-stop-zero-trials", type=int, default=20,
+                        help="Stop optimization early after N consecutive trials with zero values. Default: 20.")
     parser.add_argument("--optuna-trials", type=int, default=200,
                         help="Maximum trials per optimization.")
     parser.add_argument("--optuna-timeout-sec", type=int, default=None,
@@ -76,15 +80,23 @@ def main():
         print("Please check your configuration files for syntax errors.", file=sys.stderr)
         sys.exit(1)
 
-    if args.mode == "optimize" and args.scenario_name is None:
-        parser.error("--scenario-name is required for 'optimize' mode.")
-
-    import os
+    if args.mode == "optimize" and args.scenario_name is None and args.scenario_filename is None:
+        parser.error("--scenario-name or --scenario-filename is required for 'optimize' mode.")
 
     from pathlib import Path
 
-    if args.scenario_name is not None:
-        # Check if the scenario exists in the loaded scenarios first
+    if args.scenario_filename:
+        scenario_path = Path(args.scenario_filename)
+        if not scenario_path.exists():
+            parser.error(f"Scenario file not found: {args.scenario_filename}")
+        
+        try:
+            scenario_from_file = config_loader_module.load_scenario_from_file(scenario_path)
+            selected_scenarios = [scenario_from_file]
+        except ConfigurationError as e:
+            parser.error(f"Error loading scenario file: {e}")
+
+    elif args.scenario_name is not None:
         scenario_from_config = next((s for s in BACKTEST_SCENARIOS_RELOADED if s.get('name') == args.scenario_name), None)
         
         if scenario_from_config:
@@ -93,6 +105,16 @@ def main():
             parser.error(f"Scenario '{args.scenario_name}' not found in any of the loaded configuration files.")
     else:
         selected_scenarios = BACKTEST_SCENARIOS_RELOADED
+
+    if args.mode == 'optimize':
+        config_loader_module.load_globals_only()
+        for scen in selected_scenarios:
+            errors = validate_scenario_semantics(scen, config_loader_module.OPTIMIZER_PARAMETER_DEFAULTS)
+            if errors:
+                formatted = YamlValidator().format_errors(errors)
+                formatted += '\nActionable Suggestions:\n- Verify param names match strategy.tunable_parameters()\n- Check types (int/float) and ranges\n- Add missing required params\n- See docs for more.'
+                print(formatted, file=sys.stderr)
+                raise ConfigurationError('Optimization config invalid')
 
     backtester = Backtester(GLOBAL_CONFIG_RELOADED, selected_scenarios, args, random_state=args.random_seed)
     try:

@@ -83,12 +83,21 @@ def plot_performance_summary(backtester, bench_rets_full: pd.Series, train_end_d
 
         logger.info(f"Performance plot saved to: {filepath}")
 
+    # Display plot interactively if requested, but silence warnings when using non-interactive backends such as Agg.
     if getattr(backtester.args, 'interactive', False):
-        plt.show(block=False)
+        import warnings as _warnings
+        with _warnings.catch_warnings():
+            _warnings.filterwarnings(
+                "ignore",
+                message="FigureCanvasAgg is non-interactive, and thus cannot be shown",
+                category=UserWarning,
+            )
+            plt.show(block=False)
         logger.info("Performance plots displayed interactively.")
     else:
+        # Close the figure to free memory when not displaying it.
         plt.close(fig)
-        logger.info("Performance plots generated and saved.")
+        logger.info("Performance plots generated and saved (no interactive display).")
     
     plt.close('all')
 
@@ -200,6 +209,15 @@ def plot_price_with_trades(backtester, daily_data: pd.DataFrame, trade_history: 
     plt.savefig(output_path)
     logger.info("Trade price plot saved to %s", output_path)
 
+    # Display plot interactively if requested, but silence warnings from non-interactive backends
     if interactive:
-        plt.show(block=False)
+        import warnings as _warnings
+        with _warnings.catch_warnings():
+            _warnings.filterwarnings(
+                "ignore",
+                message="FigureCanvasAgg is non-interactive, and thus cannot be shown",
+                category=UserWarning,
+            )
+            plt.show(block=False)
+    # Always close the figure to free resources
     plt.close(fig)

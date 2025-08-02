@@ -4,32 +4,27 @@ rebalance_frequency: B
 position_sizer: equal_weight
 train_window_months: 36
 test_window_months: 12
-
 universe_config:
-  type: "single_symbol"
-  symbol: "SPY"
-
+  type: single_symbol
+  symbol: SPY
 optimization_targets:
-  - name: Sortino
-    direction: maximize
-
+- name: Sortino
+  direction: maximize
 optimization_constraints:
-  - metric: Ann. Vol
-    max_value: 0.2
-
+- metric: Ann. Vol
+  max_value: 0.2
 optimize:
-  - parameter: dummy_param_1
-    min_value: 1
-    max_value: 10
-    step: 1
-  - parameter: dummy_param_2
-    min_value: 1
-    max_value: 2
-    step: 1
-
+- parameter: dummy_param_1
+  min_value: 1
+  max_value: 10
+  step: 1
+- parameter: dummy_param_2
+  min_value: 1
+  max_value: 2
+  step: 1
 strategy_params:
-  dummy_param_1: 5
-  dummy_param_2: 15
-
+  dummy_strategy_for_testing.dummy_param_1: 5
+  dummy_strategy_for_testing.dummy_param_2: 20
+  dummy_strategy_for_testing.open_long_prob: 0.1
 mc_simulations: 100
 mc_years: 5

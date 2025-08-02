@@ -12,7 +12,7 @@ from ...universe_resolver import resolve_universe_config
 # Removed BaseSignalGenerator as it's being phased out
 # from ..signal_generators import BaseSignalGenerator
 from ...roro_signals import BaseRoRoSignal
-from ..stop_loss_strategy import AtrBasedStopLoss, BaseStopLoss, NoStopLoss
+from ...risk_management.stop_loss_handlers import AtrBasedStopLoss, BaseStopLoss, NoStopLoss
 from ...portfolio.position_sizer import get_position_sizer
 from ...api_stability import api_stable
 
@@ -266,9 +266,12 @@ class BaseStrategy(ABC):
     # Optimiser-introspection hook                                       #
     # ------------------------------------------------------------------ #
     @classmethod
-    def tunable_parameters(cls) -> set[str]:
-        """Names of hyper-parameters this strategy understands."""
-        return set()
+    def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
+        """Names and metadata of hyper-parameters this strategy understands.
+
+        Returns a dict where keys are param names, values are dicts with 'type' (str/int/float/etc.), 'min', 'max', 'default', 'required' (bool).
+        """
+        return {}
 
     # ------------------------------------------------------------------ #
     # Shared helpers
@@ -278,7 +281,13 @@ class BaseStrategy(ABC):
     # ------------------------------------------------------------------ #
     # Default signal generation pipeline (Abstract method to be implemented by subclasses)
     # ------------------------------------------------------------------ #
-    from numba import njit
+    try:
+        from numba import njit
+    except ImportError:
+        def njit(*args, **kwargs):
+            def decorator(func):
+                return func
+            return decorator
 
     @api_stable(version="1.0", strict_params=True, strict_return=True)
     def generate_signals(

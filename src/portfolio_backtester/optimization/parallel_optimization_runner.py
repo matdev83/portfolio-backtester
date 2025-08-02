@@ -40,6 +40,7 @@ def _optuna_worker(
     n_trials: int,
     enable_deduplication: bool = True,
     lock: MpLock | None = None,
+    parameter_space: Dict[str, Any] = None,  # New parameter
 ) -> None:
     """Run ``n_trials`` optimisation steps in *this* process.
 
@@ -63,12 +64,44 @@ def _optuna_worker(
                 load_if_exists=True,
             )
 
+    # Total number of trials requested for the whole optimisation (used for nicer logs)
+    total_trials: int = optimization_config.get("optuna_trials", n_trials)
+
+    def _progress_callback(study: optuna.Study, trial: optuna.trial.FrozenTrial) -> None:  # noqa: D401
+        """Log progress as "Trial idx/total finished with value …"."""
+        finished = sum(t.state.is_finished() for t in study.trials)
+        logger.info(
+            "Trial %d/%d finished with value %s",
+            finished,
+            total_trials,
+            trial.value,
+        )
+        
+        # Check for early stopping based on consecutive zero values
+        early_stop_zero_trials = optimization_config.get('early_stop_zero_trials', 20)
+        if early_stop_zero_trials > 0 and finished >= early_stop_zero_trials:
+            # Check the last N trials for consecutive zero values
+            recent_trials = study.trials[-early_stop_zero_trials:]
+            all_zero = all(
+                t.state == optuna.trial.TrialState.COMPLETE and t.value == 0.0 
+                for t in recent_trials
+            )
+            if all_zero:
+                logger.error(
+                    "Early stopping: %d consecutive trials with zero values detected. "
+                    "This indicates fundamental issues with data availability or strategy configuration. "
+                    "Consider reviewing the scenario setup and data requirements.",
+                    early_stop_zero_trials
+                )
+                study.stop()
+
     base_objective = OptunaObjectiveAdapter(
         scenario_config=scenario_config,
         data=data,
         n_jobs=1,  # Keep at 1 to avoid nested parallelization conflicts
+        parameter_space=parameter_space,
     )
-    
+
     # Wrap with deduplication if enabled
     if enable_deduplication:
         objective = create_deduplicating_objective(base_objective, enable_deduplication=True)
@@ -81,9 +114,9 @@ def _optuna_worker(
         n_trials=n_trials,
         n_jobs=1,  # keep worker single-threaded
         show_progress_bar=False,
+        callbacks=[_progress_callback],
     )
     logger.info("Worker %d finished", os.getpid())
-
 
 ###############################################################################
 # Main runner                                                                 #
@@ -131,9 +164,10 @@ class ParallelOptimizationRunner:
         requested_trials: int = self.optimization_config.get("optuna_trials", 100)
         space_size = discrete_space_size(self.optimization_config.get("parameter_space", {}))
         if space_size is not None and requested_trials > space_size:
-            logger.warning(
-                "Parameter space has only %s unique combinations but %s trials were requested. "
-                "Capping to %s.",
+            logger.error(
+                "Optimization setup failure: Parameter space has only %s unique combinations but %s trials were requested. "
+                "Capping trials to %s. This is typically a configuration issue in the scenario setup. "
+                "Please verify the parameter space configuration in the scenario file.",
                 space_size,
                 requested_trials,
                 space_size,
@@ -141,6 +175,8 @@ class ParallelOptimizationRunner:
             requested_trials = space_size
 
         # If only one job requested fall back to simple optimise call.
+        parameter_space = self.optimization_config.get("parameter_space", {})
+
         if self.n_jobs == 1:
             logger.info("Running optimisation in a single process (%d trials)", requested_trials)
             _optuna_worker(
@@ -151,13 +187,14 @@ class ParallelOptimizationRunner:
                 study_name,
                 requested_trials,
                 self.enable_deduplication,
+                parameter_space=parameter_space,
             )
         else:
             logger.info("Launching %d worker processes for %d trials", self.n_jobs, requested_trials)
             trials_per_worker = math.ceil(requested_trials / self.n_jobs)
 
             ctx = mp.get_context("spawn")  # Safe on Windows
-            lock = ctx.Lock() # Create a lock
+            lock = ctx.Lock()  # Create a lock
             processes: List[mp.Process] = []
             remaining = requested_trials
             for _ in range(self.n_jobs):
@@ -175,6 +212,7 @@ class ParallelOptimizationRunner:
                         n_this,
                         self.enable_deduplication,
                         lock,
+                        parameter_space,
                     ),
                 )
                 p.start()
@@ -192,8 +230,52 @@ class ParallelOptimizationRunner:
             direction="maximize",
             load_if_exists=True,
         )
+        
+        # Validate optimization results
+        if len(study.trials) == 0:
+            logger.error("Optimization failed: No trials were completed. This may indicate issues with data availability or parameter configuration.")
+            raise RuntimeError("Optimization produced no trials")
+            
         best_params = study.best_params
         best_value = study.best_value
+        
+        # Check for optimization failure conditions
+        optimization_failed = False
+        failure_reasons = []
+        
+        if best_value == 0.0:
+            optimization_failed = True
+            failure_reasons.append("All trials returned zero values")
+            
+        if requested_trials == 1 and space_size == 1:
+            optimization_failed = True
+            failure_reasons.append("Parameter space contains only one combination (no optimization possible)")
+            
+        # Check if early stopping was triggered due to zero values
+        early_stop_zero_trials = self.optimization_config.get('early_stop_zero_trials', 20)
+        if early_stop_zero_trials > 0 and len(study.trials) >= early_stop_zero_trials:
+            recent_trials = study.trials[-early_stop_zero_trials:]
+            all_zero = all(
+                t.state == optuna.trial.TrialState.COMPLETE and t.value == 0.0 
+                for t in recent_trials
+            )
+            if all_zero:
+                optimization_failed = True
+                failure_reasons.append(f"Early stopping triggered after {early_stop_zero_trials} consecutive zero-value trials")
+        
+        if optimization_failed:
+            logger.error("❌ OPTIMIZATION FAILED: %d trials completed, but no meaningful results obtained", len(study.trials))
+            logger.error("Failure reasons:")
+            for reason in failure_reasons:
+                logger.error("  - %s", reason)
+            logger.error("Recommendations:")
+            logger.error("  - Verify data availability for the target ticker(s) and time period")
+            logger.error("  - Check strategy configuration and parameter ranges")
+            logger.error("  - Review walk-forward window settings")
+            logger.error("  - Consider using a different time period or ticker")
+        else:
+            logger.info("✅ Optimization completed successfully: %d trials, best value: %.6f", len(study.trials), best_value)
+        
         return OptimizationResult(
             best_parameters=best_params,
             best_value=best_value,

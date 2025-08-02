@@ -34,13 +34,13 @@ def main():
                     {
                         "parameter": "open_long_prob",
                         "min_value": 0.01,
-                        "max_value": 0.5,
+                        "max_value": 0.46,
                         "step": 0.05
                     },
                     {
                         "parameter": "close_long_prob",
                         "min_value": 0.01,
-                        "max_value": 0.2,
+                        "max_value": 0.19,
                         "step": 0.02
                     }
                 ]

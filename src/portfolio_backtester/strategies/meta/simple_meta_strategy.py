@@ -16,8 +16,8 @@ class SimpleMetaStrategy(BaseMetaStrategy):
     allocation weights across all sub-strategies as specified in the configuration.
     """
     
-    def __init__(self, strategy_params: Dict[str, Any]):
-        super().__init__(strategy_params)
+    def __init__(self, strategy_params: Dict[str, Any], global_config: Dict[str, Any] = None):
+        super().__init__(strategy_params, global_config=global_config)
         
         # Set default parameters
         defaults = {

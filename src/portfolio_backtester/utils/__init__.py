@@ -40,8 +40,19 @@ def register_signal_handler():
 
 @api_stable(version="1.0", strict_params=True, strict_return=False)
 def _resolve_strategy(name: str):
-    """Resolve strategy name to strategy class using the discovery mechanism."""
-    # Use the proper strategy discovery mechanism
+    """Resolve strategy specification (string or dict) to a strategy class."""
+    if isinstance(name, dict):
+        name = (
+            name.get("name")
+            or name.get("strategy")
+            or name.get("type")
+        )
+    else:
+        name = name
+
+    if not isinstance(name, str):
+        return None
+
     discovered_strategies = strategies.enumerate_strategies_with_params()
     return discovered_strategies.get(name, None)
 

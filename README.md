@@ -135,8 +135,17 @@ All related scripts are located in `src/portfolio_backtester/universe_data/`.
   * **Default:** `5`
 * `--pruning-interval-steps`: Report interval for pruning checks
   * **Default:** `1`
-* `--early-stop-patience`: Stop after N consecutive poor trials
+
+##### Early Stopping Parameters
+* `--early-stop-patience`: Stop after N consecutive trials with poor relative performance
   * **Default:** `10`
+  * **Purpose:** Optimization efficiency - stops when no improvement is being made
+  * **Trigger:** Trials perform worse than recent best (e.g., 0.15 → 0.14 → 0.13...)
+* `--early-stop-zero-trials`: Stop after N consecutive trials with exactly zero values
+  * **Default:** `20`
+  * **Purpose:** Problem detection - identifies fundamental configuration/data issues
+  * **Trigger:** Trials return exactly 0.0 (indicating data unavailability or setup errors)
+  * **When to use:** Set lower (5-10) when testing new scenarios to quickly catch configuration problems
 
 #### Monte Carlo Parameters
 * `--mc-simulations`: Number of Monte Carlo simulations
@@ -152,7 +161,7 @@ All related scripts are located in `src/portfolio_backtester/universe_data/`.
 python -m src.portfolio_backtester.backtester --mode backtest --scenario-name "Momentum_Unfiltered"
 ```
 
-**2. Advanced Optimization with Robustness:**
+**2. Advanced Optimization with Robustness (using scenario name):**
 ```bash
 python -m src.portfolio_backtester.backtester \
   --mode optimize \
@@ -164,6 +173,20 @@ python -m src.portfolio_backtester.backtester \
   --n-jobs -1 \
   --random-seed 42
 ```
+
+**3. Advanced Optimization with Robustness (using scenario filename):**
+```bash
+python -m src.portfolio_backtester.backtester \
+  --mode optimize \
+  --scenario-filename "config/scenarios/momentum/Momentum_Unfiltered.yaml" \
+  --study-name "robust_momentum_v1" \
+  --optimizer optuna \
+  --optuna-trials 500 \
+  --pruning-enabled \
+  --n-jobs -1 \
+  --random-seed 42
+```
+
 
 **3. Monte Carlo Stress Testing:**
 ```bash
@@ -185,9 +208,63 @@ python -m src.portfolio_backtester.backtester \
   --study-name "genetic_vams_opt"
 ```
 
+**5. Optimization with Early Stopping for Zero Values:**
+```bash
+python -m src.portfolio_backtester.backtester \
+  --mode optimize \
+  --scenario-filename "config/scenarios/signal/intramonth_seasonal_strategy/TLT_long_month_1.yaml" \
+  --early-stop-zero-trials 5 \
+  --optuna-trials 100
+```
+*This example shows how to stop optimization early if 5 consecutive trials return zero values, which is useful for detecting data availability issues or configuration problems.*
+
 ## Configuration
 
 The backtester uses a set of YAML files in the `config/` directory to manage global settings, define specific backtest experiments, and provide examples.
+
+### Commission and Slippage Configuration
+
+Commission and slippage are configured globally in the `config/parameters.yaml` file. The system uses a detailed, IBKR-style model by default.
+
+**To configure commissions**, modify the following parameters in `config/parameters.yaml`:
+
+```yaml
+# Default commission per share
+commission_per_share: 0.005
+
+# Minimum commission per order
+commission_min_per_order: 1.0
+
+# Maximum commission as a percentage of trade value
+commission_max_percent_of_trade: 0.005
+
+# Slippage in basis points (1 bps = 0.01%)
+slippage_bps: 2.5
+```
+
+### Creating a Custom Commission Model
+
+To implement a custom commission model, follow these steps:
+
+1.  **Create a new class** that inherits from `TransactionCostModel` in `src/portfolio_backtester/trading/transaction_costs.py`.
+2.  **Implement the `calculate` method**. This method should take `turnover`, `weights_daily`, `price_data`, and `portfolio_value` as input and return a tuple containing the total costs as a pandas Series and a dictionary with a breakdown of the costs.
+3.  **Register your new model** in the `get_transaction_cost_model` factory function in the same file.
+
+    ```python
+    def get_transaction_cost_model(config: dict) -> TransactionCostModel:
+        model_name = config.get("transaction_cost_model", "realistic").lower()
+        if model_name == "realistic":
+            return RealisticTransactionCostModel(config)
+        elif model_name == "your_custom_model":
+            return YourCustomModel(config)
+        else:
+            raise ValueError(f"Unsupported transaction cost model: {model_name}")
+    ```
+4.  **Select your model** in `config/parameters.yaml`:
+
+    ```yaml
+    transaction_cost_model: your_custom_model
+    ```
 
 ### Detailed Configuration Guides
 

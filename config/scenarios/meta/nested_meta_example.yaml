@@ -1,7 +1,20 @@
 # Nested Meta Strategy Example Configuration
 # This demonstrates a meta strategy that allocates to other meta strategies
 
+name: "nested_meta_example"
+strategy: "simple_meta"
 strategy_class: "SimpleMetaStrategy"
+rebalance_frequency: "M"
+position_sizer: "equal_weight"
+train_window_months: 36
+test_window_months: 48
+
+optimization_targets:
+  - name: "Sharpe"
+    direction: "maximize"
+
+optimize: []
+
 strategy_params:
   initial_capital: 2000000  # Starting capital for this meta strategy
   min_allocation: 0.05      # Minimum allocation per strategy (5%)
@@ -55,17 +68,4 @@ strategy_params:
           rebalance_frequency: "Q"  # Quarterly rebalancing
       weight: 0.2  # 20% of total capital
 
-# Global configuration (would typically be in main config)
-universe:
-  - "AAPL"
-  - "MSFT"
-  - "GOOGL"
-  - "AMZN"
-  - "TSLA"
-  - "NVDA"
-  - "META"
-  - "NFLX"
-  - "CRM"
-  - "ADBE"
-
-benchmark: "SPY"
+# Meta strategies inherit universe from their sub-strategies

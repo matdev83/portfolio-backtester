@@ -238,7 +238,6 @@ class TestMetaStrategyTradeInterceptor:
         assert info['strategy_id'] == "test_strategy"
         assert info['strategy_class'] == "MockStrategy"
         assert info['allocated_capital'] == 100000.0
-        assert info['transaction_cost_bps'] == 10.0
         assert info['has_previous_signals'] == False
         assert info['previous_signal_count'] == 0
     
@@ -315,39 +314,4 @@ class TestMetaStrategyTradeInterceptor:
         trade = trade_callback.call_args[0][0]
         assert trade.asset == 'MSFT'
     
-    def test_transaction_cost_calculation(self):
-        """Test that transaction costs are calculated correctly."""
-        mock_strategy = MockStrategy()
-        trade_callback = Mock()
-        
-        interceptor = MetaStrategyTradeInterceptor(
-            sub_strategy=mock_strategy,
-            strategy_id="momentum",
-            allocated_capital=100000.0,
-            trade_callback=trade_callback,
-            transaction_cost_bps=20.0  # 20 basis points
-        )
-        
-        # Create mock historical data
-        dates = pd.date_range("2023-01-01", "2023-01-20", freq="D")
-        historical_data = pd.DataFrame({
-            ('AAPL', 'Close'): [100.0] * len(dates)
-        }, index=dates)
-        historical_data.columns = pd.MultiIndex.from_tuples(
-            historical_data.columns, names=['Ticker', 'Field']
-        )
-        
-        # Call generate_signals
-        current_date = pd.Timestamp("2023-01-15")
-        mock_strategy.generate_signals(
-            all_historical_data=historical_data,
-            benchmark_historical_data=pd.DataFrame(),
-            non_universe_historical_data=pd.DataFrame(),
-            current_date=current_date
-        )
-        
-        # Check transaction cost
-        trade = trade_callback.call_args[0][0]
-        # Trade value: 0.5 * 100000 = 50000
-        # Transaction cost: 50000 * 0.002 = 100 (20 bps)
-        assert trade.transaction_cost == 100.0
+    

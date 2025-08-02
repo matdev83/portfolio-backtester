@@ -155,6 +155,35 @@ class UnifiedCommissionCalculator:
             commission_rate_bps=(commission_amount / trade_value * 10000.0) if trade_value > 0 else 0.0,
             slippage_rate_bps=self.slippage_bps
         )
+
+    def _calculate_simplified_commission(
+        self,
+        asset: str,
+        date: pd.Timestamp,
+        quantity: float,
+        price: float,
+        trade_value: float,
+        transaction_costs_bps: float
+    ) -> TradeCommissionInfo:
+        """Calculate commission using simple basis points model."""
+        # Commission is a flat percentage of trade value
+        commission_amount = trade_value * (transaction_costs_bps / 10000.0)
+        # No additional slippage when simplified cost model is requested
+        slippage_amount = 0.0
+        total_cost = commission_amount + slippage_amount
+
+        return TradeCommissionInfo(
+            asset=asset,
+            date=date,
+            quantity=quantity,
+            price=price,
+            trade_value=trade_value,
+            commission_amount=commission_amount,
+            slippage_amount=slippage_amount,
+            total_cost=total_cost,
+            commission_rate_bps=transaction_costs_bps,
+            slippage_rate_bps=0.0
+        )
     
     def calculate_portfolio_commissions(
         self,

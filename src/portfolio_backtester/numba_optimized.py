@@ -31,6 +31,21 @@ except ImportError:
     logger = logging.getLogger(__name__)
     if logger.isEnabledFor(logging.WARNING):
         logger.warning("Numba not available - falling back to pure Python implementations")
+    
+    # Create dummy decorators when numba is not available
+    class DummyNumba:
+        @staticmethod
+        def jit(*args, **kwargs):
+            def decorator(func):
+                return func
+            return decorator
+        
+        @staticmethod
+        def prange(x):
+            return range(x)
+    
+    numba = DummyNumba()
+    prange = numba.prange
 
 
 @numba.jit(nopython=True, cache=True)

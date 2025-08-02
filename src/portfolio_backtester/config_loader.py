@@ -4,7 +4,8 @@ from pathlib import Path
 import os
 
 # Import our YAML validator
-from .yaml_validator import validate_yaml_file
+from .yaml_validator import validate_yaml_file, YamlValidator
+from .scenario_validator import validate_scenario_semantics
 
 
 def get_ga_optimizer_parameter_defaults():
@@ -56,7 +57,53 @@ def merge_optimizer_config(scenario_data, optimizer_type):
         del scenario_data['optimizers']
     return scenario_data
 
+def load_scenario_from_file(file_path: Path) -> dict:
+    """
+    Loads a single scenario from a specific YAML file.
+    
+    Args:
+        file_path: The path to the scenario file.
+        
+    Returns:
+        The loaded scenario data.
+        
+    Raises:
+        ConfigurationError: If the file is invalid or cannot be loaded.
+    """
+    logger.info(f"Loading scenario from file: {file_path}")
+    is_valid, scenario_data, error_message = validate_yaml_file(file_path)
+
+    if not is_valid:
+        logger.error(f"Scenario file validation failed: {file_path}")
+        print(error_message, file=sys.stderr)
+        raise ConfigurationError(f"Invalid scenario file: {file_path}. See error details above.")
+
+    if scenario_data is None:
+        raise ConfigurationError(f"Scenario file is empty: {file_path}")
+
+    # ------------------------------------------------------------------
+    # Semantic validation (optimizer settings, strategy parameters, etc.)
+    # ------------------------------------------------------------------
+    semantic_errors = validate_scenario_semantics(
+        scenario_data,
+        optimizer_parameter_defaults=OPTIMIZER_PARAMETER_DEFAULTS,
+        file_path=file_path,
+    )
+    if semantic_errors:
+        formatted = YamlValidator().format_errors(semantic_errors)
+        print(formatted, file=sys.stderr)
+        raise ConfigurationError(
+            f"Semantic validation failed for scenario file: {file_path}. See error details above."
+        )
+
+    # Normalise path separators in scenario name if present
+    if "name" in scenario_data and isinstance(scenario_data["name"], str):
+        scenario_data["name"] = scenario_data["name"].replace("\\", "/")
+
+    return scenario_data
+
 def load_config():
+
     """
     Loads configurations from YAML files with comprehensive error handling.
     
@@ -122,9 +169,22 @@ def load_config():
                         if scenario_data is None:
                             raise ConfigurationError(f"Scenario file is empty: {scenario_path}")
 
+                        # Semantic validation
+                        semantic_errors = validate_scenario_semantics(
+                            scenario_data,
+                            optimizer_parameter_defaults=OPTIMIZER_PARAMETER_DEFAULTS,
+                            file_path=scenario_path,
+                        )
+                        if semantic_errors:
+                            formatted = YamlValidator().format_errors(semantic_errors)
+                            print(formatted, file=sys.stderr)
+                            raise ConfigurationError(
+                                f"Semantic validation failed for scenario file: {scenario_path}. See error details above."
+                            )
+
                         if "name" in scenario_data and isinstance(scenario_data["name"], str):
                             scenario_data["name"] = scenario_data["name"].replace("\\", "/")
-                        
+                       
                         BACKTEST_SCENARIOS.append(scenario_data)
 
         if not BACKTEST_SCENARIOS:
@@ -153,6 +213,8 @@ def validate_config_files() -> bool:
         True if all files are valid, False otherwise
     """
     all_valid = True
+
+    validator = YamlValidator()
     
     # Validate parameters file
     print(f"Validating {PARAMETERS_FILE}...")
@@ -200,6 +262,31 @@ def safe_load_config() -> bool:
     except Exception as e:
         logger.error(f"Unexpected error loading configuration: {e}")
         return False
+
+def load_globals_only():
+    global GLOBAL_CONFIG, OPTIMIZER_PARAMETER_DEFAULTS
+    logger.info(f'Loading globals from: {PARAMETERS_FILE}')
+    is_valid, params_data, error_message = validate_yaml_file(PARAMETERS_FILE)
+    if not is_valid:
+        raise ConfigurationError('Invalid parameters.yaml')
+    GLOBAL_CONFIG = params_data.get('GLOBAL_CONFIG', {})
+    if not GLOBAL_CONFIG:
+        raise ConfigurationError('Missing GLOBAL_CONFIG')
+    GLOBAL_CONFIG['monte_carlo_config'] = params_data.get('monte_carlo_config', {})
+    GLOBAL_CONFIG['wfo_robustness_config'] = params_data.get('wfo_robustness_config', {})
+    OPTIMIZER_PARAMETER_DEFAULTS = params_data.get('OPTIMIZER_PARAMETER_DEFAULTS', {})
+    if not OPTIMIZER_PARAMETER_DEFAULTS:
+        raise ConfigurationError('Missing OPTIMIZER_PARAMETER_DEFAULTS')
+    try:
+        ga_defaults = get_ga_optimizer_parameter_defaults()
+        for key, value in ga_defaults.items():
+            if key not in OPTIMIZER_PARAMETER_DEFAULTS:
+                OPTIMIZER_PARAMETER_DEFAULTS[key] = value
+            elif isinstance(OPTIMIZER_PARAMETER_DEFAULTS[key], dict) and isinstance(value, dict):
+                OPTIMIZER_PARAMETER_DEFAULTS[key].update(value)
+    except Exception as e:
+        logger.warning(f'Failed to load GA defaults: {e}')
+    logger.info('Globals loaded successfully')
 
 # Load configuration when the module is imported
 try:

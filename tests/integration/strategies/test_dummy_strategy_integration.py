@@ -92,3 +92,7 @@ def test_dummy_strategy_end_to_end():
     trade_stats = results["trade_stats"] or {}
     assert trade_stats.get("all_num_trades", 0) > 0, "Should record at least one trade"
     assert trade_stats.get("all_total_commissions_paid", 0) > 0, "Commissions paid should be > 0"
+
+    # Drawdown sanity
+    max_dd = results["performance_stats"].get("max_drawdown", 0)
+    assert max_dd != 0, "Max drawdown should be non-zero"

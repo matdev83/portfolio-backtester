@@ -9,8 +9,16 @@ import logging
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Tuple, Optional
-from numba import njit, prange
-import numba
+try:
+    from numba import njit, prange
+    import numba
+except ImportError:
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+    prange = range
+    numba = None
 
 from .interfaces import AbstractTradeTracker
 

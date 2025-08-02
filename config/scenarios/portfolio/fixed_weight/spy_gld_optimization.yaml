@@ -1,28 +1,29 @@
 name: fixed_weight_spy_gld_optimization
 strategy: fixed_weight
 position_sizer: direct
-universe: ["SPY", "GLD"]
+universe:
+- SPY
+- GLD
 optimization_metric: Sharpe
-
 optimize:
-  - parameter: rebalance_frequency
-    type: categorical
-    values: ["ME", "QE", "6ME", "YE"]
-
-  - parameter: spy_weight
-    type: float
-    min_value: 0.1
-    max_value: 0.9
-    step: 0.1
-
-  - parameter: gld_weight
-    type: float
-    min_value: 0.1
-    max_value: 0.9
-    step: 0.1
-
+- parameter: rebalance_frequency
+  type: categorical
+  values:
+  - ME
+  - QE
+  - 6ME
+  - YE
+- parameter: spy_weight
+  type: float
+  min_value: 0.1
+  max_value: 0.9
+  step: 0.1
+- parameter: gld_weight
+  type: float
+  min_value: 0.1
+  max_value: 0.9
+  step: 0.1
 strategy_params:
-  # Default values, will be overridden by optimizer
-  rebalance_frequency: "QE"
-  spy_weight: 0.7
-  gld_weight: 0.3
+  fixed_weight.rebalance_frequency: QE
+  fixed_weight.spy_weight: 0.7
+  fixed_weight.gld_weight: 0.3

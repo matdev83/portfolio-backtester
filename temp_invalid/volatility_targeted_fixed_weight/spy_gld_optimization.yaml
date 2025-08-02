@@ -1,0 +1,41 @@
+name: volatility_targeted_fixed_weight_spy_gld_optimization
+strategy: volatility_targeted_fixed_weight
+universe:
+- SPY
+- GLD
+position_sizer: direct
+optimization_metric: Sharpe
+optimize:
+- parameter: rebalance_frequency
+  type: categorical
+  values:
+  - ME
+  - QE
+  - 6ME
+  - YE
+- parameter: spy_weight
+  type: float
+  min_value: 0.1
+  max_value: 0.9
+  step: 0.1
+- parameter: gld_weight
+  type: float
+  min_value: 0.1
+  max_value: 0.9
+  step: 0.1
+- parameter: target_volatility
+  type: float
+  min_value: 0.05
+  max_value: 0.25
+  step: 0.05
+- parameter: vol_window
+  type: int
+  min_value: 63
+  max_value: 252
+  step: 63
+strategy_params:
+  volatility_targeted_fixed_weight.rebalance_frequency: QE
+  volatility_targeted_fixed_weight.spy_weight: 0.7
+  volatility_targeted_fixed_weight.gld_weight: 0.3
+  volatility_targeted_fixed_weight.target_volatility: 0.15
+  volatility_targeted_fixed_weight.vol_window: 126

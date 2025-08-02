@@ -7,34 +7,53 @@ This strategy is designed for testing purposes. It uses random chance to generat
 - Logic:
     - If flat, open a long position with 10% probability.
     - If long, close the position with 1% probability.
+
+To run the optimizer on this strategy, use the following command:
+
+.venv\Scripts\python -m src.portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/signal/dummy_strategy/dummy_strategy_test.yaml
 """
 
-from typing import Optional, Set
+from typing import Optional, Set, Dict, Any
 
 import pandas as pd
 import numpy as np
 
 from ..base.signal_strategy import SignalStrategy
+from ...risk_management.stop_loss_handlers import AtrBasedStopLoss, NoStopLoss
 
 class DummyStrategyForTesting(SignalStrategy):
     """Dummy strategy for testing purposes."""
 
+    def _initialize_stop_loss_handler(self):
+        # Default to no stop-loss unless explicitly requested; this avoids requiring full OHLC data
+        stop_loss_type = self.strategy_params.get("dummy_strategy_for_testing.stop_loss_type", "NoStopLoss")
+        if stop_loss_type == "AtrBasedStopLoss":
+            return AtrBasedStopLoss(self.strategy_params, self.strategy_params)
+        else:
+            return NoStopLoss(self.strategy_params, self.strategy_params)
+
     def __init__(self, strategy_config: dict):
         super().__init__(strategy_config)
-        self.long_only = strategy_config.get('long_only', True)
-        self.symbol = strategy_config.get('symbol', 'SPY')
-        self.open_long_prob = strategy_config.get('open_long_prob', 0.1)
-        self.close_long_prob = strategy_config.get('close_long_prob', 0.01)
-        self.dummy_param_1 = strategy_config.get('dummy_param_1', 10)
-        self.dummy_param_2 = strategy_config.get('dummy_param_2', 20)
+        self.long_only = self.strategy_params.get('dummy_strategy_for_testing.long_only', True)
+        self.symbol = self.strategy_params.get('dummy_strategy_for_testing.symbol', 'SPY')
+        self.open_long_prob = self.strategy_params.get('dummy_strategy_for_testing.open_long_prob', 0.1)
+        self.close_long_prob = self.strategy_params.get('dummy_strategy_for_testing.close_long_prob', 0.01)
+        self.dummy_param_1 = self.strategy_params.get('dummy_strategy_for_testing.dummy_param_1', 10)
+        self.dummy_param_2 = self.strategy_params.get('dummy_strategy_for_testing.dummy_param_2', 20)
         # Seed the random number generator for reproducibility
-        self.seed = strategy_config.get('seed', 42)
+        self.seed = self.strategy_params.get('dummy_strategy_for_testing.seed', 42)
         self.rng = np.random.default_rng(self.seed)
+        self.stop_loss_handler = self._initialize_stop_loss_handler()
+        self.entry_prices = pd.Series(dtype=float)
 
     @classmethod
-    def tunable_parameters(cls) -> Set[str]:
-        """Return set of tunable parameters for this strategy."""
-        return {'open_long_prob', 'close_long_prob', 'dummy_param_1', 'dummy_param_2'}
+    def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
+        return {
+            'open_long_prob': {'type': 'float', 'min': 0.0, 'max': 1.0, 'default': 0.1, 'required': True},
+            'close_long_prob': {'type': 'float', 'min': 0.0, 'max': 1.0, 'default': 0.01, 'required': False},
+            'dummy_param_1': {'type': 'int', 'min': 1, 'max': 100, 'default': 10, 'required': False},
+            'dummy_param_2': {'type': 'int', 'min': 1, 'max': 100, 'default': 20, 'required': False},
+        }
 
     def generate_signals(
         self,
@@ -86,7 +105,34 @@ class DummyStrategyForTesting(SignalStrategy):
         weights = pd.Series(0.0, index=[self.symbol])
         if current_date in signals.index:
             weights[self.symbol] = signals.loc[current_date]
-        
+
+        # Apply stop-loss if a handler is configured
+        if self.stop_loss_handler:
+            # Calculate stop levels first
+            stop_levels = self.stop_loss_handler.calculate_stop_levels(
+                current_date,
+                all_historical_data,
+                weights,
+                self.entry_prices,
+            )
+
+            # Extract current close prices and align their index with the weights Series
+            current_close_prices = (
+                all_historical_data
+                .xs('Close', level='Field', axis=1)
+                .loc[current_date]
+                .reindex(weights.index)
+            )
+
+            # Apply stop-loss logic using the aligned Series
+            weights = self.stop_loss_handler.apply_stop_loss(
+                current_date,
+                current_close_prices,
+                weights,
+                self.entry_prices,
+                stop_levels,
+            )
+
         return pd.DataFrame([weights], index=[current_date])
 
     def __str__(self):

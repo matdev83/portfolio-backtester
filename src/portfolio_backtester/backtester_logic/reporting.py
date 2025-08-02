@@ -136,8 +136,23 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
 
         # unique report directory per run
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Handle scenario name: use args.scenario_name if available, otherwise derive from scenario config or results
+        scenario_name = None
+        if hasattr(self.args, 'scenario_name') and self.args.scenario_name:
+            scenario_name = self.args.scenario_name
+        elif self.scenarios and len(self.scenarios) > 0:
+            # Use the first scenario's name
+            scenario_name = self.scenarios[0].get('name', 'unknown_scenario')
+        elif self.results:
+            # Use the first result key, removing any "_Optimized" suffix
+            first_result_name = next(iter(self.results.keys()))
+            scenario_name = first_result_name.replace('_Optimized', '')
+        else:
+            scenario_name = 'unknown_scenario'
+        
         scenario_slug = (
-            self.args.scenario_name.replace(" ", "_").replace("(", "").replace(")", "").replace('"', "")
+            scenario_name.replace(" ", "_").replace("(", "").replace(")", "").replace('"', "")
         )
         report_dir = os.path.join("data", "reports", f"{scenario_slug}_{timestamp}")
         os.makedirs(report_dir, exist_ok=True)
@@ -182,4 +197,10 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
                 )
 
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to generate summary table/plot: %s", exc) 
+        # Check if this is the common scenario_name None error
+        if "'NoneType' object has no attribute 'replace'" in str(exc):
+            logger.error("Optimization reporting failed: scenario name could not be determined. "
+                        "This typically indicates the optimization process did not complete successfully. "
+                        "Check for earlier error messages about data availability or parameter space issues.")
+        else:
+            logger.warning("Failed to generate summary table/plot: %s", exc)

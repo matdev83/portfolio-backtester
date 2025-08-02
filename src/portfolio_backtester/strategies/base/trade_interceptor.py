@@ -31,7 +31,7 @@ class MetaStrategyTradeInterceptor:
         strategy_id: str,
         allocated_capital: float,
         trade_callback: Callable[[TradeRecord], None],
-        transaction_cost_bps: float = 10.0,
+        transaction_cost_bps: float | None = None,
         global_config: Optional[Dict[str, Any]] = None
     ):
         """
@@ -42,7 +42,6 @@ class MetaStrategyTradeInterceptor:
             strategy_id: Unique identifier for this sub-strategy
             allocated_capital: Capital allocated to this sub-strategy
             trade_callback: Callback function to call when trades are detected
-            transaction_cost_bps: Transaction cost in basis points
             global_config: Global configuration for unified commission calculation
         """
         self.sub_strategy = sub_strategy
@@ -52,15 +51,22 @@ class MetaStrategyTradeInterceptor:
         
         # Initialize unified commission calculator
         if global_config is None:
-            # Fallback configuration for backward compatibility
-            global_config = {
-                'default_transaction_cost_bps': 10.0,
-                'commission_per_share': 0.005,
-                'commission_min_per_order': 1.0,
-                'commission_max_percent_of_trade': 0.005,
-                'slippage_bps': 2.5
-            }
+            # Fallback with an empty config, allowing the calculator to use its defaults
+            global_config = {}
         self.commission_calculator = get_unified_commission_calculator(global_config)
+
+        # Determine transaction cost basis points (bps)
+        if transaction_cost_bps is not None:
+            # Explicitly provided overrides all
+            self.transaction_cost_bps = float(transaction_cost_bps)
+        elif isinstance(global_config, dict):
+            # Try different possible keys in the global config
+            self.transaction_cost_bps = float(
+                global_config.get("default_transaction_cost_bps",
+                                   global_config.get("transaction_costs_bps", 0.0))
+            )
+        else:
+            self.transaction_cost_bps = 0.0
         
         # Track previous signals to detect changes
         self._previous_signals: Optional[pd.Series] = None
@@ -250,12 +256,12 @@ class MetaStrategyTradeInterceptor:
         
         # Calculate commission using unified calculator
         commission_info = self.commission_calculator.calculate_trade_commission(
-            asset=asset,
-            date=current_date,
-            quantity=quantity if side == TradeSide.BUY else -quantity,
-            price=price,
-            transaction_costs_bps=self.transaction_cost_bps
-        )
+                asset=asset,
+                date=current_date,
+                quantity=quantity if side == TradeSide.BUY else -quantity,
+                price=price,
+                transaction_costs_bps=self.transaction_cost_bps
+            )
         
         # Create trade record with accurate commission
         trade = TradeRecord(

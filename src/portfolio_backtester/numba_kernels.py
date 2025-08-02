@@ -1,5 +1,12 @@
 import numpy as np
-from numba import njit, prange
+try:
+    from numba import njit, prange
+except ImportError:
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+    prange = range
 
 @njit
 def window_mean_std(data, starts, ends):

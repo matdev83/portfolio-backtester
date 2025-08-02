@@ -1,0 +1,35 @@
+name: momentum_find_best_sizer
+strategy: momentum
+rebalance_frequency: ME
+optimization_metric: Sharpe Ratio
+optimization_target:
+  name: Sharpe Ratio
+  direction: maximize
+optimizers:
+  optuna:
+    n_trials: 20
+    optimize:
+    - parameter: position_sizer
+      type: categorical
+      values:
+      - equal_weight
+      - rolling_sharpe
+      - rolling_sortino
+      - rolling_benchmark_corr
+      - rolling_downside_volatility
+  genetic:
+    ga_num_generations: 4
+    ga_sol_per_pop: 10
+    optimize:
+    - parameter: position_sizer
+      type: categorical
+      values:
+      - equal_weight
+      - rolling_sharpe
+      - rolling_sortino
+      - rolling_benchmark_corr
+      - rolling_downside_volatility
+strategy_params:
+  momentum.lookback_months: 12
+  momentum.num_holdings: 20
+  momentum.long_only: true

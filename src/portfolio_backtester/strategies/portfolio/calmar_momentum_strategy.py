@@ -46,7 +46,10 @@ class CalmarMomentumStrategy(PortfolioStrategy):
 
     @classmethod
     def tunable_parameters(cls) -> set[str]:
-        return {"num_holdings", "rolling_window", "sma_filter_window", "apply_trading_lag"}
+        return {
+            "num_holdings", "rolling_window", "sma_filter_window", "apply_trading_lag",
+            "lookback_months", "top_decile_fraction", "smoothing_lambda", "leverage", "long_only"
+        }
 
     def get_minimum_required_periods(self) -> int:
         """

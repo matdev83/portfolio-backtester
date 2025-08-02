@@ -1,28 +1,28 @@
 name: fixed_weight_spy_gld_sortino_optimization
 strategy: fixed_weight
-universe: ["SPY", "GLD"]
+universe:
+- SPY
+- GLD
 position_sizer: direct
 optimization_metric: Sortino
-
 optimize:
-  - parameter: rebalance_frequency
-    type: categorical
-    values: ["ME", "Q", "A"]
-
-  - parameter: spy_weight
-    type: float
-    min_value: 0.05
-    max_value: 0.95
-    step: 0.05
-
-  - parameter: gld_weight
-    type: float
-    min_value: 0.05
-    max_value: 0.95
-    step: 0.05
-
+- parameter: rebalance_frequency
+  type: categorical
+  values:
+  - ME
+  - Q
+  - A
+- parameter: spy_weight
+  type: float
+  min_value: 0.05
+  max_value: 0.95
+  step: 0.05
+- parameter: gld_weight
+  type: float
+  min_value: 0.05
+  max_value: 0.95
+  step: 0.05
 strategy_params:
-  # Default values, will be overridden by optimizer
-  rebalance_frequency: "A"
-  spy_weight: 0.6
-  gld_weight: 0.4
+  fixed_weight.rebalance_frequency: A
+  fixed_weight.spy_weight: 0.6
+  fixed_weight.gld_weight: 0.4

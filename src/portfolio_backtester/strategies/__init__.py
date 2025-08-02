@@ -63,7 +63,7 @@ def enumerate_strategies_with_params() -> Dict[str, type]:  # pragma: no cover
     package_name = __name__
     package_path = os.path.dirname(__file__)
 
-    for subdir in ['portfolio', 'signal', 'meta']:
+    for subdir in ['portfolio', 'signal', 'meta', 'diagnostic']:
         subdir_path = os.path.join(package_path, subdir)
         if os.path.isdir(subdir_path):
             for module_info in pkgutil.walk_packages([subdir_path], prefix=f"{package_name}.{subdir}."):
@@ -105,10 +105,14 @@ def enumerate_strategies_with_params() -> Dict[str, type]:  # pragma: no cover
 
     # Add manual mappings for naming inconsistencies between config files and auto-generated names
     strategy_aliases = {
-        'ema_crossover': 'ema',  # EMAStrategy should be accessible as both 'ema' and 'ema_crossover'
-        'ema_roro': 'ema_ro_ro',  # EMARoRoStrategy should be accessible as both 'ema_ro_ro' and 'ema_roro'
+        'ema_crossover': 'ema',  # EMAStrategy alias
+        'ema_roro': 'ema_ro_ro',
         'dummy': 'dummy_strategy_for_testing',
         'dummy_strategy': 'dummy_strategy_for_testing',
+        'simple_meta_strategy': 'simple_meta',
+        'simple_meta': 'simple_meta',
+        'intramonth_seasonal_strategy': 'intramonth_seasonal',  # new alias
+        'stop_loss_tester': 'stop_loss_tester',  # diagnostic strategy
     }
     
     # Add aliases to the discovered strategies

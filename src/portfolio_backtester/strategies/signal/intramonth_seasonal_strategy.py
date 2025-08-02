@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
 from pandas.tseries.offsets import BDay
-from ta.trend import EMAIndicator
 
 from ..base.signal_strategy import SignalStrategy
 from ...datetime_utils import get_bday_offset

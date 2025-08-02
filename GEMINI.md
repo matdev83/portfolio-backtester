@@ -30,4 +30,12 @@ All changes you make in this project need to be additive and ensure incremental 
 
 You MUST run all tests and ensure that they pass. You MUST also run the code and ensure that it runs without errors. You MUST ensure that all code is formatted according to PEP8 and that the code is documented according to docstrings
 
+## Running the Optimizer
+
+To run the optimizer for a specific strategy, you can use the `--scenario-filename` argument to point to the scenario file. For example, to run the optimizer for the dummy strategy, use the following command:
+
+```bash
+.venv\Scripts\python -m src.portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/signal/dummy_strategy/dummy_strategy_test.yaml
+```
+
 ## Custom Workflow: review-branch-rebase-main

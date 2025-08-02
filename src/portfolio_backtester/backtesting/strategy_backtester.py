@@ -89,8 +89,25 @@ class StrategyBacktester:
         
         # Determine universe
         if "universe" in strategy_config:
-            universe_tickers = strategy_config["universe"]
+            if isinstance(strategy_config["universe"], list):
+                universe_tickers = strategy_config["universe"]
+            else:
+                # Handle universe_config dict
+                try:
+                    from ..universe_resolver import resolve_universe_config
+                    universe_tickers = resolve_universe_config(strategy_config["universe"])
+                except Exception as e:
+                    logger.error(f"Failed to resolve universe config: {e}")
+                    universe_tickers = []
+        elif "universe_config" in strategy_config:
+            try:
+                from ..universe_resolver import resolve_universe_config
+                universe_tickers = resolve_universe_config(strategy_config["universe_config"])
+            except Exception as e:
+                logger.error(f"Failed to resolve universe config: {e}")
+                universe_tickers = []
         else:
+            # Only use strategy.get_universe as last resort, not global config universe
             universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
         
         # Filter out missing tickers
@@ -264,7 +281,7 @@ class StrategyBacktester:
             test_end=test_end
         )
     
-    def _get_strategy(self, strategy_name: str, params: Dict[str, Any]) -> BaseStrategy:
+    def _get_strategy(self, strategy_spec, params: Dict[str, Any]) -> BaseStrategy:
         """Get a strategy instance by name and parameters.
         
         Args:
@@ -278,6 +295,15 @@ class StrategyBacktester:
             ValueError: If strategy name is not supported
             TypeError: If strategy class doesn't return BaseStrategy instance
         """
+        if isinstance(strategy_spec, dict):
+            strategy_name = (
+                strategy_spec.get("name")
+                or strategy_spec.get("strategy")
+                or strategy_spec.get("type")
+            )
+        else:
+            strategy_name = strategy_spec
+
         strategy_class = self.strategy_map.get(strategy_name)
         if strategy_class is None:
             logger.error(f"Unsupported strategy: {strategy_name}")
@@ -312,12 +338,23 @@ class StrategyBacktester:
             Portfolio returns series or None if failed
         """
         strategy = self._get_strategy(
-            strategy_config["strategy"], 
-            strategy_config["strategy_params"]
+            strategy_config["strategy"],
+            strategy_config["strategy_params"],
         )
-        
+
         if "universe" in strategy_config:
-            universe_tickers = strategy_config["universe"]
+            if isinstance(strategy_config["universe"], list):
+                universe_tickers = strategy_config["universe"]
+            else:
+                try:
+                    from ..universe_resolver import resolve_universe_config
+                    universe_tickers = resolve_universe_config(strategy_config["universe"])
+                except Exception as e:
+                    logger.error(f"Failed to resolve universe config: {e}")
+                    universe_tickers = []
+        elif "universe_config" in strategy_config:
+            from ..universe_resolver import resolve_universe_config
+            universe_tickers = resolve_universe_config(strategy_config["universe_config"])
         else:
             universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
         

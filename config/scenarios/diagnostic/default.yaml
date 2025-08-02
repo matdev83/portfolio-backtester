@@ -1,0 +1,13 @@
+name: stop_loss
+strategy: "stop_loss_tester"
+rebalance_frequency: "D"
+position_sizer: "equal_weight"
+train_window_months: 12
+test_window_months: 12
+optimization_targets:
+  - name: "Sortino"
+    direction: "maximize"
+strategy_params:
+  stop_loss.stop_loss_type: "AtrBasedStopLoss"
+  stop_loss.atr_length: 14
+  stop_loss.atr_multiple: 2.0

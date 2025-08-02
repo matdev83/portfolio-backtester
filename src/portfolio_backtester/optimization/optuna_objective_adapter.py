@@ -28,6 +28,7 @@ class OptunaObjectiveAdapter:
         scenario_config: Dict[str, Any],
         data: OptimizationData,
         n_jobs: int = 1,
+        parameter_space: Dict[str, Any] = None,
     ):
         """Construct the objective adapter.
 
@@ -39,6 +40,7 @@ class OptunaObjectiveAdapter:
         self.scenario_config = scenario_config
         self.data = data
         self.n_jobs = n_jobs
+        self.parameter_space = parameter_space or {}
 
     def __call__(self, trial: optuna.Trial) -> float:
         logger.info("Trial %d started", trial.number)
@@ -86,40 +88,34 @@ class OptunaObjectiveAdapter:
     # Helpers
     # ------------------------------------------------------------------
     def _trial_to_params(self, trial: optuna.Trial) -> Dict[str, Any]:
-        """Convert trial suggestions into a parameter dictionary understood by our stack."""
+        """Convert trial suggestions into a parameter dictionary understood by our stack.
+        
+        Uses the modern parameter_space format with type, low/high bounds, and choices.
+        """
         params: Dict[str, Any] = {}
-        for param_def in self.scenario_config.get("optimize", []):
-            name = param_def["parameter"]
-            ptype = param_def.get("type")
-            # Infer type if not explicitly provided
-            if ptype is None:
-                if "min_value" in param_def and "max_value" in param_def:
-                    if isinstance(param_def["min_value"], int) and isinstance(param_def["max_value"], int):
-                        ptype = "int"
-                    else:
-                        ptype = "float"
-                else:
-                    ptype = "float"
-
+        for param_name, param_config in self.parameter_space.items():
+            ptype = param_config.get("type", "float")
+            
             if ptype == "int":
-                params[name] = trial.suggest_int(
-                    name,
-                    param_def["min_value"],
-                    param_def["max_value"],
-                    step=param_def.get("step", 1),
+                params[param_name] = trial.suggest_int(
+                    param_name,
+                    param_config.get("low", 0),
+                    param_config.get("high", 100),
+                    step=param_config.get("step", 1),
                 )
             elif ptype == "float":
-                params[name] = trial.suggest_float(
-                    name,
-                    param_def["min_value"],
-                    param_def["max_value"],
-                    step=param_def.get("step"),
+                params[param_name] = trial.suggest_float(
+                    param_name,
+                    param_config.get("low", 0.0),
+                    param_config.get("high", 1.0),
+                    step=param_config.get("step"),
                 )
             elif ptype == "categorical":
-                choices = param_def.get("choices") or param_def.get("values")
+                choices = param_config.get("choices", [])
                 if not choices:
-                    raise ValueError(f"Categorical parameter '{name}' must have 'choices' or 'values' defined.")
-                params[name] = trial.suggest_categorical(name, choices)
+                    raise ValueError(f"Categorical parameter '{param_name}' must have 'choices' defined.")
+                params[param_name] = trial.suggest_categorical(param_name, choices)
             else:
                 raise ValueError(f"Unsupported parameter type: {ptype}")
+        
         return params
