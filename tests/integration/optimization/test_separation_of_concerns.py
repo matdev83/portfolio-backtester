@@ -103,6 +103,47 @@ class TestSeparationOfConcerns(BaseIntegrationTest):
         if self.temp_dir.exists():
             shutil.rmtree(self.temp_dir, ignore_errors=True)
     
+    def test_integration_smoke(self):
+        """Integration smoke test for separation of concerns."""
+        # Test basic separation of concerns functionality
+        
+        # Verify backtester can be created independently
+        backtester = StrategyBacktester(
+            global_config=self.global_config,
+            data_source=Mock()
+        )
+        self.assertIsNotNone(backtester)
+        
+        # Verify optimization components can be imported independently
+        try:
+            from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
+            from src.portfolio_backtester.optimization.orchestrator import OptimizationOrchestrator
+            evaluator = BacktestEvaluator(metrics_to_optimize=["sharpe_ratio"], is_multi_objective=False)
+            self.assertIsNotNone(evaluator)
+        except ImportError as e:
+            self.fail(f"Failed to import optimization components independently: {e}")
+        
+    def test_end_to_end_workflow_smoke(self):
+        """End-to-end workflow smoke test for separation of concerns."""
+        # Test complete separation workflow
+        
+        # Test that feature flags work correctly
+        with FeatureFlags.disable_all_optimizers():
+            # Verify backtester works without optimizers
+            backtester = StrategyBacktester(
+                global_config=self.global_config,
+                data_source=Mock()
+            )
+            self.assertTrue(hasattr(backtester, 'evaluate_window'))
+        
+        # Test that optimization components work independently
+        try:
+            from src.portfolio_backtester.optimization.factory import create_parameter_generator
+            generator = create_parameter_generator("optuna", random_state=42)
+            self.assertIsNotNone(generator)
+        except Exception as e:
+            self.fail(f"Failed to create parameter generator independently: {e}")
+    
     def _create_test_windows(self):
         """Create test walk-forward windows."""
         windows = []

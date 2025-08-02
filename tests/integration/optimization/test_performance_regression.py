@@ -111,7 +111,6 @@ class PerformanceBenchmark:
 
 @pytest.mark.integration
 @pytest.mark.optimization
-@pytest.mark.slow
 class TestPerformanceRegression(BaseIntegrationTest):
     """Test performance regression between old and new architectures."""
     
@@ -176,6 +175,78 @@ class TestPerformanceRegression(BaseIntegrationTest):
         super().tearDown()
         if self.temp_dir.exists():
             shutil.rmtree(self.temp_dir, ignore_errors=True)
+    
+    def test_integration_smoke(self):
+        """Integration smoke test for performance regression."""
+        # Test basic performance measurement functionality
+        parameter_space = {
+            "lookback_period": {"type": "int", "low": 10, "high": 12, "step": 1}
+        }
+        
+        # Run a quick performance test
+        benchmark = PerformanceBenchmark()
+        benchmark.start()
+        
+        # Create and run a simple optimization
+        parameter_generator = create_parameter_generator("optuna", random_state=42)
+        evaluator = BacktestEvaluator(metrics_to_optimize=["sharpe_ratio"], is_multi_objective=False)
+        orchestrator = OptimizationOrchestrator(parameter_generator, evaluator)
+        
+        mock_backtester = self._create_fast_mock_backtester()
+        
+        optimization_config = {
+            "parameter_space": parameter_space,
+            "metrics_to_optimize": ["sharpe_ratio"],
+            "max_evaluations": 3
+        }
+        
+        result = orchestrator.optimize(
+            self.scenario_config, optimization_config, self.optimization_data, mock_backtester
+        )
+        
+        metrics = benchmark.stop(result.n_evaluations)
+        
+        # Verify basic functionality works
+        self.assertIsNotNone(result)
+        self.assertGreater(metrics.execution_time, 0)
+        self.assertGreater(metrics.peak_memory_mb, 0)
+        
+    def test_end_to_end_workflow_smoke(self):
+        """End-to-end workflow smoke test for performance regression."""
+        # Test complete performance measurement workflow
+        parameter_space = {
+            "lookback_period": {"type": "int", "low": 8, "high": 10, "step": 1},
+            "position_size": {"type": "float", "low": 0.1, "high": 0.12, "step": 0.01}
+        }
+        
+        # Test performance measurement workflow
+        benchmark = PerformanceBenchmark()
+        benchmark.start()
+        
+        # Run optimization
+        parameter_generator = create_parameter_generator("optuna", random_state=42)
+        evaluator = BacktestEvaluator(metrics_to_optimize=["sharpe_ratio"], is_multi_objective=False)
+        orchestrator = OptimizationOrchestrator(parameter_generator, evaluator)
+        
+        mock_backtester = self._create_fast_mock_backtester()
+        
+        optimization_config = {
+            "parameter_space": parameter_space,
+            "metrics_to_optimize": ["sharpe_ratio"],
+            "max_evaluations": 5
+        }
+        
+        result = orchestrator.optimize(
+            self.scenario_config, optimization_config, self.optimization_data, mock_backtester
+        )
+        
+        metrics = benchmark.stop(result.n_evaluations)
+        
+        # Verify end-to-end workflow produces valid performance metrics
+        self.assertIsInstance(metrics, PerformanceMetrics)
+        self.assertGreater(metrics.execution_time, 0)
+        self.assertGreater(metrics.evaluations_per_second, 0)
+        self.assertEqual(metrics.total_evaluations, 5)
     
     def _create_test_windows(self):
         """Create test walk-forward windows."""

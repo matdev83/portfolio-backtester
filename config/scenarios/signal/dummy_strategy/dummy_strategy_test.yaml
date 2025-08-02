@@ -6,7 +6,7 @@ train_window_months: 36
 test_window_months: 12
 universe_config:
   type: single_symbol
-  symbol: SPY
+  ticker: SPY
 optimization_targets:
 - name: Sortino
   direction: maximize

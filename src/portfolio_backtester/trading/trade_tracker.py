@@ -46,13 +46,34 @@ class Trade:
 
 
 class TradeTracker:
-    """Comprehensive trade tracking system."""
+    """Comprehensive trade tracking system with dynamic capital tracking."""
     
-    def __init__(self, portfolio_value: float = 100000.0):
-        self.portfolio_value = portfolio_value
+    def __init__(self, initial_portfolio_value: float = 100000.0, allocation_mode: str = "reinvestment"):
+        """
+        Initialize TradeTracker with capital allocation mode.
+        
+        Args:
+            initial_portfolio_value: Starting capital amount
+            allocation_mode: Capital allocation mode
+                - "reinvestment" (default): Use current account balance for position sizing (enables compounding)
+                - "fixed_fractional": Always use initial capital for position sizing (disables compounding)
+        """
+        self.initial_portfolio_value = initial_portfolio_value
+        self.current_portfolio_value = initial_portfolio_value
+        self.allocation_mode = allocation_mode
         self.trades: List[Trade] = []
         self.open_positions: Dict[str, Trade] = {}
         self.daily_margin_usage: pd.Series = pd.Series(dtype=float)
+        self.daily_portfolio_value: pd.Series = pd.Series(dtype=float)
+        self.daily_cash_balance: pd.Series = pd.Series(dtype=float)
+        
+        # Validate allocation mode
+        valid_modes = ["reinvestment", "compound", "fixed_fractional", "fixed_capital"]
+        if allocation_mode not in valid_modes:
+            raise ValueError(f"Invalid allocation_mode '{allocation_mode}'. Must be one of: {valid_modes}")
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"TradeTracker initialized with allocation_mode='{allocation_mode}'")
         
     def update_positions(
         self,
@@ -63,7 +84,7 @@ class TradeTracker:
         detailed_commission_info: Optional[Dict[str, Any]] = None
     ) -> None:
         """
-        Update positions based on new target weights.
+        Update positions based on new target weights with dynamic capital tracking.
         
         Args:
             date: Current date
@@ -72,11 +93,18 @@ class TradeTracker:
             commissions: Commission costs per asset (for backward compatibility)
             detailed_commission_info: Detailed commission information from unified calculator
         """
-        # Calculate target quantities
+        # Calculate target quantities based on allocation mode
+        if self.allocation_mode in ["reinvestment", "compound"]:
+            # Use current portfolio value for compounding
+            base_capital = self.current_portfolio_value
+        else:  # fixed_fractional or fixed_capital
+            # Use initial portfolio value (no compounding)
+            base_capital = self.initial_portfolio_value
+        
         target_quantities = {}
         for ticker, weight in new_weights.items():
             if ticker in prices and not pd.isna(prices[ticker]) and prices[ticker] > 0:
-                target_value = weight * self.portfolio_value
+                target_value = weight * base_capital
                 target_quantities[ticker] = target_value / prices[ticker]
             else:
                 target_quantities[ticker] = 0.0
@@ -97,11 +125,22 @@ class TradeTracker:
                 commission = commissions.get(ticker, 0.0)
                 self._open_position(date, ticker, target_quantities[ticker], prices[ticker], commission)
         
-        # Update margin usage
+        # Update margin usage based on allocation mode
         total_position_value = sum(abs(qty) * prices.get(ticker, 0) 
                                  for ticker, qty in target_quantities.items() 
                                  if abs(qty) > 1e-6)
-        self.daily_margin_usage[date] = total_position_value / self.portfolio_value
+        
+        # Always use current portfolio value for margin calculation (actual account balance)
+        self.daily_margin_usage[date] = total_position_value / self.current_portfolio_value
+        
+        # Track daily portfolio value and cash balance
+        self.daily_portfolio_value[date] = self.current_portfolio_value
+        
+        # Calculate cash balance (portfolio value minus position values)
+        current_position_value = sum(abs(trade.quantity) * prices.get(trade.ticker, 0) 
+                                   for trade in self.open_positions.values() 
+                                   if trade.ticker in prices)
+        self.daily_cash_balance[date] = self.current_portfolio_value - current_position_value
     
     def update_mfe_mae(self, date: pd.Timestamp, prices: pd.Series) -> None:
         """Update Maximum Favorable/Adverse Excursion for open positions."""
@@ -142,7 +181,7 @@ class TradeTracker:
         self.open_positions[ticker] = trade
     
     def _close_position(self, date: pd.Timestamp, ticker: str, price: float, commission: float) -> None:
-        """Close an existing position."""
+        """Close an existing position and update portfolio value with P&L."""
         if ticker not in self.open_positions:
             return
         
@@ -157,6 +196,14 @@ class TradeTracker:
         
         trade.finalize()
         
+        # Update current portfolio value with trade P&L (including commissions)
+        if trade.pnl_net is not None:
+            self.current_portfolio_value += trade.pnl_net
+            
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Trade closed: {ticker} on {date}, P&L: ${trade.pnl_net:.2f}, "
+                           f"Portfolio value: ${self.current_portfolio_value:.2f}")
+        
         # Move to completed trades
         self.trades.append(trade)
         del self.open_positions[ticker]
@@ -169,6 +216,32 @@ class TradeTracker:
             if ticker in prices and not pd.isna(prices[ticker]):
                 commission = commissions.get(ticker, 0.0)
                 self._close_position(date, ticker, prices[ticker], commission)
+    
+    def get_current_portfolio_value(self) -> float:
+        """Get the current portfolio value after all trades."""
+        return self.current_portfolio_value
+    
+    def get_total_return(self) -> float:
+        """Get the total return as a percentage."""
+        if self.initial_portfolio_value == 0:
+            return 0.0
+        return (self.current_portfolio_value - self.initial_portfolio_value) / self.initial_portfolio_value
+    
+    def get_capital_timeline(self) -> pd.DataFrame:
+        """Get a timeline of portfolio value, cash balance, and position values."""
+        if self.daily_portfolio_value.empty:
+            return pd.DataFrame()
+        
+        timeline_df = pd.DataFrame({
+            'portfolio_value': self.daily_portfolio_value,
+            'cash_balance': self.daily_cash_balance,
+            'margin_usage': self.daily_margin_usage
+        })
+        
+        # Calculate position value as portfolio_value - cash_balance
+        timeline_df['position_value'] = timeline_df['portfolio_value'] - timeline_df['cash_balance']
+        
+        return timeline_df
     
     def get_trade_statistics(self) -> Dict[str, Any]:
         """Calculate comprehensive trade statistics split by direction (All/Long/Short)."""
@@ -209,7 +282,12 @@ class TradeTracker:
         
         combined_stats.update({
             'max_margin_load': max_margin_load,
-            'mean_margin_load': mean_margin_load
+            'mean_margin_load': mean_margin_load,
+            'allocation_mode': self.allocation_mode,
+            'initial_capital': self.initial_portfolio_value,
+            'final_capital': self.current_portfolio_value,
+            'total_return_pct': self.get_total_return() * 100,
+            'capital_growth_factor': self.current_portfolio_value / self.initial_portfolio_value if self.initial_portfolio_value > 0 else 1.0
         })
         
         return combined_stats
@@ -288,6 +366,8 @@ class TradeTracker:
                         formatted_value = f"{value:.3f}"
                 elif format_type == 'float':
                     formatted_value = f"{value:.2f}"
+                elif format_type == 'string':
+                    formatted_value = str(value)
                 else:
                     formatted_value = str(value)
                 
@@ -298,7 +378,12 @@ class TradeTracker:
         # Add portfolio-level metrics
         portfolio_metrics = [
             ('max_margin_load', 'Max Margin Load', 'pct'),
-            ('mean_margin_load', 'Mean Margin Load', 'pct')
+            ('mean_margin_load', 'Mean Margin Load', 'pct'),
+            ('allocation_mode', 'Allocation Mode', 'string'),
+            ('initial_capital', 'Initial Capital', 'currency'),
+            ('final_capital', 'Final Capital', 'currency'),
+            ('total_return_pct', 'Total Return (%)', 'pct'),
+            ('capital_growth_factor', 'Capital Growth Factor', 'ratio')
         ]
         
         for metric_key, metric_name, format_type in portfolio_metrics:
@@ -435,7 +520,12 @@ class TradeTracker:
         # Add portfolio-level statistics
         combined_stats.update({
             'max_margin_load': 0.0,
-            'mean_margin_load': 0.0
+            'mean_margin_load': 0.0,
+            'allocation_mode': 'reinvestment',
+            'initial_capital': 0.0,
+            'final_capital': 0.0,
+            'total_return_pct': 0.0,
+            'capital_growth_factor': 1.0
         })
         
         return combined_stats

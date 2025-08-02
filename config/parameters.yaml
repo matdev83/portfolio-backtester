@@ -1,6 +1,10 @@
 GLOBAL_CONFIG:
   data_source: "hybrid"
   prefer_stooq: true  # Use Stooq as primary source, yfinance as fallback
+  
+  # Portfolio capital configuration
+  portfolio_value: 1000000.0  # Starting capital: $1M for compounding
+  
   universe:
     - "AAPL"
     - "AMZN"
@@ -463,6 +467,9 @@ OPTIMIZER_PARAMETER_DEFAULTS:
   rebalance_frequency:
     type: "categorical"
     values: ["M", "Q", "A"]
+  allocation_mode:
+    type: "categorical"
+    values: ["reinvestment", "compound", "fixed_fractional", "fixed_capital"]
   spy_weight:
     type: "float"
     low: 0.05

@@ -13,6 +13,21 @@ python -m src.portfolio_backtester.backtester --mode backtest --scenario-name "M
 
 This will run the backtest and generate a performance report in the `data/reports` directory.
 
+### Optimization Shortcut
+
+You can run an optimization with a single command using the provided shortcut script:
+
+```bash
+./optimize.py <strategy_config.yaml> [<optional_optimizer_args>...]
+```
+
+For example:
+```bash
+./optimize.py config/scenarios/portfolio/calmar_momentum_strategy/default.yaml --optuna-trials 100 --n-jobs 4
+```
+
+This will invoke the optimizer with the specified scenario YAML and any additional arguments you provide. The script automatically uses the correct Python environment and CLI flags.
+
 ## Key Features
 
 ### Core Capabilities
@@ -221,6 +236,44 @@ python -m src.portfolio_backtester.backtester \
 ## Configuration
 
 The backtester uses a set of YAML files in the `config/` directory to manage global settings, define specific backtest experiments, and provide examples.
+
+### Universe Configuration
+
+The `universe_config` section of a scenario YAML defines which assets are included in the backtest or optimization. Supported types are:
+
+- `single_symbol`: A single ticker (e.g., SPY)
+- `fixed`: A fixed list of tickers
+- `named`: A named universe (e.g., S&P 500)
+- `method`: A programmatically generated universe
+
+**Example: Single Symbol Universe**
+```yaml
+universe_config:
+  type: single_symbol
+  ticker: SPY
+```
+
+**Example: Fixed Universe**
+```yaml
+universe_config:
+  type: fixed
+  tickers: [SPY, GLD, QQQ]
+```
+
+**Example: Named Universe**
+```yaml
+universe_config:
+  type: named
+  universe_name: sp500_top50
+```
+
+**Example: Method Universe**
+```yaml
+universe_config:
+  type: method
+  method_name: get_top_weight_sp500_components
+  n_holdings: 20
+```
 
 ### Commission and Slippage Configuration
 

@@ -1260,26 +1260,25 @@ class Backtester:
             return default_start_date
         
         if len(universe_tickers) == 1:
-            # Rule 1: Single-stock universe
-            single_ticker = next(iter(universe_tickers))
-            logger.info(f"Single ticker universe detected: {single_ticker}. Using earliest available data date.")
-            
+            # Rule 1: Single-symbol universe
+            single_symbol = next(iter(universe_tickers))
+            logger.info(f"Single symbol universe detected: {single_symbol}. Using earliest available data date.")
             try:
                 # Get minimal data to find the earliest available date
                 test_data = self.data_source.get_data(
-                    tickers=[single_ticker],
+                    tickers=[single_symbol],
                     start_date="1990-01-01",  # Very early date to get all available data
                     end_date=self.global_config["end_date"],
                 )
                 if test_data is not None and not test_data.empty:
                     earliest_date = test_data.index[0]
-                    logger.info(f"Using earliest available data date for {single_ticker}: {earliest_date}")
+                    logger.info(f"Using earliest available data date for {single_symbol}: {earliest_date}")
                     return earliest_date.strftime('%Y-%m-%d')
                 else:
-                    logger.warning(f"No data found for {single_ticker}, using default start date")
+                    logger.warning(f"No data found for {single_symbol}, using default start date")
                     return default_start_date
             except Exception as e:
-                logger.warning(f"Could not determine earliest data date for {single_ticker}, using configured start_date: {e}")
+                logger.warning(f"Could not determine earliest data date for {single_symbol}, using configured start_date: {e}")
                 return default_start_date
         
         else:

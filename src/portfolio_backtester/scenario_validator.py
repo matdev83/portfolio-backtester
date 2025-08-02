@@ -391,6 +391,28 @@ def validate_scenario_semantics(
             if meta.get('required', False) and param not in provided_params:
                 errors.append(YamlError(error_type=YamlErrorType.VALIDATION_ERROR, message=f'Required parameter \'{param}\' missing in strategy_params', file_path=file_path_str))
 
+    # Validate universe_config type if present
+    universe_config = scenario_data.get("universe_config")
+    if universe_config is not None:
+        allowed_types = {"single_symbol", "fixed", "named", "method"}
+        universe_type = universe_config.get("type")
+        if universe_type not in allowed_types:
+            errors.append(
+                YamlError(
+                    error_type=YamlErrorType.VALIDATION_ERROR,
+                    message=f"universe_config.type '{universe_type}' is not supported. Allowed types: {sorted(allowed_types)}",
+                    file_path=file_path_str,
+                )
+            )
+        if universe_type == "single_symbol" and "ticker" not in universe_config:
+            errors.append(
+                YamlError(
+                    error_type=YamlErrorType.VALIDATION_ERROR,
+                    message="single_symbol universe_config requires a 'ticker' field",
+                    file_path=file_path_str,
+                )
+            )
+
     return errors
 
 

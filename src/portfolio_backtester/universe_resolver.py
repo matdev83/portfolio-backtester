@@ -23,18 +23,18 @@ def resolve_universe_config(universe_config: dict, current_date: pd.Timestamp = 
         UniverseLoaderError
     )
     
-    # Support legacy shorthand for single_ticker universe
-    # Handle single_ticker shorthand variations
+    # Support legacy shorthand for single_symbol universe
+    # Handle single_symbol shorthand variations
     if (
-        ('name' in universe_config and universe_config.get('name') == 'single_ticker')
-        or universe_config.get('type') == 'single_ticker'
+        ('name' in universe_config and universe_config.get('name') == 'single_symbol')
+        or universe_config.get('type') == 'single_symbol'
     ):
         ticker = (
             universe_config.get('params', {}).get('ticker')
             or universe_config.get('ticker')
         )
         if not ticker:
-            raise ValueError("single_ticker universe requires 'ticker' field")
+            raise ValueError("single_symbol universe requires 'ticker' field")
         return [str(ticker).strip().upper()]
 
     universe_type = universe_config.get("type")

@@ -7,8 +7,7 @@ test_window_months: 48
 universe_config:
   type: named
   universe_names:
-  - nasdaq_top20
-  - dow_jones
+  - sp500_top50
 optimization_targets:
   - name: Sortino
     direction: maximize

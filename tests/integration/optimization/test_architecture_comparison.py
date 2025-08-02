@@ -181,6 +181,43 @@ class TestArchitectureComparison(BaseIntegrationTest):
         if self.temp_dir.exists():
             shutil.rmtree(self.temp_dir, ignore_errors=True)
     
+    def test_integration_smoke(self):
+        """Integration smoke test for architecture comparison."""
+        # Test basic optimization functionality
+        parameter_space = {
+            "lookback_period": {"type": "int", "low": 10, "high": 14, "step": 1},
+            "position_size": {"type": "float", "low": 0.1, "high": 0.15, "step": 0.01}
+        }
+        
+        # Run a quick optimization test
+        result = self._run_new_architecture_optimization(
+            "optuna", parameter_space, 5, 42
+        )
+        
+        # Verify basic functionality works
+        self.assertIsNotNone(result.best_parameters)
+        self.assertIsNotNone(result.best_value)
+        self.assertEqual(result.n_evaluations, 5)
+        
+    def test_end_to_end_workflow_smoke(self):
+        """End-to-end workflow smoke test for architecture comparison."""
+        # Test complete workflow from setup to results
+        parameter_space = {
+            "lookback_period": {"type": "int", "low": 8, "high": 12, "step": 1}
+        }
+        
+        # Test both optimizers
+        for optimizer_type in ["optuna"]:  # Skip genetic for speed
+            result = self._run_new_architecture_optimization(
+                optimizer_type, parameter_space, 3, 42
+            )
+            
+            # Verify end-to-end workflow produces valid results
+            self.assertIsNotNone(result)
+            self.assertIsInstance(result.best_parameters, dict)
+            self.assertIn("lookback_period", result.best_parameters)
+            self.assertGreater(result.n_evaluations, 0)
+    
     def _create_test_windows(self):
         """Create test walk-forward windows."""
         windows = []

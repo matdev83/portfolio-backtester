@@ -6,7 +6,7 @@ train_window_months: 36
 test_window_months: 48
 universe_config:
   type: named
-  universe_name: dow_jones
+  universe_name: sp500_top50
 optimization_metric: Calmar
 optimize:
 - parameter: num_holdings
