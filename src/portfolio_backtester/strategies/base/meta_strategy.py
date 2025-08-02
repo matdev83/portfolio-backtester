@@ -53,6 +53,9 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         self.available_capital = self.initial_capital
         self.cumulative_pnl = 0.0
         
+        # Get allocation mode from strategy params (defaults to reinvestment for compounding)
+        self.allocation_mode = strategy_params.get("allocation_mode", "reinvestment")
+        
         # Initialize sub-strategy allocations
         self.allocations: List[SubStrategyAllocation] = []
         self._initialize_allocations()
@@ -64,7 +67,7 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         self._sub_strategy_cache: Dict[str, BaseStrategy] = {}
         
         # Trade tracking infrastructure
-        self._trade_aggregator = TradeAggregator(self.initial_capital)
+        self._trade_aggregator = TradeAggregator(self.initial_capital, self.allocation_mode)
         self._sub_strategy_capital_tracking: Dict[str, float] = {}
         
         # Trade interceptors for sub-strategies
@@ -171,7 +174,15 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         # Update portfolio tracker
         self._portfolio_tracker.update_from_trade(trade)
         
-        logger.debug(f"Tracked intercepted trade: {trade}")
+        # Update available capital based on current portfolio value from aggregator
+        # This ensures that the meta strategy's available capital reflects P&L from closed trades
+        current_portfolio_value = self._trade_aggregator.calculate_portfolio_value(trade.date)
+        self.available_capital = current_portfolio_value
+        self.cumulative_pnl = current_portfolio_value - self.initial_capital
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Tracked intercepted trade: {trade}")
+            logger.debug(f"Updated available capital: ${self.available_capital:.2f} (P&L: ${self.cumulative_pnl:.2f})")
     
     def _create_strategy_instance(self, strategy_class: str, strategy_params: Dict[str, Any]) -> BaseStrategy:
         """Create a strategy instance from class name and parameters."""
@@ -184,11 +195,19 @@ class BaseMetaStrategy(BaseStrategy, ABC):
             return StrategyFactory.create_strategy(strategy_class, strategy_params)
     
     def calculate_sub_strategy_capital(self) -> Dict[str, float]:
-        """Calculate capital allocation for each sub-strategy based on current available capital."""
+        """Calculate capital allocation for each sub-strategy based on allocation mode."""
         capital_allocations = {}
         
+        # Determine base capital based on allocation mode
+        if self.allocation_mode in ["reinvestment", "compound"]:
+            # Use current available capital for compounding
+            base_capital = self.available_capital
+        else:  # fixed_fractional or fixed_capital
+            # Use initial capital (no compounding)
+            base_capital = self.initial_capital
+        
         for allocation in self.allocations:
-            allocated_capital = self.available_capital * allocation.weight
+            allocated_capital = base_capital * allocation.weight
             capital_allocations[allocation.strategy_id] = allocated_capital
             
             # Update tracking
@@ -197,6 +216,9 @@ class BaseMetaStrategy(BaseStrategy, ABC):
             # Update interceptor capital if it exists
             if allocation.strategy_id in self._trade_interceptors:
                 self._trade_interceptors[allocation.strategy_id].update_allocated_capital(allocated_capital)
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Capital allocation (mode={self.allocation_mode}): base=${base_capital:.2f}, allocations={capital_allocations}")
         
         return capital_allocations
     
@@ -611,8 +633,14 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         # Initialize aggregated signals
         aggregated_signals = pd.Series(0.0, index=all_assets)
         
-        # Calculate capital allocations
+        # Calculate capital allocations based on allocation mode
         capital_allocations = self.calculate_sub_strategy_capital()
+        
+        # Determine total capital for weighting based on allocation mode
+        if self.allocation_mode in ["reinvestment", "compound"]:
+            total_capital = self.available_capital
+        else:  # fixed_fractional or fixed_capital
+            total_capital = self.initial_capital
         
         # Aggregate signals weighted by capital allocation
         for allocation in self.allocations:
@@ -630,7 +658,7 @@ class BaseMetaStrategy(BaseStrategy, ABC):
             if isinstance(current_signals, pd.DataFrame):
                 current_signals = current_signals.iloc[0]  # Take first row if DataFrame
             
-            # Weight by capital allocation
+            # Weight by capital allocation (respects allocation mode)
             weight = allocation.weight
             for asset in current_signals.index:
                 if asset in all_assets:
@@ -726,6 +754,7 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         """Names of hyper-parameters this meta strategy understands."""
         return {
             "initial_capital",
+            "allocation_mode",
             "min_allocation",
             "rebalance_threshold",
             "allocations"

@@ -26,15 +26,25 @@ class TradeAggregator:
     - Computing performance metrics based on actual trade execution
     """
     
-    def __init__(self, initial_capital: float):
+    def __init__(self, initial_capital: float, allocation_mode: str = "reinvestment"):
         """
         Initialize the trade aggregator.
         
         Args:
             initial_capital: Starting capital for the meta strategy
+            allocation_mode: Capital allocation mode ("reinvestment" or "fixed_fractional")
         """
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
+        self.allocation_mode = allocation_mode
+        
+        # Validate allocation mode
+        valid_modes = ["reinvestment", "compound", "fixed_fractional", "fixed_capital"]
+        if allocation_mode not in valid_modes:
+            raise ValueError(f"Invalid allocation_mode '{allocation_mode}'. Must be one of: {valid_modes}")
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"TradeAggregator initialized with allocation_mode='{allocation_mode}'")
         
         # Trade tracking
         self._trade_history: List[TradeRecord] = []
@@ -79,7 +89,12 @@ class TradeAggregator:
         market_prices = {trade.asset: trade.price}
         self._update_portfolio_value(trade.date, market_prices)
         
-        logger.debug(f"Trade tracked. New cash balance: ${self._cash_balance:.2f}")
+        # Update current capital to reflect the new portfolio value
+        if self._portfolio_values:
+            latest_date = max(self._portfolio_values.keys())
+            self.current_capital = self._portfolio_values[latest_date]
+        
+        logger.debug(f"Trade tracked. Cash balance: ${self._cash_balance:.2f}, Portfolio value: ${self.current_capital:.2f}")
     
     def _update_position(self, trade: TradeRecord) -> None:
         """Update position records with a new trade."""
@@ -412,6 +427,35 @@ class TradeAggregator:
         df = df.sort_values('date').reset_index(drop=True)
         
         return df
+    
+    def get_current_cash_balance(self) -> float:
+        """
+        Get the current cash balance.
+        
+        Returns:
+            Current cash balance after all trades
+        """
+        return self._cash_balance
+    
+    def get_current_capital(self) -> float:
+        """
+        Get the current total capital (cash + positions).
+        
+        Returns:
+            Current total capital
+        """
+        return self.current_capital
+    
+    def get_total_return(self) -> float:
+        """
+        Get the total return as a percentage.
+        
+        Returns:
+            Total return as decimal (e.g., 0.05 for 5%)
+        """
+        if self.initial_capital == 0:
+            return 0.0
+        return (self.current_capital - self.initial_capital) / self.initial_capital
     
     def get_summary_statistics(self) -> Dict[str, any]:
         """

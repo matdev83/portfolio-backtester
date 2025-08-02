@@ -219,15 +219,21 @@ def _create_meta_strategy_trade_tracker(strategy, global_config, scenario_config
             else:  # sell
                 current_positions[asset] -= trade.quantity
         
-        # Calculate total portfolio value for this date
-        portfolio_value = global_config.get("portfolio_value", 100000.0)
+        # Calculate total portfolio value for this date based on allocation mode
+        if trade_tracker.allocation_mode in ["reinvestment", "compound"]:
+            # Use current portfolio value for compounding
+            base_portfolio_value = trade_tracker.get_current_portfolio_value()
+        else:  # fixed_fractional or fixed_capital
+            # Use initial portfolio value (no compounding)
+            base_portfolio_value = trade_tracker.initial_portfolio_value
+            
         current_position_values = {}
         for asset, quantity in current_positions.items():
             if asset in prices:
                 current_position_values[asset] = quantity * prices[asset]
         total_portfolio_value = sum(current_position_values.values())
         if total_portfolio_value == 0:
-            total_portfolio_value = portfolio_value
+            total_portfolio_value = base_portfolio_value
             
         # Convert current positions to weights for transaction cost calculation
         weights = pd.Series(0.0, index=list(all_assets))
@@ -248,11 +254,17 @@ def _create_meta_strategy_trade_tracker(strategy, global_config, scenario_config
             dummy_price_data = pd.DataFrame([{asset: prices.get(asset, 0.0) for asset in all_assets}], 
                                           index=[date])
             
+            # Use appropriate capital base for transaction cost calculation
+            if trade_tracker.allocation_mode in ["reinvestment", "compound"]:
+                commission_base_capital = trade_tracker.get_current_portfolio_value()
+            else:  # fixed_fractional or fixed_capital
+                commission_base_capital = trade_tracker.initial_portfolio_value
+                
             transaction_costs, _ = tx_cost_model.calculate(
                 turnover=turnover_series,
                 weights_daily=weights_df,
                 price_data=dummy_price_data,
-                portfolio_value=total_portfolio_value
+                portfolio_value=commission_base_capital
             )
             
             # Distribute costs among assets with trades
@@ -278,7 +290,7 @@ def _create_meta_strategy_trade_tracker(strategy, global_config, scenario_config
         for asset, quantity in current_positions.items():
             if abs(quantity) > 1e-6 and asset in prices:
                 position_value = quantity * prices[asset]
-                weight = position_value / portfolio_value
+                weight = position_value / base_portfolio_value
                 weights[asset] = weight
         
         # Create price series for all assets (use last known price for assets not traded today)
