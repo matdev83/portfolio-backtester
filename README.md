@@ -53,6 +53,13 @@ This will invoke the optimizer with the specified scenario YAML and any addition
 - **GARCH-Based Synthetic Data**: Realistic market condition simulation preserving statistical properties
 - **Asset Replacement Strategy**: Configurable percentage of assets replaced with synthetic equivalents
 
+### Capital Allocation Modes
+- **Reinvestment Mode (Default)**: Enables compounding by using current account balance for position sizing
+- **Fixed Fractional Mode**: Disables compounding by always using initial capital for position sizing
+- **Strategy-Level Control**: Configure allocation mode per strategy for flexible analysis
+- **Meta Strategy Support**: Consistent allocation behavior across regular and meta strategies
+- **Industry Standard Terminology**: Uses common financial industry names for allocation modes
+
 ### Advanced Analytics & Reporting
 - **Comprehensive Performance Metrics**: Sharpe, Sortino, Calmar ratios, drawdown analysis
 - **Stability Metrics**: Parameter consistency across walk-forward windows
@@ -294,6 +301,67 @@ commission_max_percent_of_trade: 0.005
 # Slippage in basis points (1 bps = 0.01%)
 slippage_bps: 2.5
 ```
+
+### Capital Allocation Modes
+
+The backtester supports two capital allocation modes that control how position sizes are calculated:
+
+#### Reinvestment Mode (Default)
+- **Behavior**: Uses current account balance for position sizing
+- **Effect**: Enables compounding - profits increase future position sizes, losses decrease them
+- **Use Case**: Realistic simulation of account growth/decline for live trading preparation
+
+#### Fixed Fractional Mode
+- **Behavior**: Always uses initial capital for position sizing
+- **Effect**: Disables compounding - position sizes stay constant relative to starting capital
+- **Use Case**: Fair strategy comparison without compounding effects for academic analysis
+
+#### Configuration
+
+**Strategy-Level Configuration:**
+```yaml
+strategy_config:
+  name: "MyStrategy"
+  allocation_mode: "reinvestment"  # or "fixed_fractional"
+  strategy_params:
+    # ... other parameters
+```
+
+**Meta Strategy Configuration:**
+```yaml
+meta_strategy_config:
+  name: "MyMetaStrategy"
+  strategy: "SimpleMetaStrategy"
+  allocation_mode: "reinvestment"  # Controls sub-strategy capital allocation
+  strategy_params:
+    allocation_mode: "reinvestment"  # Also pass to strategy params
+    allocations:
+      - strategy_id: "momentum"
+        weight: 0.6
+      - strategy_id: "mean_reversion"
+        weight: 0.4
+```
+
+**Available Values:**
+- `"reinvestment"` or `"compound"` - Enable compounding (default)
+- `"fixed_fractional"` or `"fixed_capital"` - Disable compounding
+
+**Parameter Optimization:**
+The `allocation_mode` can be included in parameter optimization to test both approaches:
+
+```yaml
+strategy_params:
+  allocation_mode:
+    type: "categorical"
+    values: ["reinvestment", "fixed_fractional"]
+```
+
+**Example Configurations:**
+See `config/examples/allocation_mode_example.yaml` for complete configuration examples including:
+- Basic strategy with reinvestment mode
+- Strategy with fixed fractional mode  
+- Meta strategy allocation mode configuration
+- Parameter optimization including allocation mode
 
 ### Creating a Custom Commission Model
 

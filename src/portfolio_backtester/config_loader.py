@@ -111,6 +111,15 @@ def load_config():
         ConfigurationError: If configuration files are invalid or corrupted
     """
     global GLOBAL_CONFIG, OPTIMIZER_PARAMETER_DEFAULTS, BACKTEST_SCENARIOS
+    
+    # Validate that all strategies have configuration files before loading
+    from .strategy_config_validator import validate_strategy_configs
+    is_valid, validation_errors = validate_strategy_configs()
+    if not is_valid:
+        error_message = "\n".join(validation_errors)
+        logger.error("Strategy configuration validation failed!")
+        print(error_message, file=sys.stderr)
+        raise ConfigurationError("Strategy configuration validation failed. See error details above.")
 
     try:
         # Load and validate parameters file

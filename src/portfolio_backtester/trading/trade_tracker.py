@@ -521,11 +521,11 @@ class TradeTracker:
         combined_stats.update({
             'max_margin_load': 0.0,
             'mean_margin_load': 0.0,
-            'allocation_mode': 'reinvestment',
-            'initial_capital': 0.0,
-            'final_capital': 0.0,
-            'total_return_pct': 0.0,
-            'capital_growth_factor': 1.0
+            'allocation_mode': self.allocation_mode,
+            'initial_capital': self.initial_portfolio_value,
+            'final_capital': self.current_portfolio_value,
+            'total_return_pct': self.get_total_return() * 100,
+            'capital_growth_factor': self.current_portfolio_value / self.initial_portfolio_value if self.initial_portfolio_value > 0 else 1.0
         })
         
         return combined_stats

@@ -351,6 +351,7 @@ class TestEndToEndOptimization(BaseIntegrationTest):
             elif param_config["type"] == "categorical":
                 self.assertIn(param_value, param_config["choices"])
     
+    @pytest.mark.slow
     def test_optimization_with_timeout(self):
         """Test optimization with timeout handling."""
         # Create optimization configuration with very short timeout
@@ -375,10 +376,14 @@ class TestEndToEndOptimization(BaseIntegrationTest):
         # Create mock backtester with delay
         mock_backtester = self._create_mock_backtester()
         
+        # Store the original function
+        original_evaluate_window = mock_backtester.evaluate_window.side_effect
+        
         def slow_evaluate_window(*args, **kwargs):
             import time
             time.sleep(0.1)  # Add delay to trigger timeout
-            return mock_backtester.evaluate_window.side_effect(*args, **kwargs)
+            # Call the original function
+            return original_evaluate_window(*args, **kwargs)
         
         mock_backtester.evaluate_window.side_effect = slow_evaluate_window
         
@@ -394,6 +399,7 @@ class TestEndToEndOptimization(BaseIntegrationTest):
         self.assertIsNotNone(result)
         self.assertLess(result.n_evaluations, 100)  # Should not complete all evaluations
     
+    @pytest.mark.slow
     def test_optimization_with_early_stopping(self):
         """Test optimization with early stopping."""
         # Create optimization configuration with early stopping
@@ -458,6 +464,7 @@ class TestEndToEndOptimization(BaseIntegrationTest):
         self.assertIsNotNone(result)
         self.assertLess(result.n_evaluations, 50)  # Should stop before max evaluations
     
+    @pytest.mark.slow
     def test_optimization_error_handling(self):
         """Test optimization error handling and recovery."""
         # Create optimization configuration

@@ -1,0 +1,36 @@
+# Default configuration for Intramonth Seasonal Strategy
+name: intramonth_seasonal_default
+strategy: intramonth_seasonal
+strategy_class: IntramonthSeasonalStrategy
+rebalance_frequency: M  # Monthly rebalancing
+position_sizer: equal_weight
+
+strategy_params:
+  direction: long
+  entry_day: 5
+  hold_days: 10
+  price_column_asset: Close
+  trade_longs: true
+  trade_shorts: true
+  use_ema_filter: false
+  fast_ema_len: 21
+  slow_ema_multiplier: 2.0
+  
+  # Allow trading in all months by default
+  trade_month_1: true
+  trade_month_2: true
+  trade_month_3: true
+  trade_month_4: true
+  trade_month_5: true
+  trade_month_6: true
+  trade_month_7: true
+  trade_month_8: true
+  trade_month_9: true
+  trade_month_10: true
+  trade_month_11: true
+  trade_month_12: true
+
+timing_config:
+  mode: signal_based
+  
+mc_simulations: 0  # Disabled by default 

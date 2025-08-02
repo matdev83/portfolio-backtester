@@ -1,0 +1,35 @@
+"# Short-only configuration for Intramonth Seasonal Strategy
+name: intramonth_seasonal_short_only
+strategy: intramonth_seasonal
+strategy_class: IntramonthSeasonalStrategy
+rebalance_frequency: M
+position_sizer: equal_weight
+
+strategy_params:
+  direction: short
+  entry_day: -5  # Last 5th business day
+  hold_days: 5
+  price_column_asset: Close
+  trade_longs: false
+  trade_shorts: true
+  use_ema_filter: true
+  fast_ema_len: 14
+  slow_ema_multiplier: 3.0
+  
+  # Trade in all months
+  trade_month_1: true
+  trade_month_2: true
+  trade_month_3: true
+  trade_month_4: true
+  trade_month_5: true
+  trade_month_6: true
+  trade_month_7: true
+  trade_month_8: true
+  trade_month_9: true
+  trade_month_10: true
+  trade_month_11: true
+  trade_month_12: true
+
+timing_config:
+  mode: signal_based
+" 
