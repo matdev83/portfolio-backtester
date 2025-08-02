@@ -136,7 +136,11 @@ class TestBacktestEvaluator:
         for call in mock_backtester.evaluate_window.call_args_list:
             called_config = call[0][0]  # First argument (scenario_config)
             expected_params = scenario_config['strategy_params'].copy()
-            expected_params.update(parameters)
+            # Parameters should be prefixed with strategy name
+            strategy_name = scenario_config['strategy']
+            for param_name, param_value in parameters.items():
+                prefixed_name = f"{strategy_name}.{param_name}"
+                expected_params[prefixed_name] = param_value
             assert called_config['strategy_params'] == expected_params
     
     def test_evaluate_parameters_multi_objective_success(self):

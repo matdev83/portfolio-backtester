@@ -19,6 +19,7 @@ class TestBacktesterCLI(unittest.TestCase):
         mock_args = mock.MagicMock()
         mock_args.mode = 'backtest'
         mock_args.scenario_name = 'test_scenario'
+        mock_args.scenario_filename = None  # Add missing attribute
         mock_args.log_level = 'INFO'
         mock_args.random_seed = 42
         mock_parse_args.return_value = mock_args

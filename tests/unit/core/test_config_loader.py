@@ -54,7 +54,7 @@ optimize:
 class MockStrategy(BaseStrategy):
     @classmethod
     def tunable_parameters(cls) -> set[str]:
-        return {"mock_strategy_param1", "num_holdings"} # num_holdings is often a strategy param
+        return {"mock_strategy_param1", "num_holdings", "existing_param"} # num_holdings is often a strategy param
 
 class AnotherMockStrategy(BaseStrategy):
      @classmethod
@@ -76,7 +76,8 @@ class TestConfigLoader(unittest.TestCase):
              patch('os.walk') as mock_walk, \
              patch('pathlib.Path.exists', return_value=True) as mock_exists, \
              patch('pathlib.Path.is_dir', return_value=True) as mock_isdir, \
-             patch('pathlib.Path.is_file', return_value=True) as mock_isfile:
+             patch('pathlib.Path.is_file', return_value=True) as mock_isfile, \
+             patch('src.portfolio_backtester.scenario_validator._resolve_strategy') as mock_resolve_strategy:
 
             # Configure mock_open_obj to return different content based on the file path
             def side_effect_open(file_path, mode, encoding=None):
@@ -90,6 +91,16 @@ class TestConfigLoader(unittest.TestCase):
                         return mock_open(read_data=content).return_value
                 raise FileNotFoundError(f"Unexpected file open: {file_path}")
             mock_open_obj.side_effect = side_effect_open
+            
+            # Mock strategy resolution to return our mock strategies
+            def mock_strategy_resolver(strategy_name):
+                if strategy_name == "mock_strategy":
+                    return MockStrategy
+                elif strategy_name == "another_mock_strategy":
+                    return AnotherMockStrategy
+                else:
+                    return None
+            mock_resolve_strategy.side_effect = mock_strategy_resolver
             
             # Mock os.walk to simulate subdirectory structure
             walk_results = []
