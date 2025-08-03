@@ -1,35 +1,35 @@
-"# Short-only configuration for Intramonth Seasonal Strategy
+# Short-only configuration for Intramonth Seasonal Strategy
 name: intramonth_seasonal_short_only
 strategy: intramonth_seasonal
 strategy_class: IntramonthSeasonalStrategy
-rebalance_frequency: M
+rebalance_frequency: M  # Monthly rebalancing
 position_sizer: equal_weight
 
 strategy_params:
-  direction: short
-  entry_day: -5  # Last 5th business day
-  hold_days: 5
-  price_column_asset: Close
-  trade_longs: false
-  trade_shorts: true
-  use_ema_filter: true
-  fast_ema_len: 14
-  slow_ema_multiplier: 3.0
+  intramonth_seasonal.direction: long
+  intramonth_seasonal.entry_day: 5
+  intramonth_seasonal.hold_days: 10
+  intramonth_seasonal.trade_longs: false
+  intramonth_seasonal.trade_shorts: true
+  intramonth_seasonal.use_ema_filter: false
+  intramonth_seasonal.fast_ema_len: 21
+  intramonth_seasonal.slow_ema_multiplier: 2.0
   
-  # Trade in all months
-  trade_month_1: true
-  trade_month_2: true
-  trade_month_3: true
-  trade_month_4: true
-  trade_month_5: true
-  trade_month_6: true
-  trade_month_7: true
-  trade_month_8: true
-  trade_month_9: true
-  trade_month_10: true
-  trade_month_11: true
-  trade_month_12: true
+  # Allow trading in all months by default
+  intramonth_seasonal.trade_month_1: true
+  intramonth_seasonal.trade_month_2: true
+  intramonth_seasonal.trade_month_3: true
+  intramonth_seasonal.trade_month_4: true
+  intramonth_seasonal.trade_month_5: true
+  intramonth_seasonal.trade_month_6: true
+  intramonth_seasonal.trade_month_7: true
+  intramonth_seasonal.trade_month_8: true
+  intramonth_seasonal.trade_month_9: true
+  intramonth_seasonal.trade_month_10: true
+  intramonth_seasonal.trade_month_11: true
+  intramonth_seasonal.trade_month_12: true
 
 timing_config:
   mode: signal_based
-" 
+  
+mc_simulations: 0  # Disabled by default

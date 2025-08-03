@@ -12,59 +12,56 @@ strategy_params:
   simple_meta.initial_capital: 2000000
   simple_meta.min_allocation: 0.05
   simple_meta.rebalance_threshold: 0.05
-  allocations:
+  simple_meta.allocations:
   - strategy_id: equity_meta
     strategy_class: SimpleMetaStrategy
     strategy_params:
-      initial_capital: 1600000
-      allocations:
+      simple_meta.initial_capital: 1600000
+      simple_meta.allocations:
       - strategy_id: momentum
         strategy_class: CalmarMomentumStrategy
         strategy_params:
-          rolling_window: 6
-          num_holdings: 8
-          sma_filter_window: 15
-          price_column_asset: Close
-          price_column_benchmark: Close
-          lookback_months: 11
-          top_decile_fraction: 0.1
-          smoothing_lambda: 0.5
-          leverage: 0.5
-          long_only: true
-          timing_config:
+          calmar_momentum.rolling_window: 6
+          calmar_momentum.num_holdings: 8
+          calmar_momentum.sma_filter_window: 15
+          calmar_momentum.price_column_benchmark: Close
+          calmar_momentum.lookback_months: 11
+          calmar_momentum.top_decile_fraction: 0.1
+          calmar_momentum.smoothing_lambda: 0.5
+          calmar_momentum.leverage: 0.5
+          calmar_momentum.long_only: true
+          calmar_momentum.timing_config:
             mode: time_based
             rebalance_frequency: M
         weight: 0.6
       - strategy_id: seasonal
         strategy_class: IntramonthSeasonalStrategy
         strategy_params:
-          direction: long
-          entry_day: 5
-          hold_days: 10
-          price_column_asset: Close
-          trade_longs: true
-          trade_shorts: false
-          use_ema_filter: false
-          fast_ema_len: 0
-          slow_ema_multiplier: 2.0
-          timing_config:
+          intramonth_seasonal.direction: long
+          intramonth_seasonal.entry_day: 5
+          intramonth_seasonal.hold_days: 10
+          intramonth_seasonal.trade_longs: true
+          intramonth_seasonal.trade_shorts: false
+          intramonth_seasonal.use_ema_filter: false
+          intramonth_seasonal.fast_ema_len: 0
+          intramonth_seasonal.slow_ema_multiplier: 2.0
+          intramonth_seasonal.timing_config:
             mode: signal_based
         weight: 0.4
     weight: 0.8
   - strategy_id: conservative
     strategy_class: CalmarMomentumStrategy
     strategy_params:
-      rolling_window: 12
-      num_holdings: 15
-      sma_filter_window: 50
-      price_column_asset: Close
-      price_column_benchmark: Close
-      lookback_months: 11
-      top_decile_fraction: 0.15
-      smoothing_lambda: 0.7
-      leverage: 0.3
-      long_only: true
-      timing_config:
+      calmar_momentum.rolling_window: 12
+      calmar_momentum.num_holdings: 15
+      calmar_momentum.sma_filter_window: 50
+      calmar_momentum.price_column_benchmark: Close
+      calmar_momentum.lookback_months: 11
+      calmar_momentum.top_decile_fraction: 0.15
+      calmar_momentum.smoothing_lambda: 0.7
+      calmar_momentum.leverage: 0.3
+      calmar_momentum.long_only: true
+      calmar_momentum.timing_config:
         mode: time_based
         rebalance_frequency: Q
     weight: 0.2

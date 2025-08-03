@@ -1,0 +1,27 @@
+name: momentum_unfiltered_atr
+strategy: momentum_unfiltered_atr
+rebalance_frequency: ME
+position_sizer: equal_weight
+train_window_months: 36
+test_window_months: 48
+universe_config:
+  type: named
+  universe_name: sp500_top50
+optimization_metric: Sharpe
+optimize:
+- parameter: num_holdings
+  min_value: 10
+  max_value: 30
+  step: 1
+- parameter: rolling_window
+  min_value: 1
+  max_value: 6
+  step: 1
+strategy_params:
+  momentum_unfiltered_atr.lookback_months: 11
+  momentum_unfiltered_atr.top_decile_fraction: 0.1
+  momentum_unfiltered_atr.smoothing_lambda: 0.5
+  momentum_unfiltered_atr.leverage: 0.5
+  momentum_unfiltered_atr.long_only: true
+mc_simulations: 500
+mc_years: 20

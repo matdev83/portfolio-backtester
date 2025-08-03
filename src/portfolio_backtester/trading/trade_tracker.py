@@ -33,7 +33,17 @@ class Trade:
     def finalize(self):
         """Calculate derived fields when trade is closed."""
         if self.exit_date is not None and self.exit_price is not None:
-            self.duration_days = (self.exit_date - self.entry_date).days
+            # Calculate business day duration instead of calendar days
+            # This is more accurate for trading strategies that use business day logic
+            try:
+                # Use pandas business day range to get actual business days
+                business_days = pd.bdate_range(start=self.entry_date, end=self.exit_date)
+                # Subtract 1 because bdate_range includes both start and end dates
+                # but we want the number of days held, not the number of dates
+                self.duration_days = max(0, len(business_days) - 1)
+            except Exception:
+                # Fallback to calendar days if business day calculation fails
+                self.duration_days = (self.exit_date - self.entry_date).days
             
             # Calculate P&L
             if self.quantity > 0:  # Long position

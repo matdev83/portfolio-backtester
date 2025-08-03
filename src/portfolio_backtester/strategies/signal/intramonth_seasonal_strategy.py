@@ -237,9 +237,14 @@ class IntramonthSeasonalStrategy(SignalStrategy):
         if self._exit_dates_np is None or self._exit_dates_np.shape[0] != len(all_assets):
             self._exit_dates_np = np.full(len(all_assets), np.datetime64("NaT"), dtype="datetime64[ns]")
 
+        # Exit positions that have reached their exit date
         exit_mask = (~pd.isna(self._exit_dates_np)) & (self._exit_dates_np <= np.datetime64(current_date))
-        target_weights_np[exit_mask] = 0
-        self._exit_dates_np[exit_mask] = np.datetime64("NaT")
+        if exit_mask.any():
+            target_weights_np[exit_mask] = 0
+            self._exit_dates_np[exit_mask] = np.datetime64("NaT")
+            if logger.isEnabledFor(logging.DEBUG):
+                num_exits = np.count_nonzero(exit_mask)
+                logger.debug(f"Exiting {num_exits} positions on {current_date.date()}")
 
         entry_date = (
             self.get_entry_date_for_month(current_date, entry_day)

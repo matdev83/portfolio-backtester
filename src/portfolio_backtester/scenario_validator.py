@@ -84,6 +84,17 @@ def validate_scenario_semantics(
 
     errors: List[YamlError] = []
     file_path_str = str(file_path) if file_path is not None else None
+    
+    # Debug: Check if scenario_data is actually a dictionary
+    if not isinstance(scenario_data, dict):
+        errors.append(
+            YamlError(
+                error_type=YamlErrorType.VALIDATION_ERROR,
+                message=f"scenario_data is not a dictionary, got {type(scenario_data).__name__}: {repr(scenario_data)[:200]}",
+                file_path=file_path_str,
+            )
+        )
+        return errors
 
     # -------------------------------------------------------------------
     # 1. Mandatory keys & basic types
@@ -377,8 +388,14 @@ def validate_scenario_semantics(
                 continue
             meta = strategy_tunable_params[param_name]
             p_type = meta.get('type')
-            if p_type and not isinstance(value, getattr(builtins, p_type, type(value))):
-                errors.append(YamlError(error_type=YamlErrorType.VALIDATION_ERROR, message=f'Parameter \'{raw_key}\' type mismatch: expected {p_type}, got {type(value).__name__}', file_path=file_path_str))
+            if p_type and isinstance(p_type, str):
+                try:
+                    expected_type = getattr(builtins, p_type, None)
+                    if expected_type and not isinstance(value, expected_type):
+                        errors.append(YamlError(error_type=YamlErrorType.VALIDATION_ERROR, message=f'Parameter \'{raw_key}\' type mismatch: expected {p_type}, got {type(value).__name__}', file_path=file_path_str))
+                except (AttributeError, TypeError):
+                    # Skip type checking if we can't resolve the type
+                    pass
                 continue
             min_v = meta.get('min')
             if min_v is not None and value < min_v:

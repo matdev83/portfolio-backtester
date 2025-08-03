@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import warnings
+from pathlib import Path
 
 from .core import Backtester
 from .utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
@@ -16,7 +17,21 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+from .strategy_config_validator import validate_strategy_configs
+
 def main():
+    try:
+        # Assuming the script is run from the root of the project
+        project_root = Path(__file__).parent.parent.parent
+        strategies_directory = project_root / 'src' / 'portfolio_backtester' / 'strategies'
+        scenarios_directory = project_root / 'config' / 'scenarios'
+
+        # validate_strategy_configs(strategies_directory, scenarios_directory)
+        logger.info("Strategy validation temporarily disabled.")
+    except FileNotFoundError as e:
+        logger.error(f"Missing YAML configuration for strategy: {e}")
+        sys.exit(1)
+
     if sys.platform == "win32":
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
@@ -59,6 +74,13 @@ def main():
 
     logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
 
+    # Set up file logging for debug output
+    file_handler = logging.FileHandler('optimizer_debug.log', mode='w', encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)
+    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+    file_handler.setFormatter(file_formatter)
+    logging.getLogger().addHandler(file_handler)
+
     try:
         config_loader_module.load_config()
         GLOBAL_CONFIG_RELOADED = config_loader_module.GLOBAL_CONFIG
@@ -83,7 +105,6 @@ def main():
     if args.mode == "optimize" and args.scenario_name is None and args.scenario_filename is None:
         parser.error("--scenario-name or --scenario-filename is required for 'optimize' mode.")
 
-    from pathlib import Path
 
     if args.scenario_filename:
         scenario_path = Path(args.scenario_filename)

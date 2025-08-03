@@ -16,20 +16,19 @@ optimization_targets:
 optimize: []
 
 strategy_params:
-  initial_capital: 1000000  # Starting capital for this meta strategy
-  min_allocation: 0.05      # Minimum allocation per strategy (5%)
-  rebalance_threshold: 0.05 # Rebalance when allocation drifts by 5%
+  simple_meta.initial_capital: 1000000  # Starting capital for this meta strategy
+  simple_meta.min_allocation: 0.05      # Minimum allocation per strategy (5%)
+  simple_meta.rebalance_threshold: 0.05 # Rebalance when allocation drifts by 5%
   
-  allocations:
+  simple_meta.allocations:
     - strategy_id: "momentum"
       strategy_class: "CalmarMomentumStrategy"
       strategy_params:
-        rolling_window: 6
-        num_holdings: 10
-        sma_filter_window: 10
-        price_column_asset: "Close"
-        price_column_benchmark: "Close"
-        timing_config:
+        calmar_momentum.rolling_window: 6
+        calmar_momentum.num_holdings: 10
+        calmar_momentum.sma_filter_window: 10
+        calmar_momentum.price_column_benchmark: "Close"
+        calmar_momentum.timing_config:
           mode: "time_based"
           rebalance_frequency: "M"
       weight: 0.7  # 70% of available capital
@@ -37,13 +36,12 @@ strategy_params:
     - strategy_id: "seasonal"
       strategy_class: "IntramonthSeasonalStrategy"
       strategy_params:
-        direction: "long"
-        entry_day: 5
-        hold_days: 10
-        price_column_asset: "Close"
-        trade_longs: true
-        trade_shorts: false
-        timing_config:
+        intramonth_seasonal.direction: "long"
+        intramonth_seasonal.entry_day: 5
+        intramonth_seasonal.hold_days: 10
+        intramonth_seasonal.trade_longs: true
+        intramonth_seasonal.trade_shorts: false
+        intramonth_seasonal.timing_config:
           mode: "signal_based"
       weight: 0.3  # 30% of available capital
 

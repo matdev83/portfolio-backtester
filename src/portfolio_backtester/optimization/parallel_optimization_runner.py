@@ -68,13 +68,15 @@ def _optuna_worker(
     total_trials: int = optimization_config.get("optuna_trials", n_trials)
 
     def _progress_callback(study: optuna.Study, trial: optuna.trial.FrozenTrial) -> None:  # noqa: D401
-        """Log progress as "Trial idx/total finished with value …"."""
+        """Log progress as 'Trial idx/total finished with value …'."""
         finished = sum(t.state.is_finished() for t in study.trials)
+        capped_finished = min(finished, total_trials)
         logger.info(
-            "Trial %d/%d finished with value %s",
-            finished,
+            "Trial %d/%d finished with value %s%s",
+            capped_finished,
             total_trials,
             trial.value,
+            " [study has more trials than requested for this run]" if finished > total_trials else ""
         )
         
         # Check for early stopping based on consecutive zero values

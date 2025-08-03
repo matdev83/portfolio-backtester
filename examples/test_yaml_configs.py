@@ -25,8 +25,9 @@ def load_config(config_path):
     
     print(f"✅ Configuration loaded successfully")
     print(f"   Strategy Class: {config['strategy_class']}")
-    print(f"   Initial Capital: ${config['strategy_params']['initial_capital']:,}")
-    print(f"   Number of Allocations: {len(config['strategy_params']['allocations'])}")
+    print(f"   Initial Capital: ${config['strategy_params']['simple_meta.initial_capital']:,}")
+    if 'simple_meta.allocations' in config['strategy_params']:
+            print(f"   Number of Allocations: {len(config['strategy_params']['simple_meta.allocations'])}")
     
     return config
 
@@ -76,7 +77,7 @@ def test_simple_meta_config():
     
     # Create strategy instance
     print(f"\n🔧 Creating SimpleMetaStrategy instance...")
-    meta_strategy = SimpleMetaStrategy(strategy_params)
+    meta_strategy = SimpleMetaStrategy(strategy_params, global_config=config)
     
     print(f"✅ Strategy created successfully!")
     print(f"   Available Capital: ${meta_strategy.available_capital:,.2f}")
@@ -132,7 +133,7 @@ def test_nested_meta_config():
     
     # Create strategy instance
     print(f"\n🔧 Creating Nested SimpleMetaStrategy instance...")
-    nested_meta = SimpleMetaStrategy(strategy_params)
+    nested_meta = SimpleMetaStrategy(strategy_params, global_config=config)
     
     print(f"✅ Nested strategy created successfully!")
     print(f"   Available Capital: ${nested_meta.available_capital:,.2f}")

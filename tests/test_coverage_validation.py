@@ -27,7 +27,7 @@ class CoverageValidator:
         try:
             # Run pytest with coverage
             result = subprocess.run([
-                sys.executable, '-m', 'pytest',
+                'pytest',
                 '--cov=src',
                 '--cov-report=json',
                 '--cov-report=term-missing',
@@ -35,13 +35,13 @@ class CoverageValidator:
             ], capture_output=True, text=True, cwd=Path(__file__).parent.parent)
             
             if result.returncode != 0:
-                print(f"❌ Tests failed: {result.stderr}")
+                print(f"[-] Tests failed: {result.stderr}")
                 return False
             
             # Load coverage data
             coverage_file = Path(__file__).parent.parent / 'coverage.json'
             if not coverage_file.exists():
-                print("❌ Coverage file not found")
+                print("[-] Coverage file not found")
                 return False
             
             with open(coverage_file) as f:
@@ -50,7 +50,7 @@ class CoverageValidator:
             return self.validate_coverage(coverage_data)
             
         except Exception as e:
-            print(f"❌ Coverage analysis failed: {e}")
+            print(f"[-] Coverage analysis failed: {e}")
             return False
     
     def validate_coverage(self, coverage_data):
@@ -63,10 +63,10 @@ class CoverageValidator:
         
         # Check overall coverage
         if total_coverage < self.min_coverage_threshold:
-            print(f"❌ Overall coverage {total_coverage:.1f}% below threshold {self.min_coverage_threshold}%")
+            print(f"[-] Overall coverage {total_coverage:.1f}% below threshold {self.min_coverage_threshold}%")
             return False
         else:
-            print(f"✅ Overall coverage meets threshold ({self.min_coverage_threshold}%)")
+            print(f"[+] Overall coverage meets threshold ({self.min_coverage_threshold}%)")
         
         # Check critical modules
         critical_issues = []
@@ -76,12 +76,12 @@ class CoverageValidator:
                 critical_issues.append(f"{module_pattern}: {module_coverage:.1f}%")
         
         if critical_issues:
-            print(f"❌ Critical modules below {self.critical_modules_threshold}% threshold:")
+            print(f"[-] Critical modules below {self.critical_modules_threshold}% threshold:")
             for issue in critical_issues:
                 print(f"   - {issue}")
             return False
         else:
-            print(f"✅ All critical modules meet threshold ({self.critical_modules_threshold}%)")
+            print(f"[+] All critical modules meet threshold ({self.critical_modules_threshold}%)")
         
         # Report top uncovered files
         self.report_uncovered_files(coverage_data)
@@ -127,12 +127,12 @@ class CoverageValidator:
         """Validate that we have sufficient test count."""
         try:
             result = subprocess.run([
-                sys.executable, '-m', 'pytest',
+                'pytest',
                 '--collect-only', '-q'
             ], capture_output=True, text=True, cwd=Path(__file__).parent.parent)
             
             if result.returncode != 0:
-                print(f"❌ Test collection failed: {result.stderr}")
+                print(f"[-] Test collection failed: {result.stderr}")
                 return False
             
             # Count collected tests
@@ -157,15 +157,15 @@ class CoverageValidator:
             # Validate minimum test count
             min_tests = 200  # Expect at least 200 tests
             if test_count < min_tests:
-                print(f"❌ Test count {test_count} below minimum {min_tests}")
+                print(f"[-] Test count {test_count} below minimum {min_tests}")
                 return False
             else:
-                print(f"✅ Test count meets minimum requirement ({min_tests})")
+                print(f"[+] Test count meets minimum requirement ({min_tests})")
             
             return True
             
         except Exception as e:
-            print(f"❌ Test count validation failed: {e}")
+            print(f"[-] Test count validation failed: {e}")
             return False
     
     def validate_test_organization(self):
@@ -187,12 +187,12 @@ class CoverageValidator:
                 missing_dirs.append(dir_path)
         
         if missing_dirs:
-            print(f"❌ Missing required directories:")
+            print(f"[-] Missing required directories:")
             for dir_path in missing_dirs:
                 print(f"   - {dir_path}")
             return False
         else:
-            print("✅ All required directories exist")
+            print("[+] All required directories exist")
         
         # Count files in each category
         unit_tests = len(list(Path('tests/unit').rglob('test_*.py')))
@@ -224,7 +224,7 @@ def main():
             if not validation_func():
                 all_passed = False
         except Exception as e:
-            print(f"❌ {name} validation failed with error: {e}")
+            print(f"[-] {name} validation failed with error: {e}")
             all_passed = False
     
     print(f"\n{'='*60}")

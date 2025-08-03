@@ -47,6 +47,7 @@ class OptunaObjectiveAdapter:
         
         # 1. Build parameters from trial
         params = self._trial_to_params(trial)
+        logger.debug(f"Trial {trial.number} parameters: {params}")
 
         # 2. Get or create thread-local backtester + evaluator
         local = getattr(self, "_local", None)

@@ -1,6 +1,7 @@
 import logging  # Assuming logger might be useful here or for other utils
 import random
 import signal
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -294,6 +295,87 @@ def generate_randomized_wfo_windows(monthly_data_index, scenario_config, global_
             logger.debug(f"Window {i+1}: Train={ts.date()} to {te.date()}, Test={vs.date()} to {ve.date()}")
 
     return windows
+
+
+def generate_enhanced_wfo_windows(
+    monthly_data_index: pd.DatetimeIndex,
+    scenario_config: dict,
+    global_config: dict,
+    random_state=None
+) -> List:
+    """Generate enhanced WFO windows with strategy-appropriate evaluation frequency.
+    
+    Args:
+        monthly_data_index: DatetimeIndex of monthly data (assumed to be month-end dates)
+        scenario_config: Scenario configuration dictionary
+        global_config: Global configuration dictionary
+        random_state: Random seed for reproducibility
+        
+    Returns:
+        List of WFOWindow objects with appropriate evaluation frequency
+    """
+    # Import here to avoid circular imports
+    try:
+        from ..optimization.wfo_window import WFOWindow
+    except ImportError:
+        # Fallback to regular window generation if WFOWindow not available
+        return generate_randomized_wfo_windows(
+            monthly_data_index, scenario_config, global_config, random_state
+        )
+    
+    # Generate base windows using existing logic
+    base_windows = generate_randomized_wfo_windows(
+        monthly_data_index, scenario_config, global_config, random_state
+    )
+    
+    # Determine evaluation frequency
+    evaluation_frequency = _determine_evaluation_frequency(scenario_config)
+    
+    # Convert to enhanced windows
+    enhanced_windows = []
+    for window in base_windows:
+        enhanced_windows.append(WFOWindow(
+            train_start=window[0],
+            train_end=window[1],
+            test_start=window[2], 
+            test_end=window[3],
+            evaluation_frequency=evaluation_frequency,
+            strategy_name=scenario_config.get('name', 'unknown')
+        ))
+    
+    return enhanced_windows
+
+
+def _determine_evaluation_frequency(scenario_config: dict) -> str:
+    """Determine required evaluation frequency based on strategy configuration.
+    
+    Args:
+        scenario_config: Scenario configuration dictionary
+        
+    Returns:
+        Evaluation frequency ('D', 'W', or 'M')
+    """
+    strategy_class = scenario_config.get('strategy_class', '')
+    strategy_name = scenario_config.get('strategy', '')
+    timing_config = scenario_config.get('timing_config', {})
+    
+    # Intramonth strategies need daily evaluation
+    if 'intramonth' in strategy_class.lower() or 'intramonth' in strategy_name.lower():
+        return 'D'
+    
+    # Signal-based timing with daily scanning
+    if timing_config.get('mode') == 'signal_based':
+        scan_freq = timing_config.get('scan_frequency', 'D')
+        if scan_freq == 'D':
+            return 'D'
+    
+    # Check rebalance frequency
+    rebalance_freq = scenario_config.get('rebalance_frequency', 'M')
+    if rebalance_freq == 'D':
+        return 'D'
+    
+    # Default to monthly for backward compatibility
+    return 'M'
 
 
 def calculate_stability_metrics(metric_values_per_objective, metrics_to_optimize, global_config):

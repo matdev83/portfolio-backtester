@@ -1,32 +1,45 @@
-"# January-only long configuration
 name: intramonth_seasonal_january
 strategy: intramonth_seasonal
 strategy_class: IntramonthSeasonalStrategy
-rebalance_frequency: M
+rebalance_frequency: D
 position_sizer: equal_weight
-
+train_window_months: 36
+test_window_months: 12
+universe_config:
+  type: single_symbol
+  ticker: TLT
+optimization_targets:
+  - name: Sortino
+    direction: maximize
+optimize:
+  - parameter: entry_day
+    min_value: 1
+    max_value: 10
+    step: 1
+  - parameter: hold_days
+    min_value: 3
+    max_value: 15
+    step: 1
 strategy_params:
-  direction: long
-  entry_day: 5
-  hold_days: 10
-  price_column_asset: Close
-  trade_longs: true
-  trade_shorts: false
-  use_ema_filter: false
-  
-  trade_month_1: true
-  trade_month_2: false
-  trade_month_3: false
-  trade_month_4: false
-  trade_month_5: false
-  trade_month_6: false
-  trade_month_7: false
-  trade_month_8: false
-  trade_month_9: false
-  trade_month_10: false
-  trade_month_11: false
-  trade_month_12: false
-
+  intramonth_seasonal.direction: long
+  intramonth_seasonal.entry_day: 5
+  intramonth_seasonal.hold_days: 10
+  intramonth_seasonal.trade_longs: true
+  intramonth_seasonal.trade_shorts: false
+  intramonth_seasonal.use_ema_filter: false
+  intramonth_seasonal.trade_month_1: true
+  intramonth_seasonal.trade_month_2: false
+  intramonth_seasonal.trade_month_3: false
+  intramonth_seasonal.trade_month_4: false
+  intramonth_seasonal.trade_month_5: false
+  intramonth_seasonal.trade_month_6: false
+  intramonth_seasonal.trade_month_7: false
+  intramonth_seasonal.trade_month_8: false
+  intramonth_seasonal.trade_month_9: false
+  intramonth_seasonal.trade_month_10: false
+  intramonth_seasonal.trade_month_11: false
+  intramonth_seasonal.trade_month_12: false
 timing_config:
   mode: signal_based
-" 
+mc_simulations: 0
+mc_years: 0 

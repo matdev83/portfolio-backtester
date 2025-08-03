@@ -161,3 +161,4 @@ GEMINI.md
 .agent.md
 .numba_cache/
 *.prof
+.aider*

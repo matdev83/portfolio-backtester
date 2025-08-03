@@ -1,4 +1,4 @@
-"# August-only long configuration
+# August-only long configuration
 name: intramonth_seasonal_august
 strategy: intramonth_seasonal
 strategy_class: IntramonthSeasonalStrategy
@@ -6,27 +6,25 @@ rebalance_frequency: M
 position_sizer: equal_weight
 
 strategy_params:
-  direction: long
-  entry_day: 5
-  hold_days: 10
-  price_column_asset: Close
-  trade_longs: true
-  trade_shorts: false
-  use_ema_filter: false
+  intramonth_seasonal.direction: long
+  intramonth_seasonal.entry_day: 5
+  intramonth_seasonal.hold_days: 10
+  intramonth_seasonal.trade_longs: true
+  intramonth_seasonal.trade_shorts: false
+  intramonth_seasonal.use_ema_filter: false
   
-  trade_month_1: false
-  trade_month_2: false
-  trade_month_3: false
-  trade_month_4: false
-  trade_month_5: false
-  trade_month_6: false
-  trade_month_7: false
-  trade_month_8: true
-  trade_month_9: false
-  trade_month_10: false
-  trade_month_11: false
-  trade_month_12: false
+  intramonth_seasonal.trade_month_1: false
+  intramonth_seasonal.trade_month_2: false
+  intramonth_seasonal.trade_month_3: false
+  intramonth_seasonal.trade_month_4: false
+  intramonth_seasonal.trade_month_5: false
+  intramonth_seasonal.trade_month_6: false
+  intramonth_seasonal.trade_month_7: false
+  intramonth_seasonal.trade_month_8: true
+  intramonth_seasonal.trade_month_9: false
+  intramonth_seasonal.trade_month_10: false
+  intramonth_seasonal.trade_month_11: false
+  intramonth_seasonal.trade_month_12: false
 
 timing_config:
   mode: signal_based
-" 

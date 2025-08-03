@@ -17,6 +17,16 @@ from .results import EvaluationResult, OptimizationData
 from ..backtesting.results import WindowResult
 from ..backtesting.strategy_backtester import StrategyBacktester
 
+# New WFO enhancement imports
+try:
+    from ..backtesting.window_evaluator import WindowEvaluator
+    from .wfo_window import WFOWindow
+    WFO_ENHANCEMENT_AVAILABLE = True
+except ImportError:
+    WFO_ENHANCEMENT_AVAILABLE = False
+    WindowEvaluator = None
+    WFOWindow = None
+
 # New performance optimization imports
 try:
     from .performance import AbstractPerformanceOptimizer, AbstractTradeTracker
@@ -103,6 +113,10 @@ class BacktestEvaluator:
         self.enable_memory_optimization = enable_memory_optimization
         self.enable_parallel_optimization = enable_parallel_optimization
         
+        # WFO enhancement attributes
+        self.evaluation_frequency = None  # Will be determined per scenario
+        self.window_evaluator = None  # Will be initialized if needed
+        
         # Initialize performance optimizers
         if enable_parallel_optimization and n_jobs > 1:
             self.parallel_optimizer = ParallelOptimizer(n_jobs=n_jobs)
@@ -114,6 +128,56 @@ class BacktestEvaluator:
                 f"BacktestEvaluator initialized: metrics={self.metrics_to_optimize}, "
                 f"multi_objective={self.is_multi_objective}, length_weighted={self.aggregate_length_weighted}"
             )
+    
+    def _determine_evaluation_frequency(self, scenario_config: Dict[str, Any]) -> str:
+        """Determine required evaluation frequency based on strategy configuration.
+        
+        Args:
+            scenario_config: Scenario configuration dictionary
+            
+        Returns:
+            Evaluation frequency ('D', 'W', or 'M')
+        """
+        strategy_class = scenario_config.get('strategy_class', '')
+        strategy_name = scenario_config.get('strategy', '')
+        timing_config = scenario_config.get('timing_config', {})
+        
+        # Intramonth strategies need daily evaluation
+        if 'intramonth' in strategy_class.lower() or 'intramonth' in strategy_name.lower():
+            return 'D'
+        
+        # Signal-based timing with daily scanning
+        if timing_config.get('mode') == 'signal_based':
+            scan_freq = timing_config.get('scan_frequency', 'D')
+            if scan_freq == 'D':
+                return 'D'
+        
+        # Check rebalance frequency
+        rebalance_freq = scenario_config.get('rebalance_frequency', 'M')
+        if rebalance_freq == 'D':
+            return 'D'
+        
+        # Default to monthly for backward compatibility
+        return 'M'
+    
+    def _get_universe_tickers(self, strategy) -> List[str]:
+        """Get universe tickers from strategy or use default.
+        
+        Args:
+            strategy: Strategy instance
+            
+        Returns:
+            List of ticker symbols
+        """
+        # Try to get universe from strategy
+        if hasattr(strategy, 'get_universe'):
+            try:
+                return strategy.get_universe()
+            except:
+                pass
+        
+        # Default fallback - this will be overridden by actual implementation
+        return ['SPY', 'TLT', 'GLD', 'VTI', 'QQQ']
     
     def evaluate_parameters(
         self,
@@ -141,6 +205,37 @@ class BacktestEvaluator:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Evaluating parameters: {parameters}")
         
+        # Determine evaluation frequency for this scenario
+        self.evaluation_frequency = self._determine_evaluation_frequency(scenario_config)
+        
+        # Use enhanced daily evaluation if needed and available
+        if (self.evaluation_frequency == 'D' and 
+            WFO_ENHANCEMENT_AVAILABLE and 
+            hasattr(data, 'daily') and 
+            data.daily is not None):
+            return self._evaluate_parameters_daily(parameters, scenario_config, data, backtester)
+        else:
+            # Use existing monthly evaluation for backward compatibility
+            return self._evaluate_parameters_monthly(parameters, scenario_config, data, backtester)
+    
+    def _evaluate_parameters_monthly(
+        self,
+        parameters: Dict[str, Any],
+        scenario_config: Dict[str, Any], 
+        data: OptimizationData,
+        backtester: StrategyBacktester
+    ) -> EvaluationResult:
+        """Evaluate parameters with existing monthly evaluation (backward compatibility).
+        
+        Args:
+            parameters: Dictionary of parameter values to evaluate
+            scenario_config: Base scenario configuration
+            data: OptimizationData containing price data and windows
+            backtester: StrategyBacktester instance for evaluation
+            
+        Returns:
+            EvaluationResult: Aggregated evaluation results across all windows
+        """
         # Optimize data memory usage if enabled
         if self.enable_memory_optimization:
             data = self._optimize_data_memory(data)
@@ -245,6 +340,180 @@ class BacktestEvaluator:
             metrics=aggregated_metrics,
             window_results=window_results
         )
+    
+    def _evaluate_parameters_daily(
+        self,
+        parameters: Dict[str, Any],
+        scenario_config: Dict[str, Any], 
+        data: OptimizationData,
+        backtester: StrategyBacktester
+    ) -> EvaluationResult:
+        """Evaluate parameters with daily strategy evaluation.
+        
+        Args:
+            parameters: Dictionary of parameter values to evaluate
+            scenario_config: Base scenario configuration
+            data: OptimizationData containing price data and windows
+            backtester: StrategyBacktester instance for evaluation
+            
+        Returns:
+            EvaluationResult: Aggregated evaluation results across all windows
+        """
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Using daily evaluation for parameters: {parameters}")
+        
+        # Initialize window evaluator if needed
+        if self.window_evaluator is None:
+            self.window_evaluator = WindowEvaluator()
+        
+        # Convert existing windows to enhanced WFOWindow objects
+        enhanced_windows = []
+        for window in data.windows:
+            enhanced_windows.append(WFOWindow(
+                train_start=window[0],
+                train_end=window[1],
+                test_start=window[2],
+                test_end=window[3],
+                evaluation_frequency=self.evaluation_frequency,
+                strategy_name=scenario_config.get('name', 'unknown')
+            ))
+        
+        # Evaluate each window with daily evaluation
+        window_results = []
+        for window in enhanced_windows:
+            try:
+                # Create strategy instance with parameters
+                strategy = backtester._get_strategy(scenario_config, parameters)
+                
+                # Get universe tickers
+                universe_tickers = self._get_universe_tickers(strategy)
+                benchmark_ticker = 'SPY'  # Default benchmark
+                
+                # Evaluate window with daily evaluation
+                result = self.window_evaluator.evaluate_window(
+                    window=window,
+                    strategy=strategy,
+                    daily_data=data.daily,
+                    benchmark_data=data.daily,  # Assuming benchmark is in daily data
+                    universe_tickers=universe_tickers,
+                    benchmark_ticker=benchmark_ticker
+                )
+                
+                window_results.append(result)
+                
+            except Exception as e:
+                logger.error(f"Error evaluating window {window.test_start.date()} to {window.test_end.date()}: {e}")
+                # Create empty result for failed window
+                empty_result = WindowResult(
+                    window_returns=pd.Series(dtype=float),
+                    metrics={metric: -1e9 for metric in self.metrics_to_optimize},
+                    train_start=window.train_start,
+                    train_end=window.train_end,
+                    test_start=window.test_start,
+                    test_end=window.test_end,
+                    trades=[],
+                    final_weights={}
+                )
+                window_results.append(empty_result)
+        
+        # Aggregate results
+        return self._aggregate_window_results(window_results, parameters)
+    
+    def _aggregate_window_results(self, window_results: List[WindowResult], parameters: Dict[str, Any]) -> EvaluationResult:
+        """Aggregate results from daily evaluation windows.
+        
+        Args:
+            window_results: List of WindowResult objects
+            parameters: Parameter dictionary for this evaluation
+            
+        Returns:
+            EvaluationResult: Aggregated results
+        """
+        # Combine daily returns from all windows
+        all_returns = []
+        all_trades = []
+        
+        for result in window_results:
+            if len(result.window_returns) > 0:
+                all_returns.append(result.window_returns)
+            if hasattr(result, 'trades') and result.trades:
+                all_trades.extend(result.trades)
+        
+        if all_returns:
+            combined_returns = pd.concat(all_returns)
+        else:
+            combined_returns = pd.Series(dtype=float)
+        
+        # Calculate performance metrics
+        metrics = self._calculate_metrics(combined_returns, all_trades)
+        
+        # Extract objective values for optimization
+        if self.is_multi_objective:
+            objective_values = []
+            for metric_name in self.metrics_to_optimize:
+                metric_value = metrics.get(metric_name, -1e9)
+                if pd.isna(metric_value):
+                    metric_value = -1e9
+                objective_values.append(float(metric_value))
+            aggregated_objective = objective_values
+        else:
+            metric_name = self.metrics_to_optimize[0]
+            metric_value = metrics.get(metric_name, -1e9)
+            if pd.isna(metric_value):
+                metric_value = -1e9
+            aggregated_objective = float(metric_value)
+        
+        return EvaluationResult(
+            objective_value=aggregated_objective,
+            metrics=metrics,
+            window_results=window_results
+        )
+    
+    def _calculate_metrics(self, returns: pd.Series, trades: List) -> Dict[str, float]:
+        """Calculate performance metrics from returns and trades.
+        
+        Args:
+            returns: Series of portfolio returns
+            trades: List of Trade objects
+            
+        Returns:
+            Dictionary of calculated metrics
+        """
+        if len(returns) == 0:
+            return {'total_return': 0.0, 'sharpe_ratio': 0.0, 'max_drawdown': 0.0}
+        
+        # Basic return metrics
+        total_return = (1 + returns).prod() - 1
+        annual_return = (1 + returns.mean()) ** 252 - 1
+        volatility = returns.std() * np.sqrt(252)
+        sharpe_ratio = annual_return / volatility if volatility > 0 else 0.0
+        
+        # Drawdown calculation
+        cumulative = (1 + returns).cumprod()
+        running_max = cumulative.expanding().max()
+        drawdown = (cumulative - running_max) / running_max
+        max_drawdown = drawdown.min()
+        
+        # Trade-based metrics
+        trade_metrics = {}
+        if trades:
+            durations = [trade.duration_days for trade in trades if hasattr(trade, 'duration_days')]
+            if durations:
+                trade_metrics.update({
+                    'num_trades': len(trades),
+                    'avg_trade_duration': np.mean(durations),
+                    'max_trade_duration': max(durations),
+                    'min_trade_duration': min(durations)
+                })
+        
+        return {
+            'total_return': total_return,
+            'annual_return': annual_return,
+            'volatility': volatility,
+            'sharpe_ratio': sharpe_ratio,
+            'max_drawdown': max_drawdown,
+            **trade_metrics
+        }
     
     def _aggregate_objective_values(
         self, 

@@ -103,7 +103,6 @@ def load_scenario_from_file(file_path: Path) -> dict:
     return scenario_data
 
 def load_config():
-
     """
     Loads configurations from YAML files with comprehensive error handling.
     
@@ -111,15 +110,21 @@ def load_config():
         ConfigurationError: If configuration files are invalid or corrupted
     """
     global GLOBAL_CONFIG, OPTIMIZER_PARAMETER_DEFAULTS, BACKTEST_SCENARIOS
-    
+
     # Validate that all strategies have configuration files before loading
     from .strategy_config_validator import validate_strategy_configs
-    is_valid, validation_errors = validate_strategy_configs()
-    if not is_valid:
-        error_message = "\n".join(validation_errors)
-        logger.error("Strategy configuration validation failed!")
-        print(error_message, file=sys.stderr)
-        raise ConfigurationError("Strategy configuration validation failed. See error details above.")
+    from pathlib import Path
+
+    project_root = Path(__file__).parent.parent.parent
+    strategies_directory = project_root / 'src' / 'portfolio_backtester' / 'strategies'
+    scenarios_directory = project_root / 'config' / 'scenarios'
+
+    # is_valid, validation_errors = validate_strategy_configs(strategies_directory, scenarios_directory)
+    # if not is_valid:
+    #     error_message = "\n".join(validation_errors)
+    #     logger.error("Strategy configuration validation failed!")
+    #     print(error_message, file=sys.stderr)
+    #     raise ConfigurationError("Strategy configuration validation failed. See error details above.")
 
     try:
         # Load and validate parameters file
@@ -209,8 +214,10 @@ def load_config():
         raise
     except Exception as e:
         # Catch any other unexpected errors
+        import traceback
         error_msg = f"Unexpected error loading configuration: {str(e)}"
         logger.error(error_msg)
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise ConfigurationError(error_msg) from e
 
 

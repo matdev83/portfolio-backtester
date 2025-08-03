@@ -253,10 +253,10 @@ strategy_params:
 
     def test_range_violation(self):
         invalid_yaml = '''
-strategy: dummy_strategy_for_testing
+strategy: dummy
 name: test
 strategy_params:
-  dummy_param_1: 0
+    dummy.dummy_param_1: 0
 '''
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             f.write(invalid_yaml)
@@ -266,7 +266,7 @@ strategy_params:
             self.assertGreater(len(errors), 0)
             self.assertTrue(any('below min' in e.message for e in errors))
         finally:
-            os.unlink(temp_file)
+            os.remove(temp_file)
 
     def test_required_missing(self):
         invalid_yaml = '''

@@ -47,6 +47,7 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         
         # Store global config for commission calculations
         self.global_config = global_config or {}
+        self.strategy_name = self.global_config.get("strategy")
         
         # Initialize capital tracking
         self.initial_capital = strategy_params.get("initial_capital", 1000000.0)
@@ -88,7 +89,12 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         
     def _initialize_allocations(self) -> None:
         """Initialize sub-strategy allocations from configuration."""
-        allocations_config = self.strategy_params.get("allocations", [])
+        allocations_config = self.strategy_params.get("allocations")
+        if allocations_config is None and self.strategy_name:
+            allocations_config = self.strategy_params.get(f"{self.strategy_name}.allocations")
+
+        if allocations_config is None:
+            allocations_config = []
         
         for allocation_config in allocations_config:
             allocation = SubStrategyAllocation(
@@ -188,11 +194,8 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         """Create a strategy instance from class name and parameters."""
         # Import here to avoid circular imports
         from ..strategy_factory import StrategyFactory
-        # Only pass global_config if it contains meaningful entries to preserve backward compatibility with tests
-        if self.global_config:
-            return StrategyFactory.create_strategy(strategy_class, strategy_params, self.global_config)
-        else:
-            return StrategyFactory.create_strategy(strategy_class, strategy_params)
+        print(f"Creating strategy instance for {strategy_class} with params: {strategy_params}")
+        return StrategyFactory.create_strategy(strategy_class, strategy_params, self.global_config)
     
     def calculate_sub_strategy_capital(self) -> Dict[str, float]:
         """Calculate capital allocation for each sub-strategy based on allocation mode."""

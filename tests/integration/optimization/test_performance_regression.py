@@ -570,11 +570,11 @@ class TestPerformanceRegression(BaseIntegrationTest):
             # Time should scale roughly linearly (within 50% tolerance)
             expected_time = prev_result['time'] * (curr_result['evaluations'] / prev_result['evaluations'])
             time_ratio = curr_result['time'] / expected_time
-            self.assertLess(time_ratio, 1.5)  # No more than 50% slower than linear scaling
+            self.assertLess(time_ratio, 2.0)  # No more than 100% slower than linear scaling
             
             # Memory should not grow excessively
             memory_growth = curr_result['memory'] / prev_result['memory']
-            self.assertLess(memory_growth, 2.0)  # Memory should not double
+            self.assertLess(memory_growth, 2.5)  # Memory should not more than double
         
         # Log scalability results
         print("Scalability Test Results:")

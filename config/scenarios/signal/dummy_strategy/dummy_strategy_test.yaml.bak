@@ -1,0 +1,3 @@
+strategy: dummy
+strategy_class: DummyStrategy
+strategy_params: {}
