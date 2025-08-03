@@ -30,6 +30,9 @@ calling code can format them via :pymeth:`YamlValidator.format_errors`.
 from pathlib import Path
 from typing import Any, Dict, List, Set
 import builtins
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .yaml_validator import YamlError, YamlErrorType, YamlValidator
 from .utils import _resolve_strategy
@@ -82,6 +85,7 @@ def validate_scenario_semantics(
         Empty when *no* semantic issues were found.
     """
 
+    logger.debug("validate_scenario_semantics called with %s", scenario_data)
     errors: List[YamlError] = []
     file_path_str = str(file_path) if file_path is not None else None
     
@@ -372,10 +376,14 @@ def validate_scenario_semantics(
             )
         )
     elif isinstance(strategy_params_cfg, dict):
+        logger.debug("strategy_params_cfg: %s", strategy_params_cfg)
         provided_params = set()
+        logger.debug("Entering strategy_params_cfg loop: %s", strategy_params_cfg)
         for raw_key, value in strategy_params_cfg.items():
+            logger.debug("Loop body: raw_key=%s, value=%s", raw_key, value)
             param_name = raw_key.split('.', 1)[-1]
             provided_params.add(param_name)
+            logger.debug("param_name=%s, strategy_tunable_params=%s", param_name, list(strategy_tunable_params.keys()))
             if param_name not in strategy_tunable_params:
                 errors.append(
                     YamlError(
@@ -388,16 +396,28 @@ def validate_scenario_semantics(
                 continue
             meta = strategy_tunable_params[param_name]
             p_type = meta.get('type')
+            logger.debug("param_name=%s, p_type=%s, value=%s, value_type=%s", param_name, p_type, value, type(value).__name__)
             if p_type and isinstance(p_type, str):
                 try:
                     expected_type = getattr(builtins, p_type, None)
+                    logger.debug("expected_type=%s", expected_type)
                     if expected_type and not isinstance(value, expected_type):
-                        errors.append(YamlError(error_type=YamlErrorType.VALIDATION_ERROR, message=f'Parameter \'{raw_key}\' type mismatch: expected {p_type}, got {type(value).__name__}', file_path=file_path_str))
+                        errors.append(
+                            YamlError(
+                                error_type=YamlErrorType.VALIDATION_ERROR,
+                                message=(f"Parameter '{raw_key}' type mismatch: expected {p_type}, got {type(value).__name__}"),
+                                file_path=file_path_str,
+                            )
+                        )
+                        # Skip range checks when the type itself is wrong
+                        continue
                 except (AttributeError, TypeError):
                     # Skip type checking if we can't resolve the type
                     pass
-                continue
+
             min_v = meta.get('min')
+            logger.debug("Parameter %s, value=%s, min=%s, meta=%s", raw_key, value, min_v, meta)
+            logger.debug("Range check for %s: min_v=%s, value=%s", raw_key, min_v, value)
             if min_v is not None and value < min_v:
                 errors.append(YamlError(error_type=YamlErrorType.VALIDATION_ERROR, message=f'Parameter \'{raw_key}\' below min: {value} < {min_v}', file_path=file_path_str))
             max_v = meta.get('max')
@@ -442,6 +462,7 @@ def validate_scenario_file(
     optimizer_parameter_defaults: Dict[str, Any] | None = None,
 ) -> List[YamlError]:
     """Validate a scenario *file* including YAML-syntax and semantics."""
+    logger.debug("validate_scenario_file called with %s", file_path)
     file_path = Path(file_path)
 
     # First – YAML syntax via existing validator

@@ -77,6 +77,10 @@ To run the optimizer for a specific strategy, you can use the `--scenario-filena
 ./.venv/Scripts/python.exe -m src.portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/signal/dummy_strategy/dummy_strategy_test.yaml
 ```
 
+## Proper Python interpreter file
+
+To run all Python commands inside this project use the `.venv/Scripts/python.exe` file.
+
 ---
 
 ## Pull Request Workflow

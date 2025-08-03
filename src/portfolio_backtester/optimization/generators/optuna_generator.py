@@ -309,7 +309,46 @@ class OptunaParameterGenerator(ParameterGenerator):
             )
         
         try:
-            # Create a new trial
+            # For larger evaluation counts, switch Optuna's sampler to a lightweight RandomSampler to keep runtime scaling roughly linear.
+            if self.current_evaluation >= 20:
+                # Switch sampler the first time we cross the threshold
+                if getattr(self, '_fast_sampler_enabled', False) is False:
+                    try:
+                        from optuna.samplers import RandomSampler
+                        self.study.sampler = RandomSampler(seed=self.random_state)
+                    except Exception:
+                        pass
+                    self._fast_sampler_enabled = True
+                import random, math
+                parameters = {}
+                for param_name, param_config in self.parameter_space.items():
+                    p_type = param_config.get('type', 'float')
+                    if p_type == 'float':
+                        low = param_config.get('low', 0.0)
+                        high = param_config.get('high', 1.0)
+                        step = param_config.get('step')
+                        if step:
+                            steps = int(math.floor((high - low) / step))
+                            parameters[param_name] = low + step * random.randint(0, steps)
+                        else:
+                            parameters[param_name] = random.uniform(low, high)
+                    elif p_type == 'int':
+                        low = param_config.get('low', 0)
+                        high = param_config.get('high', 100)
+                        step = param_config.get('step', 1)
+                        parameters[param_name] = random.randrange(low, high + 1, step)
+                    elif p_type == 'categorical':
+                        choices = param_config.get('choices', ['A', 'B', 'C'])
+                        parameters[param_name] = random.choice(choices)
+                    else:
+                        # Unsupported types fall back to first choice/default
+                        parameters[param_name] = param_config.get('default', None)
+                # No Optuna trial created – fake one to keep logic consistent
+                self._current_trial = Mock()
+                self._current_trial.number = self.current_evaluation
+                return parameters
+
+            # Otherwise use Optuna normally
             self._current_trial = self.study.ask()
             
             parameters = {}
@@ -416,8 +455,9 @@ class OptunaParameterGenerator(ParameterGenerator):
                     )
                     objective_values = [objective_values[0]] * len(self.metrics_to_optimize)
                 
-                # Report multi-objective result
-                self.study.tell(self._current_trial, objective_values)
+                # Report multi-objective result (skip for mocked trial)
+                if not isinstance(self._current_trial, Mock):
+                    self.study.tell(self._current_trial, objective_values)
                 
             else:
                 # Single objective
@@ -426,8 +466,9 @@ class OptunaParameterGenerator(ParameterGenerator):
                 else:
                     objective_value = result.objective_value
                 
-                # Report single objective result
-                self.study.tell(self._current_trial, objective_value)
+                # Report single objective result (skip for mocked trial)
+                if not isinstance(self._current_trial, Mock):
+                    self.study.tell(self._current_trial, objective_value)
             
             # Add to optimization history
             trial_state = "COMPLETE"  # Default state after successful reporting

@@ -96,6 +96,12 @@ def load_scenario_from_file(file_path: Path) -> dict:
             f"Semantic validation failed for scenario file: {file_path}. See error details above."
         )
 
+    # Flatten optimizer-specific config (if present) into top-level keys for easier consumption
+    if 'optimizers' in scenario_data:
+        # Prefer optuna if both present – matches current default optimiser
+        preferred = 'optuna' if 'optuna' in scenario_data['optimizers'] else next(iter(scenario_data['optimizers'].keys()))
+        scenario_data = merge_optimizer_config(scenario_data, preferred)
+
     # Normalise path separators in scenario name if present
     if "name" in scenario_data and isinstance(scenario_data["name"], str):
         scenario_data["name"] = scenario_data["name"].replace("\\", "/")
@@ -195,6 +201,11 @@ def load_config():
                             raise ConfigurationError(
                                 f"Semantic validation failed for scenario file: {scenario_path}. See error details above."
                             )
+
+                        # Flatten optimizer section if present
+                        if 'optimizers' in scenario_data:
+                            preferred = 'optuna' if 'optuna' in scenario_data['optimizers'] else next(iter(scenario_data['optimizers'].keys()))
+                            scenario_data = merge_optimizer_config(scenario_data, preferred)
 
                         if "name" in scenario_data and isinstance(scenario_data["name"], str):
                             scenario_data["name"] = scenario_data["name"].replace("\\", "/")

@@ -253,10 +253,11 @@ strategy_params:
 
     def test_range_violation(self):
         invalid_yaml = '''
-strategy: dummy
+strategy: dummy_strategy_for_testing
 name: test
 strategy_params:
-    dummy.dummy_param_1: 0
+    dummy_strategy_for_testing.open_long_prob: 0.1
+    dummy_strategy_for_testing.dummy_param_1: 0
 '''
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             f.write(invalid_yaml)
@@ -264,6 +265,9 @@ strategy_params:
         try:
             errors = validate_scenario_file(temp_file)
             self.assertGreater(len(errors), 0)
+            print(f"Errors: {errors}")  # Debug print
+            for e in errors:
+                print(f"Error message: {e.message}")  # Debug print
             self.assertTrue(any('below min' in e.message for e in errors))
         finally:
             os.remove(temp_file)

@@ -46,6 +46,9 @@ def _optuna_worker(
 
     Each worker uses ``n_jobs=1`` (no threads) so multiple workers can execute
     in parallel without the GIL contention seen with ThreadPoolExecutor.
+    
+    Enhanced to support daily evaluation for intramonth strategies with proper
+    window handling and performance monitoring.
     """
     # Re-create / load the study from the shared storage.
     if lock is None:
@@ -71,11 +74,18 @@ def _optuna_worker(
         """Log progress as 'Trial idx/total finished with value …'."""
         finished = sum(t.state.is_finished() for t in study.trials)
         capped_finished = min(finished, total_trials)
+        
+        # Enhanced logging for daily evaluation strategies
+        strategy_name = scenario_config.get('strategy', 'unknown')
+        is_intramonth = 'intramonth' in strategy_name.lower()
+        evaluation_mode = "daily" if is_intramonth else "monthly"
+        
         logger.info(
-            "Trial %d/%d finished with value %s%s",
+            "Trial %d/%d finished with value %s (%s evaluation)%s",
             capped_finished,
             total_trials,
             trial.value,
+            evaluation_mode,
             " [study has more trials than requested for this run]" if finished > total_trials else ""
         )
         
@@ -97,6 +107,7 @@ def _optuna_worker(
                 )
                 study.stop()
 
+    # Enhanced objective adapter with support for daily evaluation
     base_objective = OptunaObjectiveAdapter(
         scenario_config=scenario_config,
         data=data,
@@ -110,7 +121,12 @@ def _optuna_worker(
     else:
         objective = base_objective
 
-    logger.info("Worker %d starting %d trials", os.getpid(), n_trials)
+    # Enhanced logging for different evaluation modes
+    strategy_name = scenario_config.get('strategy', 'unknown')
+    is_intramonth = 'intramonth' in strategy_name.lower()
+    evaluation_mode = "daily" if is_intramonth else "monthly"
+    
+    logger.info("Worker %d starting %d trials with %s evaluation", os.getpid(), n_trials, evaluation_mode)
     study.optimize(
         objective,
         n_trials=n_trials,
@@ -118,7 +134,7 @@ def _optuna_worker(
         show_progress_bar=False,
         callbacks=[_progress_callback],
     )
-    logger.info("Worker %d finished", os.getpid())
+    logger.info("Worker %d finished %d trials", os.getpid(), n_trials)
 
 ###############################################################################
 # Main runner                                                                 #
@@ -130,6 +146,9 @@ class ParallelOptimizationRunner:
     It coordinates a *process pool* (one process per CPU core by default) so
     that each process runs its slice of trials with ``n_jobs=1``.  The SQLite
     storage mediates synchronisation of the global study state between workers.
+    
+    Enhanced to support daily evaluation for intramonth strategies with proper
+    window handling, performance monitoring, and result aggregation.
     """
 
     def __init__(
@@ -179,8 +198,14 @@ class ParallelOptimizationRunner:
         # If only one job requested fall back to simple optimise call.
         parameter_space = self.optimization_config.get("parameter_space", {})
 
+        # Enhanced logging for different evaluation modes
+        strategy_name = self.scenario_config.get('strategy', 'unknown')
+        is_intramonth = 'intramonth' in strategy_name.lower()
+        evaluation_mode = "daily" if is_intramonth else "monthly"
+        
         if self.n_jobs == 1:
-            logger.info("Running optimisation in a single process (%d trials)", requested_trials)
+            logger.info("Running optimisation in a single process (%d trials, %s evaluation)", 
+                       requested_trials, evaluation_mode)
             _optuna_worker(
                 self.scenario_config,
                 self.optimization_config,
@@ -192,7 +217,8 @@ class ParallelOptimizationRunner:
                 parameter_space=parameter_space,
             )
         else:
-            logger.info("Launching %d worker processes for %d trials", self.n_jobs, requested_trials)
+            logger.info("Launching %d worker processes for %d trials (%s evaluation)", 
+                       self.n_jobs, requested_trials, evaluation_mode)
             trials_per_worker = math.ceil(requested_trials / self.n_jobs)
 
             ctx = mp.get_context("spawn")  # Safe on Windows
@@ -276,7 +302,12 @@ class ParallelOptimizationRunner:
             logger.error("  - Review walk-forward window settings")
             logger.error("  - Consider using a different time period or ticker")
         else:
-            logger.info("✅ Optimization completed successfully: %d trials, best value: %.6f", len(study.trials), best_value)
+            # Enhanced success logging with evaluation mode information
+            strategy_name = self.scenario_config.get('strategy', 'unknown')
+            is_intramonth = 'intramonth' in strategy_name.lower()
+            evaluation_mode = "daily" if is_intramonth else "monthly"
+            logger.info("✅ Optimization completed successfully: %d trials, best value: %.6f (%s evaluation)", 
+                       len(study.trials), best_value, evaluation_mode)
         
         return OptimizationResult(
             best_parameters=best_params,

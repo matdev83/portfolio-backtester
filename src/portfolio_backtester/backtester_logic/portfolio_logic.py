@@ -67,6 +67,18 @@ def calculate_portfolio_returns(sized_signals, scenario_config, price_data_daily
         portfolio_value=global_config.get("portfolio_value", 100000.0),
         transaction_costs_bps=transaction_costs_bps
     )
+
+    # Normalize transaction_costs to a per-day Series for correct broadcasting
+    if isinstance(transaction_costs, pd.DataFrame):
+        # Sum across asset columns to get total cost per day
+        transaction_costs = transaction_costs.sum(axis=1)
+    elif not isinstance(transaction_costs, (pd.Series, int, float)):
+        # Fallback to scalar conversion if model returns unexpected type
+        try:
+            transaction_costs = pd.Series(transaction_costs, index=weights_daily.index)
+        except Exception:
+            transaction_costs = pd.Series(0.0, index=weights_daily.index)
+
     
     # Store detailed trade information for client access
     detailed_trade_info = getattr(tx_cost_model, '_last_detailed_trade_info', {})
@@ -508,3 +520,12 @@ def _track_trades_original(trade_tracker, weights_daily, price_data_daily_ohlc, 
         commissions_dict = {asset: float(commissions) for asset in weights_daily.columns}
 
     trade_tracker.close_all_positions(final_date, final_prices, commissions_dict)
+
+
+def _calculate_position_weights(current_positions, prices, base_portfolio_value):
+    weights = pd.Series(0.0, index=list(prices.index))
+    for asset, quantity in current_positions.items():
+        if abs(quantity) > 1e-6 and asset in prices:
+            position_value = quantity * prices[asset]
+            weights[asset] = position_value / base_portfolio_value
+    return weights

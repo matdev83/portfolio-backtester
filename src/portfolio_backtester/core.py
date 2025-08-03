@@ -105,9 +105,9 @@ class Backtester:
         # Support both string and dict specifications
         if isinstance(strategy_spec, dict):
             strategy_name = (
-                strategy_spec.get("name")
-                or strategy_spec.get("strategy")
+                strategy_spec.get("strategy")
                 or strategy_spec.get("type")
+                or strategy_spec.get("name")
             )
         else:
             strategy_name = strategy_spec

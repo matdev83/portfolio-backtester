@@ -297,13 +297,16 @@ class StrategyBacktester:
         """
         if isinstance(strategy_spec, dict):
             strategy_name = (
-                strategy_spec.get("name")
-                or strategy_spec.get("strategy")
+                strategy_spec.get("strategy")
+                or strategy_spec.get("name")
                 or strategy_spec.get("type")
             )
         else:
             strategy_name = strategy_spec
 
+        if strategy_name is None:
+            raise ValueError("Strategy name cannot be None")
+            
         strategy_class = self.strategy_map.get(strategy_name)
         if strategy_class is None:
             logger.error(f"Unsupported strategy: {strategy_name}")

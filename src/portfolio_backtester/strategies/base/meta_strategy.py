@@ -194,8 +194,10 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         """Create a strategy instance from class name and parameters."""
         # Import here to avoid circular imports
         from ..strategy_factory import StrategyFactory
-        print(f"Creating strategy instance for {strategy_class} with params: {strategy_params}")
-        return StrategyFactory.create_strategy(strategy_class, strategy_params, self.global_config)
+        # Use StrategyFactory to instantiate sub-strategy. Pass global_config only when provided
+        if self.global_config:
+            return StrategyFactory.create_strategy(strategy_class, strategy_params, self.global_config)
+        return StrategyFactory.create_strategy(strategy_class, strategy_params)
     
     def calculate_sub_strategy_capital(self) -> Dict[str, float]:
         """Calculate capital allocation for each sub-strategy based on allocation mode."""
