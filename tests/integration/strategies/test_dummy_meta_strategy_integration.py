@@ -43,7 +43,7 @@ def test_dummy_meta_strategy_end_to_end():
         "BACKTEST_SCENARIOS": [
             {
                 "name": "meta_dummy",
-                "strategy": "simple_meta",  # alias for SimpleMetaStrategy
+                "strategy": "SimpleMetaStrategy",
                 "strategy_params": {
                     "allocations": [
                         {

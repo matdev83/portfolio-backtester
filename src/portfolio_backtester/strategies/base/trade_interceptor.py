@@ -97,8 +97,8 @@ class MetaStrategyTradeInterceptor:
 
             return signals
 
-        # Replace the method
-        self.sub_strategy.generate_signals = intercepted_generate_signals
+        # Replace the method with the wrapped version (bound correctly to sub_strategy)
+        self.sub_strategy.generate_signals = intercepted_generate_signals  # type: ignore[method-assign]
 
     def _extract_current_date(self, *args, **kwargs) -> Optional[pd.Timestamp]:
         """Extract current_date from generate_signals arguments."""

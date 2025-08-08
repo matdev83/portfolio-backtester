@@ -44,27 +44,16 @@ class AutoDiscoveryStrategyRegistry(IStrategyRegistry):
         self._strategies: Dict[str, Type[Any]] = {}
         self._discovered = False
 
-        # Strategy aliases for backward compatibility
-        self._aliases = {
-            "simple_meta": "SimpleMetaStrategy",
-            "dummy": "DummyStrategyForTestingSignalStrategy",
-            "dummy_signal": "DummySignalStrategy",
-            "stop_loss_tester": "StopLossTesterStrategy",
-        }
+        # Alias support removed: use canonical class names only
 
     def get_strategy_class(self, name: str) -> Optional[Type[Any]]:
-        """Get strategy class by name, supporting aliases."""
+        """Get strategy class by canonical name only (no aliases)."""
         self._ensure_discovered()
 
         # Check for direct name first
         strategy_class = self._strategies.get(name)
         if strategy_class:
             return strategy_class
-
-        # Check for alias
-        alias_name = self._aliases.get(name)
-        if alias_name:
-            return self._strategies.get(alias_name)
 
         return None
 
@@ -74,16 +63,11 @@ class AutoDiscoveryStrategyRegistry(IStrategyRegistry):
         return self._strategies.copy()
 
     def is_strategy_registered(self, name: str) -> bool:
-        """Check if a strategy is registered, supporting aliases."""
+        """Check if a strategy is registered by canonical name only (no aliases)."""
         self._ensure_discovered()
 
         # Check direct name first
         if name in self._strategies:
-            return True
-
-        # Check aliases
-        alias_name = self._aliases.get(name)
-        if alias_name and alias_name in self._strategies:
             return True
 
         return False

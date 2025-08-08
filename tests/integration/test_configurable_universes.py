@@ -269,7 +269,7 @@ class TestScenarioConfigurationCompatibility:
 
         # Simulate scenario config with universe override
         scenario_config = {
-            "strategy": "dummy",
+            "strategy": "DummyStrategyForTestingSignalStrategy",
             "universe": ["SCENARIO1", "SCENARIO2"],  # This should take precedence
             "strategy_params": strategy_config["strategy_params"],
         }

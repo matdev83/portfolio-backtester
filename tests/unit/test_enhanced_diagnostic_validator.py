@@ -25,7 +25,7 @@ class TestEnhancedDiagnosticValidator:
         """Test validation of optimization parameter consistency."""
         config = {
             "name": "test_consistency",
-            "strategy": "stop_loss_tester",
+            "strategy": "StopLossTesterStrategy",
             "rebalance_frequency": "D",
             "position_sizer": "equal_weight",
             "train_window_months": 12,
@@ -67,7 +67,7 @@ class TestEnhancedDiagnosticValidator:
         """Test validation of parameter values against optimization ranges."""
         config = {
             "name": "test_range",
-            "strategy": "stop_loss_tester",
+            "strategy": "StopLossTesterStrategy",
             "rebalance_frequency": "D",
             "position_sizer": "equal_weight",
             "train_window_months": 12,
@@ -109,7 +109,7 @@ class TestEnhancedDiagnosticValidator:
         """Test validation of categorical parameter choices."""
         config = {
             "name": "test_categorical",
-            "strategy": "stop_loss_tester",
+            "strategy": "StopLossTesterStrategy",
             "rebalance_frequency": "D",
             "position_sizer": "equal_weight",
             "train_window_months": 12,
@@ -149,7 +149,7 @@ class TestEnhancedDiagnosticValidator:
         """Test validation of step sizes."""
         config = {
             "name": "test_step",
-            "strategy": "stop_loss_tester",
+            "strategy": "StopLossTesterStrategy",
             "rebalance_frequency": "D",
             "position_sizer": "equal_weight",
             "train_window_months": 12,
@@ -191,7 +191,7 @@ class TestEnhancedDiagnosticValidator:
         """Test validation of window sizes."""
         config = {
             "name": "test_windows",
-            "strategy": "stop_loss_tester",
+            "strategy": "StopLossTesterStrategy",
             "rebalance_frequency": "D",
             "position_sizer": "equal_weight",
             "train_window_months": 2,  # Very short
@@ -233,7 +233,7 @@ class TestEnhancedDiagnosticValidator:
         """Test validation of rebalance frequency."""
         config = {
             "name": "test_rebal",
-            "strategy": "stop_loss_tester",
+            "strategy": "StopLossTesterStrategy",
             "rebalance_frequency": "INVALID",  # Invalid frequency
             "position_sizer": "equal_weight",
             "train_window_months": 12,
@@ -259,7 +259,7 @@ class TestEnhancedDiagnosticValidator:
         """Test validation of position sizer."""
         config = {
             "name": "test_sizer",
-            "strategy": "stop_loss_tester",
+            "strategy": "StopLossTesterStrategy",
             "rebalance_frequency": "D",
             "position_sizer": "unknown_sizer",  # Invalid sizer
             "train_window_months": 12,

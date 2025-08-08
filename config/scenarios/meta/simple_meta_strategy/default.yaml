@@ -1,5 +1,5 @@
-name: simple_meta_strategy
-strategy: simple_meta_strategy
+name: SimpleMetaStrategy
+strategy: SimpleMetaStrategy
 rebalance_frequency: ME
 position_sizer: equal_weight
 train_window_months: 36
@@ -12,7 +12,7 @@ strategy_params:
   initial_capital: 1000000.0
   min_allocation: 0.05
   rebalance_threshold: 0.05
-  simple_meta.allocations:
+  SimpleMetaStrategy.allocations:
   - strategy_id: momentum
     
     strategy_params:

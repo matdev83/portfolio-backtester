@@ -97,7 +97,7 @@ class TestDataFetcher:
         scenarios = [
             {
                 "name": "test",
-                "strategy": "dummy",
+                "strategy": "DummyStrategyForTestingSignalStrategy",
                 "strategy_params": {},
                 "universe": ["AAPL", "MSFT"],
             }
@@ -209,8 +209,8 @@ class TestStrategyManager:
         assert manager.is_strategy_available(existing_strategy_name) is True
         assert manager.is_strategy_available("non_existing_strategy") is False
 
-        # Test aliases work too
-        assert manager.is_strategy_available("simple_meta") is True  # Should work via alias
+        # Alias support removed: only canonical names are supported
+        assert manager.is_strategy_available("SimpleMetaStrategy") is True
 
 
 class TestEvaluationEngine:
@@ -361,7 +361,7 @@ class TestBacktesterFacade:
 
     def test_initialization_preserves_api(self, sample_global_config):
         """Test that BacktesterFacade preserves original Backtester API."""
-        scenarios = [{"name": "test", "strategy": "dummy", "strategy_params": {}}]
+        scenarios = [{"name": "test", "strategy": "DummyStrategyForTestingSignalStrategy", "strategy_params": {}}]
         args = argparse.Namespace(timeout=None, n_jobs=1, early_stop_patience=10, study_name=None)
 
         with (
@@ -392,7 +392,7 @@ class TestBacktesterFacade:
 
     def test_facade_delegates_to_components(self, sample_global_config):
         """Test that BacktesterFacade properly delegates to specialized components."""
-        scenarios = [{"name": "test", "strategy": "dummy", "strategy_params": {}}]
+        scenarios = [{"name": "test", "strategy": "DummyStrategyForTestingSignalStrategy", "strategy_params": {}}]
         args = argparse.Namespace(timeout=None, n_jobs=1, early_stop_patience=10, study_name=None)
 
         with (

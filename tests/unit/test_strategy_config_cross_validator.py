@@ -179,7 +179,7 @@ class TestStrategyConfigCrossValidator(unittest.TestCase):
             "test_meta_strategy",
             {
                 "name": "test_meta",
-                "strategy": "simple_meta",
+                "strategy": "SimpleMetaStrategy",
                 "strategy_params": {
                     "allocations": [
                         {"strategy_id": "momentum", "weight": 0.6},
@@ -194,7 +194,7 @@ class TestStrategyConfigCrossValidator(unittest.TestCase):
         )
 
         def mock_resolve_side_effect(strategy_name):
-            if strategy_name in ["simple_meta", "momentum"]:
+            if strategy_name in ["SimpleMetaStrategy", "momentum"]:
                 return Mock()
             return None
 

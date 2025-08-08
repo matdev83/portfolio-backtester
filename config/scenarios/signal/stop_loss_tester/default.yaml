@@ -1,2 +1,2 @@
-strategy: stop_loss_tester
+strategy: StopLossTesterStrategy
 strategy_params: {}

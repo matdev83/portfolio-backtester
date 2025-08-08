@@ -16,4 +16,4 @@ optimization_targets:
     direction: maximize
 strategy_params:
   open_long_prob: 0.1
-  dummy_param_1: 10
+  close_long_prob: 0.01

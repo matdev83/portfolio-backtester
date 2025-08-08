@@ -17,7 +17,7 @@ class TestDynamicScenarioValidator:
         """Test meta strategy specific validation."""
         config = {
             "name": "test_meta",
-            "strategy": "simple_meta",
+            "strategy": "SimpleMetaStrategy",
             "rebalance_frequency": "ME",
             "position_sizer": "equal_weight",
             "train_window_months": 36,
@@ -118,7 +118,7 @@ class TestDynamicScenarioValidator:
         """Test diagnostic strategy specific validation."""
         config = {
             "name": "test_diagnostic",
-            "strategy": "stop_loss_tester",
+            "strategy": "StopLossTesterStrategy",
             "rebalance_frequency": "D",
             "position_sizer": "equal_weight",
             "train_window_months": 2,  # Very short - should be more lenient for diagnostic
@@ -154,7 +154,7 @@ class TestDynamicScenarioValidator:
         # Test meta strategy detection
         meta_config = {
             "name": "meta_test",
-            "strategy": "simple_meta",
+            "strategy": "SimpleMetaStrategy",
             "rebalance_frequency": "ME",
             "position_sizer": "equal_weight",
             "train_window_months": 36,
