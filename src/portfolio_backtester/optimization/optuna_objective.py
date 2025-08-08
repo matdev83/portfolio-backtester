@@ -7,20 +7,30 @@ from .. import strategies
 from ..reporting.performance_metrics import calculate_metrics
 from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
 from ..constants import ZERO_RET_EPS
-from ..portfolio.position_sizer import get_position_sizer_from_config
+
+# Removed direct position sizer import - now using strategy's position sizer provider
 from ..portfolio.rebalancing import rebalance
 from ..api_stability import api_stable
+from ..interfaces.attribute_accessor_interface import create_class_attribute_accessor
 
 
 def _resolve_strategy(name: str):
-    class_name = "".join(w.capitalize() for w in name.split('_')) + "Strategy"
+    class_name = "".join(w.capitalize() for w in name.split("_")) + "Strategy"
     if name == "momentum_unfiltered_atr":
         class_name = "MomentumUnfilteredAtrStrategy"
     elif name == "vams_momentum":
-        class_name = "VAMSMomentumStrategy"
+        class_name = "VAMSMomentumPortfolioStrategy"
     elif name == "vams_no_downside":
         class_name = "VAMSNoDownsideStrategy"
-    return getattr(strategies, class_name, None)
+
+    # Use DIP interface instead of direct getattr call
+    class_accessor = create_class_attribute_accessor()
+    try:
+        return class_accessor.get_class_from_module(strategies, class_name)
+    except AttributeError:
+        # Return None if class doesn't exist (preserving original behavior)
+        return None
+
 
 def _run_scenario_static(
     global_cfg,
@@ -44,45 +54,37 @@ def _run_scenario_static(
         price_monthly[global_cfg["benchmark"]],
     )
 
-    sizer = get_position_sizer_from_config(scenario_cfg)
+    # Use strategy's position sizer provider instead of direct config access
+    position_sizer_provider = strategy.get_position_sizer_provider()
+    sizer = position_sizer_provider.get_position_sizer()
+    sizer_config = position_sizer_provider.get_position_sizer_config()
 
-    sizer_params = scenario_cfg.get("strategy_params", {}).copy()
-    sizer_param_mapping = {
-        "sizer_sharpe_window": "window",
-        "sizer_sortino_window": "window",
-        "sizer_beta_window": "window",
-        "sizer_corr_window": "window",
-        "sizer_dvol_window": "window",
-        "sizer_target_return": "target_return",
-    }
-    for old_key, new_key in sizer_param_mapping.items():
-        if old_key in sizer_params:
-            sizer_params[new_key] = sizer_params.pop(old_key)
+    # Extract position sizer parameters from provider config
+    sizer_params = {k: v for k, v in sizer_config.items() if k != "position_sizer"}
 
     sizer_kwargs = {
         "signals": signals,
         "prices": price_monthly[universe_cols],
         "benchmark": price_monthly[global_cfg["benchmark"]],
-        **sizer_params
+        **sizer_params,
     }
 
     sized = sizer.calculate_weights(**sizer_kwargs)
     weights_monthly = rebalance(sized, scenario_cfg["rebalance_frequency"])
 
-    weights_daily = (
-        weights_monthly.reindex(price_daily.index, method="ffill").fillna(0.0)
-    )
+    weights_daily = weights_monthly.reindex(price_daily.index, method="ffill").fillna(0.0)
 
     gross = (weights_daily.shift(1).fillna(0.0) * rets_daily).sum(axis=1)
     turn = (weights_daily - weights_daily.shift(1)).abs().sum(axis=1)
 
     from ..trading import get_transaction_cost_model
+
     tx_cost_model = get_transaction_cost_model(global_cfg)
     tc, _ = tx_cost_model.calculate(
         turnover=turn,
         weights_daily=weights_daily,
         price_data=price_daily,
-        portfolio_value=global_cfg.get("portfolio_value", 100000.0)
+        portfolio_value=global_cfg.get("portfolio_value", 100000.0),
     )
 
     return (gross - tc).reindex(price_daily.index).fillna(0)
@@ -108,11 +110,10 @@ def build_objective(
     constraints_config = base_scen_cfg.get("optimization_constraints", [])
     is_multi_objective = bool(optimization_targets_config)
 
-    if is_multi_objective:
+    if is_multi_objective and optimization_targets_config:
         metrics_to_optimize = [target["name"] for target in optimization_targets_config]
         metric_directions = [
-            target.get("direction", "maximize").lower()
-            for target in optimization_targets_config
+            target.get("direction", "maximize").lower() for target in optimization_targets_config
         ]
     elif single_metric_to_optimize:
         metrics_to_optimize = [single_metric_to_optimize]
@@ -135,7 +136,9 @@ def build_objective(
             if strat_cls:
                 strategy_tunable_params = strat_cls.tunable_parameters()
             else:
-                print(f"Warning: Could not resolve strategy '{strategy_name}' for parameter filtering. Optimizing all parameters.")
+                print(
+                    f"Warning: Could not resolve strategy '{strategy_name}' for parameter filtering. Optimizing all parameters."
+                )
 
         sizer_param_map = {
             "rolling_sharpe": "sizer_sharpe_window",
@@ -144,7 +147,7 @@ def build_objective(
             "rolling_benchmark_corr": "sizer_corr_window",
             "rolling_downside_volatility": "sizer_dvol_window",
         }
-        
+
         position_sizer = base_scen_cfg.get("position_sizer")
         if position_sizer and position_sizer in sizer_param_map:
             strategy_tunable_params.add(sizer_param_map[position_sizer])
@@ -152,43 +155,67 @@ def build_objective(
         skipped_params = []
         for opt_spec in optimization_specs:
             param_name = opt_spec["parameter"]
-            
-            if (strategy_tunable_params and 
-                param_name not in strategy_tunable_params and 
-                param_name not in SPECIAL_SCEN_CFG_KEYS):
+
+            if (
+                strategy_tunable_params
+                and param_name not in strategy_tunable_params
+                and param_name not in SPECIAL_SCEN_CFG_KEYS
+            ):
                 skipped_params.append(param_name)
                 continue
-            
+
             default_param_config = optimizer_config.get(param_name, {})
             param_type = opt_spec.get("type", default_param_config.get("type"))
 
             if not param_type:
-                print(f"Warning: Parameter '{param_name}' has no type defined in scenario specification's 'optimize' section or in OPTIMIZER_PARAMETER_DEFAULTS. Skipping parameter.")
+                print(
+                    f"Warning: Parameter '{param_name}' has no type defined in scenario specification's 'optimize' section or in OPTIMIZER_PARAMETER_DEFAULTS. Skipping parameter."
+                )
                 continue
 
-            suggested_value = None
+            suggested_value: Any = (
+                None  # Initialize to satisfy mypy, though Optuna suggest methods always return a value
+            )
             if param_type == "int":
-                low = int(opt_spec.get("min_value", default_param_config.get("low", 0)))
-                high = int(opt_spec.get("max_value", default_param_config.get("high", 10)))
-                step = int(opt_spec.get("step", default_param_config.get("step", 1)))
-                suggested_value = trial.suggest_int(param_name, low, high, step=step)
+                low_int: int = int(opt_spec.get("min_value", default_param_config.get("low", 0)))
+                high_int: int = int(opt_spec.get("max_value", default_param_config.get("high", 10)))
+                step_int: int = int(opt_spec.get("step", default_param_config.get("step", 1)))
+                suggested_value = trial.suggest_int(param_name, low_int, high_int, step=step_int)
             elif param_type == "float":
-                low = float(opt_spec.get("min_value", default_param_config.get("low", 0.0)))
-                high = float(opt_spec.get("max_value", default_param_config.get("high", 1.0)))
-                step = opt_spec.get("step", default_param_config.get("step"))
-                log = bool(opt_spec.get("log", default_param_config.get("log", False)))
-                suggested_value = trial.suggest_float(param_name, low, high, step=step, log=log)
+                low_float: float = float(
+                    opt_spec.get("min_value", default_param_config.get("low", 0.0))
+                )
+                high_float: float = float(
+                    opt_spec.get("max_value", default_param_config.get("high", 1.0))
+                )
+                step_float = opt_spec.get("step", default_param_config.get("step"))
+                log_float = bool(opt_spec.get("log", default_param_config.get("log", False)))
+                suggested_value = trial.suggest_float(
+                    param_name, low_float, high_float, step=step_float, log=log_float
+                )
             elif param_type == "categorical":
                 choices = opt_spec.get("values", default_param_config.get("values"))
                 if not choices or not isinstance(choices, list) or len(choices) == 0:
-                    raise ValueError(f"Categorical parameter '{param_name}' has no choices defined or choices are invalid.")
+                    raise ValueError(
+                        f"Categorical parameter '{param_name}' has no choices defined or choices are invalid."
+                    )
                 suggested_value = trial.suggest_categorical(param_name, choices)
             else:
-                raise ValueError(f"Unsupported parameter type '{param_type}' for parameter '{param_name}'.")
+                raise ValueError(
+                    f"Unsupported parameter type '{param_type}' for parameter '{param_name}'."
+                )
 
+            # Optuna suggest methods always return a value, so this check is theoretically unreachable.
+            # Kept for defensive programming in case Optuna API changes or unexpected behavior occurs.
             if suggested_value is None:
-                print(f"Warning: No value suggested for parameter '{param_name}'.")
-                continue
+                # This case should ideally never be hit.
+                # Consider raising an error or logging a critical warning if it does.
+                # For now, to satisfy linters and make logic explicit, we handle it.
+                # However, 'continue' here would skip the parameter, which might not be desired.
+                # A better approach might be to fail the trial or use a default.
+                # For now, we'll assume Optuna works as documented and this is dead code.
+                # To make mypy/linters happy and avoid "unreachable" if we keep the print:
+                pass  # Or handle more robustly if this state is ever possible.
 
             if param_name in SPECIAL_SCEN_CFG_KEYS:
                 scen_cfg_overrides[param_name] = suggested_value
@@ -197,7 +224,7 @@ def build_objective(
 
         if skipped_params:
             trial.set_user_attr("skipped_parameters", skipped_params)
-        
+
         scen_cfg = base_scen_cfg.copy()
         scen_cfg["strategy_params"] = p
         for key, value in scen_cfg_overrides.items():
@@ -220,9 +247,7 @@ def build_objective(
         trial.set_user_attr("zero_returns", bool(zero_ret))
 
         bench_rets_daily = bench_series_daily.pct_change(fill_method=None).fillna(0)
-        all_calculated_metrics = calculate_metrics(
-            rets, bench_rets_daily, g_cfg["benchmark"]
-        )
+        all_calculated_metrics = calculate_metrics(rets, bench_rets_daily, g_cfg["benchmark"])
 
         for constraint in constraints_config:
             metric_name = constraint.get("metric")
@@ -237,7 +262,7 @@ def build_objective(
                 if not metric_name:
                     print(f"Warning: Skipping invalid constraint: {constraint}")
                     continue
-                
+
                 metric_val = all_calculated_metrics.get(metric_name)
                 violated = False
 
@@ -248,14 +273,14 @@ def build_objective(
                         violated = True
                     if max_value is not None and metric_val > max_value:
                         violated = True
-                
+
                 if violated:
                     penalty = [
                         float("-inf") if d == "maximize" else float("inf")
                         for d in metric_directions
                     ]
                     return penalty[0] if len(penalty) == 1 else tuple(penalty)
-            
+
             elif operator and value is not None:
                 # Old format: operator/value
                 if not metric_name:
@@ -279,9 +304,11 @@ def build_objective(
                     elif operator == "EQ" and metric_val != value:
                         violated = True
                     elif operator not in ["LT", "LE", "GT", "GE", "EQ"]:
-                        print(f"Warning: Unsupported operator '{operator}' in constraint: {constraint}")
+                        print(
+                            f"Warning: Unsupported operator '{operator}' in constraint: {constraint}"
+                        )
                         continue
-                
+
                 if violated:
                     penalty = [
                         float("-inf") if d == "maximize" else float("inf")
@@ -298,14 +325,14 @@ def build_objective(
             if pd.isna(val) or not np.isfinite(val):
                 if is_multi_objective:
                     # For multi-objective, preserve NaN/inf as NaN to let Optuna handle it
-                    val = float('nan')
+                    val = float("nan")
                 else:
                     # For single objective, use penalty values
                     direction = metric_directions[i] if i < len(metric_directions) else "maximize"
                     if direction == "maximize":
                         val = float("-inf")  # Worst possible value for maximization
                     else:
-                        val = float("inf")   # Worst possible value for minimization
+                        val = float("inf")  # Worst possible value for minimization
             results.append(val)
 
         if is_multi_objective:

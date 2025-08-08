@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any # Replaced Set with Dict, Any for config typing
+from typing import Dict, Any  # Replaced Set with Dict, Any for config typing
 
 import pandas as pd
 
@@ -14,7 +14,7 @@ class BaseRoRoSignal(ABC):
     Abstract base class for Risk-on/Risk-off (RoRo) signals.
     """
 
-    def __init__(self, roro_config: Dict[str, Any] | None = None): # Changed type hint for config
+    def __init__(self, roro_config: Dict[str, Any] | None = None):  # Changed type hint for config
         self.roro_config = roro_config if roro_config is not None else {}
 
     @abstractmethod
@@ -22,7 +22,7 @@ class BaseRoRoSignal(ABC):
         self,
         all_historical_data: pd.DataFrame,
         benchmark_historical_data: pd.DataFrame,
-        current_date: pd.Timestamp
+        current_date: pd.Timestamp,
     ) -> bool:
         """
         Generates the RoRo signal for the current_date.
@@ -35,7 +35,7 @@ class BaseRoRoSignal(ABC):
         Returns:
         - bool: True for risk-on, False for risk-off.
         """
-        pass
+        raise NotImplementedError("Subclasses must implement generate_signal method")
 
     def get_required_features(self) -> set:
         """
@@ -49,10 +49,10 @@ class BaseRoRoSignal(ABC):
 class DummyRoRoSignal(BaseRoRoSignal):
     """
     INTENTIONAL PLACEHOLDER: A dummy RoRo signal implementation for testing and development.
-    
-    This is deliberately a placeholder implementation that returns True (risk-on) for 
+
+    This is deliberately a placeholder implementation that returns True (risk-on) for
     specific hardcoded date windows and False (risk-off) for all other periods.
-    
+
     TODO: Replace with actual risk-on/risk-off signal logic based on market indicators
     such as VIX levels, yield curve analysis, or other market regime detection methods.
     """
@@ -61,19 +61,19 @@ class DummyRoRoSignal(BaseRoRoSignal):
         self,
         all_historical_data: pd.DataFrame,
         benchmark_historical_data: pd.DataFrame,
-        current_date: pd.Timestamp
+        current_date: pd.Timestamp,
     ) -> bool:
         """
         Generates the dummy RoRo signal for the current_date.
-        
+
         PLACEHOLDER IMPLEMENTATION: This uses hardcoded date windows for testing purposes.
-        
+
         Returns True (risk-on) for:
         - 2006-01-01 to 2009-12-31
         - 2020-01-01 to 2020-04-01
         - 2022-01-01 to 2022-11-05
         And False (risk-off) for all other periods.
-        
+
         TODO: Replace with actual market regime detection logic.
         """
 
@@ -84,12 +84,9 @@ class DummyRoRoSignal(BaseRoRoSignal):
             (pd.Timestamp("2022-01-01"), pd.Timestamp("2022-11-05")),
         ]
 
-        # Handle None or invalid current_date gracefully
-        if current_date is None or not isinstance(current_date, pd.Timestamp):
-            return False  # Default to risk-off for invalid dates
-            
+        # Check if current date falls within any risk-on window
         for start_date, end_date in risk_on_windows:
             if start_date <= current_date <= end_date:
                 return True  # Risk-on
 
-        return False  # Risk-off
+        return False  # Default to risk-off

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Sequence
+import numpy as np
+
 """Adaptive parameter control utilities for the genetic optimizer.
 
 This module provides simple reference implementations of:
@@ -17,10 +21,6 @@ increasing the optimisation overhead.  The defaults are conservative so that
 behaviour of the GA with *adaptive_* configuration disabled remains identical
 (see GeneticOptimizer integration).
 """
-
-from dataclasses import dataclass
-from typing import Sequence
-import numpy as np
 
 # Small epsilon to avoid division by zero
 _EPS = 1e-12
@@ -67,7 +67,9 @@ class DiversityCalculator:
         dists = np.linalg.norm(diff, axis=2)
         # Average over the upper triangle to avoid double counting.
         # We divide by 2 because every distance appears twice in diff.
-        mean_dist = np.sum(dists) / (2 * max(population.shape[0] * (population.shape[0] - 1) / 2, 1))
+        mean_dist = np.sum(dists) / (
+            2 * max(population.shape[0] * (population.shape[0] - 1) / 2, 1)
+        )
         # Normalise to 0-1 by dividing by the maximum possible distance.
         return float(mean_dist / (self._max_dist + _EPS))
 

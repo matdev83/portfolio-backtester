@@ -8,11 +8,10 @@ in complete isolation from optimization components.
 import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import Mock, MagicMock, patch
-from datetime import datetime, timedelta
+from unittest.mock import Mock, patch
 
-from src.portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
-from src.portfolio_backtester.backtesting.results import BacktestResult, WindowResult
+from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
+from portfolio_backtester.backtesting.results import BacktestResult, WindowResult
 
 
 class TestStrategyBacktester:
@@ -84,37 +83,36 @@ class TestStrategyBacktester:
     @pytest.fixture
     def backtester(self, mock_global_config, mock_data_source):
         """Create StrategyBacktester instance for testing."""
-        with patch('src.portfolio_backtester.backtesting.strategy_backtester.enumerate_strategies_with_params') as mock_enum:
-            mock_enum.return_value = {'momentum_strategy': Mock}
+        with patch('portfolio_backtester.backtesting.strategy_backtester.get_strategy_registry') as mock_get_registry:
+            mock_registry = Mock()
+            mock_registry.get_all_strategies.return_value = {'dummy': Mock}
+            mock_get_registry.return_value = mock_registry
             
-            with patch('src.portfolio_backtester.data_cache.get_global_cache') as mock_cache:
-                mock_cache.return_value = Mock()
-                
-                backtester = StrategyBacktester(mock_global_config, mock_data_source)
-                return backtester
-    
+            backtester = StrategyBacktester(mock_global_config, mock_data_source)
+            return backtester
+
     def test_initialization(self, mock_global_config, mock_data_source):
         """Test StrategyBacktester initialization."""
-        with patch('src.portfolio_backtester.backtesting.strategy_backtester.enumerate_strategies_with_params') as mock_enum:
-            mock_enum.return_value = {'test_strategy': Mock}
+        with patch('portfolio_backtester.backtesting.strategy_backtester.get_strategy_registry') as mock_get_registry:
+            mock_registry = Mock()
+            mock_registry.get_all_strategies.return_value = {'dummy': Mock}
+            mock_get_registry.return_value = mock_registry
             
-            with patch('src.portfolio_backtester.data_cache.get_global_cache') as mock_cache:
-                mock_cache.return_value = Mock()
-                
-                backtester = StrategyBacktester(mock_global_config, mock_data_source)
-                
-                assert backtester.global_config == mock_global_config
-                assert backtester.data_source == mock_data_source
-                assert isinstance(backtester.strategy_map, dict)
-                assert backtester.data_cache is not None
+            backtester = StrategyBacktester(mock_global_config, mock_data_source)
+            
+            assert backtester.global_config == mock_global_config
+            assert backtester.data_source == mock_data_source
+            assert isinstance(backtester.strategy_map, dict)
+            assert backtester.data_cache is not None
     
     def test_get_strategy_success(self, backtester, mock_strategy):
         """Test successful strategy retrieval."""
         # Make mock_strategy inherit from BaseStrategy
-        from src.portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
         mock_strategy.__class__ = type('MockStrategy', (BaseStrategy,), {})
         
-        backtester.strategy_map['test_strategy'] = lambda params: mock_strategy
+        # Mock the registry get_strategy_class method
+        backtester._registry.get_strategy_class.return_value = lambda params: mock_strategy
         
         result = backtester._get_strategy('test_strategy', {'param1': 'value1'})
         
@@ -122,21 +120,25 @@ class TestStrategyBacktester:
     
     def test_get_strategy_unsupported(self, backtester):
         """Test error handling for unsupported strategy."""
+        # Mock the registry to return None for nonexistent strategy
+        backtester._registry.get_strategy_class.return_value = None
+        
         with pytest.raises(ValueError, match="Unsupported strategy: nonexistent_strategy"):
             backtester._get_strategy('nonexistent_strategy', {})
     
     def test_get_strategy_wrong_type(self, backtester):
         """Test error handling when strategy class returns wrong type."""
-        backtester.strategy_map['bad_strategy'] = lambda params: "not_a_strategy"
+        # Mock the registry to return a function that doesn't return a BaseStrategy
+        backtester._registry.get_strategy_class.return_value = lambda params: "not_a_strategy"
         
         with pytest.raises(TypeError, match="did not return a BaseStrategy instance"):
             backtester._get_strategy('bad_strategy', {})
     
-    @patch('src.portfolio_backtester.backtesting.strategy_backtester.generate_signals')
-    @patch('src.portfolio_backtester.backtesting.strategy_backtester.size_positions')
-    @patch('src.portfolio_backtester.backtesting.strategy_backtester.calculate_portfolio_returns')
-    @patch('src.portfolio_backtester.backtesting.strategy_backtester.prepare_scenario_data')
-    @patch('src.portfolio_backtester.backtesting.strategy_backtester.calculate_metrics')
+    @patch('portfolio_backtester.backtesting.strategy_backtester.generate_signals')
+    @patch('portfolio_backtester.backtesting.strategy_backtester.size_positions')
+    @patch('portfolio_backtester.backtesting.strategy_backtester.calculate_portfolio_returns')
+    @patch('portfolio_backtester.backtesting.strategy_backtester.prepare_scenario_data')
+    @patch('portfolio_backtester.backtesting.strategy_backtester.calculate_metrics')
     def test_backtest_strategy_success(
         self, 
         mock_calc_metrics,
@@ -153,11 +155,11 @@ class TestStrategyBacktester:
         daily_df, monthly_df, returns_df = sample_price_data
         
         # Make mock_strategy inherit from BaseStrategy
-        from src.portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
         mock_strategy.__class__ = type('MockStrategy', (BaseStrategy,), {})
         
         # Setup mocks
-        backtester.strategy_map['momentum_strategy'] = lambda params: mock_strategy
+        backtester._registry.get_strategy_class.return_value = lambda params: mock_strategy
         mock_prepare_data.return_value = (monthly_df, returns_df)
         mock_generate_signals.return_value = pd.DataFrame()
         mock_size_positions.return_value = pd.DataFrame()
@@ -198,10 +200,10 @@ class TestStrategyBacktester:
         daily_df, monthly_df, returns_df = sample_price_data
         
         # Create a proper mock strategy that inherits from BaseStrategy
-        from src.portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
         mock_strategy = Mock()
         mock_strategy.__class__ = type('MockStrategy', (BaseStrategy,), {})
-        backtester.strategy_map['momentum_strategy'] = lambda params: mock_strategy
+        backtester._registry.get_strategy_class.return_value = lambda params: mock_strategy
         
         # Remove all universe tickers from data
         strategy_config['universe'] = ['INVALID1', 'INVALID2']
@@ -214,7 +216,7 @@ class TestStrategyBacktester:
         assert result.metrics == {}
         assert result.trade_history.empty
     
-    @patch('src.portfolio_backtester.backtesting.strategy_backtester.calculate_metrics')
+    @patch('portfolio_backtester.backtesting.strategy_backtester.calculate_metrics')
     def test_evaluate_window_success(
         self, 
         mock_calc_metrics,
@@ -227,39 +229,38 @@ class TestStrategyBacktester:
         daily_df, monthly_df, returns_df = sample_price_data
         
         # Setup mocks
-        backtester.strategy_map['momentum_strategy'] = lambda params: mock_strategy
-        backtester.data_cache.get_window_returns_by_dates.return_value = returns_df
-        
-        # Mock the scenario run
-        portfolio_returns = pd.Series(
-            np.random.randn(len(daily_df)) * 0.01,
-            index=daily_df.index
-        )
-        
-        with patch.object(backtester, '_run_scenario_for_window', return_value=portfolio_returns):
-            mock_calc_metrics.return_value = {
-                'total_return': 0.05,
-                'sharpe_ratio': 0.8
-            }
-            
-            # Define window
-            window = (
-                pd.Timestamp('2020-01-01'),
-                pd.Timestamp('2020-06-30'),
-                pd.Timestamp('2020-07-01'),
-                pd.Timestamp('2020-12-31')
+        backtester._registry.get_strategy_class.return_value = lambda params: mock_strategy
+        with patch.object(backtester.data_cache, 'get_window_returns_by_dates', return_value=returns_df):
+            # Mock the scenario run
+            portfolio_returns = pd.Series(
+                np.random.randn(len(daily_df)) * 0.01,
+                index=daily_df.index
             )
             
-            result = backtester.evaluate_window(strategy_config, window, monthly_df, daily_df, returns_df)
-            
-            # Verify result
-            assert isinstance(result, WindowResult)
-            assert isinstance(result.window_returns, pd.Series)
-            assert isinstance(result.metrics, dict)
-            assert result.train_start == window[0]
-            assert result.train_end == window[1]
-            assert result.test_start == window[2]
-            assert result.test_end == window[3]
+            with patch.object(backtester, '_run_scenario_for_window', return_value=portfolio_returns):
+                mock_calc_metrics.return_value = {
+                    'total_return': 0.05,
+                    'sharpe_ratio': 0.8
+                }
+                
+                # Define window
+                window = (
+                    pd.Timestamp('2020-01-01'),
+                    pd.Timestamp('2020-06-30'),
+                    pd.Timestamp('2020-07-01'),
+                    pd.Timestamp('2020-12-31')
+                )
+                
+                result = backtester.evaluate_window(strategy_config, window, monthly_df, daily_df, returns_df)
+                
+                # Verify result
+                assert isinstance(result, WindowResult)
+                assert isinstance(result.window_returns, pd.Series)
+                assert isinstance(result.metrics, dict)
+                assert result.train_start == window[0]
+                assert result.train_end == window[1]
+                assert result.test_start == window[2]
+                assert result.test_end == window[3]
     
     def test_evaluate_window_empty_returns(self, backtester, strategy_config, sample_price_data):
         """Test window evaluation with empty returns."""
@@ -388,25 +389,25 @@ class TestStrategyBacktesterSeparationOfConcerns:
     def test_backtester_runs_without_optimizers_disabled(self, mock_global_config, mock_data_source):
         """Test that backtester works with all optimizers disabled via feature flags."""
         # This test simulates having optimization components disabled
-        with patch('src.portfolio_backtester.backtesting.strategy_backtester.enumerate_strategies_with_params') as mock_enum:
-            mock_enum.return_value = {'test_strategy': Mock}
+        with patch('portfolio_backtester.backtesting.strategy_backtester.get_strategy_registry') as mock_get_registry:
+            # Mock the strategy enumerator
+            mock_registry = Mock()
+            mock_registry.get_all_strategies.return_value = {'dummy': Mock}
+            mock_get_registry.return_value = mock_registry
             
-            with patch('src.portfolio_backtester.data_cache.get_global_cache') as mock_cache:
-                mock_cache.return_value = Mock()
+            # Simulate feature flags disabling optimizers
+            with patch.dict('os.environ', {'DISABLE_OPTUNA': '1', 'DISABLE_PYGAD': '1'}):
+                backtester = StrategyBacktester(mock_global_config, mock_data_source)
                 
-                # Simulate feature flags disabling optimizers
-                with patch.dict('os.environ', {'DISABLE_OPTUNA': '1', 'DISABLE_PYGAD': '1'}):
-                    backtester = StrategyBacktester(mock_global_config, mock_data_source)
-                    
-                    # Verify backtester can be created and initialized
-                    assert backtester is not None
-                    assert backtester.global_config == mock_global_config
-                    assert backtester.data_source == mock_data_source
+                # Verify backtester can be created and initialized
+                assert backtester is not None
+                assert backtester.global_config == mock_global_config
+                assert backtester.data_source == mock_data_source
     
     def test_no_optimization_imports_in_backtester(self):
         """Test that StrategyBacktester has no optimization-related imports."""
         import inspect
-        import src.portfolio_backtester.backtesting.strategy_backtester as backtester_module
+        import portfolio_backtester.backtesting.strategy_backtester as backtester_module
         
         # Get the source code of the entire module
         source = inspect.getsource(backtester_module)
@@ -430,8 +431,8 @@ class TestStrategyBacktesterSeparationOfConcerns:
         # on optimization components at import time
         
         try:
-            from src.portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
-            from src.portfolio_backtester.backtesting.results import BacktestResult, WindowResult
+            from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
+            from portfolio_backtester.backtesting.results import BacktestResult, WindowResult
             
             # If we can import these without errors, the separation is working
             assert StrategyBacktester is not None
@@ -441,13 +442,13 @@ class TestStrategyBacktesterSeparationOfConcerns:
         except ImportError as e:
             pytest.fail(f"Backtesting module has unwanted dependencies: {e}")
     
-    @patch('src.portfolio_backtester.backtesting.strategy_backtester.enumerate_strategies_with_params')
-    @patch('src.portfolio_backtester.data_cache.get_global_cache')
-    def test_backtester_works_in_isolation(self, mock_cache, mock_enum):
+    @patch('portfolio_backtester.backtesting.strategy_backtester.get_strategy_registry')
+    def test_backtester_works_in_isolation(self, mock_get_registry):
         """Test that backtester can work completely in isolation."""
         # Setup mocks to simulate minimal dependencies
-        mock_enum.return_value = {'test_strategy': Mock}
-        mock_cache.return_value = Mock()
+        mock_registry = Mock()
+        mock_registry.get_all_strategies.return_value = {'test_strategy': Mock}
+        mock_get_registry.return_value = mock_registry
         
         global_config = {
             'benchmark': 'SPY',
@@ -466,6 +467,8 @@ class TestStrategyBacktesterSeparationOfConcerns:
         assert backtester._create_empty_backtest_result().__class__.__name__ == 'BacktestResult'
         
         # Test error handling works
+        # Make sure get_strategy_class returns None for nonexistent strategy
+        mock_registry.get_strategy_class.return_value = None
         with pytest.raises(ValueError):
             backtester._get_strategy('nonexistent_strategy', {})
 

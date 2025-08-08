@@ -6,9 +6,9 @@ import shutil
 import pytest
 import pandas_market_calendars as mcal
 
-from src.portfolio_backtester.data_sources.hybrid_data_source import HybridDataSource
-from src.portfolio_backtester.data_sources.stooq_data_source import StooqDataSource
-from src.portfolio_backtester.data_sources.yfinance_data_source import YFinanceDataSource
+from portfolio_backtester.data_sources.hybrid_data_source import HybridDataSource
+from portfolio_backtester.data_sources.stooq_data_source import StooqDataSource
+from portfolio_backtester.data_sources.yfinance_data_source import YFinanceDataSource
 
 
 class TestDataSanityCheck(unittest.TestCase):
@@ -244,7 +244,7 @@ class TestDataSanityCheck(unittest.TestCase):
         end_date = datetime.now().strftime('%Y-%m-%d')
         start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
         
-        expected_last_trading_day = self._get_expected_last_trading_day()
+        self._get_expected_last_trading_day()
         
         # Test Stooq
         print("\n--- Testing Stooq ---")

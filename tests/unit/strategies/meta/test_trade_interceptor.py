@@ -1,12 +1,11 @@
 """Tests for MetaStrategyTradeInterceptor class."""
 
-import pytest
 import pandas as pd
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 
-from src.portfolio_backtester.strategies.base.trade_interceptor import MetaStrategyTradeInterceptor
-from src.portfolio_backtester.strategies.base.trade_record import TradeRecord, TradeSide
-from src.portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies.base.trade_interceptor import MetaStrategyTradeInterceptor
+from portfolio_backtester.strategies.base.trade_record import TradeSide
+from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
 
 
 class MockStrategy(BaseStrategy):
@@ -72,7 +71,7 @@ class TestMetaStrategyTradeInterceptor:
         # Store original method
         original_method = mock_strategy.generate_signals
         
-        interceptor = MetaStrategyTradeInterceptor(
+        MetaStrategyTradeInterceptor(
             sub_strategy=mock_strategy,
             strategy_id="test_strategy",
             allocated_capital=100000.0,
@@ -88,7 +87,7 @@ class TestMetaStrategyTradeInterceptor:
         mock_strategy = MockStrategy()
         trade_callback = Mock()
         
-        interceptor = MetaStrategyTradeInterceptor(
+        MetaStrategyTradeInterceptor(
             sub_strategy=mock_strategy,
             strategy_id="momentum",
             allocated_capital=100000.0,
@@ -108,7 +107,7 @@ class TestMetaStrategyTradeInterceptor:
         
         # Call generate_signals (this should trigger trade detection)
         current_date = pd.Timestamp("2023-01-15")
-        signals = mock_strategy.generate_signals(
+        mock_strategy.generate_signals(
             all_historical_data=historical_data,
             benchmark_historical_data=pd.DataFrame(),
             non_universe_historical_data=pd.DataFrame(),
@@ -144,7 +143,7 @@ class TestMetaStrategyTradeInterceptor:
         mock_strategy = MockStrategy()
         trade_callback = Mock()
         
-        interceptor = MetaStrategyTradeInterceptor(
+        MetaStrategyTradeInterceptor(
             sub_strategy=mock_strategy,
             strategy_id="momentum",
             allocated_capital=100000.0,
@@ -238,7 +237,7 @@ class TestMetaStrategyTradeInterceptor:
         assert info['strategy_id'] == "test_strategy"
         assert info['strategy_class'] == "MockStrategy"
         assert info['allocated_capital'] == 100000.0
-        assert info['has_previous_signals'] == False
+        assert not info['has_previous_signals']
         assert info['previous_signal_count'] == 0
     
     def test_reset_state(self):
@@ -283,7 +282,7 @@ class TestMetaStrategyTradeInterceptor:
         mock_strategy = MockStrategy()
         trade_callback = Mock()
         
-        interceptor = MetaStrategyTradeInterceptor(
+        MetaStrategyTradeInterceptor(
             sub_strategy=mock_strategy,
             strategy_id="momentum",
             allocated_capital=100000.0,

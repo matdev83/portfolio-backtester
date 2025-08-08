@@ -1,8 +1,6 @@
 import pandas as pd
-import numpy as np
-from datetime import datetime
 
-from src.portfolio_backtester.utils.price_data_utils import (
+from portfolio_backtester.utils.price_data_utils import (
     extract_current_prices,
     validate_price_data_sufficiency,
     normalize_price_series_to_dataframe,

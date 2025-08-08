@@ -1,6 +1,6 @@
-
 from abc import ABC, abstractmethod
 import pandas as pd
+
 
 class BaseDataSource(ABC):
     """Abstract base class for data sources."""

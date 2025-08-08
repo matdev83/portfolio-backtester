@@ -159,7 +159,10 @@ data/reports/*
 .kiro/
 .cursor/
 GEMINI.md
+CRUSH.md
 .agent.md
 .numba_cache/
 *.prof
 .aider*
+.crush
+*.db

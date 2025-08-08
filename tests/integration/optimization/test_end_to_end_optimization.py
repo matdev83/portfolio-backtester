@@ -13,19 +13,16 @@ import pandas as pd
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Dict, Any, List
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from tests.base.integration_test_base import BaseIntegrationTest
 from tests.fixtures.market_data import MarketDataFixture
-from tests.fixtures.strategy_data import StrategyDataFixture
 
-from src.portfolio_backtester.optimization.orchestrator import OptimizationOrchestrator
-from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
-from src.portfolio_backtester.optimization.factory import create_parameter_generator
-from src.portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
-from src.portfolio_backtester.optimization.results import OptimizationData
-from src.portfolio_backtester.feature_flags import FeatureFlags
+from portfolio_backtester.optimization.orchestrator import OptimizationOrchestrator
+from portfolio_backtester.optimization.evaluator import BacktestEvaluator
+from portfolio_backtester.optimization.factory import create_parameter_generator
+from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
+from portfolio_backtester.optimization.results import OptimizationData
 
 
 @pytest.mark.integration
@@ -155,7 +152,7 @@ class TestEndToEndOptimization(BaseIntegrationTest):
         
         # Mock evaluate_window to return realistic results
         def mock_evaluate_window(scenario_config, window, monthly_data, daily_data, returns_data):
-            from src.portfolio_backtester.backtesting.results import WindowResult
+            from portfolio_backtester.backtesting.results import WindowResult
             
             # Generate mock returns for the test window
             test_start, test_end = window[2], window[3]
@@ -190,6 +187,88 @@ class TestEndToEndOptimization(BaseIntegrationTest):
         
         mock_backtester.evaluate_window.side_effect = mock_evaluate_window
         return mock_backtester
+    
+    def _create_deterministic_mock_backtester(self, seed):
+        """Create a deterministic mock strategy backtester for reproducible testing."""
+        mock_backtester = Mock(spec=StrategyBacktester)
+        
+        # Create deterministic mock behavior based on parameters
+        def deterministic_evaluate_window(scenario_config, window, monthly_data, daily_data, returns_data):
+            from portfolio_backtester.backtesting.results import WindowResult
+            
+            # Generate deterministic results based on parameter values
+            lookback_period = scenario_config.get('strategy_params', {}).get('lookback_period', 12)
+            position_size = scenario_config.get('strategy_params', {}).get('position_size', 0.1)
+            
+            # Simple deterministic scoring based on parameters
+            # Higher lookback_period and position_size should give better results
+            base_sharpe = 0.5
+            lookback_bonus = (lookback_period - 10) * 0.05  # Bonus for higher lookback
+            position_bonus = (position_size - 0.1) * 2.0   # Bonus for higher position size
+            sharpe_ratio = max(base_sharpe + lookback_bonus + position_bonus, 0.1)
+            
+            # Generate mock returns for the test window
+            test_start, test_end = window[2], window[3]
+            test_dates = pd.date_range(test_start, test_end, freq='D')
+            mock_returns = pd.Series(
+                [0.001 * sharpe_ratio] * len(test_dates),  # Constant returns proportional to sharpe
+                index=test_dates
+            )
+            
+            metrics = {
+                "total_return": mock_returns.sum(),
+                "annualized_return": mock_returns.mean() * 252,
+                "volatility": 0.15,
+                "sharpe_ratio": sharpe_ratio,
+                "max_drawdown": -0.05,
+                "calmar_ratio": sharpe_ratio * 0.8
+            }
+            
+            return WindowResult(
+                window_returns=mock_returns,
+                metrics=metrics,
+                train_start=window[0],
+                train_end=window[1],
+                test_start=window[2],
+                test_end=window[3]
+            )
+        
+        mock_backtester.evaluate_window.side_effect = deterministic_evaluate_window
+        return mock_backtester
+    
+    def _run_new_architecture_optimization(self, optimizer_type, parameter_space, max_evaluations, random_seed):
+        """Run optimization using the new architecture for testing deterministic behavior."""
+        # Create optimization configuration
+        optimization_config = {
+            "parameter_space": parameter_space,
+            "metrics_to_optimize": ["sharpe_ratio"],
+            "max_evaluations": max_evaluations
+        }
+        
+        # Create components
+        parameter_generator = create_parameter_generator(optimizer_type, random_state=random_seed)
+        evaluator = BacktestEvaluator(
+            metrics_to_optimize=["sharpe_ratio"],
+            is_multi_objective=False
+        )
+        orchestrator = OptimizationOrchestrator(
+            parameter_generator=parameter_generator,
+            evaluator=evaluator,
+            timeout_seconds=60
+        )
+        
+        # Create deterministic mock backtester for testing
+        mock_backtester = self._create_deterministic_mock_backtester(random_seed)
+        
+        # Run optimization
+        result = orchestrator.optimize(
+            scenario_config=self.scenario_config,
+            optimization_config=optimization_config,
+            data=self.optimization_data,
+            backtester=mock_backtester
+        )
+        
+        return result
     
     def test_optuna_end_to_end_single_objective(self):
         """Test complete Optuna optimization workflow with single objective."""
@@ -425,7 +504,7 @@ class TestEndToEndOptimization(BaseIntegrationTest):
         mock_backtester = Mock(spec=StrategyBacktester)
         
         def constant_evaluate_window(scenario_config, window, monthly_data, daily_data, returns_data):
-            from src.portfolio_backtester.backtesting.results import WindowResult
+            from portfolio_backtester.backtesting.results import WindowResult
             
             # Return constant results to trigger early stopping
             test_start, test_end = window[2], window[3]
@@ -497,7 +576,7 @@ class TestEndToEndOptimization(BaseIntegrationTest):
             if call_count % 3 == 0:
                 raise ValueError("Simulated evaluation failure")
             
-            from src.portfolio_backtester.backtesting.results import WindowResult
+            from portfolio_backtester.backtesting.results import WindowResult
             
             test_start, test_end = window[2], window[3]
             test_dates = pd.date_range(test_start, test_end, freq='D')
@@ -585,7 +664,7 @@ class TestEndToEndOptimization(BaseIntegrationTest):
         orchestrator.optimize = optimize_with_tracking
         
         # Run optimization
-        result = orchestrator.optimize(
+        orchestrator.optimize(
             scenario_config=self.scenario_config,
             optimization_config=optimization_config,
             data=self.optimization_data,
@@ -637,6 +716,47 @@ class TestEndToEndOptimization(BaseIntegrationTest):
         
         self.assertTrue(hasattr(orchestrator, 'optimize'))
         self.assertTrue(hasattr(orchestrator, 'get_progress_status'))
+
+    def test_deterministic_behavior_with_fixed_seeds(self):
+        """Test that optimization produces identical results with fixed random seeds."""
+        parameter_space = {
+            "lookback_period": {"type": "int", "low": 10, "high": 20, "step": 2},
+            "position_size": {"type": "float", "low": 0.1, "high": 0.2, "step": 0.02}
+        }
+        
+        random_seed = 789
+        max_evaluations = 8
+        
+        # Run new architecture twice with same seed
+        result1 = self._run_new_architecture_optimization(
+            "optuna", parameter_space, max_evaluations, random_seed
+        )
+        
+        result2 = self._run_new_architecture_optimization(
+            "optuna", parameter_space, max_evaluations, random_seed
+        )
+        
+        # Results should be identical with same seed
+        self.assertEqual(result1.best_parameters, result2.best_parameters)
+        self.assertEqual(result1.best_value, result2.best_value)
+        self.assertEqual(result1.n_evaluations, result2.n_evaluations)
+        
+        # Run with different seed
+        result3 = self._run_new_architecture_optimization(
+            "optuna", parameter_space, max_evaluations, random_seed + 1
+        )
+        
+        # Results should be different with different seed
+        # (Note: there's a small chance they could be the same by coincidence)
+        different_params = result1.best_parameters != result3.best_parameters
+        different_values = abs(result1.best_value - result3.best_value) > 0.001
+        
+        # At least one should be different
+        self.assertTrue(different_params or different_values)
+        
+        print("Deterministic Behavior Test:")
+        print(f"  Same seed results identical: {result1.best_parameters == result2.best_parameters}")
+        print(f"  Different seed results differ: {different_params or different_values}")
 
 
 if __name__ == '__main__':

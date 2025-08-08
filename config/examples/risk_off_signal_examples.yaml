@@ -1,0 +1,124 @@
+# Risk-off Signal Generator Configuration Examples
+# =================================================
+# This file demonstrates how to configure the new RiskOffSignalGenerator system
+
+# Example 1: Default No Risk-off Signal (Recommended Default)
+# This is the safest default - never triggers risk-off signals
+strategy_config_no_risk_off: &default_strategy_config
+  name: "ExampleStrategy"
+  strategy_params:
+    # Strategy-specific parameters here
+    rolling_window: 6
+    
+  # Risk-off signal configuration (optional - defaults to NoRiskOffSignalGenerator)
+  risk_off_signal_config:
+    type: "NoRiskOffSignalGenerator"
+    # No additional parameters needed
+
+# Example 2: Dummy Risk-off Signal for Testing
+# Use this for testing scenarios where you need predictable risk-off periods
+strategy_config_dummy_risk_off:
+  <<: *default_strategy_config
+  risk_off_signal_config:
+    type: "DummyRiskOffSignalGenerator"
+    default_risk_state: "on"  # "on" for risk-on by default, "off" for risk-off by default
+    risk_off_windows:
+      - ["2008-09-01", "2009-03-31"]  # Financial crisis period
+      - ["2020-02-15", "2020-04-30"]  # COVID crash period
+      - ["2022-01-01", "2022-06-30"]  # Custom test period
+
+# Example 3: Dummy Risk-off with Default Risk-off State
+# This version defaults to risk-off conditions except during specified windows
+strategy_config_dummy_default_off:
+  <<: *default_strategy_config
+  risk_off_signal_config:
+    type: "DummyRiskOffSignalGenerator"
+    default_risk_state: "off"  # Default to risk-off
+    risk_off_windows:
+      - ["2010-01-01", "2015-12-31"]  # Only risk-on during this period
+
+# Example 4: Custom Risk-off Windows for Specific Testing
+strategy_config_custom_windows:
+  <<: *default_strategy_config
+  risk_off_signal_config:
+    type: "DummyRiskOffSignalGenerator"
+    default_risk_state: "on"
+    risk_off_windows:
+      - ["2023-03-01", "2023-03-31"]  # Banking crisis simulation
+      - ["2023-10-01", "2023-10-31"]  # Custom risk-off period
+
+# Example 5: Complete Strategy Configuration with Risk-off Signals
+# This shows a complete strategy setup with risk-off signals integrated
+complete_strategy_example:
+  name: "MomentumWithRiskOff"
+  strategy_params:
+    rolling_window: 6
+    num_holdings: 10
+    leverage: 1.0
+    smoothing_lambda: 0.8
+    sma_filter_window: 10  # SMA-based risk filter
+    
+  # Universe configuration
+  universe_config:
+    type: "named"
+    universe_name: "sp500_top50"
+    
+  # Risk management
+  stop_loss_config:
+    type: "NoStopLoss"
+    
+  take_profit_config:
+    type: "NoTakeProfit"
+    
+  # Risk-off signal configuration
+  risk_off_signal_config:
+    type: "DummyRiskOffSignalGenerator"
+    default_risk_state: "on"
+    risk_off_windows:
+      - ["2008-09-01", "2009-03-31"]
+      - ["2020-02-15", "2020-04-30"]
+
+# Migration Notes from Old RoRo System:
+# ====================================
+# 
+# Old System (Deprecated):
+#   from portfolio_backtester.roro_signals import BaseRoRoSignal, DummyRoRoSignal
+#   
+#   class MyStrategy(BaseStrategy):
+#       roro_signal_class = DummyRoRoSignal  # Class attribute
+#       
+#       def generate_signals(...):
+#           roro_signal = self.get_roro_signal()
+#           if roro_signal:
+#               signal = roro_signal.generate_signal(data, benchmark, date)
+#               if not signal:  # False meant risk-off in old system
+#                   # Zero out weights
+#
+# New System:
+#   from portfolio_backtester.risk_off_signals import IRiskOffSignalGenerator
+#   
+#   # Configuration-based approach (no class attributes needed)
+#   strategy_config = {
+#       "risk_off_signal_config": {
+#           "type": "DummyRiskOffSignalGenerator",
+#           "default_risk_state": "on"
+#       }
+#   }
+#   
+#   class MyStrategy(BaseStrategy):
+#       def generate_signals(...):
+#           risk_off_generator = self.get_risk_off_signal_generator()
+#           if risk_off_generator:
+#               signal = risk_off_generator.generate_risk_off_signal(
+#                   all_data, benchmark, non_universe_data, date
+#               )
+#               if signal:  # True means risk-off in new system
+#                   # Zero out weights
+#
+# Key Changes:
+# 1. Renamed: BaseRoRoSignal -> IRiskOffSignalGenerator
+# 2. Renamed: DummyRoRoSignal -> DummyRiskOffSignalGenerator  
+# 3. Signal semantics inverted: True = risk-off, False = risk-on
+# 4. Configuration-based instead of class attributes
+# 5. Provider pattern integration following SOLID principles
+# 6. Enhanced method signature includes non_universe_historical_data

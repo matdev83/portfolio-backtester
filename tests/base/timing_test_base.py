@@ -8,9 +8,8 @@ in timing tests and provide common timing testing patterns.
 import unittest
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, List, Optional, Type, Tuple
-from unittest.mock import Mock, patch
-from datetime import datetime, timedelta
+from typing import Dict, Any, List, Tuple
+from unittest.mock import Mock
 
 from tests.fixtures.timing_data import TimingDataFixture
 from tests.fixtures.market_data import MarketDataFixture
@@ -99,16 +98,19 @@ class BaseTimingTest(unittest.TestCase):
         Returns:
             Timing controller instance
         """
+        # Use factory pattern with interface integration
+        from portfolio_backtester.timing.custom_timing_registry import TimingControllerFactory
+        
         if timing_type == "time_based":
-            from src.portfolio_backtester.timing.time_based_timing import TimeBasedTiming
             config = self.time_based_config.copy()
             config.update(kwargs)
-            return TimeBasedTiming(config)
+            config["mode"] = "time_based"
+            return TimingControllerFactory.create_controller(config)
         elif timing_type == "signal_based":
-            from src.portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
             config = self.signal_based_config.copy()
             config.update(kwargs)
-            return SignalBasedTiming(config)
+            config["mode"] = "signal_based"
+            return TimingControllerFactory.create_controller(config)
         else:
             raise ValueError(f"Unknown timing type: {timing_type}")
     

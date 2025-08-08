@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 _COMPANY_TICKERS_CACHE: dict[str, dict] | None = None
 _CIK_SEARCH_CACHE: dict[str, str] = {}
 
+
 def _company_tickers():
     global _COMPANY_TICKERS_CACHE
     if _COMPANY_TICKERS_CACHE is None:
@@ -15,6 +16,7 @@ def _company_tickers():
         hdr = {"User-Agent": "portfolio-backtester/1.0"}
         _COMPANY_TICKERS_CACHE = requests.get(url, headers=hdr, timeout=30).json()
     return _COMPANY_TICKERS_CACHE
+
 
 def _cik_for_ticker(ticker: str) -> Optional[str]:
     global _CIK_SEARCH_CACHE
@@ -41,6 +43,7 @@ def _cik_for_ticker(ticker: str) -> Optional[str]:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("CIK search failed for %s: %s", ticker, e)
     return None
+
 
 def lookup_edgar(ticker: str, *, throttle: float = 1.0) -> Tuple[Optional[str], Optional[str]]:
     try:

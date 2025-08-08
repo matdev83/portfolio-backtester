@@ -7,17 +7,7 @@ and mock generators for testing.
 """
 
 # Import all generators to make them available at package level
-__all__ = []
+from .optuna_generator import OptunaParameterGenerator
+from .genetic_generator import GeneticParameterGenerator
 
-# Conditional imports for optional dependencies
-try:
-    from .optuna_generator import OptunaParameterGenerator
-    __all__.append('OptunaParameterGenerator')
-except ImportError:
-    pass
-
-try:
-    from .genetic_generator import GeneticParameterGenerator
-    __all__.append('GeneticParameterGenerator')
-except ImportError:
-    pass
+__all__ = ["OptunaParameterGenerator", "GeneticParameterGenerator"]

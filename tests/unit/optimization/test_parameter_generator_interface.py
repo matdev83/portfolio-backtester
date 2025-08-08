@@ -6,27 +6,20 @@ functions, and the factory pattern implementation.
 """
 
 import pytest
-from typing import Dict, Any
-from unittest.mock import Mock
 
-from src.portfolio_backtester.optimization.parameter_generator import (
+from portfolio_backtester.optimization.parameter_generator import (
     ParameterGenerator,
     ParameterGeneratorError,
-    ParameterGeneratorNotInitializedError,
-    ParameterGeneratorFinishedError,
     InvalidParameterSpaceError,
-    ParameterEvaluationError,
     validate_parameter_space,
     validate_optimization_config
 )
-from src.portfolio_backtester.optimization.factory import (
+from portfolio_backtester.optimization.factory import (
     create_parameter_generator,
     UnknownOptimizerError,
-    OptimizerImportError,
     get_available_optimizers,
     validate_optimizer_type
 )
-from src.portfolio_backtester.optimization.results import EvaluationResult, OptimizationResult
 
 
 class TestParameterGeneratorInterface:

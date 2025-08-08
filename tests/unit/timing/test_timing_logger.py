@@ -8,7 +8,7 @@ import pandas as pd
 import tempfile
 import os
 import json
-from src.portfolio_backtester.timing.timing_logger import TimingLogger
+from portfolio_backtester.timing.timing_logger import TimingLogger
 
 
 class TestTimingLogger:
@@ -20,8 +20,8 @@ class TestTimingLogger:
     
     def test_logger_initialization(self):
         """Test logger initialization."""
-        assert self.logger.enable_detailed_logging == True
-        assert len(self.logger.log_entries) == 0
+        assert self.logger.enable_detailed_logging
+        assert len(self.logger.get_log_entries()) == 0
     
     def test_signal_generation_logging(self):
         """Test signal generation logging."""
@@ -41,7 +41,7 @@ class TestTimingLogger:
         assert entry.strategy_name == strategy_name
         assert entry.current_date == current_date
         assert 'YES' in entry.message
-        assert entry.data['should_generate'] == True
+        assert entry.data['should_generate']
         assert entry.data['rsi_value'] == 25.0
     
     def test_position_update_logging(self):
@@ -184,7 +184,7 @@ class TestTimingLogger:
     
     def test_global_logger_functions(self):
         """Test global logger convenience functions."""
-        from src.portfolio_backtester.timing.timing_logger import (
+        from portfolio_backtester.timing.timing_logger import (
             get_timing_logger, log_signal_generation, configure_timing_logging
         )
         

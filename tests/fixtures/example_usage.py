@@ -151,10 +151,10 @@ def demonstrate_data_validation():
     )
     
     print("Generated data with automatic validation:")
-    print(f"  - Structure validation: PASSED")
-    print(f"  - Date range validation: PASSED")
-    print(f"  - Data type validation: PASSED")
-    print(f"  - OHLC relationship validation: PASSED")
+    print("  - Structure validation: PASSED")
+    print("  - Date range validation: PASSED")
+    print("  - Data type validation: PASSED")
+    print("  - OHLC relationship validation: PASSED")
     
     # Show some validation details
     tickers = data.columns.get_level_values('Ticker').unique()

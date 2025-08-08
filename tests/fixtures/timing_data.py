@@ -6,7 +6,7 @@ timing configurations, scenarios, and test data for timing framework tests.
 """
 
 import pandas as pd
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from functools import lru_cache
 from unittest.mock import Mock
 

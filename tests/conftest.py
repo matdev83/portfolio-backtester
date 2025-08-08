@@ -14,15 +14,13 @@ import numpy as np
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timedelta
-import warnings
+from typing import Dict, List, Optional
+from datetime import datetime
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from tests.fixtures.optimized_data_generator import OptimizedDataGenerator
-from tests.fixtures.performance_fixtures import *  # Import performance fixtures
 
 
 # ============================================================================
@@ -49,64 +47,59 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    """
-    Automatically categorize tests based on file location and add appropriate markers.
-    
-    This hook runs after test collection and automatically adds markers based on:
-    - File location (unit/, integration/, system/ directories)
-    - File naming patterns
-    - Test function naming patterns
-    """
-    for item in items:
-        # Get the test file path relative to tests directory
-        try:
-            test_file = Path(item.fspath).relative_to(Path(__file__).parent)
-        except ValueError:
-            test_file = Path(item.fspath)
-        test_path_parts = test_file.parts
-        
-        # Add markers based on directory structure
-        if 'unit' in test_path_parts:
+    """Automatically add markers to tests based on path, file name, and test name."""
+    tests_root = Path(__file__).parent
+
+    def add_dir_markers(parts: tuple[str, ...], item):
+        if 'unit' in parts:
             item.add_marker(pytest.mark.unit)
             item.add_marker(pytest.mark.fast)
-        elif 'integration' in test_path_parts:
+        elif 'integration' in parts:
             item.add_marker(pytest.mark.integration)
-        elif 'system' in test_path_parts:
+        elif 'system' in parts:
             item.add_marker(pytest.mark.system)
             item.add_marker(pytest.mark.slow)
-        
-        # Add markers based on subdirectory
-        if 'strategies' in test_path_parts:
-            item.add_marker(pytest.mark.strategy)
-        elif 'timing' in test_path_parts:
-            item.add_marker(pytest.mark.timing)
-        elif 'data_sources' in test_path_parts:
-            item.add_marker(pytest.mark.data_sources)
-        elif 'optimization' in test_path_parts:
-            item.add_marker(pytest.mark.optimization)
-        elif 'monte_carlo' in test_path_parts:
-            item.add_marker(pytest.mark.monte_carlo)
-        elif 'reporting' in test_path_parts:
-            item.add_marker(pytest.mark.reporting)
-        elif 'universe' in test_path_parts:
-            item.add_marker(pytest.mark.universe)
-        
-        # Add markers based on file name patterns
-        filename = test_file.name.lower()
-        if 'integration' in filename:
+
+        dir_to_marker = {
+            'strategies': pytest.mark.strategy,
+            'timing': pytest.mark.timing,
+            'data_sources': pytest.mark.data_sources,
+            'optimization': pytest.mark.optimization,
+            'monte_carlo': pytest.mark.monte_carlo,
+            'reporting': pytest.mark.reporting,
+            'universe': pytest.mark.universe,
+        }
+        for key, marker in dir_to_marker.items():
+            if key in parts:
+                item.add_marker(marker)
+
+    def add_filename_markers(filename: str, item):
+        name = filename.lower()
+        if 'integration' in name:
             item.add_marker(pytest.mark.integration)
-        if 'system' in filename or 'end_to_end' in filename:
+        if 'system' in name or 'end_to_end' in name:
             item.add_marker(pytest.mark.system)
             item.add_marker(pytest.mark.slow)
-        if 'network' in filename or 'web' in filename:
+        if 'network' in name or 'web' in name:
             item.add_marker(pytest.mark.network)
-        
-        # Add markers based on test function names
-        test_name = item.name.lower()
-        if 'slow' in test_name or 'performance' in test_name:
+
+    def add_testname_markers(test_name: str, item):
+        name = test_name.lower()
+        if 'slow' in name or 'performance' in name:
             item.add_marker(pytest.mark.slow)
-        if 'fast' in test_name or 'smoke' in test_name:
+        if 'fast' in name or 'smoke' in name:
             item.add_marker(pytest.mark.fast)
+
+    for item in items:
+        try:
+            test_file = Path(item.fspath).relative_to(tests_root)
+        except ValueError:
+            test_file = Path(item.fspath)
+        parts = test_file.parts
+
+        add_dir_markers(parts, item)
+        add_filename_markers(test_file.name, item)
+        add_testname_markers(item.name, item)
 
 
 # ============================================================================
@@ -318,8 +311,8 @@ def market_data_stable():
 
 @pytest.fixture
 def strategy_config_momentum(session_strategy_configs):
-    """Basic momentum strategy configuration."""
-    return session_strategy_configs['momentum_basic'].copy()
+    """Simple momentum strategy configuration."""
+    return session_strategy_configs['momentum_simple'].copy()
 
 
 @pytest.fixture
@@ -593,7 +586,7 @@ def pytest_sessionfinish(session, exitstatus):
     
     # Show cache statistics
     cache_info = OptimizedDataGenerator.get_cache_info()
-    print(f"Cache performance:")
+    print("Cache performance:")
     print(f"  - LRU cache hits: {cache_info['lru_cache_hits']}")
     print(f"  - LRU cache misses: {cache_info['lru_cache_misses']}")
     print(f"  - Lazy cache entries: {cache_info['lazy_cache_size']}")

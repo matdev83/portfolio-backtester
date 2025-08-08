@@ -13,6 +13,7 @@ from .base_data_source import BaseDataSource
 
 logger = logging.getLogger(__name__)
 
+
 class StooqDataSource(BaseDataSource):
     """Data source for fetching daily OHLCV data from Stooq using pandas-datareader.
 
@@ -38,31 +39,46 @@ class StooqDataSource(BaseDataSource):
     # ------------------------------------------------------------------
     def _load_from_cache(self, file_path: Path, ticker: str) -> pd.DataFrame | None:
         """Return cached DataFrame if it is fresh enough, else None."""
-        if file_path.exists() and (time.time() - os.path.getmtime(file_path)) / 3600 < self.cache_expiry_hours:
+        if (
+            file_path.exists()
+            and (time.time() - os.path.getmtime(file_path)) / 3600 < self.cache_expiry_hours
+        ):
             try:
-                df = pd.read_csv(file_path, index_col=0)
+                df: pd.DataFrame = pd.read_csv(file_path, index_col=0)
                 df.index = pd.to_datetime(df.index, format="%Y-%m-%d", errors="coerce")
-                df = df[~df.index.isnull()]
+                # Remove rows with null indices
+                valid_indices = df.index.dropna()
+                df = df.loc[valid_indices]
                 if df.empty or not isinstance(df.index, pd.DatetimeIndex):
-                    logger.debug(f"Cached file for {ticker} is empty or has invalid dates. Forcing re-download.")
+                    logger.debug(
+                        f"Cached file for {ticker} is empty or has invalid dates. Forcing re-download."
+                    )
                     return None
-                
+
                 # Convert numeric columns to proper types
-                numeric_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                numeric_columns = ["Open", "High", "Low", "Close", "Volume"]
                 for col in numeric_columns:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors="coerce")
-                
+
                 logger.debug(f"Loaded {ticker} from cache.")
                 return df
-            except Exception as exc:  # pragma: no cover – any parsing error => fallback to live download
-                logger.debug(f"Could not load {ticker} from cache ({exc}). Cache might be corrupted.")
+            except (
+                Exception
+            ) as exc:  # pragma: no cover – any parsing error => fallback to live download
+                logger.debug(
+                    f"Could not load {ticker} from cache ({exc}). Cache might be corrupted."
+                )
         return None
 
-    def _download_data(self, ticker: str, start_date: str, end_date: str, file_path: Path) -> pd.DataFrame | None:
+    def _download_data(
+        self, ticker: str, start_date: str, end_date: str, file_path: Path
+    ) -> pd.DataFrame | None:
         """Download data from Stooq and write it to *file_path* as CSV."""
         try:
-            downloaded_df = web.DataReader(ticker, "stooq", start=start_date, end=end_date)
+            downloaded_df: pd.DataFrame = web.DataReader(
+                ticker, "stooq", start=start_date, end=end_date
+            )
             if downloaded_df is not None and not downloaded_df.empty:
                 # Ensure chronological order (oldest first) because some Stooq
                 # feeds are returned newest-first.
@@ -82,7 +98,7 @@ class StooqDataSource(BaseDataSource):
     def get_data(self, tickers: List[str], start_date: str, end_date: str) -> pd.DataFrame:
         """Fetch daily OHLCV data for *tickers* between *start_date* and *end_date*.
 
-        Returns a DataFrame with MultiIndex columns: (Ticker, Field) where Field 
+        Returns a DataFrame with MultiIndex columns: (Ticker, Field) where Field
         includes 'Open', 'High', 'Low', 'Close', 'Volume'.
         """
         if not os.path.exists(self.data_dir):
@@ -92,7 +108,9 @@ class StooqDataSource(BaseDataSource):
 
         all_ticker_data = []
         if logger.isEnabledFor(logging.INFO):
-            logger.info(f"Fetching data from Stooq for {len(tickers)} tickers from {start_date} to {end_date}.")
+            logger.info(
+                f"Fetching data from Stooq for {len(tickers)} tickers from {start_date} to {end_date}."
+            )
 
         # Map tickers that differ between Yahoo and Stooq so the rest of the
         # codebase (which expects Yahoo symbols like "^GSPC") keeps working.
@@ -120,25 +138,26 @@ class StooqDataSource(BaseDataSource):
 
                 if df is not None and not df.empty:
                     df.index.name = "Date"
-                    
+
                     # Ensure we have the expected OHLCV columns
-                    expected_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                    expected_columns = ["Open", "High", "Low", "Close", "Volume"]
                     available_columns = [col for col in expected_columns if col in df.columns]
-                    
+
                     if not available_columns:
-                        logger.error(f"No OHLCV columns found for {orig_ticker}. Available columns: {df.columns.tolist()}")
+                        logger.error(
+                            f"No OHLCV columns found for {orig_ticker}. Available columns: {df.columns.tolist()}"
+                        )
                         progress.advance(dl_task)
                         continue
-                    
+
                     # Create MultiIndex DataFrame for this ticker
                     ticker_df = df[available_columns].copy()
-                    
+
                     # Create MultiIndex columns: (Ticker, Field)
                     ticker_df.columns = pd.MultiIndex.from_product(
-                        [[orig_ticker], ticker_df.columns], 
-                        names=['Ticker', 'Field']
+                        [[orig_ticker], ticker_df.columns], names=["Ticker", "Field"]
                     )
-                    
+
                     all_ticker_data.append(ticker_df)
 
                 progress.advance(dl_task)
@@ -151,4 +170,4 @@ class StooqDataSource(BaseDataSource):
         result_df = pd.concat(all_ticker_data, axis=1)
         if logger.isEnabledFor(logging.INFO):
             logger.info("Data fetching from Stooq complete.")
-        return result_df 
+        return result_df

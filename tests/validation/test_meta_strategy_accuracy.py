@@ -7,13 +7,11 @@ correct by comparing against manually calculated weighted performance.
 
 import pytest
 import pandas as pd
-import numpy as np
-from typing import Dict, List
+from typing import List
 
-from src.portfolio_backtester.strategies.meta.simple_meta_strategy import SimpleMetaStrategy
-from src.portfolio_backtester.strategies.base.trade_record import TradeRecord, TradeSide
-from src.portfolio_backtester.backtester_logic.strategy_logic import generate_signals
-from src.portfolio_backtester.backtester_logic.portfolio_logic import calculate_portfolio_returns
+from portfolio_backtester.strategies.meta.simple_meta_strategy import SimpleMetaStrategy
+from portfolio_backtester.strategies.base.trade_record import TradeRecord, TradeSide
+from portfolio_backtester.backtester_logic.strategy_logic import generate_signals
 
 
 class TestMetaStrategyAccuracy:
@@ -56,7 +54,7 @@ class TestMetaStrategyAccuracy:
             "allocations": [
                 {
                     "strategy_id": "strategy_a",
-                    "strategy_class": "CalmarMomentumStrategy",
+                    "strategy_class": "CalmarMomentumPortfolioStrategy",
                     "strategy_params": {
                         "rolling_window": 3,
                         "num_holdings": 1,
@@ -71,7 +69,7 @@ class TestMetaStrategyAccuracy:
                 },
                 {
                     "strategy_id": "strategy_b",
-                    "strategy_class": "IntramonthSeasonalStrategy",
+                    "strategy_class": "SeasonalSignalStrategy",
                     "strategy_params": {
                         "direction": "long",
                         "entry_day": 1,
@@ -169,7 +167,7 @@ class TestMetaStrategyAccuracy:
             "allocations": [
                 {
                     "strategy_id": "inactive",
-                    "strategy_class": "CalmarMomentumStrategy",
+                    "strategy_class": "CalmarMomentumPortfolioStrategy",
                     "strategy_params": {
                         "rolling_window": 100,  # Very long window to prevent trades
                         "num_holdings": 1,
@@ -227,7 +225,7 @@ class TestMetaStrategyAccuracy:
             "allocations": [
                 {
                     "strategy_id": "single_trade",
-                    "strategy_class": "CalmarMomentumStrategy",
+                    "strategy_class": "CalmarMomentumPortfolioStrategy",
                     "strategy_params": {
                         "rolling_window": 2,
                         "num_holdings": 1,
@@ -300,7 +298,7 @@ class TestMetaStrategyAccuracy:
             "allocations": [
                 {
                     "strategy_id": "overlap_a",
-                    "strategy_class": "CalmarMomentumStrategy",
+                    "strategy_class": "CalmarMomentumPortfolioStrategy",
                     "strategy_params": {
                         "rolling_window": 3,
                         "num_holdings": 2,
@@ -314,7 +312,7 @@ class TestMetaStrategyAccuracy:
                 },
                 {
                     "strategy_id": "overlap_b",
-                    "strategy_class": "IntramonthSeasonalStrategy",
+                    "strategy_class": "SeasonalSignalStrategy",
                     "strategy_params": {
                         "direction": "long",
                         "entry_day": 1,
@@ -374,7 +372,7 @@ class TestMetaStrategyAccuracy:
             "allocations": [
                 {
                     "strategy_id": "strat_60",
-                    "strategy_class": "CalmarMomentumStrategy",
+                    "strategy_class": "CalmarMomentumPortfolioStrategy",
                     "strategy_params": {
                         "rolling_window": 5,
                         "timing_config": {"mode": "time_based", "rebalance_frequency": "M"}
@@ -383,7 +381,7 @@ class TestMetaStrategyAccuracy:
                 },
                 {
                     "strategy_id": "strat_25",
-                    "strategy_class": "IntramonthSeasonalStrategy",
+                    "strategy_class": "SeasonalSignalStrategy",
                     "strategy_params": {
                         "entry_day": 1,
                         "timing_config": {"mode": "signal_based"}
@@ -392,7 +390,7 @@ class TestMetaStrategyAccuracy:
                 },
                 {
                     "strategy_id": "strat_15",
-                    "strategy_class": "CalmarMomentumStrategy",
+                    "strategy_class": "CalmarMomentumPortfolioStrategy",
                     "strategy_params": {
                         "rolling_window": 10,
                         "timing_config": {"mode": "time_based", "rebalance_frequency": "M"}
@@ -439,7 +437,7 @@ class TestMetaStrategyAccuracy:
             "allocations": [
                 {
                     "strategy_id": "cost_test",
-                    "strategy_class": "CalmarMomentumStrategy",
+                    "strategy_class": "CalmarMomentumPortfolioStrategy",
                     "strategy_params": {
                         "rolling_window": 3,
                         "timing_config": {"mode": "time_based", "rebalance_frequency": "M"}
@@ -492,7 +490,7 @@ class TestMetaStrategyAccuracy:
             "allocations": [
                 {
                     "strategy_id": "small",
-                    "strategy_class": "CalmarMomentumStrategy",
+                    "strategy_class": "CalmarMomentumPortfolioStrategy",
                     "strategy_params": {
                         "rolling_window": 3,
                         "timing_config": {"mode": "time_based", "rebalance_frequency": "M"}
@@ -514,7 +512,7 @@ class TestMetaStrategyAccuracy:
             "allocations": [
                 {
                     "strategy_id": "frac1",
-                    "strategy_class": "CalmarMomentumStrategy",
+                    "strategy_class": "CalmarMomentumPortfolioStrategy",
                     "strategy_params": {
                         "rolling_window": 3,
                         "timing_config": {"mode": "time_based", "rebalance_frequency": "M"}
@@ -523,7 +521,7 @@ class TestMetaStrategyAccuracy:
                 },
                 {
                     "strategy_id": "frac2",
-                    "strategy_class": "IntramonthSeasonalStrategy",
+                    "strategy_class": "SeasonalSignalStrategy",
                     "strategy_params": {
                         "entry_day": 1,
                         "timing_config": {"mode": "signal_based"}

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import os
 import json
 import sys
 from pathlib import Path
@@ -29,7 +28,7 @@ def _import_all_package_files(package_root: str) -> None:
     to maintain a hand-written import list.
     """
     pkg = importlib.import_module(package_root)
-    base_paths = list(pkg.__path__)  # type: ignore[attr-defined]
+    base_paths = list(pkg.__path__)
 
     for base in base_paths:
         base_path = Path(base).resolve()
@@ -39,7 +38,9 @@ def _import_all_package_files(package_root: str) -> None:
             if module_name.endswith(".__init__"):
                 module_name = module_name[:-9]
             try:
-                import contextlib, io, logging
+                import contextlib
+                import io
+                import logging
                 # Suppress any noisy stdout / stderr and lower loglevel during import
                 _stdout, _stderr = io.StringIO(), io.StringIO()
                 prev_level = logging.getLogger().level

@@ -4,7 +4,7 @@ Tests for the simplified synthetic data generator.
 
 import pandas as pd
 import numpy as np
-from src.portfolio_backtester.monte_carlo.synthetic_data_generator import (
+from portfolio_backtester.monte_carlo.synthetic_data_generator import (
     SyntheticDataGenerator, GARCHParameters, AssetStatistics
 )
 

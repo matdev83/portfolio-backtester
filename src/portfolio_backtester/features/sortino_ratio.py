@@ -1,13 +1,10 @@
-from ..feature import Feature # Corrected import
+from ..feature import Feature
 import numpy as np
 import pandas as pd
 
-# Optional Numba-accelerated kernel
-try:
-    from ..numba_optimized import sortino_fast
-    NUMBA_AVAILABLE = True
-except ImportError:
-    NUMBA_AVAILABLE = False
+# Direct import of optimized function - no fallback needed
+from ..numba_optimized import sortino_fast_fixed
+
 
 class SortinoRatio(Feature):
     """Computes the Sortino ratio."""
@@ -23,28 +20,30 @@ class SortinoRatio(Feature):
         return f"sortino_{self.rolling_window}m"
 
     def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame:
+        # Handle empty data edge case
+        if data.empty:
+            return pd.DataFrame()
+
         # Calculate returns (rows=time, columns=assets)
         rets = data.pct_change(fill_method=None)
+        rets = rets.infer_objects().fillna(0.0)
 
-        if NUMBA_AVAILABLE and not rets.empty:
-            returns_np = rets.to_numpy(dtype=np.float64)
-            sortino_mat = sortino_fast(returns_np, self.rolling_window, self.target_return, annualization_factor=12.0)
-            sortino_df = pd.DataFrame(sortino_mat, index=rets.index, columns=rets.columns)
-        else:
-            cal_factor = np.sqrt(12)
+        # Handle edge case where all returns are zero or NaN
+        if rets.empty:
+            return pd.DataFrame(index=data.index, columns=data.columns)
 
-            rolling_mean = rets.rolling(self.rolling_window).mean()
-
-            def downside_deviation(series):
-                downside_returns = series[series < self.target_return]
-                if len(downside_returns) == 0:
-                    return 1e-9
-                return np.sqrt(np.mean((downside_returns - self.target_return) ** 2))
-
-            rolling_downside_dev = rets.rolling(self.rolling_window).apply(downside_deviation, raw=False)
-            excess_return = rolling_mean - self.target_return
-            stable_downside_dev = np.maximum(rolling_downside_dev, 1e-6)
-            sortino_df = (excess_return * cal_factor) / (stable_downside_dev * cal_factor)
+        # Use optimized batch calculation with proper ddof=1 handling
+        returns_np = rets.to_numpy(dtype=np.float64)
+        sortino_mat = sortino_fast_fixed(
+            returns_np, self.rolling_window, self.target_return, annualization_factor=12.0
+        )
+        sortino_df = pd.DataFrame(sortino_mat, index=rets.index, columns=rets.columns)
 
         sortino_df = sortino_df.clip(-10.0, 10.0)
-        return sortino_df.fillna(0)
+
+        # Only fill NaN values after the initial window period
+        # Keep the first (rolling_window - 1) values as NaN
+        mask = np.arange(len(sortino_df)) >= self.rolling_window - 1
+        mask_indices = np.where(mask)[0]
+        sortino_df.iloc[mask_indices] = sortino_df.iloc[mask_indices].fillna(0)
+        return sortino_df

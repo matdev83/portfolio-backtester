@@ -2,7 +2,7 @@ import unittest
 import pandas as pd
 import numpy as np
 
-from src.portfolio_backtester.reporting.metrics import calculate_metrics
+from portfolio_backtester.reporting.metrics import calculate_metrics
 
 class TestPerformanceMetrics(unittest.TestCase):
     """

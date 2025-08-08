@@ -4,10 +4,8 @@ Unit tests for WFOWindow class.
 Tests the enhanced WFO window structure with daily evaluation support.
 """
 
-import pytest
 import pandas as pd
-import numpy as np
-from src.portfolio_backtester.optimization.wfo_window import WFOWindow
+from portfolio_backtester.optimization.wfo_window import WFOWindow
 
 
 class TestWFOWindow:

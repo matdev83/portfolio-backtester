@@ -1,5 +1,5 @@
 name: simple_meta_strategy
-strategy: simple_meta
+strategy: simple_meta_strategy
 rebalance_frequency: ME
 position_sizer: equal_weight
 train_window_months: 36
@@ -9,37 +9,38 @@ optimization_targets:
     direction: maximize
 optimize: []
 strategy_params:
-  simple_meta.initial_capital: 1000000
-  simple_meta.min_allocation: 0.05
-  simple_meta.rebalance_threshold: 0.05
+  initial_capital: 1000000.0
+  min_allocation: 0.05
+  rebalance_threshold: 0.05
   simple_meta.allocations:
   - strategy_id: momentum
-    strategy_class: CalmarMomentumStrategy
+    
     strategy_params:
-      calmar_momentum.rolling_window: 6
-      calmar_momentum.num_holdings: 10
-      calmar_momentum.sma_filter_window: 20
-      calmar_momentum.price_column_benchmark: Close
-      calmar_momentum.lookback_months: 11
-      calmar_momentum.top_decile_fraction: 0.1
-      calmar_momentum.smoothing_lambda: 0.5
-      calmar_momentum.leverage: 0.5
-      calmar_momentum.long_only: true
-      calmar_momentum.timing_config:
+      rolling_window: 6
+      num_holdings: 10
+      sma_filter_window: 20
+      price_column_benchmark: Close
+      lookback_months: 11
+      top_decile_fraction: 0.1
+      smoothing_lambda: 0.5
+      leverage: 0.5
+      trade_longs: true
+      trade_shorts: false
+      calmar_momentum_portfolio.timing_config:
         mode: time_based
         rebalance_frequency: M
     weight: 0.7
   - strategy_id: seasonal
-    strategy_class: IntramonthSeasonalStrategy
+    
     strategy_params:
-      intramonth_seasonal.direction: long
-      intramonth_seasonal.entry_day: 5
-      intramonth_seasonal.hold_days: 10
-      intramonth_seasonal.trade_longs: true
-      intramonth_seasonal.trade_shorts: false
-      intramonth_seasonal.use_ema_filter: false
-      intramonth_seasonal.fast_ema_len: 0
-      intramonth_seasonal.slow_ema_multiplier: 2.0
+      direction: long
+      entry_day: 5
+      hold_days: 10
+      trade_longs: true
+      trade_shorts: false
+      use_ema_filter: false
+      fast_ema_len: 0
+      slow_ema_multiplier: 2.0
       intramonth_seasonal.timing_config:
         mode: signal_based
     weight: 0.3

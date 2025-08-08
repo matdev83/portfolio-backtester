@@ -1,6 +1,0 @@
-name: "dummy_strategy_test"
-strategy: "dummy"
-strategy_class: "DummyStrategyForTesting"
-strategy_params:
-  dummy_strategy_for_testing.open_long_prob: 0.1
-  dummy_strategy_for_testing.dummy_param_1: 1

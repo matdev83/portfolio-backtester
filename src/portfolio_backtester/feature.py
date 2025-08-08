@@ -4,6 +4,7 @@ import pandas as pd
 
 # Removed: from .features.feature_helpers import get_required_features_from_scenarios
 
+
 class Feature(ABC):
     """Abstract base class for a feature required by a strategy."""
 
@@ -11,7 +12,9 @@ class Feature(ABC):
         self.params = kwargs
 
     @abstractmethod
-    def compute(self, data: pd.DataFrame, benchmark_data: pd.Series | None = None) -> pd.DataFrame | pd.Series:
+    def compute(
+        self, data: pd.DataFrame, benchmark_data: pd.Series | None = None
+    ) -> pd.DataFrame | pd.Series:
         """Computes the feature."""
         pass
 

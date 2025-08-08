@@ -1,541 +1,175 @@
 """
-Trade tracking system for detailed performance analysis.
+TradeTracker facade system.
+
+This module unifies various trading components into a cohesive interface
+for managing trade tracking, statistics, and portfolio evaluation.
 """
+
+from .trade_lifecycle_manager import TradeLifecycleManager, Trade
+from .trade_statistics_calculator import TradeStatisticsCalculator
+from .portfolio_value_tracker import PortfolioValueTracker
+from .trade_table_formatter import TradeTableFormatter
+from ..interfaces.commission_parameter_handler_interface import CommissionParameterHandlerFactory
 
 import logging
 import pandas as pd
-import numpy as np
-from typing import Dict, List, Tuple, Optional, Any
-from dataclasses import dataclass
+from typing import Dict, Optional, Any
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class Trade:
-    """Represents a single trade with all relevant information."""
-    ticker: str
-    entry_date: pd.Timestamp
-    exit_date: Optional[pd.Timestamp]
-    entry_price: float
-    exit_price: Optional[float]
-    quantity: float  # Positive for long, negative for short
-    entry_value: float  # Absolute value of position
-    commission_entry: float
-    commission_exit: float
-    mfe: float = 0.0  # Maximum Favorable Excursion
-    mae: float = 0.0  # Maximum Adverse Excursion
-    duration_days: Optional[int] = None
-    pnl_gross: Optional[float] = None
-    pnl_net: Optional[float] = None
-    is_winner: Optional[bool] = None
-    
-    def finalize(self):
-        """Calculate derived fields when trade is closed."""
-        if self.exit_date is not None and self.exit_price is not None:
-            # Calculate business day duration instead of calendar days
-            # This is more accurate for trading strategies that use business day logic
-            try:
-                # Use pandas business day range to get actual business days
-                business_days = pd.bdate_range(start=self.entry_date, end=self.exit_date)
-                # Subtract 1 because bdate_range includes both start and end dates
-                # but we want the number of days held, not the number of dates
-                self.duration_days = max(0, len(business_days) - 1)
-            except Exception:
-                # Fallback to calendar days if business day calculation fails
-                self.duration_days = (self.exit_date - self.entry_date).days
-            
-            # Calculate P&L
-            if self.quantity > 0:  # Long position
-                self.pnl_gross = (self.exit_price - self.entry_price) * abs(self.quantity)
-            else:  # Short position
-                self.pnl_gross = (self.entry_price - self.exit_price) * abs(self.quantity)
-            
-            self.pnl_net = self.pnl_gross - self.commission_entry - self.commission_exit
-            self.is_winner = self.pnl_net > 0
-
-
 class TradeTracker:
-    """Comprehensive trade tracking system with dynamic capital tracking."""
-    
-    def __init__(self, initial_portfolio_value: float = 100000.0, allocation_mode: str = "reinvestment"):
+    """
+    Comprehensive trade tracking and analysis system.
+
+    This facade coordinates the lifecycle management of trades,
+    portfolio value tracking, and detailed statistics calculation
+    for complete portfolio management.
+    """
+
+    def __init__(
+        self,
+        initial_portfolio_value: float = 100000.0,
+        allocation_mode: str = "reinvestment",
+    ):
         """
-        Initialize TradeTracker with capital allocation mode.
-        
+        Initialize the TradeTracker facade.
+
         Args:
             initial_portfolio_value: Starting capital amount
             allocation_mode: Capital allocation mode
-                - "reinvestment" (default): Use current account balance for position sizing (enables compounding)
-                - "fixed_fractional": Always use initial capital for position sizing (disables compounding)
         """
-        self.initial_portfolio_value = initial_portfolio_value
-        self.current_portfolio_value = initial_portfolio_value
-        self.allocation_mode = allocation_mode
-        self.trades: List[Trade] = []
-        self.open_positions: Dict[str, Trade] = {}
-        self.daily_margin_usage: pd.Series = pd.Series(dtype=float)
-        self.daily_portfolio_value: pd.Series = pd.Series(dtype=float)
-        self.daily_cash_balance: pd.Series = pd.Series(dtype=float)
-        
-        # Validate allocation mode
-        valid_modes = ["reinvestment", "compound", "fixed_fractional", "fixed_capital"]
-        if allocation_mode not in valid_modes:
-            raise ValueError(f"Invalid allocation_mode '{allocation_mode}'. Must be one of: {valid_modes}")
-        
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"TradeTracker initialized with allocation_mode='{allocation_mode}'")
-        
+        self.trade_lifecycle_manager = TradeLifecycleManager()
+        self.trade_statistics_calculator = TradeStatisticsCalculator()
+        self.portfolio_value_tracker = PortfolioValueTracker(
+            initial_portfolio_value, allocation_mode
+        )
+        self.table_formatter = TradeTableFormatter()
+
+    @property
+    def allocation_mode(self) -> str:
+        """Get the allocation mode."""
+        return self.portfolio_value_tracker.allocation_mode
+
+    @property
+    def initial_portfolio_value(self) -> float:
+        """Get the initial portfolio value."""
+        return self.portfolio_value_tracker.initial_portfolio_value
+
+    @property
+    def current_portfolio_value(self) -> float:
+        """Get the current portfolio value."""
+        return self.portfolio_value_tracker.current_portfolio_value
+
     def update_positions(
         self,
         date: pd.Timestamp,
         new_weights: pd.Series,
         prices: pd.Series,
-        commissions: Dict[str, float],
-        detailed_commission_info: Optional[Dict[str, Any]] = None
+        commissions,  # Union[Dict[str, float], float]
+        detailed_commission_info: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Update positions based on new target weights with dynamic capital tracking.
-        
+
         Args:
             date: Current date
             new_weights: Target portfolio weights
             prices: Asset prices
-            commissions: Commission costs per asset (for backward compatibility)
+            commissions: Commission costs per asset
             detailed_commission_info: Detailed commission information from unified calculator
         """
+        # Handle commissions parameter using polymorphic interface
+        commission_handler = CommissionParameterHandlerFactory.create_handler(commissions)
+        commissions_dict = commission_handler.normalize_commissions(
+            commissions, new_weights, self.trade_lifecycle_manager.get_open_positions()
+        )
+
         # Calculate target quantities based on allocation mode
-        if self.allocation_mode in ["reinvestment", "compound"]:
-            # Use current portfolio value for compounding
-            base_capital = self.current_portfolio_value
-        else:  # fixed_fractional or fixed_capital
-            # Use initial portfolio value (no compounding)
-            base_capital = self.initial_portfolio_value
-        
+        base_capital = self.portfolio_value_tracker.get_base_capital_for_allocation()
+
         target_quantities = {}
         for ticker, weight in new_weights.items():
-            if ticker in prices and not pd.isna(prices[ticker]) and prices[ticker] > 0:
+            price = prices.get(ticker)
+            if price is not None and price > 0:
                 target_value = weight * base_capital
-                target_quantities[ticker] = target_value / prices[ticker]
-            else:
-                target_quantities[ticker] = 0.0
-        
+                target_quantities[ticker] = target_value / price
+
         # Process position changes
-        current_tickers = set(self.open_positions.keys())
-        target_tickers = set(ticker for ticker, qty in target_quantities.items() if abs(qty) > 1e-6)
-        
+        current_tickers = set(self.trade_lifecycle_manager.get_open_positions().keys())
+        target_tickers = set(
+            str(ticker) for ticker, qty in target_quantities.items() if abs(qty) > 1e-6
+        )
+
         # Close positions not in target
         for ticker in current_tickers - target_tickers:
             if ticker in prices:
-                commission = commissions.get(ticker, 0.0)
-                self._close_position(date, ticker, prices[ticker], commission)
-        
+                commission = commissions_dict.get(ticker, 0.0)
+                closed_trade = self.trade_lifecycle_manager.close_position(
+                    date, ticker, prices[ticker], commission
+                )
+                if closed_trade:
+                    self.portfolio_value_tracker.update_portfolio_value(closed_trade.pnl_net or 0.0)
+
         # Open new positions
         for ticker in target_tickers - current_tickers:
             if ticker in prices:
-                commission = commissions.get(ticker, 0.0)
-                self._open_position(date, ticker, target_quantities[ticker], prices[ticker], commission)
-        
-        # Update margin usage based on allocation mode
-        total_position_value = sum(abs(qty) * prices.get(ticker, 0) 
-                                 for ticker, qty in target_quantities.items() 
-                                 if abs(qty) > 1e-6)
-        
-        # Always use current portfolio value for margin calculation (actual account balance)
-        self.daily_margin_usage[date] = total_position_value / self.current_portfolio_value
-        
-        # Track daily portfolio value and cash balance
-        self.daily_portfolio_value[date] = self.current_portfolio_value
-        
-        # Calculate cash balance (portfolio value minus position values)
-        current_position_value = sum(abs(trade.quantity) * prices.get(trade.ticker, 0) 
-                                   for trade in self.open_positions.values() 
-                                   if trade.ticker in prices)
-        self.daily_cash_balance[date] = self.current_portfolio_value - current_position_value
-    
+                commission = commissions_dict.get(str(ticker), 0.0)
+                self.trade_lifecycle_manager.open_position(
+                    date, str(ticker), target_quantities[ticker], prices[ticker], commission
+                )
+
+        # Update daily metrics
+        self.portfolio_value_tracker.update_daily_metrics(
+            date, target_quantities, prices, self.trade_lifecycle_manager.get_open_positions()
+        )
+
     def update_mfe_mae(self, date: pd.Timestamp, prices: pd.Series) -> None:
         """Update Maximum Favorable/Adverse Excursion for open positions."""
-        for ticker, trade in self.open_positions.items():
-            if ticker in prices and not pd.isna(prices[ticker]):
-                current_price = prices[ticker]
-                
-                # Calculate current P&L per share
-                if trade.quantity > 0:  # Long position
-                    pnl_per_share = current_price - trade.entry_price
-                else:  # Short position
-                    pnl_per_share = trade.entry_price - current_price
-                
-                # Update MFE (most favorable)
-                if pnl_per_share > trade.mfe:
-                    trade.mfe = pnl_per_share
-                
-                # Update MAE (most adverse)
-                if pnl_per_share < trade.mae:
-                    trade.mae = pnl_per_share
-    
-    def _open_position(self, date: pd.Timestamp, ticker: str, quantity: float, price: float, commission: float) -> None:
-        """Open a new position."""
-        entry_value = abs(quantity) * price
-        
-        trade = Trade(
-            ticker=ticker,
-            entry_date=date,
-            exit_date=None,
-            entry_price=price,
-            exit_price=None,
-            quantity=quantity,
-            entry_value=entry_value,
-            commission_entry=commission,
-            commission_exit=0.0
-        )
-        
-        self.open_positions[ticker] = trade
-    
-    def _close_position(self, date: pd.Timestamp, ticker: str, price: float, commission: float) -> None:
-        """Close an existing position and update portfolio value with P&L."""
-        if ticker not in self.open_positions:
-            return
-        
-        trade = self.open_positions[ticker]
-        trade.exit_date = date
-        trade.exit_price = price
-        trade.commission_exit = commission
-        
-        # Finalize MFE/MAE in dollar terms
-        trade.mfe = trade.mfe * abs(trade.quantity)
-        trade.mae = trade.mae * abs(trade.quantity)
-        
-        trade.finalize()
-        
-        # Update current portfolio value with trade P&L (including commissions)
-        if trade.pnl_net is not None:
-            self.current_portfolio_value += trade.pnl_net
-            
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Trade closed: {ticker} on {date}, P&L: ${trade.pnl_net:.2f}, "
-                           f"Portfolio value: ${self.current_portfolio_value:.2f}")
-        
-        # Move to completed trades
-        self.trades.append(trade)
-        del self.open_positions[ticker]
-    
-    def close_all_positions(self, date: pd.Timestamp, prices: pd.Series, commissions: Dict[str, float]) -> None:
-        """Close all open positions at the end of backtesting."""
-        tickers_to_close = list(self.open_positions.keys())
-        
-        for ticker in tickers_to_close:
-            if ticker in prices and not pd.isna(prices[ticker]):
-                commission = commissions.get(ticker, 0.0)
-                self._close_position(date, ticker, prices[ticker], commission)
-    
-    def get_current_portfolio_value(self) -> float:
-        """Get the current portfolio value after all trades."""
-        return self.current_portfolio_value
-    
-    def get_total_return(self) -> float:
-        """Get the total return as a percentage."""
-        if self.initial_portfolio_value == 0:
-            return 0.0
-        return (self.current_portfolio_value - self.initial_portfolio_value) / self.initial_portfolio_value
-    
-    def get_capital_timeline(self) -> pd.DataFrame:
-        """Get a timeline of portfolio value, cash balance, and position values."""
-        if self.daily_portfolio_value.empty:
-            return pd.DataFrame()
-        
-        timeline_df = pd.DataFrame({
-            'portfolio_value': self.daily_portfolio_value,
-            'cash_balance': self.daily_cash_balance,
-            'margin_usage': self.daily_margin_usage
-        })
-        
-        # Calculate position value as portfolio_value - cash_balance
-        timeline_df['position_value'] = timeline_df['portfolio_value'] - timeline_df['cash_balance']
-        
-        return timeline_df
-    
+        self.trade_lifecycle_manager.update_mfe_mae(date, prices)
+
     def get_trade_statistics(self) -> Dict[str, Any]:
-        """Calculate comprehensive trade statistics split by direction (All/Long/Short)."""
-        # Check if we have vectorized stats available (much faster)
-        if hasattr(self, '_vectorized_stats') and self._vectorized_stats:
-            return self._vectorized_stats
-        
-        # Fallback to original implementation
-        if not self.trades:
-            return self._get_empty_trade_stats()
-        
-        completed_trades = [t for t in self.trades if t.exit_date is not None]
-        
-        if not completed_trades:
-            return self._get_empty_trade_stats()
-        
-        # Split trades by direction
-        all_trades = completed_trades
-        long_trades = [t for t in completed_trades if t.quantity > 0]
-        short_trades = [t for t in completed_trades if t.quantity < 0]
-        
-        # Calculate statistics for each direction
-        all_stats = self._calculate_direction_stats(all_trades, "all")
-        long_stats = self._calculate_direction_stats(long_trades, "long")
-        short_stats = self._calculate_direction_stats(short_trades, "short")
-        
-        # Combine all statistics
-        combined_stats = {}
-        
-        # Add directional statistics with prefixes
-        for direction, stats in [("all", all_stats), ("long", long_stats), ("short", short_stats)]:
-            for key, value in stats.items():
-                combined_stats[f"{direction}_{key}"] = value
-        
-        # Add portfolio-level statistics (not direction-specific)
-        max_margin_load = self.daily_margin_usage.max() if not self.daily_margin_usage.empty else 0.0
-        mean_margin_load = self.daily_margin_usage.mean() if not self.daily_margin_usage.empty else 0.0
-        
-        combined_stats.update({
-            'max_margin_load': max_margin_load,
-            'mean_margin_load': mean_margin_load,
-            'allocation_mode': self.allocation_mode,
-            'initial_capital': self.initial_portfolio_value,
-            'final_capital': self.current_portfolio_value,
-            'total_return_pct': self.get_total_return() * 100,
-            'capital_growth_factor': self.current_portfolio_value / self.initial_portfolio_value if self.initial_portfolio_value > 0 else 1.0
-        })
-        
-        return combined_stats
-    
-    def get_directional_summary(self) -> Dict[str, Dict[str, Any]]:
-        """Get a summary of key metrics by direction for easy comparison."""
-        stats = self.get_trade_statistics()
-        
-        summary = {}
-        for direction in ['all', 'long', 'short']:
-            prefix = f"{direction}_"
-            summary[direction.title()] = {
-                'trades': stats.get(f'{prefix}num_trades', 0),
-                'win_rate': stats.get(f'{prefix}win_rate_pct', 0.0),
-                'total_pnl': stats.get(f'{prefix}total_pnl_net', 0.0),
-                'avg_profit': stats.get(f'{prefix}mean_profit', 0.0),
-                'avg_loss': stats.get(f'{prefix}mean_loss', 0.0),
-                'reward_risk': stats.get(f'{prefix}reward_risk_ratio', 0.0),
-                'largest_win': stats.get(f'{prefix}largest_profit', 0.0),
-                'largest_loss': stats.get(f'{prefix}largest_loss', 0.0)
-            }
-        
-        return summary
-    
+        """Calculate comprehensive trade statistics."""
+        completed_trades = self.trade_lifecycle_manager.get_completed_trades()
+        portfolio_stats = self.portfolio_value_tracker.get_portfolio_level_stats()
+        trade_stats = self.trade_statistics_calculator.calculate_statistics(
+            completed_trades,
+            self.portfolio_value_tracker.initial_portfolio_value,
+            self.portfolio_value_tracker.allocation_mode,
+        )
+        trade_stats.update(portfolio_stats)
+        return trade_stats
+
     def get_trade_statistics_table(self) -> pd.DataFrame:
         """Get trade statistics formatted as a table with All/Long/Short columns."""
         stats = self.get_trade_statistics()
-        
-        if not self.trades:
-            return pd.DataFrame()
-        
-        # Define the metrics we want to display
-        metrics_config = [
-            ('num_trades', 'Number of Trades', 'int'),
-            ('num_winners', 'Number of Winners', 'int'),
-            ('num_losers', 'Number of Losers', 'int'),
-            ('win_rate_pct', 'Win Rate (%)', 'pct'),
-            ('total_pnl_net', 'Total P&L Net', 'currency'),
-            ('largest_profit', 'Largest Single Profit', 'currency'),
-            ('largest_loss', 'Largest Single Loss', 'currency'),
-            ('mean_profit', 'Mean Profit', 'currency'),
-            ('mean_loss', 'Mean Loss', 'currency'),
-            ('mean_trade_pnl', 'Mean Trade P&L', 'currency'),
-            ('reward_risk_ratio', 'Reward/Risk Ratio', 'ratio'),
-            ('total_commissions_paid', 'Commissions Paid', 'currency'),
-            ('avg_mfe', 'Avg MFE', 'currency'),
-            ('avg_mae', 'Avg MAE', 'currency'),
-            ('min_trade_duration_days', 'Min Duration (days)', 'int'),
-            ('max_trade_duration_days', 'Max Duration (days)', 'int'),
-            ('mean_trade_duration_days', 'Mean Duration (days)', 'float'),
-            ('information_score', 'Information Score', 'ratio'),
-            ('trades_per_month', 'Trades per Month', 'float')
-        ]
-        
-        # Build the table data
-        table_data = []
-        
-        for metric_key, metric_name, format_type in metrics_config:
-            row = {'Metric': metric_name}
-            
-            for direction in ['all', 'long', 'short']:
-                direction_title = direction.title()
-                value = stats.get(f'{direction}_{metric_key}', 0)
-                
-                # Format the value based on type
-                if format_type == 'int':
-                    formatted_value = f"{int(value)}"
-                elif format_type == 'pct':
-                    formatted_value = f"{value:.2f}%"
-                elif format_type == 'currency':
-                    formatted_value = f"${value:,.2f}"
-                elif format_type == 'ratio':
-                    if value == np.inf:
-                        formatted_value = "∞"
-                    else:
-                        formatted_value = f"{value:.3f}"
-                elif format_type == 'float':
-                    formatted_value = f"{value:.2f}"
-                elif format_type == 'string':
-                    formatted_value = str(value)
-                else:
-                    formatted_value = str(value)
-                
-                row[direction_title] = formatted_value
-            
-            table_data.append(row)
-        
-        # Add portfolio-level metrics
-        portfolio_metrics = [
-            ('max_margin_load', 'Max Margin Load', 'pct'),
-            ('mean_margin_load', 'Mean Margin Load', 'pct'),
-            ('allocation_mode', 'Allocation Mode', 'string'),
-            ('initial_capital', 'Initial Capital', 'currency'),
-            ('final_capital', 'Final Capital', 'currency'),
-            ('total_return_pct', 'Total Return (%)', 'pct'),
-            ('capital_growth_factor', 'Capital Growth Factor', 'ratio')
-        ]
-        
-        for metric_key, metric_name, format_type in portfolio_metrics:
-            row = {'Metric': metric_name}
-            value = stats.get(metric_key, 0)
-            
-            if format_type == 'pct':
-                formatted_value = f"{value * 100:.2f}%"
-            else:
-                formatted_value = f"{value:.4f}"
-            
-            # Portfolio metrics apply to all directions
-            for direction in ['All', 'Long', 'Short']:
-                row[direction] = formatted_value
-            
-            table_data.append(row)
-        
-        return pd.DataFrame(table_data)
-    
-    def _calculate_direction_stats(self, trades: List[Trade], direction: str) -> Dict[str, Any]:
-        """Calculate statistics for a specific trade direction."""
-        if not trades:
-            return self._get_empty_direction_stats()
-        
-        # Basic trade counts
-        total_trades = len(trades)
-        winning_trades = [t for t in trades if t.is_winner]
-        losing_trades = [t for t in trades if not t.is_winner]
-        num_winners = len(winning_trades)
-        num_losers = len(losing_trades)
-        win_rate = (num_winners / total_trades * 100) if total_trades > 0 else 0.0
-        
-        # P&L statistics
-        pnl_values = [t.pnl_net for t in trades if t.pnl_net is not None]
-        total_pnl_net = sum(pnl_values)
-        total_commissions = sum(t.commission_entry + t.commission_exit for t in trades)
-        
-        # New metrics: Largest single trade profit/loss
-        winning_pnls = [t.pnl_net for t in winning_trades if t.pnl_net is not None]
-        losing_pnls = [t.pnl_net for t in losing_trades if t.pnl_net is not None]
-        
-        largest_profit = max(winning_pnls) if winning_pnls else 0.0
-        largest_loss = min(losing_pnls) if losing_pnls else 0.0  # Most negative
-        
-        # Mean single trade profit/loss
-        mean_profit = np.mean(winning_pnls) if winning_pnls else 0.0
-        mean_loss = np.mean(losing_pnls) if losing_pnls else 0.0
-        mean_trade_pnl = np.mean(pnl_values) if pnl_values else 0.0
-        
-        # Reward/Risk ratio (average win / average loss)
-        reward_risk_ratio = abs(mean_profit / mean_loss) if mean_loss != 0 else np.inf if mean_profit > 0 else 0.0
-        
-        # Duration statistics
-        durations = [t.duration_days for t in trades if t.duration_days is not None]
-        min_duration = min(durations) if durations else 0
-        max_duration = max(durations) if durations else 0
-        mean_duration = np.mean(durations) if durations else 0
-        
-        # MFE/MAE statistics
-        mfe_values = [t.mfe for t in trades]
-        mae_values = [t.mae for t in trades]
-        avg_mfe = np.mean(mfe_values) if mfe_values else 0.0
-        avg_mae = np.mean(mae_values) if mae_values else 0.0
-        
-        # Calculate trades per month
-        if trades:
-            start_date = min(t.entry_date for t in trades)
-            end_date = max(t.exit_date for t in trades if t.exit_date)
-            total_months = ((end_date - start_date).days / 30.44) if end_date else 1
-            trades_per_month = total_trades / total_months if total_months > 0 else 0
-        else:
-            trades_per_month = 0
-        
-        # Information Score (simplified)
-        returns = [t.pnl_net / t.entry_value for t in trades if t.entry_value > 0]
-        information_score = (np.mean(returns) / np.std(returns)) if len(returns) > 1 and np.std(returns) > 0 else 0.0
-        
-        return {
-            'num_trades': total_trades,
-            'num_winners': num_winners,
-            'num_losers': num_losers,
-            'win_rate_pct': win_rate,
-            'total_commissions_paid': total_commissions,
-            'total_pnl_net': total_pnl_net,
-            'largest_profit': largest_profit,
-            'largest_loss': largest_loss,
-            'mean_profit': mean_profit,
-            'mean_loss': mean_loss,
-            'mean_trade_pnl': mean_trade_pnl,
-            'reward_risk_ratio': reward_risk_ratio,
-            'avg_mfe': avg_mfe,
-            'avg_mae': avg_mae,
-            'min_trade_duration_days': min_duration,
-            'max_trade_duration_days': max_duration,
-            'mean_trade_duration_days': mean_duration,
-            'information_score': information_score,
-            'trades_per_month': trades_per_month
-        }
-    
-    def _get_empty_direction_stats(self) -> Dict[str, Any]:
-        """Return empty trade statistics for a specific direction."""
-        return {
-            'num_trades': 0,
-            'num_winners': 0,
-            'num_losers': 0,
-            'win_rate_pct': 0.0,
-            'total_commissions_paid': 0.0,
-            'total_pnl_net': 0.0,
-            'largest_profit': 0.0,
-            'largest_loss': 0.0,
-            'mean_profit': 0.0,
-            'mean_loss': 0.0,
-            'mean_trade_pnl': 0.0,
-            'reward_risk_ratio': 0.0,
-            'avg_mfe': 0.0,
-            'avg_mae': 0.0,
-            'min_trade_duration_days': 0,
-            'max_trade_duration_days': 0,
-            'mean_trade_duration_days': 0.0,
-            'information_score': 0.0,
-            'trades_per_month': 0.0
-        }
-    
-    def _get_empty_trade_stats(self) -> Dict[str, Any]:
-        """Return empty trade statistics for cases with no trades."""
-        empty_direction = self._get_empty_direction_stats()
-        
-        # Create empty stats for all directions
-        combined_stats = {}
-        for direction in ["all", "long", "short"]:
-            for key, value in empty_direction.items():
-                combined_stats[f"{direction}_{key}"] = value
-        
-        # Add portfolio-level statistics
-        combined_stats.update({
-            'max_margin_load': 0.0,
-            'mean_margin_load': 0.0,
-            'allocation_mode': self.allocation_mode,
-            'initial_capital': self.initial_portfolio_value,
-            'final_capital': self.current_portfolio_value,
-            'total_return_pct': self.get_total_return() * 100,
-            'capital_growth_factor': self.current_portfolio_value / self.initial_portfolio_value if self.initial_portfolio_value > 0 else 1.0
-        })
-        
-        return combined_stats
+        return self.table_formatter.format_statistics_table(stats)
+
+    def get_directional_summary(self) -> Dict[str, Dict[str, Any]]:
+        """Get a summary of key metrics by direction for easy comparison."""
+        stats = self.get_trade_statistics()
+        return self.table_formatter.format_directional_summary(stats)
+
+    def close_all_positions(
+        self, date: pd.Timestamp, prices: pd.Series, commissions: Optional[Dict[str, float]] = None
+    ) -> None:
+        """Close all open positions at the end of backtesting."""
+        closed_trades = self.trade_lifecycle_manager.close_all_positions(date, prices, commissions)
+        for trade in closed_trades:
+            self.portfolio_value_tracker.update_portfolio_value(trade.pnl_net or 0.0)
+
+    def get_current_portfolio_value(self) -> float:
+        """Get the current portfolio value after all trades."""
+        return self.portfolio_value_tracker.get_current_portfolio_value()
+
+    def get_total_return(self) -> float:
+        """Get the total return as a percentage."""
+        return self.portfolio_value_tracker.get_total_return()
+
+    def get_capital_timeline(self) -> pd.DataFrame:
+        """Get a timeline of portfolio value, cash balance, and position values."""
+        return self.portfolio_value_tracker.get_capital_timeline()
+
+
+# Export Trade class
+__all__ = ["TradeTracker", "Trade"]

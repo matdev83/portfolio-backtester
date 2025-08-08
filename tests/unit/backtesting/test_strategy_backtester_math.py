@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
 
-from src.portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
+from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
 
 
 def _make_returns(vals):

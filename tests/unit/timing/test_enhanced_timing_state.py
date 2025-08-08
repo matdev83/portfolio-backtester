@@ -5,8 +5,7 @@ Split from test_advanced_state_management.py for better organization.
 
 import pytest
 import pandas as pd
-import numpy as np
-from src.portfolio_backtester.timing.timing_state import TimingState, PositionInfo
+from portfolio_backtester.interfaces.timing_state_interface import create_timing_state
 
 
 class TestEnhancedTimingState:
@@ -14,7 +13,7 @@ class TestEnhancedTimingState:
     
     def setup_method(self):
         """Set up test data."""
-        self.state = TimingState()
+        self.state = create_timing_state()
         self.test_date = pd.Timestamp('2023-01-01')
         self.assets = ['AAPL', 'MSFT', 'GOOGL']
         self.weights = pd.Series([0.4, 0.3, 0.3], index=self.assets)
@@ -132,7 +131,7 @@ class TestEnhancedTimingState:
         assert stats['total_trades'] == 0
         
         # Add some position history manually for testing
-        self.state.position_history = [
+        self.state.add_test_position_history([
             {
                 'asset': 'AAPL',
                 'holding_days': 5,
@@ -154,7 +153,7 @@ class TestEnhancedTimingState:
                 'entry_price': 2000.0,
                 'exit_price': 2300.0
             }
-        ]
+        ])
         
         stats = self.state.get_position_statistics()
         

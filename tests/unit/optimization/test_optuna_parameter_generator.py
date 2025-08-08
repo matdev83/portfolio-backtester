@@ -1,23 +1,19 @@
 import pytest
-try:
-    import optuna
-    OPTUNA_AVAILABLE = True
-except ImportError:
-    OPTUNA_AVAILABLE = False
 
-from src.portfolio_backtester.optimization.generators.optuna_generator import OptunaParameterGenerator
-from src.portfolio_backtester.optimization.parameter_generator import (
-    ParameterGeneratorNotInitializedError
-)
-from src.portfolio_backtester.optimization.results import EvaluationResult
+import optuna
+
+from portfolio_backtester.optimization.generators.optuna_generator import OptunaParameterGenerator
+from portfolio_backtester.optimization.results import EvaluationResult
+from portfolio_backtester.optimization.study_utils import StudyNameGenerator, ensure_study_cleanup
+
 
 # A simple objective function for testing
 def objective_function(trial):
     x = trial.suggest_float("param1", 0.1, 1.0)
     y = trial.suggest_int("param2", 1, 10)
-    return float((x - 0.5)**2 + (y - 5)**2)
+    return float((x - 0.5) ** 2 + (y - 5) ** 2)
 
-@pytest.mark.skipif(not OPTUNA_AVAILABLE, reason="Optuna is not installed")
+
 class TestOptunaParameterGeneratorIntegration:
     """
     Integration tests for the OptunaParameterGenerator using a real in-memory study.
@@ -27,7 +23,9 @@ class TestOptunaParameterGeneratorIntegration:
         """
         Set up the test environment before each test.
         """
-        self.scenario_config = {"name": "test_scenario"}
+        # Generate unique study name for this test instance
+        self.unique_study_name = StudyNameGenerator.generate_test_study_name("optuna_generator")
+        self.scenario_config = {"name": self.unique_study_name}
         self.optimization_config = {
             "parameter_space": {
                 "param1": {"type": "float", "low": 0.1, "high": 1.0},
@@ -36,10 +34,18 @@ class TestOptunaParameterGeneratorIntegration:
             "optimization_targets": [{"name": "value", "direction": "minimize"}],
             "max_evaluations": 15,
         }
-        
+
         # Create a real in-memory study for testing
         self.study = optuna.create_study(direction="minimize")
-        self.study.optimize(objective_function, n_trials=3) # Populate with some trials
+        self.study.optimize(objective_function, n_trials=3)  # Populate with some trials
+
+    def teardown_method(self):
+        """
+        Clean up after each test.
+        """
+        # Clean up any studies created during testing
+        if hasattr(self, "unique_study_name"):
+            ensure_study_cleanup("sqlite:///:memory:", self.unique_study_name)
 
     def test_initialization_with_real_study(self):
         """
@@ -51,7 +57,7 @@ class TestOptunaParameterGeneratorIntegration:
         generator.initialize(self.scenario_config, self.optimization_config)
         assert generator._initialized
         assert generator.study is not None
-        assert generator.study.study_name.startswith("test_scenario_optuna")
+        assert generator.study.study_name.startswith(f"{self.unique_study_name}_optuna")
 
     def test_suggest_parameters_from_real_study(self):
         """
@@ -59,7 +65,7 @@ class TestOptunaParameterGeneratorIntegration:
         """
         generator = OptunaParameterGenerator(random_state=42)
         generator.initialize(self.scenario_config, self.optimization_config)
-        
+
         # Run a few suggestion cycles
         for _ in range(self.optimization_config["max_evaluations"]):
             params = generator.suggest_parameters()
@@ -67,7 +73,7 @@ class TestOptunaParameterGeneratorIntegration:
             assert "param2" in params
             assert 0.1 <= params["param1"] <= 1.0
             assert 1 <= params["param2"] <= 10
-            
+
             # Simulate reporting a result to advance the generator
             result = EvaluationResult(objective_value=1.0, metrics={}, window_results=[])
             generator.report_result(params, result)
@@ -82,12 +88,14 @@ class TestOptunaParameterGeneratorIntegration:
         # Manually run a few trials
         for i in range(self.optimization_config["max_evaluations"]):
             params = generator.suggest_parameters()
-            value = (params['param1'] - 0.5)**2 + (params['param2'] - 5)**2
-            result = EvaluationResult(objective_value=value, metrics={"value": value}, window_results=[])
+            value = (params["param1"] - 0.5) ** 2 + (params["param2"] - 5) ** 2
+            result = EvaluationResult(
+                objective_value=value, metrics={"value": value}, window_results=[]
+            )
             generator.report_result(params, result)
 
         best_result = generator.get_best_result()
-        
+
         assert best_result.best_parameters is not None
         assert "param1" in best_result.best_parameters
         assert "param2" in best_result.best_parameters
@@ -102,10 +110,12 @@ class TestOptunaParameterGeneratorIntegration:
         generator.initialize(self.scenario_config, self.optimization_config)
 
         # Run optimization to populate the study
-        for _ in range(10): # More trials for better importance calculation
+        for _ in range(10):  # More trials for better importance calculation
             params = generator.suggest_parameters()
-            value = (params['param1'] - 0.5)**2 + (params['param2'] - 5)**2
-            result = EvaluationResult(objective_value=value, metrics={"value": value}, window_results=[])
+            value = (params["param1"] - 0.5) ** 2 + (params["param2"] - 5) ** 2
+            result = EvaluationResult(
+                objective_value=value, metrics={"value": value}, window_results=[]
+            )
             generator.report_result(params, result)
 
         importance = generator.get_parameter_importance()
@@ -127,5 +137,5 @@ class TestOptunaParameterGeneratorIntegration:
             params = generator.suggest_parameters()
             result = EvaluationResult(objective_value=1.0, metrics={}, window_results=[])
             generator.report_result(params, result)
-        
+
         assert generator.is_finished()

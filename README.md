@@ -22,6 +22,7 @@ You can run an optimization with a single command using the provided shortcut sc
 ```
 
 For example:
+
 ```bash
 ./optimize.py config/scenarios/portfolio/calmar_momentum_strategy/default.yaml --optuna-trials 100 --n-jobs 4
 ```
@@ -31,6 +32,7 @@ This will invoke the optimizer with the specified scenario YAML and any addition
 ## Key Features
 
 ### Core Capabilities
+
 - **Multiple Strategy Types**: 11+ fully verified strategies including Momentum, VAMS, Calmar, Sortino, EMA Crossover, Low Volatility Factor, and Static Allocation
 - **Advanced Position Sizing**: Equal weight, volatility-based, risk-adjusted sizing
 - **Comprehensive Rebalancing**: 40+ supported frequencies from hourly to bi-annual (see [Rebalance Frequencies](#rebalance-frequencies))
@@ -39,6 +41,7 @@ This will invoke the optimizer with the specified scenario YAML and any addition
 - **Production-Ready**: All strategies verified post-refactoring with comprehensive testing
 
 ### Advanced Optimization
+
 - **Walk-Forward Optimization (WFO)**: Robust parameter optimization with time-series validation
 - **WFO Robustness Features**: Randomized window sizes and start dates for enhanced robustness
 - **Multi-Objective Optimization**: Simultaneous optimization of multiple metrics (Sharpe, Sortino, Max Drawdown)
@@ -46,14 +49,17 @@ This will invoke the optimizer with the specified scenario YAML and any addition
 - **Advanced Genetic Algorithm Features**: Adaptive parameter control, elite preservation, and sophisticated crossover operators
 - **Trial Pruning**: Early stopping of unpromising parameter combinations
 - **Static Strategy Optimization**: Comprehensive optimization of asset weights and rebalancing frequencies for allocation strategies
+- **Persistent Study Storage**: Optuna studies are stored in `data/optuna_studies.db` for resumable optimization sessions
 
 ### Two-Stage Monte Carlo System
+
 - **Stage 1 (During Optimization)**: Lightweight synthetic data injection for parameter robustness testing
 - **Stage 2 (Post-Optimization)**: Comprehensive stress testing with multiple replacement levels
 - **GARCH-Based Synthetic Data**: Realistic market condition simulation preserving statistical properties
 - **Asset Replacement Strategy**: Configurable percentage of assets replaced with synthetic equivalents
 
 ### Capital Allocation Modes
+
 - **Reinvestment Mode (Default)**: Enables compounding by using current account balance for position sizing
 - **Fixed Fractional Mode**: Disables compounding by always using initial capital for position sizing
 - **Strategy-Level Control**: Configure allocation mode per strategy for flexible analysis
@@ -61,6 +67,7 @@ This will invoke the optimizer with the specified scenario YAML and any addition
 - **Industry Standard Terminology**: Uses common financial industry names for allocation modes
 
 ### Advanced Analytics & Reporting
+
 - **Comprehensive Performance Metrics**: Sharpe, Sortino, Calmar ratios, drawdown analysis
 - **Stability Metrics**: Parameter consistency across walk-forward windows
 - **Trial P&L Visualization**: Monte Carlo-style plots showing optimization trial performance
@@ -69,6 +76,7 @@ This will invoke the optimizer with the specified scenario YAML and any addition
 - **Configurable Reporting**: Advanced hyperparameter analysis can be disabled for faster optimization
 
 ### Enhanced Configuration System
+
 - **YAML-Based Configuration**: Flexible parameter and scenario management
 - **Configurable Universes**: Three flexible ways to define trading universes (fixed, named, method-based)
 - **Robustness Configuration**: Fine-tuned control over WFO randomization
@@ -77,6 +85,7 @@ This will invoke the optimizer with the specified scenario YAML and any addition
 - **Strategy Parameter Defaults**: Centralized optimization parameter management
 
 ### Fail-Tolerance Data Gathering
+
 - **Hybrid Data Source**: Automatic failover between Stooq and yfinance data sources
 - **Data Validation**: Comprehensive validation of downloaded data quality
 - **Format Normalization**: Consistent MultiIndex output regardless of source
@@ -92,13 +101,13 @@ This will invoke the optimizer with the specified scenario YAML and any addition
     ```
 
 2. **Activate the virtual environment:**
-    * **Windows:**
+    - **Windows:**
 
         ```bash
         .venv\Scripts\activate
         ```
 
-    * **macOS/Linux:**
+    - **macOS/Linux:**
 
         ```bash
         source .venv/bin/activate
@@ -121,69 +130,89 @@ python -m src.portfolio_backtester.backtester
 ### CLI Parameters
 
 #### Core Parameters
-* `--mode`: Mode to run the backtester in.
-  * **Choices:** `backtest`, `optimize`, `monte_carlo`
-  * **Required:** Yes
-  * **Description:** 
+
+- `--mode`: Mode to run the backtester in.
+  - **Choices:** `backtest`, `optimize`, `monte_carlo`
+  - **Required:** Yes
+  - **Description:**
     - `backtest`: Single scenario backtesting
     - `optimize`: Walk-forward optimization with robustness features
     - `monte_carlo`: Full Monte Carlo stress testing analysis
-* `--scenario-name`: Name of the scenario from `config/scenarios/` subdirectories
-  * **Required:** Yes for optimize/monte_carlo modes
-* `--log-level`: Set the logging level
-  * **Choices:** `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
-  * **Default:** `INFO`
+
+- `--scenario-name`: Name of the scenario from `config/scenarios/` subdirectories
+  - **Required:** Yes for optimize/monte_carlo modes
+- `--log-level`: Set the logging level
+  - **Choices:** `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+  - **Default:** `INFO`
 
 #### S&P 500 Universe Data Management
+
 For instructions on how to manage and update the S&P 500 historical constituent data, please refer to the [S&P 500 Universe Data Management Guide](docs/sp500_universe_management.md).
 All related scripts are located in `src/portfolio_backtester/universe_data/`.
 
 #### Optimization Parameters
-* `--optimizer`: Choose the optimization algorithm
-  * **Choices:** `optuna`, `genetic`
-  * **Default:** `optuna`
-* `--optuna-trials`: Maximum trials per optimization
-  * **Default:** `200`
-* `--timeout`: Time budget per optimization (seconds)
-  * **Default:** `None` (no timeout)
-* `--n-jobs`: Parallel worker processes
-  * **Default:** `8` (`-1` means all cores)
-* `--random-seed`: Set random seed for reproducibility
-  * **Default:** `None`
+
+- `--optimizer`: Choose the optimization algorithm
+  - **Choices:** `optuna`, `genetic`
+  - **Default:** `optuna`
+
+- `--optuna-trials`: Maximum trials per optimization
+  - **Default:** `200`
+- `--timeout`: Time budget per optimization (seconds)
+  - **Default:** `None` (no timeout)
+- `--n-jobs`: Parallel worker processes
+  - **Default:** `8` (`-1` means all cores)
+- `--random-seed`: Set random seed for reproducibility
+  - **Default:** `None`
 
 #### Advanced Optimization Features
-* `--pruning-enabled`: Enable trial pruning for faster optimization
-* `--pruning-n-startup-trials`: Trials to complete before pruning begins
-  * **Default:** `5`
-* `--pruning-interval-steps`: Report interval for pruning checks
-  * **Default:** `1`
+
+- `--pruning-enabled`: Enable trial pruning for faster optimization
+
+- `--pruning-n-startup-trials`: Trials to complete before pruning begins
+  - **Default:** `5`
+- `--pruning-interval-steps`: Report interval for pruning checks
+  - **Default:** `1`
 
 ##### Early Stopping Parameters
-* `--early-stop-patience`: Stop after N consecutive trials with poor relative performance
-  * **Default:** `10`
-  * **Purpose:** Optimization efficiency - stops when no improvement is being made
-  * **Trigger:** Trials perform worse than recent best (e.g., 0.15 → 0.14 → 0.13...)
-* `--early-stop-zero-trials`: Stop after N consecutive trials with exactly zero values
-  * **Default:** `20`
-  * **Purpose:** Problem detection - identifies fundamental configuration/data issues
-  * **Trigger:** Trials return exactly 0.0 (indicating data unavailability or setup errors)
-  * **When to use:** Set lower (5-10) when testing new scenarios to quickly catch configuration problems
+
+- `--early-stop-patience`: Stop after N consecutive trials with poor relative performance
+  - **Default:** `10`
+  - **Purpose:** Optimization efficiency - stops when no improvement is being made
+  - **Trigger:** Trials perform worse than recent best (e.g., 0.15 → 0.14 → 0.13...)
+
+- `--early-stop-zero-trials`: Stop after N consecutive trials with exactly zero values
+  - **Default:** `20`
+  - **Purpose:** Problem detection - identifies fundamental configuration/data issues
+  - **Trigger:** Trials return exactly 0.0 (indicating data unavailability or setup errors)
+  - **When to use:** Set lower (5-10) when testing new scenarios to quickly catch configuration problems
+
+#### Study Management
+
+- `--study-name`: Name for the Optuna study (enables resumable optimization)
+  - **Storage Location:** Studies are automatically saved to `data/optuna_studies.db`
+  - **Resumability:** Use the same study name to continue previous optimization sessions
+  - **Example:** `--study-name "momentum_optimization_v2"`
 
 #### Monte Carlo Parameters
-* `--mc-simulations`: Number of Monte Carlo simulations
-  * **Default:** `1000`
-* `--mc-years`: Years to project in Monte Carlo analysis
-  * **Default:** `10`
-* `--interactive`: Show plots interactively
+
+- `--mc-simulations`: Number of Monte Carlo simulations
+  - **Default:** `1000`
+
+- `--mc-years`: Years to project in Monte Carlo analysis
+  - **Default:** `10`
+- `--interactive`: Show plots interactively
 
 ### Examples
 
 **1. Basic Strategy Backtest:**
+
 ```bash
 python -m src.portfolio_backtester.backtester --mode backtest --scenario-name "Momentum_Unfiltered"
 ```
 
 **2. Advanced Optimization with Robustness (using scenario name):**
+
 ```bash
 python -m src.portfolio_backtester.backtester \
   --mode optimize \
@@ -197,6 +226,7 @@ python -m src.portfolio_backtester.backtester \
 ```
 
 **3. Advanced Optimization with Robustness (using scenario filename):**
+
 ```bash
 python -m src.portfolio_backtester.backtester \
   --mode optimize \
@@ -209,8 +239,8 @@ python -m src.portfolio_backtester.backtester \
   --random-seed 42
 ```
 
-
 **3. Monte Carlo Stress Testing:**
+
 ```bash
 python -m src.portfolio_backtester.backtester \
   --mode monte_carlo \
@@ -221,6 +251,7 @@ python -m src.portfolio_backtester.backtester \
 ```
 
 **4. Genetic Algorithm Optimization:**
+
 ```bash
 python -m src.portfolio_backtester.backtester \
   --mode optimize \
@@ -231,6 +262,7 @@ python -m src.portfolio_backtester.backtester \
 ```
 
 **5. Optimization with Early Stopping for Zero Values:**
+
 ```bash
 python -m src.portfolio_backtester.backtester \
   --mode optimize \
@@ -238,6 +270,7 @@ python -m src.portfolio_backtester.backtester \
   --early-stop-zero-trials 5 \
   --optuna-trials 100
 ```
+
 *This example shows how to stop optimization early if 5 consecutive trials return zero values, which is useful for detecting data availability issues or configuration problems.*
 
 ## Configuration
@@ -254,6 +287,7 @@ The `universe_config` section of a scenario YAML defines which assets are includ
 - `method`: A programmatically generated universe
 
 **Example: Single Symbol Universe**
+
 ```yaml
 universe_config:
   type: single_symbol
@@ -261,6 +295,7 @@ universe_config:
 ```
 
 **Example: Fixed Universe**
+
 ```yaml
 universe_config:
   type: fixed
@@ -268,6 +303,7 @@ universe_config:
 ```
 
 **Example: Named Universe**
+
 ```yaml
 universe_config:
   type: named
@@ -275,6 +311,7 @@ universe_config:
 ```
 
 **Example: Method Universe**
+
 ```yaml
 universe_config:
   type: method
@@ -307,11 +344,13 @@ slippage_bps: 2.5
 The backtester supports two capital allocation modes that control how position sizes are calculated:
 
 #### Reinvestment Mode (Default)
+
 - **Behavior**: Uses current account balance for position sizing
 - **Effect**: Enables compounding - profits increase future position sizes, losses decrease them
 - **Use Case**: Realistic simulation of account growth/decline for live trading preparation
 
 #### Fixed Fractional Mode
+
 - **Behavior**: Always uses initial capital for position sizing
 - **Effect**: Disables compounding - position sizes stay constant relative to starting capital
 - **Use Case**: Fair strategy comparison without compounding effects for academic analysis
@@ -319,6 +358,7 @@ The backtester supports two capital allocation modes that control how position s
 #### Configuration
 
 **Strategy-Level Configuration:**
+
 ```yaml
 strategy_config:
   name: "MyStrategy"
@@ -328,6 +368,7 @@ strategy_config:
 ```
 
 **Meta Strategy Configuration:**
+
 ```yaml
 meta_strategy_config:
   name: "MyMetaStrategy"
@@ -343,6 +384,7 @@ meta_strategy_config:
 ```
 
 **Available Values:**
+
 - `"reinvestment"` or `"compound"` - Enable compounding (default)
 - `"fixed_fractional"` or `"fixed_capital"` - Disable compounding
 
@@ -358,6 +400,7 @@ strategy_params:
 
 **Example Configurations:**
 See `config/examples/allocation_mode_example.yaml` for complete configuration examples including:
+
 - Basic strategy with reinvestment mode
 - Strategy with fixed fractional mode  
 - Meta strategy allocation mode configuration
@@ -367,9 +410,9 @@ See `config/examples/allocation_mode_example.yaml` for complete configuration ex
 
 To implement a custom commission model, follow these steps:
 
-1.  **Create a new class** that inherits from `TransactionCostModel` in `src/portfolio_backtester/trading/transaction_costs.py`.
-2.  **Implement the `calculate` method**. This method should take `turnover`, `weights_daily`, `price_data`, and `portfolio_value` as input and return a tuple containing the total costs as a pandas Series and a dictionary with a breakdown of the costs.
-3.  **Register your new model** in the `get_transaction_cost_model` factory function in the same file.
+1. **Create a new class** that inherits from `TransactionCostModel` in `src/portfolio_backtester/trading/transaction_costs.py`.
+2. **Implement the `calculate` method**. This method should take `turnover`, `weights_daily`, `price_data`, and `portfolio_value` as input and return a tuple containing the total costs as a pandas Series and a dictionary with a breakdown of the costs.
+3. **Register your new model** in the `get_transaction_cost_model` factory function in the same file.
 
     ```python
     def get_transaction_cost_model(config: dict) -> TransactionCostModel:
@@ -381,7 +424,8 @@ To implement a custom commission model, follow these steps:
         else:
             raise ValueError(f"Unsupported transaction cost model: {model_name}")
     ```
-4.  **Select your model** in `config/parameters.yaml`:
+
+4. **Select your model** in `config/parameters.yaml`:
 
     ```yaml
     transaction_cost_model: your_custom_model
@@ -389,13 +433,278 @@ To implement a custom commission model, follow these steps:
 
 ### Detailed Configuration Guides
 
-*   **[WFO Robustness Configuration](docs/configuration_wfo.md)**
-*   **[Monte Carlo Configuration](docs/configuration_carlo.md)**
-*   **[Genetic Algorithm Configuration](docs/configuration_genetic_algorithm.md)**
+- **[WFO Robustness Configuration](docs/configuration_wfo.md)**
+- **[Monte Carlo Configuration](docs/configuration_carlo.md)**
+- **[Genetic Algorithm Configuration](docs/configuration_genetic_algorithm.md)**
+
+## Architecture
+
+### Provider Interface System
+
+The Portfolio Backtester features a modern **Provider Interface Architecture** that follows SOLID design principles for maximum extensibility and maintainability.
+
+#### Core Provider Interfaces
+
+The system uses three main provider interfaces that decouple strategy logic from implementation details:
+
+- **`IUniverseProvider`** - Manages asset universe selection and resolution
+- **`IPositionSizerProvider`** - Handles position sizing logic and parameters  
+- **`IStopLossProvider`** - Controls stop loss implementation and configuration
+- **`ITakeProfitProvider`** - Controls take profit implementation and configuration
+
+#### Key Benefits
+
+- **🔒 Zero Legacy Dependencies** - No fallback paths or dual-path logic
+- **🧪 Enhanced Testability** - Providers can be easily mocked for testing
+- **⚡ Better Performance** - No overhead from fallback checks
+- **🎯 Clear Separation** - Universe, position sizing, and stop loss are isolated
+- **🔧 Easy Extension** - New providers can be added without modifying existing code
+- **✅ Type Safety** - Full mypy compliance throughout the system
+
+#### How It Works
+
+Every strategy automatically gets provider instances during initialization:
+
+```python
+# Strategies automatically use providers
+strategy = YourStrategy(config)
+
+# Providers are accessible for advanced use cases
+universe_provider = strategy.get_universe_provider()
+position_sizer_provider = strategy.get_position_sizer_provider()
+stop_loss_provider = strategy.get_stop_loss_provider()
+take_profit_provider = strategy.get_take_profit_provider()
+```
+
+#### Provider Implementations
+
+Each interface has multiple implementations:
+
+- **ConfigBasedProvider** - Uses strategy configuration for dynamic behavior
+- **FixedProvider** - Uses static, predefined behavior
+- **Factory Classes** - Automatically select appropriate provider based on configuration
+
+#### Enforcement Mechanisms
+
+The system includes automated enforcement to prevent regression to legacy patterns:
+
+- **Runtime Enforcement** - Functions require provider parameters
+- **Deprecation Warnings** - Legacy functions warn users about modern alternatives
+- **Static Analysis** - `scripts/enforce_provider_usage.py` detects violations
+- **Pre-commit Hooks** - Automated checking prevents legacy code from being committed
+
+This architecture ensures that all strategies use consistent, extensible, and well-tested patterns for core functionality.
+
+### Risk Management Configuration
+
+The backtester includes comprehensive **Stop Loss** and **Take Profit** systems that operate independently of strategy rebalancing schedules:
+
+#### Stop Loss and Take Profit Systems
+
+Both systems monitor positions **daily** regardless of the strategy's rebalance frequency (monthly, quarterly, etc.) and support **ATR-based dynamic levels**:
+
+**Example: Combined Risk Management Configuration**
+
+```yaml
+strategy_params:
+  # ... other strategy parameters ...
+  
+  # ATR-based Stop Loss Configuration
+  stop_loss_config:
+    type: "AtrBasedStopLoss"
+    atr_length: 14        # 14-day ATR calculation period
+    atr_multiple: 2.0     # Stop loss at 2x ATR from entry price
+    
+  # ATR-based Take Profit Configuration  
+  take_profit_config:
+    type: "AtrBasedTakeProfit"
+    atr_length: 21        # 21-day ATR calculation period
+    atr_multiple: 3.0     # Take profit at 3x ATR from entry price (1.5:1 reward-to-risk)
+```
+
+**Example: Disable Risk Management Systems**
+
+```yaml
+strategy_params:
+  # ... other strategy parameters ...
+  
+  # Disable stop loss
+  stop_loss_config:
+    type: "NoStopLoss"
+    
+  # Disable take profit
+  take_profit_config:
+    type: "NoTakeProfit"
+```
+
+**Example: Risk Management Parameter Optimization**
+
+```yaml
+optimize:
+  # Stop Loss optimization
+  - parameter: stop_loss_atr_multiple
+    min_value: 1.0
+    max_value: 3.0
+    step: 0.25
+    
+  # Take Profit optimization  
+  - parameter: take_profit_atr_multiple
+    min_value: 2.0
+    max_value: 5.0
+    step: 0.5
+
+strategy_params:
+  stop_loss_config:
+    type: "AtrBasedStopLoss"
+    atr_length: 14
+    atr_multiple: 2.0     # Will be optimized
+    
+  take_profit_config:
+    type: "AtrBasedTakeProfit"
+    atr_length: 21
+    atr_multiple: 3.0     # Will be optimized
+```
+
+#### Risk Management Features
+
+- **🕒 Schedule-Independent**: Daily monitoring regardless of strategy rebalance frequency
+- **📊 ATR-Based Levels**: Dynamic, volatility-adjusted stop loss and take profit levels  
+- **🔧 Configurable Parameters**: Separate ATR length and multiple settings for each system
+- **🤝 Compatible Systems**: Both systems work together without interference
+- **📈 Strategy-Agnostic**: Compatible with signal-based and portfolio-based strategies
+- **⚡ Optimizable**: All parameters can be included in walk-forward optimization
+- **🛡️ Fallback-Safe**: Multiple layers of risk management application
+- **✅ Type-Safe**: Full mypy compliance and comprehensive error handling
+
+#### Risk Management Examples
+
+For comprehensive examples of different risk management configurations, see:
+
+- **[Risk Management Examples](config/scenarios/examples/risk_management_examples.yaml)** - Basic configurations for various strategy types
+- **[Take Profit Showcase](config/scenarios/examples/take_profit_showcase.yaml)** - Trading style-specific risk management setups
+- **[EMA Crossover Test](config/scenarios/signal/technical/ema_crossover_signal_strategy/test.yaml)** - Optimization with risk management parameters
+- **[Sharpe Momentum Strategy](config/scenarios/portfolio/momentum/sharpe_momentum_portfolio_strategy/default.yaml)** - Portfolio strategy with risk management
+
+#### Architecture Diagram
+
+The following diagram illustrates the provider interface system architecture:
+
+```mermaid
+graph TD
+    %% Strategy Base Classes
+    BS[BaseStrategy]
+    PS[PortfolioStrategy]
+    SS[SignalStrategy]
+    MS[BaseMetaStrategy]
+    
+    %% Provider Interfaces
+    UP["🌐 IUniverseProvider<br/>get_universe_symbols()"]
+    PSP["📏 IPositionSizerProvider<br/>get_position_sizer()"]
+    SLP["🛡️ IStopLossProvider<br/>get_stop_loss_handler()"]
+    TPP["🎯 ITakeProfitProvider<br/>get_take_profit_handler()"]
+    
+    %% Universe Providers
+    CUP[ConfigBasedUniverseProvider]
+    FUP[FixedListUniverseProvider]
+    DUP[DynamicUniverseProvider]
+    UPF[UniverseProviderFactory]
+    
+    %% Position Sizer Providers
+    CPSP[ConfigBasedPositionSizerProvider]
+    FPSP[FixedPositionSizerProvider]
+    PSPF[PositionSizerProviderFactory]
+    
+    %% Stop Loss Providers
+    CSLP[ConfigBasedStopLossProvider]
+    FSLP[FixedStopLossProvider]
+    SLPF[StopLossProviderFactory]
+    
+    %% Take Profit Providers
+    CTPP[ConfigBasedTakeProfitProvider]
+    FTPP[FixedTakeProfitProvider]
+    TPPF[TakeProfitProviderFactory]
+    
+    %% Workflow Functions
+    SP[size_positions]
+    GS[generate_signals]
+    
+    %% Strategy inheritance
+    PS --> BS
+    SS --> BS
+    MS --> BS
+    
+    %% BaseStrategy uses providers
+    BS -->|uses| UP
+    BS -->|uses| PSP
+    BS -->|uses| SLP
+    BS -->|uses| TPP
+    
+    %% Provider implementations
+    CUP -.->|implements| UP
+    FUP -.->|implements| UP
+    DUP -.->|implements| UP
+    
+    CPSP -.->|implements| PSP
+    FPSP -.->|implements| PSP
+    
+    CSLP -.->|implements| SLP
+    FSLP -.->|implements| SLP
+    
+    CTPP -.->|implements| TPP
+    FTPP -.->|implements| TPP
+    
+    %% Factories create providers
+    UPF -->|creates| CUP
+    UPF -->|creates| FUP
+    UPF -->|creates| DUP
+    
+    PSPF -->|creates| CPSP
+    PSPF -->|creates| FPSP
+    
+    SLPF -->|creates| CSLP
+    SLPF -->|creates| FSLP
+    
+    TPPF -->|creates| CTPP
+    TPPF -->|creates| FTPP
+    
+    %% Workflow integration
+    SP -->|requires strategy<br/>with providers| BS
+    GS -->|uses providers<br/>from strategy| BS
+    
+    %% Styling
+    classDef providerInterface fill:#e1f5fe,stroke:#0277bd,stroke-width:3px
+    classDef provider fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef factory fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef strategy fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef workflow fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    
+    class UP,PSP,SLP,TPP providerInterface
+    class CUP,FUP,DUP,CPSP,FPSP,CSLP,FSLP,CTPP,FTPP provider
+    class UPF,PSPF,SLPF,TPPF factory
+    class BS,PS,SS,MS strategy
+    class SP,GS workflow
+```
 
 ## Contributing
 
 Contributions are welcome! If you'd like to help improve the Portfolio Backtester, please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get started.
+
+### Actions AFTER Each File Edit (for agents and contributors)
+
+After each completed file edit, run the following quality-assurance commands against the single modified file (in this order):
+
+```bash
+./.venv/Scripts/python.exe -m black <modified_filename>
+./.venv/Scripts/python.exe -m ruff check <modified_filename>
+./.venv/Scripts/python.exe -m ruff check --fix <modified_filename>
+./.venv/Scripts/python.exe -m mypy <modified_filename>
+```
+
+Notes:
+
+- Always use the project’s Windows venv interpreter path shown above.
+- Replace `<modified_filename>` with the exact path to the changed file.
+- Run these before proceeding to additional edits or committing.
 
 ## License
 

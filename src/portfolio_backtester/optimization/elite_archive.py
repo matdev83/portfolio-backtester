@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Tuple
+
+import numpy as np
+
+from ..api_stability import api_stable
+
 """Elite preservation utilities for the Genetic Optimizer.
 
 The archive stores the best chromosomes seen throughout the run and supports
@@ -10,12 +18,6 @@ All functionality is encapsulated in this module so that the main
 `genetic_optimizer.py` file remains focused on orchestration while keeping its
 length manageable.
 """
-
-from dataclasses import dataclass
-from datetime import datetime
-from ..api_stability import api_stable
-from typing import List, Any, Dict, Tuple
-import numpy as np
 
 __all__ = [
     "EliteSolution",
@@ -67,12 +69,14 @@ class EliteArchive:
         for e in self.elites:
             age = current_generation - e.generation
             e.metadata["age"] = age
-            e.metadata["aged_fitness"] = e.fitness_score * (self.aging_factor ** age)
+            e.metadata["aged_fitness"] = e.fitness_score * (self.aging_factor**age)
 
     # ------------------------------------------------------------------
     # Injection strategies
     # ------------------------------------------------------------------
-    def inject_direct(self, population: np.ndarray, fitness: np.ndarray, num_elites: int = 2) -> Tuple[np.ndarray, np.ndarray]:
+    def inject_direct(
+        self, population: np.ndarray, fitness: np.ndarray, num_elites: int = 2
+    ) -> Tuple[np.ndarray, np.ndarray]:
         if not self.elites:
             return population, fitness
         num_elites = min(num_elites, len(self.elites))
@@ -83,10 +87,14 @@ class EliteArchive:
             fitness[idx] = self.elites[i].fitness_score
         return population, fitness
 
-    def inject_tournament(self, population: np.ndarray, fitness: np.ndarray, tournament_size: int = 3) -> Tuple[np.ndarray, np.ndarray]:
+    def inject_tournament(
+        self, population: np.ndarray, fitness: np.ndarray, tournament_size: int = 3
+    ) -> Tuple[np.ndarray, np.ndarray]:
         if not self.elites:
             return population, fitness
-        pool = list(zip(population, fitness)) + [(e.chromosome, e.fitness_score) for e in self.elites]
+        pool = list(zip(population, fitness)) + [
+            (e.chromosome, e.fitness_score) for e in self.elites
+        ]
         pool.sort(key=lambda x: x[1], reverse=True)
         num_replace = max(1, len(population) // 10)
         for i in range(min(num_replace, len(pool))):
@@ -102,4 +110,4 @@ class EliteArchive:
         if strategy == "tournament":
             return self.inject_tournament(population, fitness, **kwargs)
         # Unknown -> no-op
-        return population, fitness 
+        return population, fitness

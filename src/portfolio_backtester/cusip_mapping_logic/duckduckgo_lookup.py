@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 _CUSIP_RE = re.compile(r"\b(?=[0-9A-Z]*[A-Z])(?=[0-9A-Z]*[0-9])[0-9A-Z]{8,9}\b")
 
+
 def lookup_duckduckgo(ticker: str, *, throttle: float = 1.0) -> Tuple[Optional[str], Optional[str]]:
     """Scrape first search-result page for a 8-9-char alnum CUSIP."""
     try:

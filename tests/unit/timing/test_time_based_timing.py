@@ -5,15 +5,28 @@ Tests for TimeBasedTiming controller.
 import pytest
 import pandas as pd
 from unittest.mock import Mock
-from src.portfolio_backtester.timing.time_based_timing import TimeBasedTiming
+from portfolio_backtester.timing.custom_timing_registry import TimingControllerFactory
+from portfolio_backtester.timing.time_based_timing import TimeBasedTiming
 
 
 class TestTimeBasedTiming:
     """Test cases for TimeBasedTiming."""
     
+    def create_time_based_timing(self, config=None):
+        """Create TimeBasedTiming using interface-compliant factory pattern."""
+        if config is None:
+            config = {}
+        # Ensure mode is set for factory
+        factory_config = config.copy()
+        factory_config["mode"] = "time_based"
+        controller = TimingControllerFactory.create_controller(factory_config)
+        # Verify it's the correct type
+        assert isinstance(controller, TimeBasedTiming), f"Expected TimeBasedTiming, got {type(controller)}"
+        return controller
+    
     def test_initialization_defaults(self):
         """Test TimeBasedTiming initialization with defaults."""
-        controller = TimeBasedTiming({})
+        controller = self.create_time_based_timing({})
         
         assert controller.frequency == 'M'
         assert controller.offset == 0
@@ -24,14 +37,14 @@ class TestTimeBasedTiming:
             'rebalance_frequency': 'Q',
             'rebalance_offset': 5
         }
-        controller = TimeBasedTiming(config)
+        controller = self.create_time_based_timing(config)
         
         assert controller.frequency == 'Q'
         assert controller.offset == 5
     
     def test_get_rebalance_dates_monthly(self):
         """Test monthly rebalance date generation."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'M'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'M'})
         
         start_date = pd.Timestamp('2023-01-01')
         end_date = pd.Timestamp('2023-03-31')
@@ -52,7 +65,7 @@ class TestTimeBasedTiming:
     
     def test_get_rebalance_dates_quarterly(self):
         """Test quarterly rebalance date generation."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'Q'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'Q'})
         
         start_date = pd.Timestamp('2023-01-01')
         end_date = pd.Timestamp('2023-12-31')
@@ -70,7 +83,7 @@ class TestTimeBasedTiming:
     
     def test_get_rebalance_dates_daily(self):
         """Test daily rebalance date generation."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'D'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'D'})
         
         start_date = pd.Timestamp('2023-01-02')  # Start on Monday
         end_date = pd.Timestamp('2023-01-06')    # End on Friday
@@ -86,7 +99,7 @@ class TestTimeBasedTiming:
     
     def test_get_rebalance_dates_with_offset(self):
         """Test rebalance date generation with offset."""
-        controller = TimeBasedTiming({
+        controller = self.create_time_based_timing({
             'rebalance_frequency': 'M',
             'rebalance_offset': -5  # 5 days before month end
         })
@@ -107,7 +120,7 @@ class TestTimeBasedTiming:
     
     def test_get_rebalance_dates_weekend_adjustment(self):
         """Test that rebalance dates are adjusted for weekends."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'M'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'M'})
         
         # Use a month where month-end falls on weekend
         start_date = pd.Timestamp('2023-04-01')
@@ -123,7 +136,7 @@ class TestTimeBasedTiming:
     
     def test_get_rebalance_dates_no_future_dates(self):
         """Test that no dates beyond end_date are included."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'M'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'M'})
         
         start_date = pd.Timestamp('2023-01-01')
         end_date = pd.Timestamp('2023-01-15')  # Mid-month
@@ -137,7 +150,7 @@ class TestTimeBasedTiming:
     
     def test_should_generate_signal_on_scheduled_date(self):
         """Test signal generation on scheduled dates."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'M'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'M'})
         
         # Set up scheduled dates
         scheduled_date = pd.Timestamp('2023-01-31')
@@ -154,7 +167,7 @@ class TestTimeBasedTiming:
     
     def test_should_generate_signal_empty_schedule(self):
         """Test signal generation with empty schedule."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'M'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'M'})
         strategy_context = Mock()
         
         # Should not generate signal when no dates are scheduled
@@ -163,7 +176,7 @@ class TestTimeBasedTiming:
     
     def test_frequency_conversion_m_to_me(self):
         """Test that 'M' frequency is converted to 'ME' for month-end compatibility."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'M'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'M'})
         
         start_date = pd.Timestamp('2023-01-01')
         end_date = pd.Timestamp('2023-01-31')
@@ -179,12 +192,12 @@ class TestTimeBasedTiming:
     def test_other_frequencies_unchanged(self):
         """Test that other frequencies are not modified."""
         for freq in ['D', 'W', 'Q', 'A', 'Y']:
-            controller = TimeBasedTiming({'rebalance_frequency': freq})
+            controller = self.create_time_based_timing({'rebalance_frequency': freq})
             assert controller.frequency == freq
     
     def test_get_rebalance_dates_weekly(self):
         """Test weekly rebalance date generation."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'W'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'W'})
         
         start_date = pd.Timestamp('2023-01-02')  # Monday
         end_date = pd.Timestamp('2023-01-29')    # Sunday (4 weeks later)
@@ -200,7 +213,7 @@ class TestTimeBasedTiming:
     
     def test_get_rebalance_dates_annual(self):
         """Test annual rebalance date generation."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'A'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'A'})
         
         start_date = pd.Timestamp('2022-01-01')
         end_date = pd.Timestamp('2024-12-31')
@@ -216,7 +229,7 @@ class TestTimeBasedTiming:
     
     def test_get_rebalance_dates_invalid_frequency(self):
         """Test that invalid frequency raises appropriate error."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'INVALID'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'INVALID'})
         
         start_date = pd.Timestamp('2023-01-01')
         end_date = pd.Timestamp('2023-12-31')
@@ -228,7 +241,7 @@ class TestTimeBasedTiming:
     
     def test_get_rebalance_dates_large_positive_offset(self):
         """Test rebalance dates with large positive offset."""
-        controller = TimeBasedTiming({
+        controller = self.create_time_based_timing({
             'rebalance_frequency': 'M',
             'rebalance_offset': 10  # 10 days after month end
         })
@@ -249,7 +262,7 @@ class TestTimeBasedTiming:
     
     def test_get_rebalance_dates_large_negative_offset(self):
         """Test rebalance dates with large negative offset."""
-        controller = TimeBasedTiming({
+        controller = self.create_time_based_timing({
             'rebalance_frequency': 'M',
             'rebalance_offset': -15  # 15 days before month end
         })
@@ -270,7 +283,7 @@ class TestTimeBasedTiming:
     
     def test_get_rebalance_dates_empty_available_dates(self):
         """Test behavior with empty available dates."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'M'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'M'})
         
         start_date = pd.Timestamp('2023-01-01')
         end_date = pd.Timestamp('2023-03-31')
@@ -284,7 +297,7 @@ class TestTimeBasedTiming:
     
     def test_get_rebalance_dates_single_available_date(self):
         """Test behavior with single available date."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'M'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'M'})
         
         start_date = pd.Timestamp('2023-01-01')
         end_date = pd.Timestamp('2023-03-31')
@@ -300,7 +313,7 @@ class TestTimeBasedTiming:
     
     def test_reset_state_clears_scheduled_dates(self):
         """Test that reset_state clears scheduled dates."""
-        controller = TimeBasedTiming({'rebalance_frequency': 'M'})
+        controller = self.create_time_based_timing({'rebalance_frequency': 'M'})
         
         # Add some scheduled dates
         controller.timing_state.scheduled_dates.add(pd.Timestamp('2023-01-31'))
@@ -314,8 +327,8 @@ class TestTimeBasedTiming:
     
     def test_case_insensitive_frequency(self):
         """Test that frequency is case insensitive."""
-        controller_lower = TimeBasedTiming({'rebalance_frequency': 'm'})
-        controller_upper = TimeBasedTiming({'rebalance_frequency': 'M'})
+        controller_lower = self.create_time_based_timing({'rebalance_frequency': 'm'})
+        controller_upper = self.create_time_based_timing({'rebalance_frequency': 'M'})
         
         start_date = pd.Timestamp('2023-01-01')
         end_date = pd.Timestamp('2023-02-28')

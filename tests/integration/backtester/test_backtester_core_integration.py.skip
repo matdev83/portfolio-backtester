@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 from unittest.mock import Mock, patch, MagicMock
 from src.portfolio_backtester.backtester import Backtester
-from src.portfolio_backtester.strategies.momentum_strategy import MomentumStrategy
+from src.portfolio_backtester.strategies.portfolio.simple_momentum_portfolio_strategy import SimpleMomentumPortfolioStrategy
 
 
 class TestBacktesterCoreIntegration(unittest.TestCase):
@@ -60,7 +60,7 @@ class TestBacktesterCoreIntegration(unittest.TestCase):
         
         # Verify strategy is properly integrated
         self.assertIsNotNone(backtester.strategy)
-        self.assertIsInstance(backtester.strategy, MomentumStrategy)
+        self.assertIsInstance(backtester.strategy, SimpleMomentumPortfolioStrategy)
     
     @patch("src.portfolio_backtester.data_sources.get_data_source")
     def test_data_source_integration(self, mock_get_data_source):

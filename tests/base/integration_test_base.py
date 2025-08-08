@@ -12,8 +12,8 @@ import subprocess
 import tempfile
 import sys
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple, Union
-from unittest.mock import Mock, patch
+from typing import Dict, Any, List, Optional, Tuple
+from unittest.mock import Mock
 
 from tests.fixtures.market_data import MarketDataFixture
 from tests.fixtures.strategy_data import StrategyDataFixture
@@ -157,7 +157,7 @@ class BaseIntegrationTest(unittest.TestCase):
                 )
                 return process, None, None
                 
-        except subprocess.TimeoutExpired as e:
+        except subprocess.TimeoutExpired:
             self.fail(f"Subprocess timed out after {timeout_sec} seconds: {' '.join(full_command)}")
         except Exception as e:
             self.fail(f"Subprocess failed: {e}")

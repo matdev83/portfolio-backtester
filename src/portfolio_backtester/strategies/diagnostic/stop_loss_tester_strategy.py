@@ -1,42 +1,18 @@
-import pandas as pd
-from typing import Any, Dict, Optional, Set
+"""
+DEPRECATED: This module has been moved to src/portfolio_backtester/testing/strategies/stop_loss_tester_strategy.py
 
-from ..base.base_strategy import BaseStrategy
+This file provides backward compatibility imports with deprecation warnings.
+Please update your imports to use the new location.
+"""
 
-class StopLossTesterStrategy(BaseStrategy):
-    """Diagnostic strategy for testing stop-loss functionality."""
-    
-    def __init__(self, strategy_params: Dict[str, Any]):
-        super().__init__(strategy_params)
-        # Initialize entry prices tracking
-        self.entry_prices = {}
-        
-    @classmethod
-    def tunable_parameters(cls) -> Set[str]:
-        return {
-            "stop_loss_type",
-            "atr_length", 
-            "atr_multiple"
-        }
-        
-    def generate_signals(
-        self,
-        all_historical_data: pd.DataFrame,
-        benchmark_historical_data: pd.DataFrame,
-        non_universe_historical_data: pd.DataFrame,
-        current_date: pd.Timestamp,
-        start_date: Optional[pd.Timestamp] = None,
-        end_date: Optional[pd.Timestamp] = None,
-    ) -> pd.DataFrame:
-        """Generate simple long signals for all assets in universe."""
-        
-        # Get asset names from multi-index columns
-        if isinstance(all_historical_data.columns, pd.MultiIndex):
-            assets = all_historical_data.columns.get_level_values(0).unique()
-        else:
-            assets = all_historical_data.columns
-            
-        # Simple strategy: go long on all assets
-        weights = pd.Series(1.0 / len(assets), index=assets)
-        
-        return pd.DataFrame([weights], index=[current_date])
+import warnings
+from ...testing.strategies.stop_loss_tester_strategy import StopLossTesterStrategy
+
+warnings.warn(
+    "Importing from 'portfolio_backtester.strategies.diagnostic.stop_loss_tester_strategy' is deprecated. "
+    "Please use 'portfolio_backtester.testing.strategies.stop_loss_tester_strategy' instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
+__all__ = ["StopLossTesterStrategy"]

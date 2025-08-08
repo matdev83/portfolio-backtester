@@ -7,11 +7,10 @@ and performance calculation accuracy for meta strategies.
 
 import pytest
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-from src.portfolio_backtester.strategies.base.trade_aggregator import TradeAggregator
-from src.portfolio_backtester.strategies.base.trade_record import TradeRecord, TradeSide
+from portfolio_backtester.strategies.base.trade_aggregator import TradeAggregator
+from portfolio_backtester.strategies.base.trade_record import TradeRecord, TradeSide
 
 
 class TestTradeAggregationMathematics:

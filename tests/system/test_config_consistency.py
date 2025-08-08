@@ -13,7 +13,19 @@ class TestConfigConsistency(unittest.TestCase):
         strategies_dir = Path(__file__).parent.parent.parent / "src" / "portfolio_backtester" / "strategies"
         scenarios_dir = Path(__file__).parent.parent.parent / "config" / "scenarios"
 
-        strategy_files = {f.stem.replace('_strategy', '') for f in strategies_dir.glob("**/*.py") if f.stem != "__init__" and not f.parent.name == "base" and f.stem != "dummy" and f.stem != "stop_loss_tester" and f.stem != "leverage_and_smoothing" and f.stem != "candidate_weights" and f.stem != "strategy_factory" and f.stem != "uvxy_rsi" and f.stem != "intramonth_seasonal" and f.stem != "diagnostic" and f.stem != "portfolio" and f.stem != "signal" and f.stem != "meta"}
+        # Exclude utility classes, abstract classes, and base classes
+        excluded_files = {
+            "strategy_factory", "leverage_and_smoothing", "candidate_weights",
+            "signal_generator", "ema_signal_generator", "rsi_calculator", "price_data_processor",
+            "base_portfolio_momentum_strategy", "portfolio_momentum_strategy", "portfolio_momentum"
+        }
+        strategy_files = {
+            f.stem.replace('_strategy', '') 
+            for f in strategies_dir.glob("**/*.py") 
+            if f.stem != "__init__" 
+            and not f.parent.name == "base" 
+            and f.stem not in excluded_files
+        }
         scenario_strategies = set()
 
         # Walk through subdirectories to find scenario files

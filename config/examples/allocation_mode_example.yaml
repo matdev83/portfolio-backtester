@@ -4,12 +4,12 @@
 # Example 1: Reinvestment Mode (Default - Compounding Enabled)
 # Use this for realistic trading simulation where profits compound
 name: "Momentum_Reinvestment_Example"
-strategy: "MomentumStrategy"
+strategy: "portfolio_momentum"
 allocation_mode: "reinvestment"  # Enable compounding (default)
 
 strategy_params:
-  momentum.lookback_months: 12
-  momentum.skip_months: 1
+  portfolio_momentum.lookback_months: 12
+  portfolio_momentum.skip_months: 1
   leverage: 1.0
 
 universe_config:
@@ -28,12 +28,12 @@ transaction_costs_bps: 13  # 13 basis points total cost
 # Example 2: Fixed Fractional Mode (Compounding Disabled)
 # Use this for fair strategy comparison without compounding effects
 name: "Momentum_FixedFractional_Example"
-strategy: "MomentumStrategy"
+strategy: "portfolio_momentum"
 allocation_mode: "fixed_fractional"  # Disable compounding
 
 strategy_params:
-  momentum.lookback_months: 12
-  momentum.skip_months: 1
+  portfolio_momentum.lookback_months: 12
+  portfolio_momentum.skip_months: 1
   leverage: 1.0
 
 universe_config:
@@ -58,15 +58,15 @@ strategy_params:
   allocation_mode: "reinvestment"  # Also pass to strategy params
   allocations:
     - strategy_id: "momentum"
-      strategy_class: "MomentumStrategy"
+      strategy_class: "SimpleMomentumPortfolioStrategy"
       strategy_params:
-        momentum.lookback_months: 6
-        momentum.skip_months: 1
+        portfolio_momentum.lookback_months: 6
+        portfolio_momentum.skip_months: 1
       weight: 0.6
-    - strategy_id: "mean_reversion"
-      strategy_class: "MeanReversionStrategy"
+    - strategy_id: "seasonal"
+      strategy_class: "SeasonalSignalStrategy"
       strategy_params:
-        mean_reversion.window: 20
+        seasonal_signal.direction: "long"
       weight: 0.4
 
 universe_config:
@@ -80,16 +80,16 @@ timing_config:
 # Example 4: Optimization with Allocation Mode as Parameter
 # Shows how to optimize allocation mode along with other parameters
 name: "Momentum_Optimization_Example"
-strategy: "MomentumStrategy"
+strategy: "portfolio_momentum"
 
 # Don't set allocation_mode here - let optimization choose
 strategy_params:
-  momentum.lookback_months:
+  portfolio_momentum.lookback_months:
     type: "int"
     low: 6
     high: 18
     step: 1
-  momentum.skip_months:
+  portfolio_momentum.skip_months:
     type: "int" 
     low: 1
     high: 3

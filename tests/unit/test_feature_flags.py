@@ -6,12 +6,11 @@ support, context managers for component isolation, and thread safety.
 """
 
 import os
-import pytest
 import threading
 import time
 from unittest.mock import patch
 
-from src.portfolio_backtester.feature_flags import (
+from portfolio_backtester.feature_flags import (
     FeatureFlags,
     is_new_architecture_enabled,
     should_show_migration_warnings
@@ -183,6 +182,7 @@ class TestFeatureFlags:
         
         expected_flags = {
             'use_new_optimization_architecture',
+            'use_new_backtesting_architecture',
             'use_new_backtester',
             'use_optimization_orchestrator',
             'enable_optuna_generator',

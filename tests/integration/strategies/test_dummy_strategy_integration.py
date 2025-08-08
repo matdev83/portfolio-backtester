@@ -3,13 +3,13 @@ import pandas as pd
 from unittest.mock import Mock
 import pytest
 
-from src.portfolio_backtester.core import Backtester
+from portfolio_backtester.backtester_logic.backtester_facade import BacktesterFacade as Backtester
 
 
 @pytest.mark.integration
 @pytest.mark.fast
 def test_dummy_strategy_end_to_end():
-    """End-to-end check that DummyStrategyForTesting generates trades, returns and commissions."""
+    """End-to-end check that a real registered strategy generates trades, returns and commissions."""
     # -----------------------------
     # Synthetic price data
     # -----------------------------
@@ -19,10 +19,13 @@ def test_dummy_strategy_end_to_end():
     volumes = rng.integers(1_000, 10_000, len(dates))
 
     # MultiIndex columns as expected by data manager utilities
-    columns = pd.MultiIndex.from_tuples([
-        ("SPY", "Close"),
-        ("SPY", "Volume"),
-    ], names=["Ticker", "Field"])
+    columns = pd.MultiIndex.from_tuples(
+        [
+            ("SPY", "Close"),
+            ("SPY", "Volume"),
+        ],
+        names=["Ticker", "Field"],
+    )
     data_matrix = np.column_stack([prices, volumes])
     daily_data = pd.DataFrame(data_matrix, index=dates, columns=columns)
 
@@ -49,12 +52,11 @@ def test_dummy_strategy_end_to_end():
         "BACKTEST_SCENARIOS": [
             {
                 "name": "dummy_scenario",
-                "strategy": "dummy",  # alias for DummyStrategyForTesting
+                "strategy": "EmaCrossoverSignalStrategy",
                 "strategy_params": {
-                    "symbol": "SPY",
-                    "open_long_prob": 0.2,
-                    "close_long_prob": 0.05,
-                    "seed": 123,
+                    "fast_ema_days": 12,
+                    "slow_ema_days": 26,
+                    "leverage": 1.0,
                 },
                 "position_sizer": "direct",  # use raw signal weights
                 "timing_config": {

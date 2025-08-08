@@ -3,7 +3,6 @@
 import abc
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
-import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
@@ -48,8 +47,9 @@ class BaseOptimizer(abc.ABC):
             raise ValueError("Optimizer requires 'optimize' specifications in the scenario config.")
 
         # Extract metrics to optimize
-        self.metrics_to_optimize = [t["name"] for t in scenario_config.get("optimization_targets", [])] or \
-                                   [scenario_config.get("optimization_metric", "Calmar")]
+        self.metrics_to_optimize = [
+            t["name"] for t in scenario_config.get("optimization_targets", [])
+        ] or [scenario_config.get("optimization_metric", "Calmar")]
         self.is_multi_objective = len(self.metrics_to_optimize) > 1
 
     @abc.abstractmethod

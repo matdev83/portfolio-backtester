@@ -8,7 +8,7 @@ for repeated data operations during optimization.
 import pytest
 import pandas as pd
 import numpy as np
-from src.portfolio_backtester.data_cache import DataPreprocessingCache, get_global_cache, clear_global_cache
+from portfolio_backtester.data_cache import DataPreprocessingCache, get_global_cache, clear_global_cache
 
 
 class TestDataPreprocessingCache:

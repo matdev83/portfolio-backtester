@@ -8,14 +8,13 @@ and maintain proper type safety.
 import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime
 
-from src.portfolio_backtester.optimization.results import (
+from portfolio_backtester.optimization.results import (
     EvaluationResult,
     OptimizationResult,
     OptimizationData,
 )
-from src.portfolio_backtester.backtesting.results import (
+from portfolio_backtester.backtesting.results import (
     BacktestResult,
     WindowResult,
 )

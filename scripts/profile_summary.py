@@ -1,7 +1,6 @@
 """Print top cumulative functions from a cProfile stats file.
 Usage: python profile_summary.py profile.prof [N]
 """
-import sys
 import pstats
 import argparse
 

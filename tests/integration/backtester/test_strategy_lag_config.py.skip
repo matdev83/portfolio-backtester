@@ -2,11 +2,11 @@ import pytest
 import pandas as pd
 
 from src.portfolio_backtester.strategies import (
-    MomentumStrategy,
-    CalmarMomentumStrategy,
-    SharpeMomentumStrategy,
-    SortinoMomentumStrategy,
-    VAMSMomentumStrategy,
+    SimpleMomentumPortfolioStrategy,
+    CalmarMomentumPortfolioStrategy,
+    SharpeMomentumPortfolioStrategy,
+    SortinoMomentumPortfolioStrategy,
+    VAMSMomentumPortfolioStrategy,
     VAMSNoDownsideStrategy,
     MomentumDvolSizerStrategy
 )
@@ -14,11 +14,11 @@ from src.portfolio_backtester.strategies import (
 # Note: Momentum feature class doesn't exist, using hardcoded feature name instead
 
 strategies_to_test_lag = [
-    (MomentumStrategy, {"lookback_months": 6}),
-    (CalmarMomentumStrategy, {"rolling_window": 6}),
-    (SharpeMomentumStrategy, {"rolling_window": 6}),
-    (SortinoMomentumStrategy, {"rolling_window": 6, "target_return": 0.0}),
-    (VAMSMomentumStrategy, {"lookback_months": 6, "alpha": 0.5}), # Uses DPVAMSSignalGenerator
+    (SimpleMomentumPortfolioStrategy, {"lookback_months": 6}),
+    (CalmarMomentumPortfolioStrategy, {"rolling_window": 6}),
+    (SharpeMomentumPortfolioStrategy, {"rolling_window": 6}),
+    (SortinoMomentumPortfolioStrategy, {"rolling_window": 6, "target_return": 0.0}),
+    (VAMSMomentumPortfolioStrategy, {"lookback_months": 6, "alpha": 0.5}), # Uses DPVAMSSignalGenerator
     (VAMSNoDownsideStrategy, {"lookback_months": 6}), # Uses VAMSSignalGenerator
     (MomentumDvolSizerStrategy, {"lookback_months": 6}),
 ]
@@ -33,20 +33,20 @@ def test_configurable_trading_lag(strategy_class, initial_params):
 
     mock_features = {}
     # Construct expected feature names based on strategy and its default generator params
-    if strategy_class in [MomentumStrategy, MomentumDvolSizerStrategy]:
+    if strategy_class in [SimpleMomentumPortfolioStrategy, MomentumDvolSizerStrategy]:
         lb = initial_params.get("lookback_months", 6)
         # Momentum feature with skip=0, no_suffix has name "momentum_{lb}m"
         mock_features[f"momentum_{lb}m"] = pd.DataFrame(0.1, index=dates, columns=assets)
-    elif strategy_class == CalmarMomentumStrategy:
+    elif strategy_class == CalmarMomentumPortfolioStrategy:
         rw = initial_params.get("rolling_window", 6)
         mock_features[f"calmar_{rw}m"] = pd.DataFrame(0.1, index=dates, columns=assets)
-    elif strategy_class == SharpeMomentumStrategy:
+    elif strategy_class == SharpeMomentumPortfolioStrategy:
         rw = initial_params.get("rolling_window", 6)
         mock_features[f"sharpe_{rw}m"] = pd.DataFrame(0.1, index=dates, columns=assets)
-    elif strategy_class == SortinoMomentumStrategy:
+    elif strategy_class == SortinoMomentumPortfolioStrategy:
         rw = initial_params.get("rolling_window", 6)
         mock_features[f"sortino_{rw}m"] = pd.DataFrame(0.1, index=dates, columns=assets)
-    elif strategy_class == VAMSMomentumStrategy: # DPVAMS
+    elif strategy_class == VAMSMomentumPortfolioStrategy: # DPVAMS
         lb = initial_params.get("lookback_months", 6)
         alpha = initial_params.get("alpha", 0.5)
         mock_features[f"dp_vams_{lb}m_{alpha:.2f}a"] = pd.DataFrame(0.1, index=dates, columns=assets)

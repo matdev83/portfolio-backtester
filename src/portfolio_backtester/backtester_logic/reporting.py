@@ -8,6 +8,7 @@ All helper functions that external code (including the test-suite) imports from
 here are *re-exported* so that nothing breaks even though the monolithic file
 has been split into smaller, maintainable pieces.
 """
+
 from __future__ import annotations
 
 import os
@@ -21,22 +22,22 @@ from rich.console import Console
 # ---------------------------------------------------------------------------
 # Import helpers from their new homes and expose them under the old names
 # ---------------------------------------------------------------------------
-from portfolio_backtester.reporting.plot_generator import (
+from ..reporting.plot_generator import (
     plot_performance_summary as _plot_performance_summary,
     plot_price_with_trades as _plot_price_with_trades,
 )
-from portfolio_backtester.reporting.table_generator import (
+from ..reporting.table_generator import (
     generate_performance_table as _generate_performance_table,
-generate_transaction_history_csv as _generate_transaction_history_csv,
+    generate_transaction_history_csv as _generate_transaction_history_csv,
 )
-from portfolio_backtester.reporting.monte_carlo_analyzer import (
+from ..reporting.monte_carlo_analyzer import (
     plot_stability_measures as _plot_stability_measures,
 )
-from portfolio_backtester.reporting.monte_carlo_stage2 import (
+from ..reporting.monte_carlo_stage2 import (
     _plot_monte_carlo_robustness_analysis,
     _create_monte_carlo_robustness_plot,
 )
-from portfolio_backtester.reporting.parameter_analysis import (
+from ..reporting.parameter_analysis import (
     _plot_parameter_impact_analysis,
     _create_parameter_heatmaps,
     _create_parameter_sensitivity_analysis,
@@ -61,7 +62,7 @@ __all__ = [
     "_plot_monte_carlo_robustness_analysis",
     "_create_monte_carlo_robustness_plot",
     "_generate_performance_table",
-"_generate_transaction_history_csv",
+    "_generate_transaction_history_csv",
     "_plot_performance_summary",
     "_plot_price_with_trades",
 ]
@@ -70,9 +71,8 @@ __all__ = [
 # Thin facade – identical external behaviour, minimal internal code
 # ---------------------------------------------------------------------------
 
-def _benchmark_returns(
-    daily_data_for_display: pd.DataFrame, benchmark_ticker: str
-) -> pd.Series:
+
+def _benchmark_returns(daily_data_for_display: pd.DataFrame, benchmark_ticker: str) -> pd.Series:
     """Extract benchmark price series and convert to returns."""
     if isinstance(daily_data_for_display.columns, pd.MultiIndex):
         prices = daily_data_for_display.xs(
@@ -136,21 +136,21 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
 
         # unique report directory per run
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         # Handle scenario name: use args.scenario_name if available, otherwise derive from scenario config or results
         scenario_name = None
-        if hasattr(self.args, 'scenario_name') and self.args.scenario_name:
+        if hasattr(self.args, "scenario_name") and self.args.scenario_name:
             scenario_name = self.args.scenario_name
         elif self.scenarios and len(self.scenarios) > 0:
             # Use the first scenario's name
-            scenario_name = self.scenarios[0].get('name', 'unknown_scenario')
+            scenario_name = self.scenarios[0].get("name", "unknown_scenario")
         elif self.results:
             # Use the first result key, removing any "_Optimized" suffix
             first_result_name = next(iter(self.results.keys()))
-            scenario_name = first_result_name.replace('_Optimized', '')
+            scenario_name = first_result_name.replace("_Optimized", "")
         else:
-            scenario_name = 'unknown_scenario'
-        
+            scenario_name = "unknown_scenario"
+
         scenario_slug = (
             scenario_name.replace(" ", "_").replace("(", "").replace(")", "").replace('"', "")
         )
@@ -164,7 +164,7 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
             benchmark_rets,
             "Full-Period Performance",
             trials_map,
-            report_dir
+            report_dir,
         )
         _generate_transaction_history_csv(self.results, report_dir)
 
@@ -199,8 +199,10 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
     except Exception as exc:  # noqa: BLE001
         # Check if this is the common scenario_name None error
         if "'NoneType' object has no attribute 'replace'" in str(exc):
-            logger.error("Optimization reporting failed: scenario name could not be determined. "
-                        "This typically indicates the optimization process did not complete successfully. "
-                        "Check for earlier error messages about data availability or parameter space issues.")
+            logger.error(
+                "Optimization reporting failed: scenario name could not be determined. "
+                "This typically indicates the optimization process did not complete successfully. "
+                "Check for earlier error messages about data availability or parameter space issues."
+            )
         else:
             logger.warning("Failed to generate summary table/plot: %s", exc)

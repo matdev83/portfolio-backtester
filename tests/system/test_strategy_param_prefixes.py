@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-from src.portfolio_backtester.config_schema import StrategyConfigSchema
+from portfolio_backtester.config_schema import StrategyConfigSchema
 
 
 SCENARIO_DIR = Path(__file__).resolve().parents[2] / "config" / "scenarios"

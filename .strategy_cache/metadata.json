@@ -1,0 +1,202 @@
+{
+  "cache_version": "1.1",
+  "cached_at": 1754566105.253639,
+  "directory_metadata": {
+    "diagnostic": {
+      "content_hash": "6a9f0a30f764",
+      "directory_modified": 1754555654.4758058,
+      "exists": true,
+      "file_count": 3,
+      "file_info": {
+        "stop_loss_tester_strategy.py": {
+          "hash": "55578eb9",
+          "mod_time": 1754490074.334942,
+          "size": 652
+        }
+      },
+      "last_modified": 1754555654.4758058,
+      "py_file_count": 1
+    },
+    "meta": {
+      "content_hash": "524eec744d93",
+      "directory_modified": 1754555654.4708056,
+      "exists": true,
+      "file_count": 5,
+      "file_info": {
+        "__init__.py": {
+          "hash": "9ce0d8e6",
+          "mod_time": 1754479091.1913173,
+          "size": 183
+        },
+        "simple_meta_strategy.py": {
+          "hash": "612c84d9",
+          "mod_time": 1754407920.7928464,
+          "size": 1725
+        }
+      },
+      "last_modified": 1754555654.4708056,
+      "py_file_count": 2
+    },
+    "portfolio": {
+      "content_hash": "3dcf6b602f59",
+      "directory_modified": 1754558499.7549288,
+      "exists": true,
+      "file_count": 40,
+      "file_info": {
+        "__init__.py": {
+          "hash": "8c054818",
+          "mod_time": 1754482922.9364593,
+          "size": 51
+        },
+        "base_momentum_portfolio_strategy.py": {
+          "hash": "cb83ab56",
+          "mod_time": 1754566013.3053238,
+          "size": 11851
+        },
+        "beta_filtered_momentum_portfolio_strategy.py": {
+          "hash": "daa37874",
+          "mod_time": 1754558987.80923,
+          "size": 15276
+        },
+        "calmar_momentum_portfolio_strategy.py": {
+          "hash": "bdcffc53",
+          "mod_time": 1754520774.926148,
+          "size": 2871
+        },
+        "dvol_sizer_momentum_portfolio_strategy.py": {
+          "hash": "ea8eb4fb",
+          "mod_time": 1754559283.4204257,
+          "size": 1725
+        },
+        "filtered_lagged_momentum_portfolio_strategy.py": {
+          "hash": "d6abcc72",
+          "mod_time": 1754522006.8206468,
+          "size": 18353
+        },
+        "fixed_weight_portfolio_strategy.py": {
+          "hash": "bc5126c3",
+          "mod_time": 1754520418.3851452,
+          "size": 7436
+        },
+        "low_volatility_factor_portfolio_strategy.py": {
+          "hash": "d8a4f7e5",
+          "mod_time": 1754488952.9529095,
+          "size": 28989
+        },
+        "momentum_beta_filtered_portfolio_strategy.py": {
+          "hash": "e8818414",
+          "mod_time": 1754558919.6618145,
+          "size": 15367
+        },
+        "momentum_dvol_sizer_portfolio_strategy.py": {
+          "hash": "53b1ef12",
+          "mod_time": 1754557900.8429093,
+          "size": 4312
+        },
+        "momentum_unfiltered_atr_portfolio_strategy.py": {
+          "hash": "1c3200be",
+          "mod_time": 1754558924.5533144,
+          "size": 7913
+        },
+        "sharpe_momentum_portfolio_strategy.py": {
+          "hash": "ece79184",
+          "mod_time": 1754558982.776231,
+          "size": 15151
+        },
+        "simple_momentum_portfolio_strategy.py": {
+          "hash": "678aaeb3",
+          "mod_time": 1754557390.210795,
+          "size": 5301
+        },
+        "sortino_momentum_portfolio_strategy.py": {
+          "hash": "999e97d9",
+          "mod_time": 1754522177.6616483,
+          "size": 3192
+        },
+        "unfiltered_atr_momentum_portfolio_strategy.py": {
+          "hash": "ffa5f354",
+          "mod_time": 1754559279.1454256,
+          "size": 6406
+        },
+        "vams_momentum_portfolio_strategy.py": {
+          "hash": "a98558cf",
+          "mod_time": 1754558937.2950523,
+          "size": 14998
+        },
+        "vams_no_downside_portfolio_strategy.py": {
+          "hash": "0addf93c",
+          "mod_time": 1754512543.7624464,
+          "size": 15185
+        },
+        "volatility_targeted_fixed_weight_portfolio_strategy.py": {
+          "hash": "fa0245c7",
+          "mod_time": 1754490318.9197924,
+          "size": 3116
+        }
+      },
+      "last_modified": 1754566013.3053238,
+      "py_file_count": 18
+    },
+    "signal": {
+      "content_hash": "713d70c369ea",
+      "directory_modified": 1754560718.9756067,
+      "exists": true,
+      "file_count": 22,
+      "file_info": {
+        "__init__.py": {
+          "hash": "365cf3da",
+          "mod_time": 1754488979.931781,
+          "size": 627
+        },
+        "dummy_signal_strategy.py": {
+          "hash": "584e79c4",
+          "mod_time": 1754505953.5564094,
+          "size": 626
+        },
+        "ema_crossover_signal_strategy.py": {
+          "hash": "9318f7d1",
+          "mod_time": 1754520392.2386484,
+          "size": 16915
+        },
+        "ema_roro_signal_strategy.py": {
+          "hash": "9eeb8a51",
+          "mod_time": 1754524436.765148,
+          "size": 4990
+        },
+        "ema_signal_generator.py": {
+          "hash": "62a6bef8",
+          "mod_time": 1754474720.8270993,
+          "size": 9141
+        },
+        "price_data_processor.py": {
+          "hash": "2be22d64",
+          "mod_time": 1754488905.377987,
+          "size": 635
+        },
+        "rsi_calculator.py": {
+          "hash": "913ea9ea",
+          "mod_time": 1754488905.4039862,
+          "size": 601
+        },
+        "seasonal_signal_strategy.py": {
+          "hash": "c27970b6",
+          "mod_time": 1754566003.1743236,
+          "size": 19733
+        },
+        "signal_generator.py": {
+          "hash": "fe418e64",
+          "mod_time": 1754488905.350986,
+          "size": 621
+        },
+        "uvxy_rsi_signal_strategy.py": {
+          "hash": "3f946e18",
+          "mod_time": 1754520508.5636473,
+          "size": 10029
+        }
+      },
+      "last_modified": 1754566003.1743236,
+      "py_file_count": 10
+    }
+  },
+  "strategy_count": 22
+}

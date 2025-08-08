@@ -2,9 +2,8 @@
 
 import pytest
 import pandas as pd
-from datetime import datetime
 
-from src.portfolio_backtester.strategies.base.trade_record import (
+from portfolio_backtester.strategies.base.trade_record import (
     TradeRecord, PositionRecord, TradeSide
 )
 
@@ -373,7 +372,7 @@ class TestPositionRecord:
         assert position_dict['quantity'] == 75
         assert position_dict['average_price'] == 300.0
         assert position_dict['market_value'] == 22500.0
-        assert position_dict['is_long'] == True
-        assert position_dict['is_short'] == False
-        assert position_dict['is_flat'] == False
+        assert position_dict['is_long']
+        assert not position_dict['is_short']
+        assert not position_dict['is_flat']
         assert position_dict['strategy_contributions'] == {"momentum": 50, "seasonal": 25}

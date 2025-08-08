@@ -6,11 +6,24 @@ import pytest
 import pandas as pd
 from unittest.mock import Mock
 
-from src.portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
+from portfolio_backtester.timing.custom_timing_registry import TimingControllerFactory
+from portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
 
 
 class TestSignalBasedTiming:
     """Test cases for SignalBasedTiming controller."""
+    
+    def create_signal_based_timing(self, config=None):
+        """Create SignalBasedTiming using interface-compliant factory pattern."""
+        if config is None:
+            config = {}
+        # Ensure mode is set for factory
+        factory_config = config.copy()
+        factory_config["mode"] = "signal_based"
+        controller = TimingControllerFactory.create_controller(factory_config)
+        # Verify it's the correct type
+        assert isinstance(controller, SignalBasedTiming), f"Expected SignalBasedTiming, got {type(controller)}"
+        return controller
     
     def setup_method(self):
         """Set up test fixtures."""
@@ -31,7 +44,7 @@ class TestSignalBasedTiming:
     def test_init_with_default_config(self):
         """Test initialization with default configuration."""
         config = {}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         assert timing.scan_frequency == 'D'
         assert timing.max_holding_period is None
@@ -45,7 +58,7 @@ class TestSignalBasedTiming:
             'max_holding_period': 30,
             'min_holding_period': 5
         }
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         assert timing.scan_frequency == 'W'
         assert timing.max_holding_period == 30
@@ -56,21 +69,21 @@ class TestSignalBasedTiming:
         config = {'scan_frequency': 'X'}
         
         with pytest.raises(ValueError, match="Invalid scan_frequency 'X'"):
-            SignalBasedTiming(config)
+            self.create_signal_based_timing(config)
     
     def test_config_validation_invalid_min_holding_period(self):
         """Test configuration validation with invalid minimum holding period."""
         config = {'min_holding_period': 0}
         
         with pytest.raises(ValueError, match="min_holding_period must be a positive integer"):
-            SignalBasedTiming(config)
+            self.create_signal_based_timing(config)
     
     def test_config_validation_invalid_max_holding_period(self):
         """Test configuration validation with invalid maximum holding period."""
         config = {'max_holding_period': -5}
         
         with pytest.raises(ValueError, match="max_holding_period must be a positive integer"):
-            SignalBasedTiming(config)
+            self.create_signal_based_timing(config)
     
     def test_config_validation_min_greater_than_max(self):
         """Test configuration validation when min > max holding period."""
@@ -80,12 +93,12 @@ class TestSignalBasedTiming:
         }
         
         with pytest.raises(ValueError, match="min_holding_period .* cannot exceed max_holding_period"):
-            SignalBasedTiming(config)
+            self.create_signal_based_timing(config)
     
     def test_get_rebalance_dates_daily_scan(self):
         """Test getting rebalance dates with daily scanning."""
         config = {'scan_frequency': 'D'}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         rebalance_dates = timing.get_rebalance_dates(
             self.start_date, self.end_date, self.available_dates, self.mock_strategy
@@ -101,7 +114,7 @@ class TestSignalBasedTiming:
     def test_get_rebalance_dates_weekly_scan(self):
         """Test getting rebalance dates with weekly scanning."""
         config = {'scan_frequency': 'W'}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         rebalance_dates = timing.get_rebalance_dates(
             self.start_date, self.end_date, self.available_dates, self.mock_strategy
@@ -118,7 +131,7 @@ class TestSignalBasedTiming:
     def test_get_rebalance_dates_monthly_scan(self):
         """Test getting rebalance dates with monthly scanning."""
         config = {'scan_frequency': 'M'}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         rebalance_dates = timing.get_rebalance_dates(
             self.start_date, self.end_date, self.available_dates, self.mock_strategy
@@ -135,7 +148,7 @@ class TestSignalBasedTiming:
     def test_should_generate_signal_not_scheduled_date(self):
         """Test should_generate_signal returns False for non-scheduled dates."""
         config = {'scan_frequency': 'W'}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         # Get rebalance dates first to populate scheduled dates
         timing.get_rebalance_dates(
@@ -154,7 +167,7 @@ class TestSignalBasedTiming:
             'scan_frequency': 'D',
             'min_holding_period': 5
         }
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         # Get rebalance dates
         timing.get_rebalance_dates(
@@ -182,7 +195,7 @@ class TestSignalBasedTiming:
             'min_holding_period': 1,
             'max_holding_period': 5
         }
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         # Get rebalance dates
         timing.get_rebalance_dates(
@@ -201,7 +214,7 @@ class TestSignalBasedTiming:
     def test_get_days_since_last_signal(self):
         """Test getting days since last signal."""
         config = {}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         # No last signal date
         current_date = pd.Timestamp('2023-01-05')
@@ -216,7 +229,7 @@ class TestSignalBasedTiming:
     def test_position_tracking_methods(self):
         """Test position tracking helper methods."""
         config = {}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         # Initially no positions
         assert not timing.is_position_held('AAPL')
@@ -234,7 +247,7 @@ class TestSignalBasedTiming:
     def test_can_enter_position(self):
         """Test can_enter_position method."""
         config = {'min_holding_period': 3}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         current_date = pd.Timestamp('2023-01-05')
         
@@ -252,7 +265,7 @@ class TestSignalBasedTiming:
     def test_can_exit_position(self):
         """Test can_exit_position method."""
         config = {'min_holding_period': 3}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         current_date = pd.Timestamp('2023-01-05')
         
@@ -270,7 +283,7 @@ class TestSignalBasedTiming:
     def test_must_exit_position(self):
         """Test must_exit_position method."""
         config = {'max_holding_period': 5}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         current_date = pd.Timestamp('2023-01-08')
         
@@ -287,14 +300,14 @@ class TestSignalBasedTiming:
         
         # No max holding period configured - no forced exit
         config_no_max = {}
-        timing_no_max = SignalBasedTiming(config_no_max)
+        timing_no_max = self.create_signal_based_timing(config_no_max)
         timing_no_max.timing_state.position_entry_dates['AAPL'] = pd.Timestamp('2023-01-01')
         assert timing_no_max.must_exit_position('AAPL', current_date) is False
     
     def test_reset_state(self):
         """Test state reset functionality."""
         config = {}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         # Set some state
         timing.timing_state.last_signal_date = pd.Timestamp('2023-01-02')
@@ -312,7 +325,7 @@ class TestSignalBasedTiming:
     def test_integration_with_timing_state_updates(self):
         """Test integration with timing state update methods."""
         config = {}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         # Test signal update
         date = pd.Timestamp('2023-01-02')
@@ -340,10 +353,22 @@ class TestSignalBasedTiming:
 class TestSignalBasedTimingEdgeCases:
     """Test edge cases and error conditions for SignalBasedTiming."""
     
+    def create_signal_based_timing(self, config=None):
+        """Create SignalBasedTiming using interface-compliant factory pattern."""
+        if config is None:
+            config = {}
+        # Ensure mode is set for factory
+        factory_config = config.copy()
+        factory_config["mode"] = "signal_based"
+        controller = TimingControllerFactory.create_controller(factory_config)
+        # Verify it's the correct type
+        assert isinstance(controller, SignalBasedTiming), f"Expected SignalBasedTiming, got {type(controller)}"
+        return controller
+    
     def test_empty_date_range(self):
         """Test behavior with empty date range."""
         config = {}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         start_date = pd.Timestamp('2023-01-01')
         end_date = pd.Timestamp('2022-12-31')  # End before start
@@ -358,7 +383,7 @@ class TestSignalBasedTimingEdgeCases:
     def test_single_date_range(self):
         """Test behavior with single date in range."""
         config = {}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         single_date = pd.Timestamp('2023-01-02')
         available_dates = pd.DatetimeIndex([single_date])
@@ -373,7 +398,7 @@ class TestSignalBasedTimingEdgeCases:
     def test_weekend_handling(self):
         """Test handling of weekend dates in configuration."""
         config = {'scan_frequency': 'W'}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         # Create date range including weekends
         start_date = pd.Timestamp('2023-01-01')  # Sunday
@@ -392,7 +417,7 @@ class TestSignalBasedTimingEdgeCases:
     def test_large_date_range_performance(self):
         """Test performance with large date range."""
         config = {'scan_frequency': 'D'}
-        timing = SignalBasedTiming(config)
+        timing = self.create_signal_based_timing(config)
         
         # Create 1 year of business days
         start_date = pd.Timestamp('2023-01-01')

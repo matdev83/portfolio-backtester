@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+import datetime as dt
+from functools import lru_cache
+from typing import List, Union
+
+import pandas as pd
+
+from .universe_data.spy_holdings import get_spy_holdings
+from .interfaces.date_normalizer_interface import normalize_date_polymorphic
+
 """Utility helpers for universe creation.
 
 This module provides a single convenience wrapper
@@ -21,34 +30,21 @@ for *date* is missing we fall back **only** to the most recent **earlier**
 trading day, never to the future.
 """
 
-import datetime as dt
-from functools import lru_cache
-from typing import List, Union
-
-import pandas as pd
-
-from .universe_data.spy_holdings import get_spy_holdings
-
 # --------------------------------------------------------------------------- #
 # Internal helpers
 # --------------------------------------------------------------------------- #
+
 
 def _normalize_date(date: Union[str, dt.date, pd.Timestamp]) -> pd.Timestamp:
     """Convert a variety of date representations to *normalised* Timestamp.
 
     We normalise to 00:00 so that different intraday timestamps for the
     same calendar day map to the same cache key.
-    """
-    if isinstance(date, pd.Timestamp):
-        ts = date
-    elif isinstance(date, str):
-        ts = pd.Timestamp(date)
-    elif isinstance(date, dt.date):
-        ts = pd.Timestamp(date)
-    else:
-        raise TypeError("date must be str, datetime.date or pandas.Timestamp")
 
-    return ts.normalize()
+    This function uses polymorphic date normalization instead of isinstance
+    checks, following the Open/Closed Principle.
+    """
+    return normalize_date_polymorphic(date)
 
 
 @lru_cache(maxsize=4096)
@@ -61,6 +57,7 @@ def _cached_top(date_str: str, n: int, exact: bool) -> tuple[str, ...]:
 # --------------------------------------------------------------------------- #
 # Public API
 # --------------------------------------------------------------------------- #
+
 
 def get_top_weight_sp500_components(
     date: Union[str, dt.date, pd.Timestamp],
@@ -100,4 +97,4 @@ def get_top_weight_sp500_components(
     return list(top)
 
 
-__all__ = ["get_top_weight_sp500_components"] 
+__all__ = ["get_top_weight_sp500_components"]

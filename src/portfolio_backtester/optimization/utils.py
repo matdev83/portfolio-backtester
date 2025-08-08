@@ -1,4 +1,5 @@
 """Utility helpers for optimization layer."""
+
 from __future__ import annotations
 
 from typing import Dict, Any, Optional

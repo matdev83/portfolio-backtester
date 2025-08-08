@@ -2,10 +2,11 @@
 Traditional time-based rebalancing timing controller.
 """
 
-from typing import Dict, Any, TYPE_CHECKING
+from typing import Dict, Any, TYPE_CHECKING, Optional
 import pandas as pd
 
 from .timing_controller import TimingController
+from ..interfaces.timing_state_interface import ITimingState
 
 if TYPE_CHECKING:
     from ..strategies.base.base_strategy import BaseStrategy
@@ -13,41 +14,41 @@ if TYPE_CHECKING:
 
 class TimeBasedTiming(TimingController):
     """Traditional time-based rebalancing (monthly, quarterly, etc.)."""
-    
-    def __init__(self, config: Dict[str, Any]):
-        super().__init__(config)
-        self.frequency = config.get('rebalance_frequency', 'M')
-        self.offset = config.get('rebalance_offset', 0)  # Days offset from period end
-    
+
+    def __init__(self, config: Dict[str, Any], timing_state: Optional[ITimingState] = None):
+        super().__init__(config, timing_state)
+        self.frequency = config.get("rebalance_frequency", "M")
+        self.offset = config.get("rebalance_offset", 0)  # Days offset from period end
+
     def get_rebalance_dates(
-        self, 
+        self,
         start_date: pd.Timestamp,
         end_date: pd.Timestamp,
         available_dates: pd.DatetimeIndex,
-        strategy_context: 'BaseStrategy'
+        strategy_context: "BaseStrategy",
     ) -> pd.DatetimeIndex:
         """Generate rebalance dates based on frequency."""
         # Convert legacy frequencies to new pandas format
         freq_mapping = {
-            'M': 'ME',  # Month end
-            'Q': 'QE',  # Quarter end  
-            'A': 'YE',  # Year end
-            'Y': 'YE',  # Year end (alias)
-            'W': 'W',   # Weekly (unchanged)
-            'D': 'D'    # Daily (unchanged)
+            "M": "ME",  # Month end
+            "Q": "QE",  # Quarter end
+            "A": "YE",  # Year end
+            "Y": "YE",  # Year end (alias)
+            "W": "W",  # Weekly (unchanged)
+            "D": "D",  # Daily (unchanged)
         }
         freq = freq_mapping.get(self.frequency.upper(), self.frequency)
-        
+
         # Generate base dates
         try:
             base_dates = pd.date_range(start_date, end_date, freq=freq)
         except ValueError as e:
             raise ValueError(f"Invalid frequency '{self.frequency}': {e}")
-        
+
         # Apply offset if specified
         if self.offset != 0:
             base_dates = base_dates + pd.Timedelta(days=self.offset)
-        
+
         # Filter to only include available trading dates
         rebalance_dates = []
         for date in base_dates:
@@ -58,7 +59,7 @@ class TimeBasedTiming(TimingController):
             else:
                 # For month-end frequencies (ME), prefer last business day of period
                 # For other frequencies, prefer next business day if target is not available
-                if freq in ['ME', 'M']:
+                if freq in ["ME", "M"]:
                     # Month-end: prefer next business day if within end_date range, otherwise last business day
                     future_dates = available_dates[available_dates >= date]
                     if len(future_dates) > 0 and future_dates.min() <= end_date:
@@ -82,33 +83,37 @@ class TimeBasedTiming(TimingController):
                             nearest_date = past_dates.max()
                         else:
                             continue
-            
+
             # Only include if the nearest date is within reasonable range
             if start_date <= nearest_date <= end_date:
                 rebalance_dates.append(nearest_date)
-        
+
         # Remove duplicates and sort
         rebalance_dates = sorted(set(rebalance_dates))
-        
+
         # Store scheduled dates in timing state
         scheduled_dates_set = set(rebalance_dates)
         self.timing_state.scheduled_dates = scheduled_dates_set
-        
+
         return pd.DatetimeIndex(rebalance_dates)
-    
+
     def should_generate_signal(
-        self, 
-        current_date: pd.Timestamp,
-        strategy_context: 'BaseStrategy'
+        self, current_date: pd.Timestamp, strategy_context: "BaseStrategy"
     ) -> bool:
         """For time-based timing, signals are only generated on rebalance dates."""
         decision = current_date in self.timing_state.scheduled_dates
 
         # Optional logging
-        if self.config.get('enable_logging', False):
+        if self.config.get("enable_logging", False):
             from .timing_logger import log_signal_generation
-            reason = 'scheduled rebalance date' if decision else 'not on rebalance schedule'
-            log_signal_generation(strategy_context.__class__.__name__, current_date, decision, reason,
-                                  controller='TimeBasedTiming')
+
+            reason = "scheduled rebalance date" if decision else "not on rebalance schedule"
+            log_signal_generation(
+                strategy_context.__class__.__name__,
+                current_date,
+                decision,
+                reason,
+                controller="TimeBasedTiming",
+            )
 
         return decision

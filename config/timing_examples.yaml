@@ -57,7 +57,7 @@ adaptive_strategy:
     num_holdings: 8
   timing_config:
     mode: custom
-    custom_controller_class: adaptive_timing  # Registered alias
+    custom_controller_class: portfolio_backtester.timing.custom_timing_registry.AdaptiveTimingController
     custom_controller_params:
       volatility_threshold: 0.02
       base_frequency: M
@@ -73,7 +73,7 @@ momentum_custom_strategy:
     num_holdings: 12
   timing_config:
     mode: custom
-    custom_controller_class: momentum_timing  # Registered alias
+    custom_controller_class: portfolio_backtester.timing.custom_timing_registry.MomentumTimingController
     custom_controller_params:
       momentum_period: 20
     enable_logging: true
@@ -121,7 +121,8 @@ uvxy_style_strategy:
   strategy_params:
     rsi_period: 2
     rsi_threshold: 30.0
-    long_only: false
+    trade_longs: true
+    trade_shorts: true
   timing_config:
     mode: signal_based
     scan_frequency: D           # Daily scanning for signals

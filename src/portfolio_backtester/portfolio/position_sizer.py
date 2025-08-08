@@ -1,23 +1,21 @@
 import logging
-from typing import Callable, Dict, Any, Type
+from typing import Dict, Any, Type
 
 import numpy as np
 import pandas as pd
 
+from .base_sizer import BasePositionSizer
+from ..numba_optimized import (
+    rolling_sharpe_batch,
+    rolling_sortino_batch,
+    rolling_beta_batch,
+    rolling_correlation_batch,
+    rolling_downside_volatility_fast,
+)
+
+
 logger = logging.getLogger(__name__)
 
-# Import Numba optimizations with fallback
-try:
-    from ..numba_optimized import (
-        rolling_sharpe_fast,
-        rolling_sortino_fast, rolling_beta_fast, rolling_correlation_fast,
-        rolling_sharpe_batch, rolling_sortino_batch, rolling_beta_batch,
-        rolling_correlation_batch, rolling_downside_volatility_fast
-    )
-    from .base_sizer import BasePositionSizer
-    NUMBA_AVAILABLE = True
-except ImportError:
-    NUMBA_AVAILABLE = False
 
 def _normalize_weights(weights: pd.DataFrame, leverage: float = 1.0) -> pd.DataFrame:
     """Normalize weights to sum to 1, applying leverage."""
@@ -33,7 +31,9 @@ def _normalize_weights(weights: pd.DataFrame, leverage: float = 1.0) -> pd.DataF
 class EqualWeightSizer(BasePositionSizer):
     """Apply equal weighting to the signals."""
 
-    def calculate_weights(self, signals: pd.DataFrame, *_, **kwargs) -> pd.DataFrame:
+    def calculate_weights(
+        self, signals: pd.DataFrame, prices: pd.DataFrame, **kwargs
+    ) -> pd.DataFrame:
         leverage = kwargs.get("leverage", 1.0)
         weights = signals.abs()
         return _normalize_weights(weights, leverage)
@@ -42,29 +42,21 @@ class EqualWeightSizer(BasePositionSizer):
 class RollingSharpeSizer(BasePositionSizer):
     """Size positions based on their rolling Sharpe ratio."""
 
-    def calculate_weights(self, signals: pd.DataFrame, prices: pd.DataFrame, window: int, **_) -> pd.DataFrame:
+    def calculate_weights(
+        self, signals: pd.DataFrame, prices: pd.DataFrame, **kwargs
+    ) -> pd.DataFrame:
+        window = kwargs.get("window", 252)
         rets = prices.pct_change(fill_method=None).fillna(0)
-        
-        if NUMBA_AVAILABLE and not rets.empty:
-            returns_matrix = rets.values
-            sharpe_matrix = rolling_sharpe_batch(returns_matrix, window, annualization_factor=1.0)
-            sharpe = pd.DataFrame(sharpe_matrix, index=rets.index, columns=rets.columns)
-        else:
-            sharpe = pd.DataFrame(index=rets.index, columns=rets.columns)
-            for col in rets.columns:
-                if NUMBA_AVAILABLE and not rets[col].isna().all():
-                    sharpe_values = rolling_sharpe_fast(rets[col].values, window, 1.0)
-                    sharpe[col] = sharpe_values
-                else:
-                    if NUMBA_AVAILABLE and not rets[col].isna().all():
-                        mean_values = rolling_mean_fast(rets[col].values, window)
-                        std_values = rolling_std_fast(rets[col].values, window)
-                        sharpe[col] = pd.Series(mean_values, index=rets.index) / pd.Series(std_values, index=rets.index).replace(0, np.nan)
-                    else:
-                        mean_rets = rets[col].rolling(window).mean()
-                        std_rets = rets[col].rolling(window).std()
-                        sharpe[col] = mean_rets / std_rets.replace(0, np.nan)
-        
+
+        # Handle empty data edge case
+        if rets.empty:
+            return signals.abs()
+
+        # Use optimized batch calculation with proper ddof=1 handling
+        returns_matrix: np.ndarray = rets.values.astype(np.float64)
+        sharpe_matrix = rolling_sharpe_batch(returns_matrix, window, annualization_factor=1.0)
+        sharpe = pd.DataFrame(sharpe_matrix, index=rets.index, columns=rets.columns)
+
         # Use absolute signals for sizing
         weights = signals.abs().mul(sharpe.abs())
         return _normalize_weights(weights)
@@ -73,34 +65,24 @@ class RollingSharpeSizer(BasePositionSizer):
 class RollingSortinoSizer(BasePositionSizer):
     """Size positions based on their rolling Sortino ratio."""
 
-    def calculate_weights(self, signals: pd.DataFrame, prices: pd.DataFrame, window: int, target_return: float = 0.0, **_) -> pd.DataFrame:
+    def calculate_weights(
+        self, signals: pd.DataFrame, prices: pd.DataFrame, **kwargs
+    ) -> pd.DataFrame:
+        window = kwargs.get("window", 252)
+        target_return = kwargs.get("target_return", 0.0)
         rets = prices.pct_change(fill_method=None).fillna(0)
-        
-        if NUMBA_AVAILABLE and not rets.empty:
-            returns_matrix = rets.values
-            sortino_matrix = rolling_sortino_batch(returns_matrix, window, target_return, annualization_factor=1.0)
-            sortino = pd.DataFrame(sortino_matrix, index=rets.index, columns=rets.columns)
-        else:
-            sortino = pd.DataFrame(index=rets.index, columns=rets.columns)
-            for col in rets.columns:
-                if NUMBA_AVAILABLE and not rets[col].isna().all():
-                    sortino_values = rolling_sortino_fast(rets[col].values, window, target_return, 1.0)
-                    sortino[col] = sortino_values
-                else:
-                    def downside(series):
-                        downside_returns = series[series < target_return]
-                        if len(downside_returns) == 0:
-                            return 1e-9
-                        return np.sqrt(np.mean((downside_returns - target_return) ** 2))
-                    
-                    if NUMBA_AVAILABLE and not rets[col].isna().all():
-                        sortino_values = rolling_sortino_fast(rets[col].values, window, target_return, 1.0)
-                        sortino[col] = pd.Series(sortino_values, index=rets.index)
-                    else:
-                        mean_rets = rets[col].rolling(window).mean()
-                        downside_dev = rets[col].rolling(window).apply(downside, raw=False)
-                        sortino[col] = (mean_rets - target_return) / downside_dev.replace(0, np.nan)
-        
+
+        # Handle empty data edge case
+        if rets.empty:
+            return signals.abs()
+
+        # Use optimized batch calculation with proper ddof=1 handling
+        returns_matrix: np.ndarray = rets.values.astype(np.float64)
+        sortino_matrix = rolling_sortino_batch(
+            returns_matrix, window, target_return, annualization_factor=1.0
+        )
+        sortino = pd.DataFrame(sortino_matrix, index=rets.index, columns=rets.columns)
+
         weights = signals.abs().mul(sortino.abs())
         return _normalize_weights(weights)
 
@@ -108,30 +90,28 @@ class RollingSortinoSizer(BasePositionSizer):
 class RollingBetaSizer(BasePositionSizer):
     """Size positions based on their rolling beta."""
 
-    def calculate_weights(self, signals: pd.DataFrame, prices: pd.DataFrame, benchmark: pd.Series, window: int, **_) -> pd.DataFrame:
+    def calculate_weights(
+        self, signals: pd.DataFrame, prices: pd.DataFrame, **kwargs
+    ) -> pd.DataFrame:
+        benchmark = kwargs.get("benchmark")
+        window = kwargs.get("window", 252)
         rets = prices.pct_change(fill_method=None).fillna(0)
-        bench_rets = benchmark.pct_change(fill_method=None).fillna(0)
-        
-        if NUMBA_AVAILABLE and not rets.empty and not bench_rets.isna().all():
-            returns_matrix = rets.values
-            benchmark_returns = bench_rets.values
-            beta_matrix = rolling_beta_batch(returns_matrix, benchmark_returns, window)
-            beta = pd.DataFrame(beta_matrix, index=rets.index, columns=rets.columns)
-        else:
-            beta = pd.DataFrame(index=rets.index, columns=rets.columns)
-            for col in rets.columns:
-                if NUMBA_AVAILABLE and not rets[col].isna().all():
-                    beta_values = rolling_beta_fast(rets[col].values, bench_rets.values, window)
-                    beta[col] = beta_values
-                else:
-                    if NUMBA_AVAILABLE and not rets[col].isna().all():
-                        beta_values = rolling_beta_fast(rets[col].values, bench_rets.values, window)
-                        beta[col] = pd.Series(beta_values, index=rets.index)
-                    else:
-                        cov = rets[col].rolling(window).cov(bench_rets)
-                        var = bench_rets.rolling(window).var()
-                        beta[col] = cov / var
-        
+        bench_rets = (
+            benchmark.pct_change(fill_method=None).fillna(0)
+            if benchmark is not None
+            else pd.Series()
+        )
+
+        # Handle empty data edge case
+        if rets.empty or bench_rets.isna().all() or benchmark is None:
+            return signals.abs()
+
+        # Use optimized batch calculation
+        returns_matrix = rets.values.astype(np.float64)
+        benchmark_returns = bench_rets.values.astype(np.float64)
+        beta_matrix = rolling_beta_batch(returns_matrix, benchmark_returns, window)
+        beta = pd.DataFrame(beta_matrix, index=rets.index, columns=rets.columns)
+
         factor = 1 / beta.abs().replace(0, np.nan)
         weights = signals.abs().mul(factor)
         return _normalize_weights(weights)
@@ -140,28 +120,28 @@ class RollingBetaSizer(BasePositionSizer):
 class RollingBenchmarkCorrSizer(BasePositionSizer):
     """Size positions based on their rolling correlation with a benchmark."""
 
-    def calculate_weights(self, signals: pd.DataFrame, prices: pd.DataFrame, benchmark: pd.Series, window: int, **_) -> pd.DataFrame:
+    def calculate_weights(
+        self, signals: pd.DataFrame, prices: pd.DataFrame, **kwargs
+    ) -> pd.DataFrame:
+        benchmark = kwargs.get("benchmark")
+        window = kwargs.get("window", 252)
         rets = prices.pct_change(fill_method=None).fillna(0)
-        bench_rets = benchmark.pct_change(fill_method=None).fillna(0)
-        
-        if NUMBA_AVAILABLE and not rets.empty and not bench_rets.isna().all():
-            returns_matrix = rets.values
-            benchmark_returns = bench_rets.values
-            corr_matrix = rolling_correlation_batch(returns_matrix, benchmark_returns, window)
-            corr = pd.DataFrame(corr_matrix, index=rets.index, columns=rets.columns)
-        else:
-            corr = pd.DataFrame(index=rets.index, columns=rets.columns)
-            for col in rets.columns:
-                if NUMBA_AVAILABLE and not rets[col].isna().all():
-                    corr_values = rolling_correlation_fast(rets[col].values, bench_rets.values, window)
-                    corr[col] = corr_values
-                else:
-                    if NUMBA_AVAILABLE and not rets[col].isna().all():
-                        corr_values = rolling_correlation_fast(rets[col].values, bench_rets.values, window)
-                        corr[col] = pd.Series(corr_values, index=rets.index)
-                    else:
-                        corr[col] = rets[col].rolling(window).corr(bench_rets)
-        
+        bench_rets = (
+            benchmark.pct_change(fill_method=None).fillna(0)
+            if benchmark is not None
+            else pd.Series()
+        )
+
+        # Handle empty data edge case
+        if rets.empty or bench_rets.isna().all() or benchmark is None:
+            return signals.abs()
+
+        # Use optimized batch calculation
+        returns_matrix = rets.values.astype(np.float64)
+        benchmark_returns = bench_rets.values.astype(np.float64)
+        corr_matrix = rolling_correlation_batch(returns_matrix, benchmark_returns, window)
+        corr = pd.DataFrame(corr_matrix, index=rets.index, columns=rets.columns)
+
         factor = 1 / (corr.abs() + 1e-9)
         weights = signals.abs().mul(factor)
         return _normalize_weights(weights)
@@ -170,17 +150,25 @@ class RollingBenchmarkCorrSizer(BasePositionSizer):
 class RollingDownsideVolatilitySizer(BasePositionSizer):
     """Size positions inversely proportional to downside volatility, scaled by a target volatility."""
 
-    def calculate_weights(self, signals: pd.DataFrame, prices: pd.DataFrame, benchmark: pd.Series, daily_prices_for_vol: pd.DataFrame, window: int, target_volatility: float = 1.0, max_leverage: float = 2.0, **_) -> pd.DataFrame:
-        if NUMBA_AVAILABLE:
-            downside_vol_monthly = pd.DataFrame(index=prices.index, columns=prices.columns)
-            for col in prices.columns:
-                downside_vol_monthly[col] = rolling_downside_volatility_fast(prices[col].values, window)
-        else:
-            rets_monthly = prices.pct_change(fill_method=None).fillna(0)
-            downside_monthly = rets_monthly.clip(upper=0)
-            downside_sq_sum_monthly = (downside_monthly ** 2).rolling(window).sum()
-            downside_vol_monthly = (downside_sq_sum_monthly / window).pow(0.5)
-            downside_vol_monthly = pd.DataFrame(downside_vol_monthly, index=signals.index, columns=signals.columns)
+    def calculate_weights(
+        self, signals: pd.DataFrame, prices: pd.DataFrame, **kwargs
+    ) -> pd.DataFrame:
+        benchmark = kwargs.get("benchmark")
+        daily_prices_for_vol = kwargs.get("daily_prices_for_vol")
+        window = kwargs.get("window", 252)
+        target_volatility = kwargs.get("target_volatility", 1.0)
+        max_leverage = kwargs.get("max_leverage", 2.0)
+
+        # Handle None cases
+        if benchmark is None or daily_prices_for_vol is None:
+            return signals.abs()
+
+        # Use optimized downside volatility calculation
+        downside_vol_monthly = pd.DataFrame(index=prices.index, columns=prices.columns)
+        for col in prices.columns:
+            downside_vol_monthly[col] = rolling_downside_volatility_fast(
+                prices[col].values.astype(np.float64), window
+            )
 
         epsilon = 1e-9
         factor = target_volatility / np.maximum(downside_vol_monthly, epsilon)
@@ -189,20 +177,36 @@ class RollingDownsideVolatilitySizer(BasePositionSizer):
 
         sized_initial = signals.abs().mul(factor)
 
-        daily_weights_from_sized_initial = sized_initial.reindex(daily_prices_for_vol.index, method="ffill")
+        daily_weights_from_sized_initial = (
+            sized_initial.reindex(daily_prices_for_vol.index, method="ffill")
+            if daily_prices_for_vol is not None
+            else pd.DataFrame()
+        )
         daily_weights_from_sized_initial = daily_weights_from_sized_initial.shift(1).fillna(0.0)
 
-        daily_rets_for_vol = daily_prices_for_vol.pct_change(fill_method=None).fillna(0)
-        daily_portfolio_returns_initial = (daily_weights_from_sized_initial * daily_rets_for_vol).sum(axis=1)
+        daily_rets_for_vol = (
+            daily_prices_for_vol.pct_change(fill_method=None).fillna(0)
+            if daily_prices_for_vol is not None
+            else pd.DataFrame()
+        )
+        daily_portfolio_returns_initial = (
+            daily_weights_from_sized_initial * daily_rets_for_vol
+        ).sum(axis=1)
 
         annualization_factor = np.sqrt(252)
-        actual_portfolio_vol = daily_portfolio_returns_initial.rolling(window=window*21).std() * annualization_factor
+        actual_portfolio_vol = (
+            daily_portfolio_returns_initial.rolling(window=window * 21).std() * annualization_factor
+        )
 
         scaling_factor = target_volatility / np.maximum(actual_portfolio_vol, epsilon)
         scaling_factor = scaling_factor.clip(upper=max_leverage)
 
-        scaling_factor_monthly = scaling_factor.reindex(signals.index, method="ffill")
-        
+        scaling_factor_monthly = (
+            scaling_factor.reindex(signals.index, method="ffill")
+            if scaling_factor is not None
+            else pd.Series()
+        )
+
         weights = sized_initial.mul(scaling_factor_monthly, axis=0)
         weights = weights.clip(upper=max_leverage)
 
@@ -238,6 +242,7 @@ def get_position_sizer(name: str) -> BasePositionSizer:
         raise ValueError(f"Unknown position sizer: {name}") from exc
 
 
+# Internal function used by position sizer providers
 def get_position_sizer_from_config(config: Dict[str, Any]) -> BasePositionSizer:
     """Get a position sizer object from a configuration dictionary."""
     sizer_name = config.get("position_sizer", "equal_weight")

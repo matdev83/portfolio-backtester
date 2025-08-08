@@ -4,13 +4,11 @@ Split from test_configuration_extensibility.py for better organization.
 """
 
 import pytest
-import pandas as pd
-import numpy as np
 import tempfile
 import os
 import yaml
-from src.portfolio_backtester.timing.config_schema import (
-    TimingConfigSchema, ValidationError, validate_timing_config, validate_timing_config_file
+from portfolio_backtester.timing.config_schema import (
+    TimingConfigSchema, ValidationError, validate_timing_config
 )
 
 

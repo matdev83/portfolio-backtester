@@ -374,11 +374,12 @@ OPTIMIZER_PARAMETER_DEFAULTS:
     low: 6
     high: 12
     step: 1
-  long_only:
-    type: "int"
-    low: 0
-    high: 1
-    step: 1
+  trade_longs:
+    type: "categorical"
+    values: [true, false]
+  trade_shorts:
+    type: "categorical" 
+    values: [true, false]
   target_volatility:
     type: "float"
     low: 0.05
@@ -450,7 +451,10 @@ OPTIMIZER_PARAMETER_DEFAULTS:
   use_hedged_legs:
     type: "categorical"
     values: [true, false]
-  long_only:
+  trade_longs:
+    type: "categorical"
+    values: [true, false]
+  trade_shorts:
     type: "categorical"
     values: [true, false]
   account_for_costs:

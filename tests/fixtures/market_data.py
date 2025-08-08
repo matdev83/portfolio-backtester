@@ -7,7 +7,7 @@ various market data patterns used across different test scenarios.
 
 import pandas as pd
 import numpy as np
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from functools import lru_cache
 
 

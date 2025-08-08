@@ -4,7 +4,7 @@ import pandas as pd
 import os
 import shutil
 from unittest.mock import patch
-from src.portfolio_backtester.data_sources.yfinance_data_source import YFinanceDataSource
+from portfolio_backtester.data_sources.yfinance_data_source import YFinanceDataSource
 from pathlib import Path
 import time
 import pytest

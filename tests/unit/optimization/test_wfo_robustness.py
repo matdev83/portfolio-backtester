@@ -12,7 +12,7 @@ import pytest
 import numpy as np
 import pandas as pd
 
-from src.portfolio_backtester.utils import generate_randomized_wfo_windows, calculate_stability_metrics
+from portfolio_backtester.utils import generate_randomized_wfo_windows, calculate_stability_metrics
 
 
 class TestWFORobustness:

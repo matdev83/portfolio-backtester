@@ -1,0 +1,13 @@
+# Provider Interface Enforcement Hook
+# Add this to your pre-commit configuration to enforce provider usage
+
+repos:
+  - repo: local
+    hooks:
+      - id: enforce-provider-usage
+        name: Enforce Provider Interface Usage
+        entry: python scripts/enforce_provider_usage.py
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true

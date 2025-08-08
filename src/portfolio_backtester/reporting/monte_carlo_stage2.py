@@ -3,11 +3,12 @@
 Copied verbatim from the original monolithic `backtester_logic.reporting` so
 behaviour is unchanged; only the physical file location differs.
 """
+
 from __future__ import annotations
 
-import logging
 import os
 from datetime import datetime
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,14 +21,33 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from ..interfaces.attribute_accessor_interface import IAttributeAccessor, create_attribute_accessor
+
 # NOTE: relative import still works because we are inside
 # `portfolio_backtester.reporting` – the same level as `monte_carlo`.
-from ..monte_carlo.asset_replacement import AssetReplacementManager  # noqa: E402
 
 __all__ = [
     "_plot_monte_carlo_robustness_analysis",
     "_create_monte_carlo_robustness_plot",
 ]
+
+
+def _plot_series(ax, x, y, color, alpha, lw, label) -> None:
+    try:
+        ax.plot(x, y, color=color, alpha=alpha, linewidth=lw, label=label)
+    except Exception:
+        pass
+
+
+def _plot_original_series(ax, series: pd.Series | None) -> None:
+    if series is None:
+        return
+    if series.empty:
+        return
+    cum: pd.Series = (1 + series).cumprod()
+    ax.plot(
+        cum.index, cum.values, color="black", linewidth=3.0, label="Original Strategy", zorder=10
+    )
 
 
 def _plot_monte_carlo_robustness_analysis(
@@ -38,6 +58,7 @@ def _plot_monte_carlo_robustness_analysis(
     monthly_data,
     daily_data,
     rets_full,
+    attribute_accessor: Optional[IAttributeAccessor] = None,
 ):
     """Stage-2 comprehensive stress-test after optimisation completes."""
     logger = self.logger
@@ -71,7 +92,6 @@ def _plot_monte_carlo_robustness_analysis(
         simulation_results: dict[float, list[pd.Series]] = {}
         total_sims = len(replacement_percentages) * num_simulations_per_level
 
-
         with Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
@@ -81,7 +101,9 @@ def _plot_monte_carlo_robustness_analysis(
         ) as progress:
             task = progress.add_task("[cyan]Stage 2 Monte Carlo Stress Testing…", total=total_sims)
 
-            timeout_manager = getattr(self, 'timeout_manager', None)
+            # Dependency injection for attribute access (DIP)
+            _attribute_accessor = attribute_accessor or create_attribute_accessor()
+            timeout_manager = _attribute_accessor.get_attribute(self, "timeout_manager", None)
             timed_out = False
 
             for rep_pct in replacement_percentages:
@@ -92,21 +114,29 @@ def _plot_monte_carlo_robustness_analysis(
                 for sim in range(num_simulations_per_level):
                     # Check for timeout before each simulation
                     if timeout_manager is not None and timeout_manager.check_timeout():
-                        logger.warning("Stage 2 MC: Timeout detected during simulation (rep_pct=%.3f, sim=%d). Aborting Stage 2 MC.", rep_pct, sim)
+                        logger.warning(
+                            "Stage 2 MC: Timeout detected during simulation (rep_pct=%.3f, sim=%d). Aborting Stage 2 MC.",
+                            rep_pct,
+                            sim,
+                        )
                         timed_out = True
                         break
                     try:
                         # naive synthetic: bootstrap returns with noise
                         synthetic = rets_full.copy()
                         rng = np.random.default_rng(sim + int(rep_pct * 1000))
-                        assets_to_replace = rng.choice(universe, max(1, int(len(universe) * rep_pct)), replace=False)
+                        assets_to_replace = rng.choice(
+                            universe, max(1, int(len(universe) * rep_pct)), replace=False
+                        )
                         for ticker in assets_to_replace:
                             if ticker in synthetic.columns:
                                 orig = synthetic[ticker].dropna()
                                 if len(orig) < 50:
                                     continue
                                 boot = rng.choice(orig.to_numpy(), size=len(orig))
-                                noise = rng.normal(0, orig.std() * rng.uniform(0.15, 0.25), len(orig))
+                                noise = rng.normal(
+                                    0, orig.std() * rng.uniform(0.15, 0.25), len(orig)
+                                )
                                 synthetic[ticker] = pd.Series(boot + noise, index=orig.index)
 
                         sim_rets = self.run_scenario(
@@ -160,28 +190,38 @@ def _create_monte_carlo_robustness_plot(
 
     try:
         plt.style.use("seaborn-v0_8-darkgrid")
-        fig, (ax, ax_params) = plt.subplots(2, 1, figsize=(14, 10), gridspec_kw={"height_ratios": [5, 1]})
+        fig, (ax, ax_params) = plt.subplots(
+            2, 1, figsize=(14, 10), gridspec_kw={"height_ratios": [5, 1]}
+        )
 
         for i, rep_pct in enumerate(replacement_percentages):
             for j, sim_rets in enumerate(simulation_results.get(rep_pct, [])):
                 if sim_rets is None or sim_rets.empty:
                     continue
                 cum = (1 + sim_rets).cumprod()
-                ax.plot(
-                    cum.index,
-                    cum.values,
-                    color=colors[i % len(colors)],
-                    alpha=0.6 if j else 0.8,
-                    linewidth=1.5 if j == 0 else 1.0,
-                    label=f"{rep_pct:.1%} Replacement" if j == 0 else None,
+                if not hasattr(cum, "index") or not hasattr(cum, "values"):
+                    continue
+                x = cum.index
+                y_arr = np.asarray(cum.values)
+                if y_arr.size == 0:
+                    continue
+                _plot_series(
+                    ax,
+                    x,
+                    y_arr,
+                    colors[i % len(colors)],
+                    0.6 if j else 0.8,
+                    1.5 if j == 0 else 1.0,
+                    f"{rep_pct:.1%} Replacement" if j == 0 else None,
                 )
 
-        if original_strategy_returns is not None and not original_strategy_returns.empty:
-            cum_orig = (1 + original_strategy_returns).cumprod()
-            ax.plot(cum_orig.index, cum_orig.values, color="black", linewidth=3.0, label="Original Strategy", zorder=10)
+        _plot_original_series(ax, original_strategy_returns)
 
         ax.set_title(
-            f"Monte Carlo Robustness Analysis: {scenario_name}", fontsize=16, fontweight="bold", pad=20
+            f"Monte Carlo Robustness Analysis: {scenario_name}",
+            fontsize=16,
+            fontweight="bold",
+            pad=20,
         )
         ax.set_xlabel("Date")
         ax.set_ylabel("Cumulative Returns")
@@ -204,4 +244,4 @@ def _create_monte_carlo_robustness_plot(
         logger.info("Monte Carlo robustness plot saved: %s", fname)
 
     except Exception as exc:  # noqa: BLE001
-        logger.error("Failed to create robustness plot: %s", exc) 
+        logger.error("Failed to create robustness plot: %s", exc)

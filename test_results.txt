@@ -1,0 +1,507 @@
+
+============================================================
+Portfolio Backtester Test Suite
+============================================================
+Session started at: 2025-08-07 19:03:14
+Python version: 3.10.11 (tags/v3.10.11:7d4cc5a, Apr  5 2023, 00:38:17) [MSC v.1929 64 bit (AMD64)]
+Pandas version: 2.3.1
+NumPy version: 2.2.6
+============================================================
+============================= test session starts =============================
+platform win32 -- Python 3.10.11, pytest-8.4.1, pluggy-1.6.0 -- C:\Users\Mateusz\source\repos\portfolio-backtester\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+benchmark: 5.1.0 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: C:\Users\Mateusz\source\repos\portfolio-backtester
+configfile: pytest.ini
+plugins: anyio-4.9.0, benchmark-5.1.0, cov-6.2.1, profiling-1.8.1
+collecting ... collected 1297 items / 17 errors / 80 deselected / 2 skipped / 1217 selected
+
+============================================================
+Session finished at: 2025-08-07 19:03:23
+Exit status: 2
+Cache performance:
+  - LRU cache hits: 0
+  - LRU cache misses: 0
+  - Lazy cache entries: 0
+============================================================
+
+=================================== ERRORS ====================================
+_ ERROR collecting tests/integration/strategies/test_dummy_meta_strategy_integration.py _
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\integration\strategies\test_dummy_meta_strategy_integration.py:6: in <module>
+    from portfolio_backtester.core import Backtester
+src\portfolio_backtester\core.py:19: in <module>
+    from .backtester_logic.backtester_facade import BacktesterFacade
+src\portfolio_backtester\backtester_logic\backtester_facade.py:23: in <module>
+    from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 44
+E       self.monitored_dirs = {
+E   IndentationError: unexpected indent
+_ ERROR collecting tests/integration/strategies/test_dummy_strategy_integration.py _
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\integration\strategies\test_dummy_strategy_integration.py:6: in <module>
+    from portfolio_backtester.core import Backtester
+src\portfolio_backtester\core.py:19: in <module>
+    from .backtester_logic.backtester_facade import BacktesterFacade
+src\portfolio_backtester\backtester_logic\backtester_facade.py:23: in <module>
+    from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 44
+E       self.monitored_dirs = {
+E   IndentationError: unexpected indent
+_ ERROR collecting tests/integration/test_intramonth_strategy_integration.py __
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\integration\test_intramonth_strategy_integration.py:19: in <module>
+    from portfolio_backtester.config_loader import GLOBAL_CONFIG
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 44
+E       self.monitored_dirs = {
+E   IndentationError: unexpected indent
+________________ ERROR collecting tests/test_api_stability.py _________________
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\test_api_stability.py:10: in <module>
+    from portfolio_backtester.core import Backtester
+src\portfolio_backtester\core.py:19: in <module>
+    from .backtester_logic.backtester_facade import BacktesterFacade
+src\portfolio_backtester\backtester_logic\backtester_facade.py:23: in <module>
+    from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 44
+E       self.monitored_dirs = {
+E   IndentationError: unexpected indent
+___ ERROR collecting tests/unit/backtester_logic/test_solid_refactoring.py ____
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\backtester_logic\test_solid_refactoring.py:27: in <module>
+    from src.portfolio_backtester.backtester_logic.backtester_facade import BacktesterFacade
+src\portfolio_backtester\backtester_logic\backtester_facade.py:23: in <module>
+    from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 44
+E       self.monitored_dirs = {
+E   IndentationError: unexpected indent
+___________ ERROR collecting tests/unit/core/test_config_loader.py ____________
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\core\test_config_loader.py:4: in <module>
+    from src.portfolio_backtester import config_loader
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 44
+E       self.monitored_dirs = {
+E   IndentationError: unexpected indent
+___ ERROR collecting tests/unit/core/test_config_loader_optimizer_merge.py ____
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\core\test_config_loader_optimizer_merge.py:4: in <module>
+    from portfolio_backtester.config_loader import load_scenario_from_file
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 44
+E       self.monitored_dirs = {
+E   IndentationError: unexpected indent
+________________ ERROR collecting tests/unit/core/test_core.py ________________
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\core\test_core.py:7: in <module>
+    from portfolio_backtester.core import Backtester
+src\portfolio_backtester\core.py:19: in <module>
+    from .backtester_logic.backtester_facade import BacktesterFacade
+src\portfolio_backtester\backtester_logic\backtester_facade.py:23: in <module>
+    from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 44
+E       self.monitored_dirs = {
+E   IndentationError: unexpected indent
+_______ ERROR collecting tests/unit/core/test_merge_optimizer_config.py _______
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\core\test_merge_optimizer_config.py:1: in <module>
+    from portfolio_backtester.config_loader import merge_optimizer_config
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 44
+E       self.monitored_dirs = {
+E   IndentationError: unexpected indent
+________ ERROR collecting tests/unit/core/test_yaml_error_handling.py _________
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\core\test_yaml_error_handling.py:17: in <module>
+    from portfolio_backtester.config_loader import ConfigurationError, load_config
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 44
+E       self.monitored_dirs = {
+E   IndentationError: unexpected indent
+_ ERROR collecting tests/unit/optimization/test_parallel_optimization_enhanced.py _
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\optimization\test_parallel_optimization_enhanced.py:13: in <module>
+    from portfolio_backtester.optimization.parallel_optimization_runner import (
+src\portfolio_backtester\optimization\parallel_optimization_runner.py:25: in <module>
+    from .optuna_objective_adapter import OptunaObjectiveAdapter
+src\portfolio_backtester\optimization\optuna_objective_adapter.py:12: in <module>
+    from ..config_loader import GLOBAL_CONFIG
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 43
+E       project_root = Path(__file__).parent.parent.parent        self.monitored_dirs = {
+E                                                                 ^^^^
+E   SyntaxError: invalid syntax
+___ ERROR collecting tests/unit/optimizer/test_dummy_strategy_optimizer.py ____
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\optimizer\test_dummy_strategy_optimizer.py:6: in <module>
+    from portfolio_backtester.core import Backtester
+src\portfolio_backtester\core.py:19: in <module>
+    from .backtester_logic.backtester_facade import BacktesterFacade
+src\portfolio_backtester\backtester_logic\backtester_facade.py:23: in <module>
+    from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 43
+E       project_root = Path(__file__).parent.parent.parent        self.monitored_dirs = {
+E                                                                 ^^^^
+E   SyntaxError: invalid syntax
+____ ERROR collecting tests/unit/reporting/test_advanced_visualizations.py ____
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\reporting\test_advanced_visualizations.py:20: in <module>
+    from portfolio_backtester.backtester import Backtester
+src\portfolio_backtester\backtester.py:8: in <module>
+    from .core import Backtester
+src\portfolio_backtester\core.py:19: in <module>
+    from .backtester_logic.backtester_facade import BacktesterFacade
+src\portfolio_backtester\backtester_logic\backtester_facade.py:23: in <module>
+    from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 43
+E       project_root = Path(__file__).parent.parent.parent        self.monitored_dirs = {
+E                                                                 ^^^^
+E   SyntaxError: invalid syntax
+_______ ERROR collecting tests/unit/test_dynamic_scenario_validator.py ________
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\test_dynamic_scenario_validator.py:10: in <module>
+    from portfolio_backtester.config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 43
+E       project_root = Path(__file__).parent.parent.parent        self.monitored_dirs = {
+E                                                                 ^^^^
+E   SyntaxError: invalid syntax
+______ ERROR collecting tests/unit/test_enhanced_diagnostic_validator.py ______
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\test_enhanced_diagnostic_validator.py:10: in <module>
+    from portfolio_backtester.config_loader import OPTIMIZER_PARAMETER_DEFAULTS
+src\portfolio_backtester\config_loader.py:10: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 43
+E       project_root = Path(__file__).parent.parent.parent        self.monitored_dirs = {
+E                                                                 ^^^^
+E   SyntaxError: invalid syntax
+_____ ERROR collecting tests/unit/test_strategy_config_cross_validator.py _____
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\test_strategy_config_cross_validator.py:12: in <module>
+    from portfolio_backtester.strategy_config_cross_validator import (
+src\portfolio_backtester\strategy_config_cross_validator.py:17: in <module>
+    from .strategy_config_validator import validate_strategy_configs
+src\portfolio_backtester\strategy_config_validator.py:6: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 43
+E       project_root = Path(__file__).parent.parent.parent        self.monitored_dirs = {
+E                                                                 ^^^^
+E   SyntaxError: invalid syntax
+________ ERROR collecting tests/unit/test_strategy_config_validator.py ________
+.venv\lib\site-packages\_pytest\python.py:498: in importtestmodule
+    mod = import_path(
+.venv\lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+C:\Program Files\Python310\lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1050: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1027: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1006: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:688: in _load_unlocked
+    ???
+.venv\lib\site-packages\_pytest\assertion\rewrite.py:186: in exec_module
+    exec(co, module.__dict__)
+tests\unit\test_strategy_config_validator.py:5: in <module>
+    from portfolio_backtester.strategy_config_validator import validate_strategy_configs
+src\portfolio_backtester\strategy_config_validator.py:6: in <module>
+    from .config_cache import get_cache
+E     File "C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\config_cache.py", line 43
+E       project_root = Path(__file__).parent.parent.parent        self.monitored_dirs = {
+E                                                                 ^^^^
+E   SyntaxError: invalid syntax
+============================== warnings summary ===============================
+src\portfolio_backtester\strategies\signal\uvxy_rsi_signal_strategy.py:22
+  C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\strategies\signal\uvxy_rsi_signal_strategy.py:22: DeprecationWarning: Importing from 'portfolio_backtester.strategies.signal.rsi_calculator' is deprecated. Please use 'portfolio_backtester.utils.signal_processing.rsi_calculator' instead.
+    from .rsi_calculator import RSICalculator
+
+src\portfolio_backtester\strategies\signal\uvxy_rsi_signal_strategy.py:23
+  C:\Users\Mateusz\source\repos\portfolio-backtester\src\portfolio_backtester\strategies\signal\uvxy_rsi_signal_strategy.py:23: DeprecationWarning: Importing from 'portfolio_backtester.strategies.signal.price_data_processor' is deprecated. Please use 'portfolio_backtester.utils.signal_processing.price_data_processor' instead.
+    from .price_data_processor import PriceDataProcessor
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+ERROR tests/integration/strategies/test_dummy_meta_strategy_integration.py
+ERROR tests/integration/strategies/test_dummy_strategy_integration.py
+ERROR tests/integration/test_intramonth_strategy_integration.py
+ERROR tests/test_api_stability.py
+ERROR tests/unit/backtester_logic/test_solid_refactoring.py
+ERROR tests/unit/core/test_config_loader.py
+ERROR tests/unit/core/test_config_loader_optimizer_merge.py
+ERROR tests/unit/core/test_core.py
+ERROR tests/unit/core/test_merge_optimizer_config.py
+ERROR tests/unit/core/test_yaml_error_handling.py
+ERROR tests/unit/optimization/test_parallel_optimization_enhanced.py
+ERROR tests/unit/optimizer/test_dummy_strategy_optimizer.py
+ERROR tests/unit/reporting/test_advanced_visualizations.py
+ERROR tests/unit/test_dynamic_scenario_validator.py
+ERROR tests/unit/test_enhanced_diagnostic_validator.py
+ERROR tests/unit/test_strategy_config_cross_validator.py
+ERROR tests/unit/test_strategy_config_validator.py
+!!!!!!!!!!!!!!!!!! Interrupted: 17 errors during collection !!!!!!!!!!!!!!!!!!!
+========== 2 skipped, 80 deselected, 2 warnings, 17 errors in 9.24s ===========

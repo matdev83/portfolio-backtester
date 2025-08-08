@@ -1,8 +1,7 @@
 """Tests for advanced crossover operators."""
 
 import numpy as np
-import pytest
-from src.portfolio_backtester.optimization.advanced_crossover import (
+from portfolio_backtester.optimization.advanced_crossover import (
     simulated_binary_crossover,
     multi_point_crossover,
     uniform_crossover_variant,

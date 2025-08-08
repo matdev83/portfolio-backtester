@@ -8,10 +8,9 @@ to improve test suite performance and consistency.
 
 import pandas as pd
 import numpy as np
-from typing import List, Optional, Dict, Any, Tuple, Union
+from typing import List, Optional, Dict, Any
 from functools import lru_cache, wraps
 import warnings
-from datetime import datetime, timedelta
 
 
 class OptimizedDataGenerator:

@@ -6,15 +6,11 @@ Merges functionality from test_timing_framework_compatibility.py and test_state_
 import unittest
 import pytest
 import pandas as pd
-from unittest.mock import Mock
-from src.portfolio_backtester.timing.backward_compatibility import (
-    migrate_legacy_config,
-    ensure_backward_compatibility
-)
-from src.portfolio_backtester.strategies.base.base_strategy import BaseStrategy
-from src.portfolio_backtester.timing.time_based_timing import TimeBasedTiming
-from src.portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
-from src.portfolio_backtester.timing.timing_state import TimingState
+
+from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.timing.time_based_timing import TimeBasedTiming
+from portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
+from portfolio_backtester.interfaces.timing_state_interface import create_timing_state
 
 
 class MockStrategy(BaseStrategy):
@@ -41,37 +37,6 @@ class MockStrategy(BaseStrategy):
         return pd.DataFrame([weights])
 
 
-class TestLegacyConfigMigration:
-    """Test legacy configuration migration."""
-    
-    @pytest.mark.parametrize("legacy_config, expected_mode, expected_freq", [
-        ({'strategy': 'momentum', 'rebalance_frequency': 'M'}, 'time_based', 'M'),
-        ({'strategy': 'uvxy_rsi', 'rebalance_frequency': 'D'}, 'signal_based', 'D'),
-        ({'strategy': 'custom_daily', 'daily_signals': True, 'min_holding_period': 5}, 'signal_based', 'D')
-    ])
-    def test_legacy_config_migration(self, legacy_config, expected_mode, expected_freq):
-        """Test that legacy configurations are properly migrated."""
-        migrated = migrate_legacy_config(legacy_config)
-        assert 'timing_config' in migrated
-        timing_config = migrated['timing_config']
-        assert timing_config['mode'] == expected_mode
-        if expected_mode == 'time_based':
-            assert timing_config['rebalance_frequency'] == expected_freq
-        else:
-            assert timing_config['scan_frequency'] == expected_freq
-    
-    def test_enhanced_backward_compatibility(self):
-        """Test enhanced backward compatibility with validation."""
-        legacy_config = {
-            'strategy_params': {'lookback_period': 252},
-            'rebalance_frequency': 'M'
-        }
-        
-        migrated = ensure_backward_compatibility(legacy_config)
-        assert 'timing_config' in migrated
-        assert migrated['timing_config']['mode'] == 'time_based'
-        assert migrated['timing_config']['rebalance_frequency'] == 'M'
-        assert 'rebalance_frequency' not in migrated  # Should be removed
 
 
 class TestTimingFrameworkCompatibility(unittest.TestCase):
@@ -127,7 +92,7 @@ class TestStateBackwardCompatibility:
     
     def setup_method(self):
         """Set up test data."""
-        self.state = TimingState()
+        self.state = create_timing_state()
         self.test_date = pd.Timestamp('2023-01-01')
         self.assets = ['AAPL', 'MSFT']
         self.weights = pd.Series([0.6, 0.4], index=self.assets)
@@ -170,21 +135,7 @@ class TestStateBackwardCompatibility:
         assert 'AAPL' in held_assets
 
 
-class TestParameterizedMigration:
-    """Test parameterized migration scenarios."""
-    
-    @pytest.mark.parametrize("strategy_name,config,expected_mode", [
-        ('momentum_strategy', {'rebalance_frequency': 'M'}, 'time_based'),
-        ('uvxy_rsi_strategy', {'daily_signals': True}, 'signal_based'),
-        ('custom_strategy', {'timing_config': {'mode': 'time_based'}}, 'time_based'),
-    ])
-    def test_migration_scenarios(self, strategy_name, config, expected_mode):
-        """Test various migration scenarios."""
-        config['strategy'] = strategy_name
-        migrated = migrate_legacy_config(config)
-        
-        assert 'timing_config' in migrated
-        assert migrated['timing_config']['mode'] == expected_mode
+
 
 
 if __name__ == '__main__':

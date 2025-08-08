@@ -9,20 +9,19 @@ accurate trade duration calculation and proper daily evaluation.
 import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-from unittest.mock import Mock, patch, MagicMock
+from datetime import datetime
+from unittest.mock import Mock, patch
 
-from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
-from src.portfolio_backtester.optimization.results import OptimizationData, EvaluationResult
-from src.portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
-from src.portfolio_backtester.backtesting.results import WindowResult
-from src.portfolio_backtester.config_loader import GLOBAL_CONFIG
+from portfolio_backtester.optimization.evaluator import BacktestEvaluator
+from portfolio_backtester.optimization.results import OptimizationData, EvaluationResult
+from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
+from portfolio_backtester.backtesting.results import WindowResult
+from portfolio_backtester.config_loader import GLOBAL_CONFIG
 
 # Enhanced WFO imports
 try:
-    from src.portfolio_backtester.optimization.wfo_window import WFOWindow
-    from src.portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
-    from src.portfolio_backtester.backtesting.position_tracker import PositionTracker, Trade
+    from portfolio_backtester.optimization.wfo_window import WFOWindow
+    from portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
     WFO_ENHANCEMENT_AVAILABLE = True
 except ImportError:
     WFO_ENHANCEMENT_AVAILABLE = False
@@ -115,12 +114,12 @@ class TestIntramonthStrategyIntegration:
         """Create realistic intramonth strategy scenario configuration."""
         return {
             'name': 'IntramonthSeasonalIntegrationTest',
-            'strategy': 'IntramonthSeasonalStrategy',
+            'strategy': 'SeasonalSignalStrategy',
             'strategy_params': {
-                'IntramonthSeasonalStrategy.entry_day': 1,
-                'IntramonthSeasonalStrategy.exit_day': 15,
-                'IntramonthSeasonalStrategy.universe_tickers': ['AAPL', 'MSFT', 'GOOGL'],
-                'IntramonthSeasonalStrategy.max_positions': 3
+                'SeasonalSignalStrategy.entry_day': 1,
+                'SeasonalSignalStrategy.exit_day': 15,
+                'SeasonalSignalStrategy.universe_tickers': ['AAPL', 'MSFT', 'GOOGL'],
+                'SeasonalSignalStrategy.max_positions': 3
             },
             'timing': {
                 'rebalance_frequency': 'D',
@@ -156,7 +155,7 @@ class TestIntramonthStrategyIntegration:
     def mock_intramonth_strategy(self):
         """Create a mock intramonth strategy that generates realistic signals."""
         strategy = Mock()
-        strategy.name = 'IntramonthSeasonalStrategy'
+        strategy.name = 'SeasonalSignalStrategy'
         
         def generate_signals(all_historical_data, benchmark_historical_data, 
                            non_universe_historical_data, current_date, start_date, end_date):
@@ -268,7 +267,7 @@ class TestIntramonthStrategyIntegration:
             test_start=datetime(2023, 4, 1),
             test_end=datetime(2023, 6, 30),
             evaluation_frequency='D',
-            strategy_name='IntramonthSeasonalStrategy'
+            strategy_name='SeasonalSignalStrategy'
         )
         
         # Get evaluation dates
@@ -390,19 +389,19 @@ class TestIntramonthStrategyIntegration:
         strategies_configs = [
             {
                 'name': 'IntramonthEarly',
-                'strategy': 'IntramonthSeasonalStrategy',
+                'strategy': 'SeasonalSignalStrategy',
                 'strategy_params': {'entry_day': 1, 'exit_day': 10},
                 'timing': {'rebalance_frequency': 'D', 'mode': 'signal_based', 'scan_frequency': 'D'}
             },
             {
                 'name': 'IntramonthMid',
-                'strategy': 'IntramonthSeasonalStrategy', 
+                'strategy': 'SeasonalSignalStrategy', 
                 'strategy_params': {'entry_day': 5, 'exit_day': 15},
                 'timing': {'rebalance_frequency': 'D', 'mode': 'signal_based', 'scan_frequency': 'D'}
             },
             {
                 'name': 'IntramonthLate',
-                'strategy': 'IntramonthSeasonalStrategy',
+                'strategy': 'SeasonalSignalStrategy',
                 'strategy_params': {'entry_day': 10, 'exit_day': 20},
                 'timing': {'rebalance_frequency': 'D', 'mode': 'signal_based', 'scan_frequency': 'D'}
             }
@@ -421,7 +420,7 @@ class TestIntramonthStrategyIntegration:
         for config in strategies_configs:
             # Create mock strategy for this configuration
             mock_strategy = Mock()
-            mock_strategy.name = 'IntramonthSeasonalStrategy'
+            mock_strategy.name = 'SeasonalSignalStrategy'
             
             def mock_generate_signals(all_historical_data, benchmark_historical_data, 
                                     non_universe_historical_data, current_date, start_date, end_date):
@@ -463,7 +462,7 @@ class TestIntramonthStrategyIntegration:
                 test_start=datetime(2023, 4, 1),
                 test_end=datetime(2023, 5, 31),
                 evaluation_frequency='D',
-                strategy_name='IntramonthSeasonalStrategy'
+                strategy_name='SeasonalSignalStrategy'
             ),
             WFOWindow(
                 train_start=datetime(2023, 2, 1),
@@ -471,7 +470,7 @@ class TestIntramonthStrategyIntegration:
                 test_start=datetime(2023, 5, 1),
                 test_end=datetime(2023, 6, 30),
                 evaluation_frequency='D',
-                strategy_name='IntramonthSeasonalStrategy'
+                strategy_name='SeasonalSignalStrategy'
             )
         ]
         
@@ -544,7 +543,7 @@ class TestIntramonthStrategyIntegration:
         
         # Test with strategy that raises exceptions
         failing_strategy = Mock()
-        failing_strategy.name = 'IntramonthSeasonalStrategy'
+        failing_strategy.name = 'SeasonalSignalStrategy'
         failing_strategy.generate_signals = Mock(side_effect=Exception("Strategy failed"))
         failing_strategy.get_universe_tickers = Mock(return_value=['AAPL', 'MSFT'])
         
@@ -651,3 +650,57 @@ class TestIntramonthStrategyIntegration:
             # (allowing for some variance in timing)
             assert second_duration <= first_duration * 2, \
                 f"Second evaluation ({second_duration:.3f}s) much slower than first ({first_duration:.3f}s)"
+
+    @pytest.mark.skipif(not WFO_ENHANCEMENT_AVAILABLE, reason="WFO enhancement not available")
+    def test_intramonth_strategy_with_enhanced_wfo(self, intramonth_scenario_config, optimization_data):
+        """Test SeasonalSignalStrategy with enhanced WFO system."""
+        # Create evaluator with daily evaluation
+        evaluator = BacktestEvaluator(
+            metrics_to_optimize=['sharpe_ratio'],
+            is_multi_objective=False,
+            n_jobs=1
+        )
+        
+        # Test that the evaluator correctly detects intramonth strategy
+        detected_frequency = evaluator._determine_evaluation_frequency(intramonth_scenario_config)
+        assert detected_frequency == 'D', "Intramonth strategy should be detected as requiring daily evaluation"
+        
+        # Test that the strategy class is properly configured
+        assert intramonth_scenario_config['strategy'] == 'SeasonalSignalStrategy'
+        
+        # Validate configuration structure
+        assert 'timing' in intramonth_scenario_config
+        assert intramonth_scenario_config['timing']['rebalance_frequency'] == 'D'
+        assert intramonth_scenario_config['timing']['mode'] == 'signal_based'
+
+    @pytest.mark.skipif(not WFO_ENHANCEMENT_AVAILABLE, reason="WFO enhancement not available")
+    def test_exit_timing_accuracy(self, intramonth_scenario_config, optimization_data):
+        """Validate that exit timing matches strategy logic exactly."""
+        # Create strategy instance
+        from portfolio_backtester.strategies.signal.seasonal_signal_strategy import SeasonalSignalStrategy
+        strategy = SeasonalSignalStrategy(intramonth_scenario_config)
+        
+        # Test specific dates to validate entry and exit logic
+        entry_day = intramonth_scenario_config['strategy_params']['SeasonalSignalStrategy.entry_day']
+        hold_days = 10 # Hardcoded for this test
+        
+        # Test entry date calculation for different months
+        test_months = [datetime(2023, 1, 1), datetime(2023, 4, 1), datetime(2023, 7, 1)]
+        
+        for test_month in test_months:
+            expected_entry_date = strategy.get_entry_date_for_month(test_month, entry_day)
+            
+            # Validate entry date is in the correct month
+            assert expected_entry_date.month == test_month.month
+            assert expected_entry_date.year == test_month.year
+            
+            # Calculate expected exit date using business days
+            expected_exit_date = expected_entry_date + pd.tseries.offsets.BDay(hold_days)
+            
+            # Validate that exit date is after entry date
+            assert expected_exit_date > expected_entry_date
+            
+            # Validate that the duration is approximately correct
+            # (allowing for weekends and holidays)
+            duration_days = (expected_exit_date - expected_entry_date).days
+            assert 7 <= duration_days <= 20, f"Duration {duration_days} should be reasonable for {hold_days} business days"

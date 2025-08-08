@@ -1,0 +1,2 @@
+strategy: DummySignalStrategy
+strategy_params: {}

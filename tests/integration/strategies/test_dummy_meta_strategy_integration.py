@@ -3,22 +3,25 @@ import pandas as pd
 from unittest.mock import Mock
 import pytest
 
-from src.portfolio_backtester.core import Backtester
+from portfolio_backtester.core import Backtester
 
 
 @pytest.mark.integration
 @pytest.mark.fast
 def test_dummy_meta_strategy_end_to_end():
-    """Meta-strategy that wraps DummyStrategyForTesting should work and produce trades."""
+    """Meta-strategy that wraps a real registered sub-strategy should work and produce trades."""
     rng = np.random.default_rng(7)
     dates = pd.date_range("2020-01-01", periods=150, freq="D")
     prices = 50 * np.cumprod(1 + rng.normal(0.0003, 0.012, len(dates)))
     volumes = rng.integers(800, 9000, len(dates))
 
-    columns = pd.MultiIndex.from_tuples([
-        ("SPY", "Close"),
-        ("SPY", "Volume"),
-    ], names=["Ticker", "Field"])
+    columns = pd.MultiIndex.from_tuples(
+        [
+            ("SPY", "Close"),
+            ("SPY", "Volume"),
+        ],
+        names=["Ticker", "Field"],
+    )
     daily_data = pd.DataFrame(np.column_stack([prices, volumes]), index=dates, columns=columns)
     benchmark_data = pd.DataFrame({"Close": prices}, index=dates)
 
@@ -45,12 +48,11 @@ def test_dummy_meta_strategy_end_to_end():
                     "allocations": [
                         {
                             "strategy_id": "dummy1",
-                            "strategy_class": "DummyStrategyForTesting",
+                            "strategy_class": "EmaCrossoverSignalStrategy",
                             "strategy_params": {
-                                "symbol": "SPY",
-                                "open_long_prob": 0.3,
-                                "close_long_prob": 0.05,
-                                "seed": 202,
+                                "fast_ema_days": 12,
+                                "slow_ema_days": 26,
+                                "leverage": 1.0,
                             },
                             "weight": 1.0,
                         }

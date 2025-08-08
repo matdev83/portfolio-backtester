@@ -2,7 +2,7 @@ import unittest
 import pandas as pd
 import numpy as np
 from scipy.stats import linregress
-from src.portfolio_backtester.reporting.performance_metrics import calculate_metrics
+from portfolio_backtester.reporting.performance_metrics import calculate_metrics
 import warnings
 
 class TestPerformanceMetrics(unittest.TestCase):

@@ -7,7 +7,6 @@ imported without side-effects.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -37,7 +36,7 @@ def main() -> None:  # pragma: no cover – dev helper
     print("Data loading complete.")
     print("\n--- Info of saved Parquet file ---")
     loaded_df = pd.read_parquet(output_parquet_path)
-    print(loaded_df.info())
+    loaded_df.info()
 
 
 if __name__ == "__main__":

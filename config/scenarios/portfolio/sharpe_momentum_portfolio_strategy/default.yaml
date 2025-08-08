@@ -1,0 +1,44 @@
+name: sharpe_momentum_portfolio
+strategy: SharpeMomentumPortfolioStrategy
+
+rebalance_frequency: ME
+position_sizer: equal_weight
+train_window_months: 36
+test_window_months: 48
+universe_config:
+  type: named
+  universe_name: sp500_top50
+optimization_metric: Sharpe
+optimize:
+- parameter: num_holdings
+  min_value: 10
+  max_value: 30
+  step: 1
+- parameter: rolling_window
+  min_value: 1
+  max_value: 6
+  step: 1
+strategy_params:
+  num_holdings: 10
+  rolling_window: 6
+  top_decile_fraction: 0.1
+  smoothing_lambda: 0.5
+  leverage: 0.5
+  trade_longs: true
+  trade_shorts: false
+  sma_filter_window: null
+  
+  # Risk Management Configuration
+  # Conservative stop loss for portfolio strategies
+  stop_loss_config:
+    type: "AtrBasedStopLoss"
+    atr_length: 20
+    atr_multiple: 2.5
+    
+  # Wide take profit targets for trend-following
+  take_profit_config:
+    type: "AtrBasedTakeProfit" 
+    atr_length: 20
+    atr_multiple: 4.0
+mc_simulations: 500
+mc_years: 20

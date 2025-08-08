@@ -1,9 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.portfolio_backtester.strategies.signal.intramonth_seasonal_strategy import (
-    IntramonthSeasonalStrategy,
-)
+from portfolio_backtester.strategies.signal.seasonal_signal_strategy import SeasonalSignalStrategy
 
 
 @pytest.fixture
@@ -17,7 +15,7 @@ def sample_historical_data():
 
 
 def test_get_entry_date_for_month_positive():
-    strategy = IntramonthSeasonalStrategy({})
+    strategy = SeasonalSignalStrategy({})
     date = pd.Timestamp("2023-01-15")
     entry_day = 5
     expected_date = pd.Timestamp("2023-01-06")  # 5th business day of Jan 2023
@@ -25,7 +23,7 @@ def test_get_entry_date_for_month_positive():
 
 
 def test_get_entry_date_for_month_negative():
-    strategy = IntramonthSeasonalStrategy({})
+    strategy = SeasonalSignalStrategy({})
     date = pd.Timestamp("2023-01-15")
     entry_day = -3
     expected_date = pd.Timestamp("2023-01-27")  # 3rd to last business day of Jan 2023
@@ -40,7 +38,7 @@ def test_long_strategy_entry_and_exit(sample_historical_data):
             "hold_days": 3,
         }
     }
-    strategy = IntramonthSeasonalStrategy(config)
+    strategy = SeasonalSignalStrategy(config)
     entry_date = strategy.get_entry_date_for_month(pd.Timestamp("2023-01-01"), 5)
     exit_date = entry_date + pd.tseries.offsets.BDay(3)
 
@@ -74,7 +72,7 @@ def test_short_strategy_entry_and_exit(sample_historical_data):
             "hold_days": 2,
         }
     }
-    strategy = IntramonthSeasonalStrategy(config)
+    strategy = SeasonalSignalStrategy(config)
     entry_date = strategy.get_entry_date_for_month(pd.Timestamp("2023-02-01"), -1)
     exit_date = entry_date + pd.tseries.offsets.BDay(2)
 

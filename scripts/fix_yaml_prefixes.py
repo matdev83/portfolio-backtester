@@ -12,15 +12,15 @@ block is updated – nested `allocations[*].strategy_params` are left untouched.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
+from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 SCEN_DIR = ROOT / "config" / "scenarios"
 
 
-def process_strategy_params(strategy_name: str, params: dict[str, any]) -> bool:
+def process_strategy_params(strategy_name: str, params: dict[str, Any]) -> bool:
     """Add prefix where missing. Returns True if any change made."""
     changed = False
     for key in list(params.keys()):

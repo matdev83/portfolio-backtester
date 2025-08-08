@@ -7,7 +7,8 @@ import pytest
 import pandas as pd
 import tempfile
 import os
-from src.portfolio_backtester.timing.timing_state import TimingState
+from portfolio_backtester.interfaces.timing_state_interface import create_timing_state
+from portfolio_backtester.timing.timing_state import TimingState
 
 
 class TestStatePersistence:
@@ -15,7 +16,7 @@ class TestStatePersistence:
     
     def setup_method(self):
         """Set up test data."""
-        self.state = TimingState()
+        self.state = create_timing_state()
         self.test_date = pd.Timestamp('2023-01-01')
         
         # Add some test data
@@ -41,7 +42,7 @@ class TestStatePersistence:
         
         assert state_dict['state_version'] == "1.0"
         assert state_dict['last_signal_date'] == self.test_date.isoformat()
-        assert state_dict['debug_enabled'] == True
+        assert state_dict['debug_enabled']
         assert len(state_dict['positions']) == 3
         assert len(state_dict['position_history']) == 1
         
@@ -62,7 +63,7 @@ class TestStatePersistence:
         # Verify restoration
         assert restored_state.state_version == "1.0"
         assert restored_state.last_signal_date == self.test_date
-        assert restored_state.debug_enabled == True
+        assert restored_state.debug_enabled
         assert len(restored_state.positions) == 3
         assert len(restored_state.position_history) == 1
         

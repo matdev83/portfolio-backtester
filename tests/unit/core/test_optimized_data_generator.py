@@ -11,8 +11,6 @@ This module tests the optimized data generation utilities including:
 import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-import warnings
 
 from tests.fixtures.optimized_data_generator import OptimizedDataGenerator
 
@@ -187,7 +185,7 @@ class TestOptimizedDataGenerator:
         
         # Clear cache and call again
         OptimizedDataGenerator.clear_cache()
-        result3 = expensive_computation()
+        expensive_computation()
         assert call_count == 2  # Should increment again
     
     def test_validate_ohlcv_data_structure_valid(self):

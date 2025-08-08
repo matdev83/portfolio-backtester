@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
-from src.portfolio_backtester.backtesting.results import WindowResult
+from portfolio_backtester.optimization.evaluator import BacktestEvaluator
+from portfolio_backtester.backtesting.results import WindowResult
 
 
 def _dummy_window_result(value: float) -> WindowResult:

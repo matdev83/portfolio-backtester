@@ -1,9 +1,8 @@
 import unittest
 from unittest.mock import mock_open, patch
-import os
 
-from src.portfolio_backtester import config_loader
-from src.portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester import config_loader
+from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
 
 # Define mock content for YAML files
 MOCK_PARAMS_YAML_CONTENT = """
@@ -51,15 +50,22 @@ optimize:
     max_value: 1.2
 """
 
+
 class MockStrategy(BaseStrategy):
     @classmethod
     def tunable_parameters(cls) -> set[str]:
-        return {"mock_strategy_param1", "num_holdings", "existing_param"} # num_holdings is often a strategy param
+        return {
+            "mock_strategy_param1",
+            "num_holdings",
+            "existing_param",
+        }  # num_holdings is often a strategy param
+
 
 class AnotherMockStrategy(BaseStrategy):
-     @classmethod
-     def tunable_parameters(cls) -> set[str]:
-        return {"leverage"} # leverage is often a strategy param
+    @classmethod
+    def tunable_parameters(cls) -> set[str]:
+        return {"leverage"}  # leverage is often a strategy param
+
 
 class TestConfigLoader(unittest.TestCase):
 
@@ -72,12 +78,22 @@ class TestConfigLoader(unittest.TestCase):
     def run_load_config_with_mocks(self, params_yaml_str, scenarios_map):
         """Helper to run load_config with mocked file contents and strategy resolution, using context managers for patches."""
 
-        with patch('builtins.open', new_callable=mock_open) as mock_open_obj, \
-             patch('os.walk') as mock_walk, \
-             patch('pathlib.Path.exists', return_value=True) as mock_exists, \
-             patch('pathlib.Path.is_dir', return_value=True) as mock_isdir, \
-             patch('pathlib.Path.is_file', return_value=True) as mock_isfile, \
-             patch('src.portfolio_backtester.scenario_validator._resolve_strategy') as mock_resolve_strategy:
+        with (
+            patch("builtins.open", new_callable=mock_open) as mock_open_obj,
+            patch("os.walk") as mock_walk,
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.is_dir", return_value=True),
+            patch("pathlib.Path.is_file", return_value=True),
+            patch(
+                "portfolio_backtester.config_loader.validate_scenario_semantics",
+                return_value=[],
+            ),
+            patch("portfolio_backtester.utils._resolve_strategy") as mock_resolve_strategy,
+            patch(
+                "portfolio_backtester.strategy_config_validator.validate_strategy_configs_comprehensive",
+                return_value=(True, []),
+            ),
+        ):
 
             # Configure mock_open_obj to return different content based on the file path
             def side_effect_open(file_path, mode, encoding=None):
@@ -86,12 +102,14 @@ class TestConfigLoader(unittest.TestCase):
                 # Check if the file is one of the scenario files (now in subdirectories)
                 for scenario_filename, content in scenarios_map.items():
                     # Handle both old flat structure and new subdirectory structure
-                    if (file_path == config_loader.SCENARIOS_DIR / scenario_filename or
-                        str(file_path).endswith(scenario_filename)):
+                    if file_path == config_loader.SCENARIOS_DIR / scenario_filename or str(
+                        file_path
+                    ).endswith(scenario_filename):
                         return mock_open(read_data=content).return_value
                 raise FileNotFoundError(f"Unexpected file open: {file_path}")
+
             mock_open_obj.side_effect = side_effect_open
-            
+
             # Mock strategy resolution to return our mock strategies
             def mock_strategy_resolver(strategy_name):
                 if strategy_name == "mock_strategy":
@@ -100,8 +118,9 @@ class TestConfigLoader(unittest.TestCase):
                     return AnotherMockStrategy
                 else:
                     return None
+
             mock_resolve_strategy.side_effect = mock_strategy_resolver
-            
+
             # Mock os.walk to simulate subdirectory structure
             walk_results = []
             if scenarios_map:
@@ -126,7 +145,7 @@ class TestConfigLoader(unittest.TestCase):
         """Test successful loading of valid YAML files."""
         scenarios = {
             "scenario1.yaml": MOCK_SCENARIO_1_CONTENT,
-            "scenario2.yaml": MOCK_SCENARIO_2_CONTENT
+            "scenario2.yaml": MOCK_SCENARIO_2_CONTENT,
         }
         self.run_load_config_with_mocks(MOCK_PARAMS_YAML_CONTENT, scenarios)
 
@@ -138,17 +157,19 @@ class TestConfigLoader(unittest.TestCase):
 
     def test_load_config_file_not_found(self):
         """Test FileNotFoundError when a config file is missing."""
-        with patch('pathlib.Path.exists', return_value=False):
-            with self.assertRaisesRegex(config_loader.ConfigurationError, "Invalid parameters.yaml file"):
+        with patch("pathlib.Path.exists", return_value=False):
+            with self.assertRaisesRegex(
+                config_loader.ConfigurationError, "Invalid parameters.yaml file"
+            ):
                 config_loader.load_config()
 
     def test_load_config_no_scenarios(self):
         """Test ConfigurationError when no scenarios are found."""
-        with self.assertLogs('src.portfolio_backtester.config_loader', level='WARNING') as cm:
+        with self.assertLogs("portfolio_backtester.config_loader", level="WARNING") as cm:
             self.run_load_config_with_mocks(MOCK_PARAMS_YAML_CONTENT, {})
             self.assertEqual(len(config_loader.BACKTEST_SCENARIOS), 0)
             self.assertTrue(any("No scenarios found" in message for message in cm.output))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

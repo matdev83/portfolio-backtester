@@ -8,15 +8,18 @@ import pytest
 import pandas as pd
 import numpy as np
 import time
-from unittest.mock import Mock, patch
-from src.portfolio_backtester.strategies.portfolio.momentum_strategy import MomentumStrategy
-from src.portfolio_backtester.strategies.signal.uvxy_rsi_strategy import UvxyRsiStrategy
-from src.portfolio_backtester.timing.time_based_timing import TimeBasedTiming
-from src.portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
-from src.portfolio_backtester.timing.backward_compatibility import ensure_backward_compatibility
+from unittest.mock import Mock
+from portfolio_backtester.timing.custom_timing_registry import TimingControllerFactory
+from portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
 
 
 class TestPerformanceComparison(unittest.TestCase):
+    def create_timing_controller(self, mode, config):
+        """Create timing controller using interface-compliant factory pattern."""
+        factory_config = config.copy()
+        factory_config["mode"] = mode
+        return TimingControllerFactory.create_controller(factory_config)
+
     def setUp(self):
         """Set up the test environment with mock data."""
         self.dates = pd.to_datetime(pd.date_range(start="2020-01-01", end="2023-12-31", freq="B"))
@@ -61,9 +64,9 @@ class TestPerformanceComparison(unittest.TestCase):
             controllers = []
             for _ in range(100):
                 if config['mode'] == 'time_based':
-                    controller = TimeBasedTiming(config)
+                    controller = self.create_timing_controller("time_based", config)
                 else:
-                    controller = SignalBasedTiming(config)
+                    controller = self.create_timing_controller("signal_based", config)
                 controllers.append(controller)
             
             end_time = time.time()
@@ -90,9 +93,9 @@ class TestPerformanceComparison(unittest.TestCase):
         
         for config, expected_count in configs_and_expected_counts:
             if config['mode'] == 'time_based':
-                controller = TimeBasedTiming(config)
+                controller = self.create_timing_controller("time_based", config)
             else:
-                controller = SignalBasedTiming(config)
+                controller = self.create_timing_controller("signal_based", config)
             
             start_time = time.time()
             
@@ -123,9 +126,7 @@ class TestPerformanceComparison(unittest.TestCase):
             }
         }
         
-        # Migrate to new timing system
-        migrated_config = ensure_backward_compatibility(momentum_config)
-        strategy = MomentumStrategy(migrated_config)
+        
         
         # Test signal generation performance
         test_dates = self.dates[::30][:12]  # Monthly for a year
@@ -138,7 +139,7 @@ class TestPerformanceComparison(unittest.TestCase):
             
             start_time = time.time()
             
-            signals = strategy.generate_signals(
+            strategy.generate_signals(
                 all_historical_data=historical_subset,
                 benchmark_historical_data=self.benchmark_data[self.benchmark_data.index <= current_date],
                 current_date=current_date
@@ -202,9 +203,9 @@ class TestPerformanceComparison(unittest.TestCase):
         
         for config in configs:
             if config['mode'] == 'time_based':
-                controller = TimeBasedTiming(config)
+                controller = self.create_timing_controller("time_based", config)
             else:
-                controller = SignalBasedTiming(config)
+                controller = self.create_timing_controller("signal_based", config)
             
             # Test memory usage doesn't explode
             start_time = time.time()
@@ -232,9 +233,9 @@ class TestPerformanceComparison(unittest.TestCase):
         controllers = []
         for config in configs:
             if config['mode'] == 'time_based':
-                controller = TimeBasedTiming(config)
+                controller = self.create_timing_controller("time_based", config)
             else:
-                controller = SignalBasedTiming(config)
+                controller = self.create_timing_controller("signal_based", config)
             controllers.append(controller)
         
         # Test concurrent operations
@@ -345,6 +346,11 @@ class TestMemoryUsage:
 
 class TestScalabilityLimits:
     """Test scalability limits and edge cases."""
+    def create_timing_controller(self, mode, config):
+        """Create timing controller using interface-compliant factory pattern."""
+        factory_config = config.copy()
+        factory_config["mode"] = mode
+        return TimingControllerFactory.create_controller(factory_config)
     
     def test_large_universe_performance(self):
         """Test performance with large asset universes."""
@@ -380,7 +386,7 @@ class TestScalabilityLimits:
         # Test with very long date range (50 years)
         extreme_dates = pd.date_range('1970-01-01', '2019-12-31', freq='D')
         
-        controller = TimeBasedTiming({'rebalance_frequency': 'M'})
+        controller = self.create_timing_controller("time_based", {'rebalance_frequency': 'M'})
         
         start_time = time.time()
         

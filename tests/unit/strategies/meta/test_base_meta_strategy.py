@@ -2,10 +2,8 @@
 
 import pytest
 import pandas as pd
-import numpy as np
-from unittest.mock import Mock, patch
 
-from src.portfolio_backtester.strategies.base.meta_strategy import BaseMetaStrategy, SubStrategyAllocation
+from portfolio_backtester.strategies.base.meta_strategy import BaseMetaStrategy
 
 
 class TestMetaStrategy(BaseMetaStrategy):

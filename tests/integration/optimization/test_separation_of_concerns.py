@@ -12,20 +12,17 @@ import sys
 import importlib
 import inspect
 import pandas as pd
-import numpy as np
 from pathlib import Path
-from typing import Dict, Any, List, Set
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import tempfile
 import shutil
 
 from tests.base.integration_test_base import BaseIntegrationTest
 from tests.fixtures.market_data import MarketDataFixture
 
-from src.portfolio_backtester.feature_flags import FeatureFlags
-from src.portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
-from src.portfolio_backtester.optimization.results import OptimizationData
-from src.portfolio_backtester.backtesting.results import WindowResult
+from portfolio_backtester.feature_flags import FeatureFlags
+from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
+from portfolio_backtester.optimization.results import OptimizationData
 
 
 @pytest.mark.integration
@@ -116,8 +113,7 @@ class TestSeparationOfConcerns(BaseIntegrationTest):
         
         # Verify optimization components can be imported independently
         try:
-            from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
-            from src.portfolio_backtester.optimization.orchestrator import OptimizationOrchestrator
+            from portfolio_backtester.optimization.evaluator import BacktestEvaluator
             evaluator = BacktestEvaluator(metrics_to_optimize=["sharpe_ratio"], is_multi_objective=False)
             self.assertIsNotNone(evaluator)
         except ImportError as e:
@@ -138,7 +134,7 @@ class TestSeparationOfConcerns(BaseIntegrationTest):
         
         # Test that optimization components work independently
         try:
-            from src.portfolio_backtester.optimization.factory import create_parameter_generator
+            from portfolio_backtester.optimization.factory import create_parameter_generator
             generator = create_parameter_generator("optuna", random_state=42)
             self.assertIsNotNone(generator)
         except Exception as e:
@@ -219,9 +215,9 @@ class TestSeparationOfConcerns(BaseIntegrationTest):
         try:
             with patch('builtins.__import__', side_effect=mock_import):
                 # Import and test Optuna generator
-                from src.portfolio_backtester.optimization.generators.optuna_generator import OptunaParameterGenerator
-                from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
-                from src.portfolio_backtester.optimization.orchestrator import OptimizationOrchestrator
+                from portfolio_backtester.optimization.generators.optuna_generator import OptunaParameterGenerator
+                from portfolio_backtester.optimization.evaluator import BacktestEvaluator
+                from portfolio_backtester.optimization.orchestrator import OptimizationOrchestrator
                 
                 # Create Optuna components
                 parameter_generator = OptunaParameterGenerator(random_state=42)
@@ -295,9 +291,9 @@ class TestSeparationOfConcerns(BaseIntegrationTest):
         try:
             with patch('builtins.__import__', side_effect=mock_import):
                 # Import and test PyGAD generator
-                from src.portfolio_backtester.optimization.generators.genetic_generator import GeneticParameterGenerator
-                from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
-                from src.portfolio_backtester.optimization.orchestrator import OptimizationOrchestrator
+                from portfolio_backtester.optimization.generators.genetic_generator import GeneticParameterGenerator
+                from portfolio_backtester.optimization.evaluator import BacktestEvaluator
+                from portfolio_backtester.optimization.orchestrator import OptimizationOrchestrator
                 
                 # Create PyGAD components
                 parameter_generator = GeneticParameterGenerator(random_state=42)
@@ -383,16 +379,6 @@ class TestSeparationOfConcerns(BaseIntegrationTest):
         }
         
         # Define allowed backtesting-related terms (these are acceptable in optimization context)
-        allowed_terms = {
-            'backtester',  # Reference to backtester interface
-            'backtest_result',  # Result data structures
-            'window_result',  # Result data structures
-            'evaluation_result',  # Result data structures
-            'strategy_config',  # Configuration passing
-            'scenario_config',  # Configuration passing
-            'parameters',  # Parameter handling
-            'metrics'  # Performance metrics
-        }
         
         violations = []
         
@@ -476,14 +462,6 @@ class TestSeparationOfConcerns(BaseIntegrationTest):
         }
         
         # Define allowed optimization-related terms (these are acceptable in backtesting context)
-        allowed_terms = {
-            'optimization_data',  # Data container
-            'optimization_result',  # Result data structure
-            'parameter',  # Strategy parameters
-            'config',  # Configuration
-            'evaluate',  # Evaluation interface
-            'result'  # Results
-        }
         
         violations = []
         
@@ -617,7 +595,7 @@ class TestSeparationOfConcerns(BaseIntegrationTest):
         
         # Test parameter generator interface (using factory)
         try:
-            from src.portfolio_backtester.optimization.factory import create_parameter_generator
+            from portfolio_backtester.optimization.factory import create_parameter_generator
             
             # Test Optuna generator interface
             optuna_generator = create_parameter_generator("optuna", random_state=42)

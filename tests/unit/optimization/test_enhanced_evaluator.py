@@ -4,13 +4,10 @@ Integration tests for enhanced BacktestEvaluator with daily evaluation support.
 Tests the integration between the enhanced evaluator, window evaluator, and position tracker.
 """
 
-import pytest
 import pandas as pd
-import numpy as np
-from unittest.mock import Mock, MagicMock, patch
-from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
-from src.portfolio_backtester.optimization.results import OptimizationData, EvaluationResult
-from src.portfolio_backtester.backtesting.results import WindowResult
+from unittest.mock import Mock, patch
+from portfolio_backtester.optimization.evaluator import BacktestEvaluator
+from portfolio_backtester.optimization.results import EvaluationResult
 
 
 class TestEnhancedBacktestEvaluator:
@@ -22,7 +19,7 @@ class TestEnhancedBacktestEvaluator:
         
         # Test intramonth strategy class
         scenario_config = {
-            'strategy_class': 'IntramonthSeasonalStrategy',
+            'strategy_class': 'SeasonalSignalStrategy',
             'strategy': 'momentum'
         }
         
@@ -71,7 +68,7 @@ class TestEnhancedBacktestEvaluator:
         evaluator = BacktestEvaluator(['sharpe_ratio'], False)
         
         scenario_config = {
-            'strategy_class': 'MomentumStrategy',
+            'strategy_class': 'SimpleMomentumPortfolioStrategy',
             'rebalance_frequency': 'D'
         }
         
@@ -83,7 +80,7 @@ class TestEnhancedBacktestEvaluator:
         evaluator = BacktestEvaluator(['sharpe_ratio'], False)
         
         scenario_config = {
-            'strategy_class': 'MomentumStrategy',
+            'strategy_class': 'SimpleMomentumPortfolioStrategy',
             'rebalance_frequency': 'M'
         }
         
@@ -184,14 +181,14 @@ class TestEnhancedBacktestEvaluator:
         assert metrics['sharpe_ratio'] == 0.0
         assert metrics['max_drawdown'] == 0.0
     
-    @patch('src.portfolio_backtester.optimization.evaluator.WFO_ENHANCEMENT_AVAILABLE', True)
+    @patch('portfolio_backtester.optimization.evaluator.WFO_ENHANCEMENT_AVAILABLE', True)
     def test_evaluate_parameters_chooses_daily_evaluation(self):
         """Test that evaluate_parameters chooses daily evaluation for intramonth strategies."""
         evaluator = BacktestEvaluator(['sharpe_ratio'], False)
         
         # Mock scenario config for intramonth strategy
         scenario_config = {
-            'strategy_class': 'IntramonthSeasonalStrategy',
+            'strategy_class': 'SeasonalSignalStrategy',
             'name': 'test_strategy'
         }
         
@@ -213,34 +210,26 @@ class TestEnhancedBacktestEvaluator:
         evaluator._evaluate_parameters_daily.assert_called_once()
         evaluator._evaluate_parameters_monthly.assert_not_called()
     
-    @patch('src.portfolio_backtester.optimization.evaluator.WFO_ENHANCEMENT_AVAILABLE', False)
-    def test_evaluate_parameters_falls_back_to_monthly(self):
-        """Test that evaluate_parameters falls back to monthly when enhancement unavailable."""
+    def test_evaluate_parameters_intramonth_always_daily(self):
+        """After removal of dual-path logic, intramonth strategies should always use daily evaluation."""
         evaluator = BacktestEvaluator(['sharpe_ratio'], False)
-        
-        # Mock scenario config for intramonth strategy
+
         scenario_config = {
-            'strategy_class': 'IntramonthSeasonalStrategy',
+            'strategy_class': 'SeasonalSignalStrategy',
             'name': 'test_strategy'
         }
-        
-        # Mock data
+
         mock_data = Mock()
         mock_data.daily = pd.DataFrame({'TLT': [100, 101, 102]})
-        
-        # Mock backtester
         mock_backtester = Mock()
-        
-        # Mock the evaluation methods
+
         evaluator._evaluate_parameters_daily = Mock(return_value=Mock())
         evaluator._evaluate_parameters_monthly = Mock(return_value=Mock())
-        
-        # Call evaluate_parameters
+
         evaluator.evaluate_parameters({}, scenario_config, mock_data, mock_backtester)
-        
-        # Should call monthly evaluation (fallback)
-        evaluator._evaluate_parameters_monthly.assert_called_once()
-        evaluator._evaluate_parameters_daily.assert_not_called()
+
+        evaluator._evaluate_parameters_daily.assert_called_once()
+        evaluator._evaluate_parameters_monthly.assert_not_called()
     
     def test_aggregate_window_results_single_objective(self):
         """Test aggregation of window results for single objective optimization."""

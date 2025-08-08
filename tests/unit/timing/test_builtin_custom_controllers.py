@@ -6,7 +6,7 @@ Split from test_configuration_extensibility.py for better organization.
 import pytest
 import pandas as pd
 from unittest.mock import Mock
-from src.portfolio_backtester.timing.custom_timing_registry import TimingControllerFactory
+from portfolio_backtester.timing.custom_timing_registry import TimingControllerFactory
 
 
 class TestBuiltinCustomControllers:
@@ -50,7 +50,7 @@ class TestBuiltinCustomControllers:
             'low_vol_frequency': 'Q'
         }
         
-        from src.portfolio_backtester.timing.custom_timing_registry import AdaptiveTimingController
+        from portfolio_backtester.timing.custom_timing_registry import AdaptiveTimingController
         controller = AdaptiveTimingController(config, volatility_threshold=0.02)
         
         # Test with mock strategy
@@ -65,7 +65,7 @@ class TestBuiltinCustomControllers:
         """Test momentum controller signal generation."""
         config = {}
         
-        from src.portfolio_backtester.timing.custom_timing_registry import MomentumTimingController
+        from portfolio_backtester.timing.custom_timing_registry import MomentumTimingController
         controller = MomentumTimingController(config, momentum_period=20)
         
         # Test signal generation
@@ -73,7 +73,7 @@ class TestBuiltinCustomControllers:
         test_date = pd.Timestamp('2023-01-02')  # Monday
         
         result = controller.should_generate_signal(test_date, mock_strategy)
-        assert result == True  # Should be True for Monday
+        assert result  # Should be True for Monday
 
 
 if __name__ == '__main__':

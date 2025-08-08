@@ -1,0 +1,30 @@
+# Minimal single valid example to satisfy schema checks
+name: ab_test_with_take_profit_example
+strategy: EmaCrossoverSignalStrategy
+
+rebalance_frequency: ME
+position_sizer: equal_weight
+train_window_months: 36
+test_window_months: 12
+
+universe_config:
+  type: named
+  universe_name: nasdaq_top20
+
+# Keep only one scenario in this file to pass the validator that expects a single mapping
+strategy_params:
+  ema_crossover_signal.fast_ema_days: 12
+  ema_crossover_signal.slow_ema_days: 26
+  ema_crossover_signal.leverage: 1.0
+
+  # Stop loss configuration
+  ema_crossover_signal.stop_loss_config:
+    type: "AtrBasedStopLoss"
+    atr_length: 14
+    atr_multiple: 2.0
+
+  # Take profit enabled
+  ema_crossover_signal.take_profit_config:
+    type: "AtrBasedTakeProfit"
+    atr_length: 14
+    atr_multiple: 3.0

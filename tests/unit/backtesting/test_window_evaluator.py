@@ -4,13 +4,12 @@ Unit tests for WindowEvaluator class.
 Tests the window evaluation engine for daily strategy evaluation.
 """
 
-import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import Mock, MagicMock
-from src.portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
-from src.portfolio_backtester.optimization.wfo_window import WFOWindow
-from src.portfolio_backtester.backtesting.results import WindowResult
+from unittest.mock import Mock
+from portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
+from portfolio_backtester.optimization.wfo_window import WFOWindow
+from portfolio_backtester.backtesting.results import WindowResult
 
 
 class TestWindowEvaluator:

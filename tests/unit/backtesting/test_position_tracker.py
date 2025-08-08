@@ -4,10 +4,8 @@ Unit tests for PositionTracker class.
 Tests the position tracking system for daily strategy evaluation.
 """
 
-import pytest
 import pandas as pd
-import numpy as np
-from src.portfolio_backtester.backtesting.position_tracker import PositionTracker, Position, Trade
+from portfolio_backtester.backtesting.position_tracker import PositionTracker
 
 
 class TestPositionTracker:

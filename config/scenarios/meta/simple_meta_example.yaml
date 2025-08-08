@@ -1,48 +1,38 @@
-# Simple Meta Strategy Example Configuration
-# This demonstrates a basic meta strategy that allocates 70% to momentum and 30% to seasonal
+name: simple_meta_example
+strategy: SimpleMetaStrategy
 
-name: "simple_meta_example"
-strategy: "simple_meta"
-strategy_class: "SimpleMetaStrategy"
-rebalance_frequency: "M"
-position_sizer: "equal_weight"
+rebalance_frequency: M
+position_sizer: equal_weight
 train_window_months: 36
 test_window_months: 48
-
 optimization_targets:
-  - name: "Sharpe"
-    direction: "maximize"
-
+- name: Sharpe
+  direction: maximize
 optimize: []
-
 strategy_params:
-  simple_meta.initial_capital: 1000000  # Starting capital for this meta strategy
-  simple_meta.min_allocation: 0.05      # Minimum allocation per strategy (5%)
-  simple_meta.rebalance_threshold: 0.05 # Rebalance when allocation drifts by 5%
-  
-  simple_meta.allocations:
-    - strategy_id: "momentum"
-      strategy_class: "CalmarMomentumStrategy"
-      strategy_params:
-        calmar_momentum.rolling_window: 6
-        calmar_momentum.num_holdings: 10
-        calmar_momentum.sma_filter_window: 10
-        calmar_momentum.price_column_benchmark: "Close"
-        calmar_momentum.timing_config:
-          mode: "time_based"
-          rebalance_frequency: "M"
-      weight: 0.7  # 70% of available capital
-      
-    - strategy_id: "seasonal"
-      strategy_class: "IntramonthSeasonalStrategy"
-      strategy_params:
-        intramonth_seasonal.direction: "long"
-        intramonth_seasonal.entry_day: 5
-        intramonth_seasonal.hold_days: 10
-        intramonth_seasonal.trade_longs: true
-        intramonth_seasonal.trade_shorts: false
-        intramonth_seasonal.timing_config:
-          mode: "signal_based"
-      weight: 0.3  # 30% of available capital
-
-# Meta strategies inherit universe from their sub-strategies
+  initial_capital: 1000000.0
+  min_allocation: 0.05
+  rebalance_threshold: 0.05
+  allocations:
+  - strategy_id: CalmarMomentumPortfolioStrategy
+    
+    strategy_params:
+      calmar_momentum_portfolio.rolling_window: 6
+      calmar_momentum_portfolio.num_holdings: 10
+      calmar_momentum_portfolio.sma_filter_window: 10
+      calmar_momentum_portfolio.price_column_benchmark: Close
+      calmar_momentum_portfolio.timing_config:
+        mode: time_based
+        rebalance_frequency: M
+    weight: 0.7
+  - strategy_id: SeasonalSignalStrategy
+    
+    strategy_params:
+      intramonth_seasonal.direction: long
+      intramonth_seasonal.entry_day: 5
+      intramonth_seasonal.hold_days: 10
+      intramonth_seasonal.trade_longs: true
+      intramonth_seasonal.trade_shorts: false
+      intramonth_seasonal.timing_config:
+        mode: signal_based
+    weight: 0.3

@@ -5,14 +5,13 @@ Tests the complete workflow from intramonth strategy through daily evaluation
 to accurate trade duration calculation.
 """
 
-import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import Mock, patch
-from src.portfolio_backtester.optimization.wfo_window import WFOWindow
-from src.portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
-from src.portfolio_backtester.backtesting.position_tracker import PositionTracker
-from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
+from unittest.mock import Mock
+from portfolio_backtester.optimization.wfo_window import WFOWindow
+from portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
+from portfolio_backtester.backtesting.position_tracker import PositionTracker
+from portfolio_backtester.optimization.evaluator import BacktestEvaluator
 
 
 class MockIntramonthStrategy:
@@ -181,7 +180,7 @@ class TestDailyEvaluationIntegration:
         
         # Test frequency determination
         intramonth_config = {
-            'strategy_class': 'IntramonthSeasonalStrategy',
+            'strategy_class': 'SeasonalSignalStrategy',
             'name': 'test_strategy'
         }
         

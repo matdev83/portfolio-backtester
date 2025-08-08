@@ -1,27 +1,22 @@
 
-"""
-Test script to verify the universe check functionality.
-"""
+import pytest
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-
-# Direct import to avoid dependency issues
-from src.portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
 
 
 class MockStrategyForTest(BaseStrategy):
     pass
 
 
-import pytest
+"""
+Test script to verify the universe check functionality.
+"""
 
 def test_empty_universe_raises_error():
     """Test that an empty universe raises a ValueError."""
     strategy = MockStrategyForTest({})
     
-    with pytest.raises(ValueError, match="Global config universe is empty"):
+    with pytest.raises(ValueError, match="No universe configuration found"):
         strategy.get_universe({})
 
 def test_non_empty_universe_works():

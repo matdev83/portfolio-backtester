@@ -1,5 +1,5 @@
 import time
-from src.portfolio_backtester.utils.timeout import TimeoutManager
+from portfolio_backtester.utils.timeout import TimeoutManager
 
 
 def test_timeout_none_returns_false():

@@ -5,21 +5,20 @@ Tests the OptimizationOrchestrator class with mock parameter generators
 to verify proper coordination between parameter generators and evaluators.
 """
 
-import pytest
 import pandas as pd
 import numpy as np
 import time
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 from typing import Dict, Any, List
 
-from src.portfolio_backtester.optimization.orchestrator import (
+from portfolio_backtester.optimization.orchestrator import (
     OptimizationOrchestrator, ProgressTracker, ParameterGenerator
 )
-from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
-from src.portfolio_backtester.optimization.results import (
+from portfolio_backtester.optimization.evaluator import BacktestEvaluator
+from portfolio_backtester.optimization.results import (
     OptimizationResult, EvaluationResult, OptimizationData
 )
-from src.portfolio_backtester.backtesting.results import (
+from portfolio_backtester.backtesting.results import (
     WindowResult,
 )
 

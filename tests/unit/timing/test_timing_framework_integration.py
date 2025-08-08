@@ -6,7 +6,7 @@ Split from test_configuration_extensibility.py for better organization.
 import pytest
 import os
 import yaml
-from src.portfolio_backtester.timing.config_schema import validate_timing_config
+from portfolio_backtester.timing.config_schema import validate_timing_config
 
 
 class TestIntegrationWithExistingFramework:
@@ -14,7 +14,7 @@ class TestIntegrationWithExistingFramework:
     
     def test_enhanced_backward_compatibility(self):
         """Test enhanced backward compatibility with validation."""
-        from src.portfolio_backtester.timing.backward_compatibility import ensure_backward_compatibility
+        from portfolio_backtester.timing.backward_compatibility import ensure_backward_compatibility
         
         # Test valid legacy config
         legacy_config = {

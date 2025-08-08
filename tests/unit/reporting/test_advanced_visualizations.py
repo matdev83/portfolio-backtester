@@ -17,11 +17,11 @@ from unittest.mock import Mock, patch
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for testing
 
-from src.portfolio_backtester.backtester import Backtester
-from src.portfolio_backtester.backtester_logic import reporting
-from src.portfolio_backtester.optimization.results import OptimizationResult
+from portfolio_backtester.backtester import Backtester
+from portfolio_backtester.optimization.results import OptimizationResult
 
 
+@pytest.mark.slow
 class TestAdvancedVisualizations:
     """Test advanced visualization and reporting features."""
     
@@ -156,8 +156,8 @@ class TestAdvancedVisualizations:
     
     def test_plot_stability_measures(self, mock_backtester, mock_optimization_result, sample_returns):
         """Test trial P&L curve visualization."""
-        with patch('matplotlib.pyplot.savefig') as mock_savefig, \
-             patch('matplotlib.pyplot.close') as mock_close, \
+        with patch('matplotlib.pyplot.savefig'), \
+             patch('matplotlib.pyplot.close'), \
              patch('os.makedirs') as mock_makedirs, \
              patch('matplotlib.pyplot.subplots') as mock_subplots:
             
@@ -167,7 +167,7 @@ class TestAdvancedVisualizations:
             mock_subplots.return_value = (mock_fig, mock_ax)
             
             # Import the function directly from where it's defined
-            from src.portfolio_backtester.reporting.monte_carlo_analyzer import plot_stability_measures
+            from portfolio_backtester.reporting.monte_carlo_analyzer import plot_stability_measures
             
             # Create a minimal mock backtester with required attributes
             mock_backtester.logger = Mock()
@@ -194,7 +194,7 @@ class TestAdvancedVisualizations:
         optimization_result.optimization_history = [] # No trials
         
         with patch('matplotlib.pyplot.savefig') as mock_savefig:
-            from src.portfolio_backtester.reporting.monte_carlo_analyzer import plot_stability_measures
+            from portfolio_backtester.reporting.monte_carlo_analyzer import plot_stability_measures
             plot_stability_measures(
                 mock_backtester, 
                 "Test_Scenario", 
@@ -208,12 +208,12 @@ class TestAdvancedVisualizations:
     
     def test_plot_parameter_impact_analysis(self, mock_backtester, mock_best_trial):
         """Test parameter impact analysis visualization."""
-        with patch('matplotlib.pyplot.savefig') as mock_savefig, \
-             patch('matplotlib.pyplot.close') as mock_close, \
-             patch('os.makedirs') as mock_makedirs:
+        with patch('matplotlib.pyplot.savefig'), \
+             patch('matplotlib.pyplot.close'), \
+             patch('os.makedirs'):
             
             # Test parameter impact analysis
-            from src.portfolio_backtester.reporting.parameter_analysis import _plot_parameter_impact_analysis
+            from portfolio_backtester.reporting.parameter_analysis import _plot_parameter_impact_analysis
             timestamp = "20240101_120000"
             _plot_parameter_impact_analysis(
                 mock_backtester, 
@@ -239,11 +239,11 @@ class TestAdvancedVisualizations:
         
         param_names = ['lookback_months', 'num_holdings', 'leverage']
         
-        with patch('matplotlib.pyplot.savefig') as mock_savefig, \
-             patch('matplotlib.pyplot.close') as mock_close, \
-             patch('seaborn.heatmap') as mock_heatmap:
+        with patch('matplotlib.pyplot.savefig'), \
+             patch('matplotlib.pyplot.close'), \
+             patch('seaborn.heatmap'):
             
-            from src.portfolio_backtester.reporting.parameter_analysis import _create_parameter_heatmaps
+            from portfolio_backtester.reporting.parameter_analysis import _create_parameter_heatmaps
             _create_parameter_heatmaps(
                 mock_backtester, df, param_names, "Test_Scenario", "20240101_120000"
             )
@@ -271,10 +271,10 @@ class TestAdvancedVisualizations:
         
         param_names = ['lookback_months', 'num_holdings']
         
-        with patch('matplotlib.pyplot.savefig') as mock_savefig, \
-             patch('matplotlib.pyplot.close') as mock_close:
+        with patch('matplotlib.pyplot.savefig'), \
+             patch('matplotlib.pyplot.close'):
             
-            from src.portfolio_backtester.reporting.parameter_analysis import _create_parameter_sensitivity_analysis
+            from portfolio_backtester.reporting.parameter_analysis import _create_parameter_sensitivity_analysis
             _create_parameter_sensitivity_analysis(
                 mock_backtester, df, param_names, "Test_Scenario", "20240101_120000"
             )
@@ -298,11 +298,11 @@ class TestAdvancedVisualizations:
         
         param_names = ['param1', 'param2', 'param3']
         
-        with patch('matplotlib.pyplot.savefig') as mock_savefig, \
-             patch('matplotlib.pyplot.close') as mock_close, \
-             patch('seaborn.heatmap') as mock_heatmap:
+        with patch('matplotlib.pyplot.savefig'), \
+             patch('matplotlib.pyplot.close'), \
+             patch('seaborn.heatmap'):
             
-            from src.portfolio_backtester.reporting.parameter_analysis import _create_parameter_correlation_analysis
+            from portfolio_backtester.reporting.parameter_analysis import _create_parameter_correlation_analysis
             _create_parameter_correlation_analysis(
                 mock_backtester, df, param_names, "Test_Scenario", "20240101_120000"
             )
@@ -331,10 +331,10 @@ class TestAdvancedVisualizations:
         
         param_names = ['important_param', 'less_important_param', 'noise_param']
         
-        with patch('matplotlib.pyplot.savefig') as mock_savefig, \
-             patch('matplotlib.pyplot.close') as mock_close:
+        with patch('matplotlib.pyplot.savefig'), \
+             patch('matplotlib.pyplot.close'):
             
-            from src.portfolio_backtester.reporting.parameter_analysis import _create_parameter_importance_ranking
+            from portfolio_backtester.reporting.parameter_analysis import _create_parameter_importance_ranking
             _create_parameter_importance_ranking(
                 mock_backtester, df, param_names, "Test_Scenario", "20240101_120000"
             )
@@ -372,11 +372,11 @@ class TestAdvancedVisualizations:
             np.random.randn(100) * 0.01 + 0.0005, index=dates
         )
         
-        with patch('matplotlib.pyplot.savefig') as mock_savefig, \
-             patch('matplotlib.pyplot.close') as mock_close, \
-             patch('os.makedirs') as mock_makedirs:
+        with patch('matplotlib.pyplot.savefig'), \
+             patch('matplotlib.pyplot.close'), \
+             patch('os.makedirs'):
             
-            from src.portfolio_backtester.reporting.monte_carlo_stage2 import _plot_monte_carlo_robustness_analysis
+            from portfolio_backtester.reporting.monte_carlo_stage2 import _plot_monte_carlo_robustness_analysis
             _plot_monte_carlo_robustness_analysis(
                 mock_backtester,
                 "Test_Scenario",
@@ -399,7 +399,7 @@ class TestAdvancedVisualizations:
         optimal_params = {}
         
         with patch('matplotlib.pyplot.savefig') as mock_savefig:
-            from src.portfolio_backtester.reporting.monte_carlo_stage2 import _plot_monte_carlo_robustness_analysis
+            from portfolio_backtester.reporting.monte_carlo_stage2 import _plot_monte_carlo_robustness_analysis
             _plot_monte_carlo_robustness_analysis(
                 mock_backtester,
                 "Test_Scenario",
@@ -423,7 +423,7 @@ class TestAdvancedVisualizations:
         optimal_params = {}
         
         with patch('matplotlib.pyplot.savefig') as mock_savefig:
-            from src.portfolio_backtester.reporting.monte_carlo_stage2 import _plot_monte_carlo_robustness_analysis
+            from portfolio_backtester.reporting.monte_carlo_stage2 import _plot_monte_carlo_robustness_analysis
             _plot_monte_carlo_robustness_analysis(
                 mock_backtester,
                 "Test_Scenario",
@@ -462,11 +462,11 @@ class TestAdvancedVisualizations:
             'leverage': 1.2
         }
         
-        with patch('matplotlib.pyplot.savefig') as mock_savefig, \
-             patch('matplotlib.pyplot.close') as mock_close, \
-             patch('os.makedirs') as mock_makedirs:
+        with patch('matplotlib.pyplot.savefig'), \
+             patch('matplotlib.pyplot.close'), \
+             patch('os.makedirs'):
             
-            from src.portfolio_backtester.reporting.monte_carlo_stage2 import _create_monte_carlo_robustness_plot
+            from portfolio_backtester.reporting.monte_carlo_stage2 import _create_monte_carlo_robustness_plot
             _create_monte_carlo_robustness_plot(
                 mock_backtester,
                 "Test_Scenario",
@@ -484,9 +484,9 @@ class TestAdvancedVisualizations:
         # Test with invalid data
         invalid_df = pd.DataFrame()  # Empty dataframe
         
-        with patch('matplotlib.pyplot.savefig') as mock_savefig:
+        with patch('matplotlib.pyplot.savefig'):
             # Should handle errors gracefully
-            from src.portfolio_backtester.reporting.parameter_analysis import _create_parameter_heatmaps, _create_parameter_sensitivity_analysis, _create_parameter_correlation_analysis
+            from portfolio_backtester.reporting.parameter_analysis import _create_parameter_heatmaps, _create_parameter_sensitivity_analysis, _create_parameter_correlation_analysis
             _create_parameter_heatmaps(
                 mock_backtester, invalid_df, [], "Test_Scenario", "20240101_120000"
             )
@@ -505,11 +505,11 @@ class TestAdvancedVisualizations:
     
     def test_plot_file_naming_and_paths(self, mock_backtester, mock_optimization_result, sample_returns):
         """Test that plot files are named correctly and saved to proper paths."""
-        with patch('matplotlib.pyplot.savefig') as mock_savefig, \
+        with patch('matplotlib.pyplot.savefig'), \
              patch('matplotlib.pyplot.close'), \
              patch('os.makedirs') as mock_makedirs:
             
-            from src.portfolio_backtester.reporting.monte_carlo_analyzer import plot_stability_measures
+            from portfolio_backtester.reporting.monte_carlo_analyzer import plot_stability_measures
             plot_stability_measures(
                 mock_backtester, 
                 "Test_Scenario_With_Special_Chars", 
@@ -533,7 +533,7 @@ class TestAdvancedVisualizations:
              patch('matplotlib.pyplot.close'):
             
             # Should not call show() in non-interactive mode
-            from src.portfolio_backtester.reporting.plot_generator import plot_performance_summary
+            from portfolio_backtester.reporting.plot_generator import plot_performance_summary
             plot_performance_summary(
                 mock_backtester, sample_returns, None
             )
@@ -548,7 +548,7 @@ class TestAdvancedVisualizations:
              patch('matplotlib.pyplot.close'), \
              patch('matplotlib.pyplot.pause'):
             
-            from src.portfolio_backtester.reporting.plot_generator import plot_performance_summary
+            from portfolio_backtester.reporting.plot_generator import plot_performance_summary
             plot_performance_summary(
                 mock_backtester, sample_returns, None
             )

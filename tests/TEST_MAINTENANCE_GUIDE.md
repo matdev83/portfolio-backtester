@@ -120,14 +120,14 @@ Use for integration tests:
 # Use session-scoped cached fixtures for expensive data generation
 def test_strategy_performance(large_ohlcv_data):
     # large_ohlcv_data is cached and reused across tests
-    strategy = MomentumStrategy(config)
+    strategy = SimpleMomentumPortfolioStrategy(config)
     results = strategy.generate_signals(large_ohlcv_data)
     assert len(results) > 0
 
 # Use smaller fixtures for fast unit tests
 def test_strategy_initialization(fast_test_data):
     # fast_test_data is minimal for speed
-    strategy = MomentumStrategy(config)
+    strategy = SimpleMomentumPortfolioStrategy(config)
     assert strategy is not None
 ```
 

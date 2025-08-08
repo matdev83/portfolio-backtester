@@ -1,4 +1,4 @@
-from src.portfolio_backtester.config_loader import merge_optimizer_config
+from portfolio_backtester.config_loader import merge_optimizer_config
 
 
 def test_merge_optimizer_config_adds_keys_and_removes_section():

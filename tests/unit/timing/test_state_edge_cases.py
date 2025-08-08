@@ -5,7 +5,7 @@ Split from test_advanced_state_management.py for better organization.
 
 import pytest
 import pandas as pd
-from src.portfolio_backtester.timing.timing_state import TimingState
+from portfolio_backtester.interfaces.timing_state_interface import create_timing_state
 
 
 class TestEdgeCases:
@@ -13,7 +13,7 @@ class TestEdgeCases:
     
     def test_empty_state_operations(self):
         """Test operations on empty state."""
-        state = TimingState()
+        state = create_timing_state()
         
         # Should not raise exceptions
         summary = state.get_portfolio_summary()
@@ -28,7 +28,7 @@ class TestEdgeCases:
     
     def test_invalid_position_operations(self):
         """Test operations on non-existent positions."""
-        state = TimingState()
+        state = create_timing_state()
         current_date = pd.Timestamp('2023-01-01')
         
         assert state.get_position_holding_days('NONEXISTENT', current_date) is None
@@ -38,7 +38,7 @@ class TestEdgeCases:
     
     def test_zero_price_handling(self):
         """Test handling of zero or invalid prices."""
-        state = TimingState()
+        state = create_timing_state()
         test_date = pd.Timestamp('2023-01-01')
         weights = pd.Series([0.5], index=['AAPL'])
         prices = pd.Series([0.0], index=['AAPL'])  # Zero price
@@ -58,13 +58,13 @@ class TestTimingState:
     
     def test_initialization(self):
         """Test TimingState initialization."""
-        state = TimingState()
+        state = create_timing_state()
         
         assert state.state_version == "1.0"
         assert state.last_signal_date is None
         assert len(state.positions) == 0
         assert len(state.position_history) == 0
-        assert state.debug_enabled == False
+        assert not state.debug_enabled
         assert len(state.debug_log) == 0
         
         # Legacy compatibility
@@ -74,7 +74,7 @@ class TestTimingState:
     
     def test_signal_update(self):
         """Test signal update functionality."""
-        state = TimingState()
+        state = create_timing_state()
         test_date = pd.Timestamp('2023-01-01')
         weights = pd.Series([0.5, 0.5], index=['AAPL', 'MSFT'])
         
@@ -85,7 +85,7 @@ class TestTimingState:
     
     def test_basic_position_operations(self):
         """Test basic position operations."""
-        state = TimingState()
+        state = create_timing_state()
         test_date = pd.Timestamp('2023-01-01')
         weights = pd.Series([0.6, 0.4], index=['AAPL', 'MSFT'])
         prices = pd.Series([150.0, 250.0], index=['AAPL', 'MSFT'])

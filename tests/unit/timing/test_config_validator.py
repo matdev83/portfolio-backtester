@@ -3,7 +3,7 @@ Tests for TimingConfigValidator.
 """
 
 import pytest
-from src.portfolio_backtester.timing.config_validator import TimingConfigValidator
+from portfolio_backtester.timing.config_validator import TimingConfigValidator
 
 
 class TestTimingConfigValidator:

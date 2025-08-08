@@ -19,16 +19,23 @@ class DummyTxCostModel:
         weights_daily = kwargs.get("weights_daily")
 
         if self.return_type == "scalar":
+            # For scalar, we can't differentiate by day here, so the framework
+            # needs to handle first-day logic. Return constant scalar value.
             return 0.001, {}
         elif self.return_type == "series":
-            # Produce Series aligned to turnover index
+            # Produce Series aligned to turnover index - skip first day like real calculator
             if turnover is None:
                 raise ValueError("Turnover must be supplied for series output")
-            return pd.Series(0.001, index=turnover.index), {}
+            result = pd.Series(0.001, index=turnover.index)
+            if len(result) > 0:
+                result.iloc[0] = 0.0  # First day has no commission cost
+            return result, {}
         elif self.return_type == "dataframe":
             if turnover is None or weights_daily is None:
                 raise ValueError("Turnover and weights_daily must be supplied for dataframe output")
             df = pd.DataFrame(0.001, index=turnover.index, columns=weights_daily.columns)
+            if len(df) > 0:
+                df.iloc[0] = 0.0  # First day has no commission cost
             return df, {}
         else:
             raise ValueError(f"Unsupported return_type {self.return_type}")
@@ -66,7 +73,8 @@ def test_calculate_portfolio_returns_handles_commission_shapes(monkeypatch, retu
     }, index=dates)
 
     scenario_config = {"timing_config": {"rebalance_frequency": "D"}}
-    global_config = {"portfolio_value": 100_000}
+    # Disable ndarray simulation to force use of legacy transaction cost model
+    global_config = {"portfolio_value": 100_000, "feature_flags": {"ndarray_simulation": False}}
 
     net_returns, trade_tracker = calculate_portfolio_returns(
         sized_signals=sized_signals,
@@ -84,15 +92,18 @@ def test_calculate_portfolio_returns_handles_commission_shapes(monkeypatch, retu
     # Build expected gross returns: first day 0 (weights are shifted), then 0.014
     expected_gross = pd.Series([0.0] + [0.014] * 4, index=dates)
 
-    # Commission – always 0.001 per day
+    # Commission behavior varies by return type:
+    # - Scalar: Applied to all days (framework can't differentiate first day)
+    # - Series/DataFrame: Can skip first day explicitly
     if return_type == "scalar":
-        expected_net = expected_gross - 0.001
+        # Scalar commissions are applied uniformly, including first day
+        expected_net = pd.Series([-0.001, 0.013, 0.013, 0.013, 0.013], index=dates)
         pd.testing.assert_series_equal(net_returns, expected_net)
     elif return_type == "series":
-        expected_net = expected_gross - 0.001
+        expected_net = pd.Series([0.0, 0.013, 0.013, 0.013, 0.013], index=dates)
         pd.testing.assert_series_equal(net_returns, expected_net)
     else:  # DataFrame commission output aggregated across assets
-        expected_net = expected_gross - 0.001 * len(tickers)
+        expected_net = pd.Series([0.0, 0.012, 0.012, 0.012, 0.012], index=dates)
         pd.testing.assert_series_equal(net_returns, expected_net)
 
 

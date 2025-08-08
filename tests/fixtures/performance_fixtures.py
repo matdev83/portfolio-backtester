@@ -7,7 +7,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from functools import lru_cache
-from typing import Tuple, List, Dict, Any
+from typing import Dict, Any
 
 
 class PerformanceOptimizedFixtures:
@@ -70,7 +70,8 @@ class PerformanceOptimizedFixtures:
                 'num_holdings': num_holdings,
                 'smoothing_lambda': 0.5,
                 'leverage': 1.0,
-                'long_only': True,
+                'trade_longs': True,
+                'trade_shorts': False,
                 'price_column_asset': 'Close',
                 'price_column_benchmark': 'Close'
             }

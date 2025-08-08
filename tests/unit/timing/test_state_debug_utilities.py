@@ -5,7 +5,7 @@ Split from test_advanced_state_management.py for better organization.
 
 import pytest
 import pandas as pd
-from src.portfolio_backtester.timing.timing_state import TimingState
+from portfolio_backtester.interfaces.timing_state_interface import create_timing_state
 
 
 class TestStateDebugUtilities:
@@ -13,8 +13,7 @@ class TestStateDebugUtilities:
     
     def setup_method(self):
         """Set up test data."""
-        self.state = TimingState()
-        self.state.enable_debug(True)
+        self.state = create_timing_state(debug_enabled=True)
     
     def test_debug_logging(self):
         """Test debug logging functionality."""

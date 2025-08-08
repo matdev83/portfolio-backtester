@@ -6,7 +6,6 @@ Ensures no regression in test coverage during refactoring.
 import subprocess
 import sys
 import json
-import os
 from pathlib import Path
 
 
@@ -57,7 +56,7 @@ class CoverageValidator:
         """Validate coverage meets requirements."""
         total_coverage = coverage_data['totals']['percent_covered']
         
-        print(f"\nTest Coverage Analysis")
+        print("\nTest Coverage Analysis")
         print(f"{'='*50}")
         print(f"Overall Coverage: {total_coverage:.1f}%")
         
@@ -117,7 +116,7 @@ class CoverageValidator:
         # Sort by coverage (lowest first)
         file_coverages.sort(key=lambda x: x[1])
         
-        print(f"\nFiles with Lowest Coverage:")
+        print("\nFiles with Lowest Coverage:")
         print(f"{'='*50}")
         for file_path, coverage in file_coverages[:10]:  # Top 10 lowest
             if coverage < 90:  # Only show files below 90%
@@ -150,7 +149,7 @@ class CoverageValidator:
                             except ValueError:
                                 continue
             
-            print(f"\nTest Count Analysis")
+            print("\nTest Count Analysis")
             print(f"{'='*50}")
             print(f"Total Tests Collected: {test_count}")
             
@@ -170,7 +169,7 @@ class CoverageValidator:
     
     def validate_test_organization(self):
         """Validate test organization structure."""
-        print(f"\nTest Organization Validation")
+        print("\nTest Organization Validation")
         print(f"{'='*50}")
         
         required_dirs = [
@@ -187,7 +186,7 @@ class CoverageValidator:
                 missing_dirs.append(dir_path)
         
         if missing_dirs:
-            print(f"[-] Missing required directories:")
+            print("[-] Missing required directories:")
             for dir_path in missing_dirs:
                 print(f"   - {dir_path}")
             return False

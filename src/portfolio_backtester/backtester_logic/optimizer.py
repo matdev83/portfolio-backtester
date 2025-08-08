@@ -1,9 +1,10 @@
-from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
+from typing import Any, Dict, TYPE_CHECKING
 
 import pandas as pd
 
 if TYPE_CHECKING:
     from ..core import Backtester
+
 
 def run_optimization(
     self: "Backtester",

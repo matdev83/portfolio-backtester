@@ -1,11 +1,8 @@
 """Tests for the unified commission calculator."""
 
-import pytest
 import pandas as pd
-import numpy as np
-from unittest.mock import Mock
 
-from src.portfolio_backtester.trading.unified_commission_calculator import (
+from portfolio_backtester.trading.unified_commission_calculator import (
     UnifiedCommissionCalculator,
     TradeCommissionInfo,
     get_unified_commission_calculator
@@ -144,7 +141,6 @@ class TestUnifiedCommissionCalculator:
         """Test portfolio-level commission calculation."""
         # Create test data
         dates = pd.date_range("2023-01-01", periods=3, freq="D")
-        assets = ["AAPL", "MSFT"]
         
         # Turnover series
         turnover = pd.Series([0.1, 0.05, 0.08], index=dates)

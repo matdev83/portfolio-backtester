@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -10,7 +11,7 @@ import pandas as pd
 import pytest
 from pandas.tseries.offsets import BDay
 
-from src.portfolio_backtester.data_sources.hybrid_data_source import HybridDataSource
+from portfolio_backtester.data_sources.hybrid_data_source import HybridDataSource
 from tests.unit.data_sources.test_consolidated_data_validation import DataValidationUtilities
 
 
@@ -35,7 +36,17 @@ class TestHybridDataSource(unittest.TestCase):
     def tearDown(self):
         """Clean up test fixtures."""
         if self.test_data_dir.exists():
-            shutil.rmtree(self.test_data_dir)
+            # Robust removal on Windows: retry when directory is momentarily locked
+            max_retries = 10
+            delay_sec = 0.1
+            for attempt in range(max_retries):
+                try:
+                    shutil.rmtree(self.test_data_dir)
+                    break
+                except PermissionError:
+                    if attempt == max_retries - 1:
+                        raise
+                    time.sleep(delay_sec)
 
     def _create_mock_stooq_data(self, tickers, start_date="2023-01-01", end_date="2023-01-03"):
         """Create mock data in Stooq format (MultiIndex)."""
@@ -551,4 +562,4 @@ class TestHybridDataSourceValidation(unittest.TestCase):
         
         result = pd.concat(data_frames, axis=1)
         result.columns.names = ['Ticker', 'Field']
-        return result 
+        return result

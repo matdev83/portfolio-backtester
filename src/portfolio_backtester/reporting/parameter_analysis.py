@@ -3,16 +3,19 @@
 Extracted untouched from the legacy `backtester_logic.reporting` implementation
 so that the behaviour remains identical.  The only change is the module path.
 """
+
 from __future__ import annotations
 
-import logging
 import os
-from datetime import datetime
+from typing import Any, TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+
+if TYPE_CHECKING:
+    from ..core import Backtester
 
 __all__ = [
     "_plot_parameter_impact_analysis",
@@ -29,7 +32,10 @@ __all__ = [
 # the original 1 700-line file.  Only long docstrings / comments trimmed.
 # ---------------------------------------------------------------------------
 
-def _plot_parameter_impact_analysis(self, scenario_name: str, best_trial_obj, timestamp: str):
+
+def _plot_parameter_impact_analysis(
+    self: "Backtester", scenario_name: str, best_trial_obj: Any, timestamp: str
+) -> None:
     logger = self.logger
     try:
         if not hasattr(best_trial_obj, "study") or best_trial_obj.study is None:
@@ -71,7 +77,10 @@ def _plot_parameter_impact_analysis(self, scenario_name: str, best_trial_obj, ti
 
 # ---------------------------- heat-maps ------------------------------------
 
-def _create_parameter_heatmaps(self, df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str):
+
+def _create_parameter_heatmaps(
+    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+) -> None:
     logger = self.logger
     try:
         if len(param_names) < 2:
@@ -93,7 +102,9 @@ def _create_parameter_heatmaps(self, df: pd.DataFrame, param_names: list[str], s
         for i in range(len(param_names)):
             for j in range(i + 1, len(param_names)):
                 p1, p2 = param_names[i], param_names[j]
-                imp = abs(df[p1].corr(df["objective_value"])) + abs(df[p2].corr(df["objective_value"]))
+                imp = abs(df[p1].corr(df["objective_value"])) + abs(
+                    df[p2].corr(df["objective_value"])
+                )
                 pairs.append((p1, p2, imp))
         pairs.sort(key=lambda x: x[2], reverse=True)
         pairs = pairs[:num_pairs]
@@ -107,8 +118,21 @@ def _create_parameter_heatmaps(self, df: pd.DataFrame, param_names: list[str], s
                     v1 = pd.cut(v1, bins=10, precision=2)
                 if len(v2.unique()) > 10:
                     v2 = pd.cut(v2, bins=10, precision=2)
-                pivot = df.groupby([v1, v2], observed=True)["objective_value"].mean().unstack(fill_value=np.nan)
-                sns.heatmap(pivot, annot=True, fmt=".3f", cmap="viridis", ax=ax, cbar_kws={"label": "Objective"})
+                pivot = (
+                    df.groupby([v1, v2], observed=True)["objective_value"]
+                    .mean()
+                    .unstack(fill_value=None)
+                )
+                # Convert None to NaN after unstacking
+                pivot = pivot.fillna(np.nan)
+                sns.heatmap(
+                    pivot,
+                    annot=True,
+                    fmt=".3f",
+                    cmap="viridis",
+                    ax=ax,
+                    cbar_kws={"label": "Objective"},
+                )
                 ax.set_title(f"{p1} vs {p2}")
                 ax.set_xlabel(p2)
                 ax.set_ylabel(p1)
@@ -134,7 +158,10 @@ def _create_parameter_heatmaps(self, df: pd.DataFrame, param_names: list[str], s
 
 # ---------------------- sensitivity analysis --------------------------------
 
-def _create_parameter_sensitivity_analysis(self, df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str):
+
+def _create_parameter_sensitivity_analysis(
+    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+) -> None:
     logger = self.logger
     try:
         if not param_names:
@@ -180,7 +207,10 @@ def _create_parameter_sensitivity_analysis(self, df: pd.DataFrame, param_names: 
 
 # ---------------------- stability analysis ----------------------------------
 
-def _create_parameter_stability_analysis(self, df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str):
+
+def _create_parameter_stability_analysis(
+    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+) -> None:
     logger = self.logger
     try:
         if not param_names:
@@ -188,16 +218,31 @@ def _create_parameter_stability_analysis(self, df: pd.DataFrame, param_names: li
         fig = plt.figure(figsize=(16, 10))
         ax1 = plt.subplot(2, 2, (1, 2))
         for param in param_names[:6]:
-            ax1.plot(df["trial_number"], df[param], marker="o", markersize=3, alpha=0.7, label=param)
+            ax1.plot(
+                df["trial_number"], df[param], marker="o", markersize=3, alpha=0.7, label=param
+            )
         ax1.set_title("Parameter Evolution Over Trials")
         ax1.legend()
 
         ax2 = plt.subplot(2, 2, 3)
-        variances = [df[p].var() for p in param_names]
-        max_var = max(variances) if variances else 1
-        ax2.bar(range(len(param_names)), [v / max_var for v in variances])
-        ax2.set_xticks(range(len(param_names)))
-        ax2.set_xticklabels(param_names, rotation=45, ha="right")
+        variances = []
+        numeric_param_names = []
+        for p in param_names:
+            try:
+                # Check if the column is numeric
+                if pd.api.types.is_numeric_dtype(df[p]):
+                    var = df[p].var()
+                    if pd.notna(var) and isinstance(var, (int, float, np.number)):
+                        variances.append(float(var))
+                        numeric_param_names.append(p)
+            except (TypeError, AttributeError, ValueError):
+                # Skip non-numeric parameters
+                continue
+
+        max_var = max(variances) if variances else 1.0
+        ax2.bar(range(len(numeric_param_names)), [v / max_var for v in variances])
+        ax2.set_xticks(range(len(numeric_param_names)))
+        ax2.set_xticklabels(numeric_param_names, rotation=45, ha="right")
         ax2.set_title("Normalised Variance (lower = stable)")
 
         ax3 = plt.subplot(2, 2, 4)
@@ -220,7 +265,10 @@ def _create_parameter_stability_analysis(self, df: pd.DataFrame, param_names: li
 
 # ---------------------- correlation analysis --------------------------------
 
-def _create_parameter_correlation_analysis(self, df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str):
+
+def _create_parameter_correlation_analysis(
+    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+) -> None:
     logger = self.logger
     try:
         if len(param_names) < 2:
@@ -242,7 +290,10 @@ def _create_parameter_correlation_analysis(self, df: pd.DataFrame, param_names: 
 
 # ---------------------- importance ranking ----------------------------------
 
-def _create_parameter_importance_ranking(self, df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str):
+
+def _create_parameter_importance_ranking(
+    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+) -> None:
     logger = self.logger
     try:
         if not param_names:
@@ -250,7 +301,7 @@ def _create_parameter_importance_ranking(self, df: pd.DataFrame, param_names: li
         scores = {p: abs(df[p].corr(df["objective_value"])) for p in param_names}
         params, vals = zip(*sorted(scores.items(), key=lambda x: x[1], reverse=True))
         plt.figure(figsize=(10, 6))
-        plt.bar(range(len(params)), vals, color=plt.cm.viridis(np.linspace(0, 1, len(params))))
+        plt.bar(range(len(params)), vals, color=sns.color_palette("viridis", len(params)))
         plt.xticks(range(len(params)), params, rotation=45, ha="right")
         plt.title(f"Parameter Importance – {scenario_name}")
         plt.tight_layout()
@@ -265,7 +316,10 @@ def _create_parameter_importance_ranking(self, df: pd.DataFrame, param_names: li
 
 # ---------------------- robustness analysis ---------------------------------
 
-def _create_parameter_robustness_analysis(self, df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str):
+
+def _create_parameter_robustness_analysis(
+    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+) -> None:
     logger = self.logger
     try:
         if not param_names:
@@ -297,4 +351,4 @@ def _create_parameter_robustness_analysis(self, df: pd.DataFrame, param_names: l
             plt.close()
             logger.info("Parameter robustness saved: %s", fname)
     except Exception as exc:
-        logger.error("Error creating robustness analysis: %s", exc) 
+        logger.error("Error creating robustness analysis: %s", exc)

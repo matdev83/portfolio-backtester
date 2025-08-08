@@ -8,14 +8,13 @@ for parameter sets in both single and multi-objective optimization scenarios.
 import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import Mock, MagicMock
-from typing import Dict, Any, List
+from unittest.mock import Mock
 
-from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
-from src.portfolio_backtester.optimization.results import (
+from portfolio_backtester.optimization.evaluator import BacktestEvaluator
+from portfolio_backtester.optimization.results import (
     EvaluationResult, OptimizationData
 )
-from src.portfolio_backtester.backtesting.results import (
+from portfolio_backtester.backtesting.results import (
     WindowResult,
 )
 

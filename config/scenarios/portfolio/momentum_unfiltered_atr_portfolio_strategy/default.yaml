@@ -1,0 +1,2 @@
+strategy: MomentumUnfilteredAtrPortfolioStrategy
+strategy_params: {}

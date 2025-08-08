@@ -1,11 +1,14 @@
 from abc import ABC, abstractmethod
 import pandas as pd
 
+
 class BasePositionSizer(ABC):
     """Abstract base class for all position sizers."""
 
     @abstractmethod
-    def calculate_weights(self, signals: pd.DataFrame, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def calculate_weights(
+        self, signals: pd.DataFrame, prices: pd.DataFrame, **kwargs
+    ) -> pd.DataFrame:
         """Calculate the target weights for each asset.
 
         Note: This method must return a DataFrame of positive weights.

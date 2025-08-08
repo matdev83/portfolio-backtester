@@ -5,8 +5,7 @@ Split from test_advanced_state_management.py for better organization.
 
 import pytest
 import pandas as pd
-import numpy as np
-from src.portfolio_backtester.timing.timing_state import PositionInfo
+from portfolio_backtester.timing.timing_state import PositionInfo
 
 
 class TestPositionInfo:

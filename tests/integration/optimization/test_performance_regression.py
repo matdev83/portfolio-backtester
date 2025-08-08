@@ -10,26 +10,24 @@ with large parameter spaces and long optimizations.
 import pytest
 import time
 import gc
-import sys
 import tracemalloc
 import numpy as np
 import pandas as pd
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
-from unittest.mock import Mock, patch
+from typing import Dict, Any
+from unittest.mock import Mock
 from dataclasses import dataclass
 
 from tests.base.integration_test_base import BaseIntegrationTest
 from tests.fixtures.market_data import MarketDataFixture
 
-from src.portfolio_backtester.optimization.orchestrator import OptimizationOrchestrator
-from src.portfolio_backtester.optimization.evaluator import BacktestEvaluator
-from src.portfolio_backtester.optimization.factory import create_parameter_generator
-from src.portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
-from src.portfolio_backtester.optimization.results import OptimizationData
-from src.portfolio_backtester.feature_flags import FeatureFlags
+from portfolio_backtester.optimization.orchestrator import OptimizationOrchestrator
+from portfolio_backtester.optimization.evaluator import BacktestEvaluator
+from portfolio_backtester.optimization.factory import create_parameter_generator
+from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
+from portfolio_backtester.optimization.results import OptimizationData
 
 
 @dataclass
@@ -272,7 +270,7 @@ class TestPerformanceRegression(BaseIntegrationTest):
         
         # Mock evaluate_window to return realistic results quickly
         def fast_evaluate_window(scenario_config, window, monthly_data, daily_data, returns_data):
-            from src.portfolio_backtester.backtesting.results import WindowResult
+            from portfolio_backtester.backtesting.results import WindowResult
             
             # Generate mock returns for the test window (minimal computation)
             test_start, test_end = window[2], window[3]
@@ -415,7 +413,7 @@ class TestPerformanceRegression(BaseIntegrationTest):
         self.assertEqual(metrics.total_evaluations, 20)
         
         # Log performance for analysis
-        print(f"Optuna Small Space Performance:")
+        print("Optuna Small Space Performance:")
         print(f"  Execution time: {metrics.execution_time:.2f}s")
         print(f"  Peak memory: {metrics.peak_memory_mb:.1f}MB")
         print(f"  Evaluations/sec: {metrics.evaluations_per_second:.2f}")
@@ -438,7 +436,7 @@ class TestPerformanceRegression(BaseIntegrationTest):
         self.assertEqual(metrics.total_evaluations, 30)
         
         # Log performance for analysis
-        print(f"Optuna Medium Space Performance:")
+        print("Optuna Medium Space Performance:")
         print(f"  Execution time: {metrics.execution_time:.2f}s")
         print(f"  Peak memory: {metrics.peak_memory_mb:.1f}MB")
         print(f"  Evaluations/sec: {metrics.evaluations_per_second:.2f}")
@@ -461,7 +459,7 @@ class TestPerformanceRegression(BaseIntegrationTest):
         self.assertEqual(metrics.total_evaluations, 40)
         
         # Log performance for analysis
-        print(f"Optuna Large Space Performance:")
+        print("Optuna Large Space Performance:")
         print(f"  Execution time: {metrics.execution_time:.2f}s")
         print(f"  Peak memory: {metrics.peak_memory_mb:.1f}MB")
         print(f"  Evaluations/sec: {metrics.evaluations_per_second:.2f}")
@@ -484,7 +482,7 @@ class TestPerformanceRegression(BaseIntegrationTest):
         self.assertGreaterEqual(metrics.total_evaluations, 1)  # At least some evaluations
         
         # Log performance for analysis
-        print(f"Genetic Small Space Performance:")
+        print("Genetic Small Space Performance:")
         print(f"  Execution time: {metrics.execution_time:.2f}s")
         print(f"  Peak memory: {metrics.peak_memory_mb:.1f}MB")
         print(f"  Evaluations/sec: {metrics.evaluations_per_second:.2f}")
@@ -508,7 +506,7 @@ class TestPerformanceRegression(BaseIntegrationTest):
         self.assertGreaterEqual(metrics.total_evaluations, 1)  # At least some evaluations
         
         # Log performance for analysis
-        print(f"Genetic Medium Space Performance:")
+        print("Genetic Medium Space Performance:")
         print(f"  Execution time: {metrics.execution_time:.2f}s")
         print(f"  Peak memory: {metrics.peak_memory_mb:.1f}MB")
         print(f"  Evaluations/sec: {metrics.evaluations_per_second:.2f}")
@@ -534,7 +532,7 @@ class TestPerformanceRegression(BaseIntegrationTest):
         # Check for reasonable memory usage
         self.assertLess(metrics.peak_memory_mb, 1000)  # Less than 1GB peak memory
         
-        print(f"Memory Stability Test:")
+        print("Memory Stability Test:")
         print(f"  Peak memory: {metrics.peak_memory_mb:.1f}MB")
         print(f"  Average memory: {metrics.avg_memory_mb:.1f}MB")
         print(f"  Memory growth ratio: {memory_growth_ratio:.2f}")
@@ -611,7 +609,7 @@ class TestPerformanceRegression(BaseIntegrationTest):
         self.assertGreater(overall_metrics.evaluations_per_second, 0.3)
         self.assertLess(overall_metrics.peak_memory_mb, 800)
         
-        print(f"Concurrent Optimization Performance:")
+        print("Concurrent Optimization Performance:")
         print(f"  Total time: {overall_metrics.execution_time:.2f}s")
         print(f"  Total evaluations: {total_evaluations}")
         print(f"  Overall rate: {overall_metrics.evaluations_per_second:.2f} eval/s")
@@ -660,7 +658,7 @@ class TestPerformanceRegression(BaseIntegrationTest):
             f"{baseline_expectations['max_execution_time_per_evaluation']}s"
         )
         
-        print(f"Performance Regression Test:")
+        print("Performance Regression Test:")
         print(f"  Evaluations/sec: {metrics.evaluations_per_second:.2f} "
               f"(baseline: {baseline_expectations['min_evaluations_per_second']})")
         print(f"  Peak memory: {metrics.peak_memory_mb:.1f}MB "

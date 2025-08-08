@@ -4,11 +4,8 @@ Merges overlapping validation logic from test_data_sanity_check.py and test_hybr
 """
 
 import unittest
-import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import Mock, patch, MagicMock
-from src.portfolio_backtester.data_sources.hybrid_data_source import HybridDataSource
 
 
 class DataValidationUtilities:

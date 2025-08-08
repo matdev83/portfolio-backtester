@@ -1,6 +1,7 @@
 import pytest
 import pandas as pd
 import numpy as np
+import warnings
 
 from portfolio_backtester.portfolio.position_sizer import (
     _normalize_weights,
@@ -9,6 +10,13 @@ from portfolio_backtester.portfolio.position_sizer import (
     EqualWeightSizer,
 )
 
+
+@pytest.fixture(autouse=True)
+def suppress_position_sizer_warnings():
+    """Suppress deprecation warnings for position sizer tests."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning, message=r"DEPRECATED: get_position_sizer_from_config is deprecated")
+        yield
 
 def test_normalize_weights_zero_row():
     """All-zero rows should remain zeros without NaNs or division errors."""
