@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import Dict, Any, cast
 import pandas as pd
 
-from portfolio_backtester.features.sortino_ratio import SortinoRatio
+# Do not import SortinoRatio at module import time. Import lazily in __init__
+# so unit tests can monkeypatch
 from .base_momentum_portfolio_strategy import BaseMomentumPortfolioStrategy
 
 
@@ -21,7 +22,16 @@ class SortinoMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
         for k, v in sortino_defaults.items():
             params_dict_to_update.setdefault(k, v)
 
-        self.sortino_feature = SortinoRatio(
+        # Import SortinoRatio from the alias module first to support test monkeypatching,
+        # fall back to the feature implementation if alias is unavailable.
+        try:
+            from portfolio_backtester.strategies.portfolio.sortino_momentum_portfolio_strategy import (
+                SortinoRatio as _SortinoRatio,
+            )
+        except Exception:  # pragma: no cover - fallback path
+            from portfolio_backtester.features.sortino_ratio import SortinoRatio as _SortinoRatio
+
+        self.sortino_feature = _SortinoRatio(
             rolling_window=params_dict_to_update["rolling_window"],
             target_return=params_dict_to_update["target_return"],
         )

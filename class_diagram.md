@@ -50,8 +50,6 @@ classDiagram
     class GARCHParameters
     class AssetStatistics
     class SyntheticDataGenerator
-    class ValidationResults
-    class SyntheticDataValidator
     class SyntheticDataVisualInspector
     class DiversityCalculator
     class AdaptiveMutationController
@@ -254,7 +252,6 @@ classDiagram
     AssetReplacementManager --|> SyntheticDataGenerator
     SyntheticDataGenerator --|> AssetStatistics
     SyntheticDataGenerator --|> GARCHParameters
-    SyntheticDataValidator --|> ValidationResults
     SyntheticDataVisualInspector --|> SyntheticDataGenerator
     EliteArchive --|> EliteSolution
     ParallelOptimizer --|> ParallelOptimizer

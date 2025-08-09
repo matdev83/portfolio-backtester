@@ -205,7 +205,7 @@ class PolymorphicStrategyResolver:
             strategy_class: Strategy class to detect type for
 
         Returns:
-            Strategy type as string: "meta", "portfolio", "signal", or "diagnostic"
+            Strategy type as string: "meta", "portfolio", "signal" or "unknown"
         """
         if strategy_class is None:
             return "unknown"
@@ -215,14 +215,11 @@ class PolymorphicStrategyResolver:
             strategy_name = strategy_class.lower()
             if "meta" in strategy_name:
                 return "meta"
-            elif "portfolio" in strategy_name:
+            if "portfolio" in strategy_name:
                 return "portfolio"
-            elif "signal" in strategy_name:
+            if "signal" in strategy_name:
                 return "signal"
-            elif "tester" in strategy_name or "diagnostic" in strategy_name:
-                return "diagnostic"
-            else:
-                return "unknown"
+            return "unknown"
 
         # For actual class objects
         class_name = getattr(strategy_class, "__name__", "")
@@ -233,12 +230,8 @@ class PolymorphicStrategyResolver:
             return "portfolio"
         elif "SignalStrategy" in class_name or "signal" in class_name.lower():
             return "signal"
-        elif (
-            "Tester" in class_name
-            or "Diagnostic" in class_name
-            or "diagnostic" in class_name.lower()
-        ):
-            return "diagnostic"
+        elif ("Tester" in class_name) or ("Diagnostic" in class_name):
+            return "unknown"
         else:
             return "unknown"
 

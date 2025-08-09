@@ -48,7 +48,7 @@ def validate_strategy_configs(strategies_dir, scenarios_dir):
 
     # Only validate actual strategy files, not base classes or utilities
     # New layout discovery roots for YAML mirror: builtins/* and user/* categories
-    strategy_categories = ["diagnostic", "meta", "portfolio", "signal"]
+    strategy_categories = ["meta", "portfolio", "signal"]
 
     # Group strategy files by their parent directory (strategy directory)
     strategy_dirs_to_files: dict[Path, list[Path]] = {}

@@ -31,30 +31,11 @@ optimize:
   min_value: 1.0
   max_value: 2.0
   step: 0.5
-# Risk Management Optimization Parameters
-- parameter: stop_loss_atr_multiple
-  min_value: 1.5
-  max_value: 3.0
-  step: 0.25
-- parameter: take_profit_atr_multiple
-  min_value: 2.0
-  max_value: 4.0
-  step: 0.5
+# (Removed) Risk management parameters not supported by this strategy's tunables
 strategy_params:
   fast_ema_days: 20
   slow_ema_days: 64
   leverage: 1.0
-  
-  # ATR-based Stop Loss Configuration
-  stop_loss_config:
-    type: "AtrBasedStopLoss"
-    atr_length: 14
-    atr_multiple: 2.0
-    
-  # ATR-based Take Profit Configuration  
-  take_profit_config:
-    type: "AtrBasedTakeProfit"
-    atr_length: 14
-    atr_multiple: 3.0
+
 mc_simulations: 100
 mc_years: 5

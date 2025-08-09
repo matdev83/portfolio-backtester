@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set, Optional
+from typing import Any, Dict, List, Set, Optional, cast
 
 import numpy as np
 import pandas as pd
 from ta.momentum import RSIIndicator
 
-from .unfiltered_atr_momentum_portfolio_strategy import MomentumUnfilteredAtrPortfolioStrategy
-from ..builtins.portfolio.beta_filtered_momentum_portfolio_strategy import (  # noqa: F401
-    BetaFilteredMomentumPortfolioStrategy,
+from .unfiltered_atr_momentum_portfolio_strategy import (
+    UnfilteredAtrMomentumPortfolioStrategy,
 )
 
-__all__ = ["BetaFilteredMomentumPortfolioStrategy"]
+__all__ = ["MomentumBetaFilteredPortfolioStrategy"]
 
 
-class MomentumBetaFilteredPortfolioStrategy(MomentumUnfilteredAtrPortfolioStrategy):
+class MomentumBetaFilteredPortfolioStrategy(UnfilteredAtrMomentumPortfolioStrategy):
     """Momentum strategy variant that removes the highest-beta stocks from the long leg
     and allows tactical shorts when those high-beta names become overbought.
 
@@ -72,7 +71,7 @@ class MomentumBetaFilteredPortfolioStrategy(MomentumUnfilteredAtrPortfolioStrate
     # ------------------------------------------------------------------
     @classmethod
     def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
-        parent_params = super().tunable_parameters()
+        parent_params: Dict[str, Dict[str, Any]] = super().tunable_parameters()
         parent_params.update(
             {
                 "beta_lookback_days": {"type": "int", "min": 5, "max": 252, "default": 21},
@@ -104,16 +103,6 @@ class MomentumBetaFilteredPortfolioStrategy(MomentumUnfilteredAtrPortfolioStrate
         return df
 
     @staticmethod
-    def _calculate_rsi(price_series: pd.Series, window: int) -> float:
-        """Calculate RSI (Relative Strength Index) for the **latest** value using ta library."""
-        if price_series.size < window + 1:
-            return np.nan
-
-        # Use ta library for RSI calculation
-        rsi = RSIIndicator(close=price_series, window=window).rsi()
-        return rsi.iloc[-1] if len(rsi) > 0 else np.nan
-
-    @staticmethod
     def _latest_rolling_betas(
         asset_returns: pd.DataFrame, bench_returns: pd.Series, window: int
     ) -> pd.Series:
@@ -125,6 +114,8 @@ class MomentumBetaFilteredPortfolioStrategy(MomentumUnfilteredAtrPortfolioStrate
         cov = asset_returns.rolling(window).cov(bench_aligned)
         betas = cov.div(rolling_var, axis=0)
         return betas.iloc[-1]
+
+    # (method removed: _calculate_rsi was unused)
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -280,13 +271,16 @@ class MomentumBetaFilteredPortfolioStrategy(MomentumUnfilteredAtrPortfolioStrate
         # --------------------------------------------------------------
         # Delegate the heavy-lifting to the parent class
         # --------------------------------------------------------------
-        return super().generate_signals(
-            all_historical_data,
-            benchmark_historical_data,
-            non_universe_historical_data,
-            current_date,
-            start_date,
-            end_date,
+        return cast(
+            pd.DataFrame,
+            super().generate_signals(
+                all_historical_data,
+                benchmark_historical_data,
+                non_universe_historical_data,
+                current_date,
+                start_date,
+                end_date,
+            ),
         )
 
     # ------------------------------------------------------------------

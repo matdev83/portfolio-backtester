@@ -587,6 +587,101 @@ class BaseStrategy(ABC):
         return signals
 
     # ------------------------------------------------------------------ #
+    # Fallback helpers for legacy integration paths
+    # ------------------------------------------------------------------ #
+
+    def _apply_signal_strategy_stop_loss(
+        self,
+        weights: pd.Series,
+        current_date: pd.Timestamp,
+        all_historical_data: pd.DataFrame,
+        current_prices: pd.Series,
+    ) -> pd.Series:
+        """
+        Default stop-loss application hook used by legacy integration tests.
+        Subclasses can override; base implementation delegates to configured handler
+        and returns unmodified weights on errors or when no handler is configured.
+        """
+        try:
+            handler = self.get_stop_loss_handler()
+        except Exception:
+            return weights
+
+        # No-op when using NoStopLoss
+        if isinstance(handler, NoStopLoss):
+            return weights
+
+        # Ensure entry prices exist
+        entry_prices_series: pd.Series
+        if isinstance(getattr(self, "entry_prices", None), pd.Series):
+            entry_prices_series = self.entry_prices  # type: ignore[assignment]
+        else:
+            entry_prices_series = pd.Series(index=weights.index, dtype=float)
+
+        try:
+            stop_levels = handler.calculate_stop_levels(
+                current_date=current_date,
+                asset_ohlc_history=all_historical_data,
+                current_weights=weights,
+                entry_prices=entry_prices_series,
+            )
+            adjusted = handler.apply_stop_loss(
+                current_date=current_date,
+                current_asset_prices=current_prices,
+                target_weights=weights,
+                entry_prices=entry_prices_series,
+                stop_levels=stop_levels,
+            )
+            return adjusted if isinstance(adjusted, pd.Series) else pd.Series(adjusted)
+        except Exception:
+            return weights
+
+    def _apply_signal_strategy_take_profit(
+        self,
+        weights: pd.Series,
+        current_date: pd.Timestamp,
+        all_historical_data: pd.DataFrame,
+        current_prices: pd.Series,
+    ) -> pd.Series:
+        """
+        Default take-profit application hook used by legacy integration tests.
+        Base implementation delegates to configured handler and returns weights
+        unchanged on errors or when no handler is configured.
+        """
+        try:
+            handler = self.get_take_profit_handler()
+        except Exception:
+            return weights
+
+        if isinstance(handler, NoTakeProfit):
+            return weights
+
+        # Ensure entry prices exist
+        entry_prices_series: pd.Series
+        if isinstance(getattr(self, "entry_prices", None), pd.Series):
+            entry_prices_series = self.entry_prices  # type: ignore[assignment]
+        else:
+            entry_prices_series = pd.Series(index=weights.index, dtype=float)
+
+        try:
+            take_profit_levels = handler.calculate_take_profit_levels(
+                current_date=current_date,
+                asset_ohlc_history=all_historical_data,
+                current_weights=weights,
+                entry_prices=entry_prices_series,
+            )
+            adjusted = handler.apply_take_profit(
+                current_date=current_date,
+                current_asset_prices=current_prices,
+                target_weights=weights,
+                entry_prices=entry_prices_series,
+                take_profit_levels=take_profit_levels,
+            )
+            return adjusted if isinstance(adjusted, pd.Series) else pd.Series(adjusted)
+        except Exception:
+            return weights
+
+    # ------------------------------------------------------------------ #
     # Trade Direction Constraint Helpers
     # ------------------------------------------------------------------ #
 

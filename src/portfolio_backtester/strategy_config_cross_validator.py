@@ -72,8 +72,8 @@ class StrategyConfigCrossValidator:
         # Import all strategy modules to register classes
         self._import_all_strategy_modules()
 
-        # Get all BaseStrategy subclasses
-        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
+        # Get all BaseStrategy subclasses (new core path)
+        from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
 
         all_strategies = self._collect_all_subclasses(BaseStrategy)
 
@@ -98,23 +98,30 @@ class StrategyConfigCrossValidator:
         """Import all strategy modules to ensure classes are available."""
         import importlib
 
-        # Import from strategy subdirectories
+        # Import from strategy subdirectories (new layout first: builtins/, user/; then legacy)
         package_name = "portfolio_backtester.strategies"
         strategies_path = self.src_strategies_dir
 
-        for subdir in ["portfolio", "signal", "meta", "diagnostic"]:
-            subdir_path = strategies_path / subdir
-            if subdir_path.is_dir():
-                for py_file in subdir_path.glob("*.py"):
-                    if py_file.name.startswith("__"):
-                        continue
+        def import_all_in(path: Path, module_prefix: str) -> None:
+            if not path.is_dir():
+                return
+            for py_file in path.glob("*.py"):
+                if py_file.name.startswith("__"):
+                    continue
+                module_name = f"{module_prefix}.{py_file.stem}"
+                try:
+                    importlib.import_module(module_name)
+                except Exception as e:
+                    logger.debug(f"Failed to import {module_name}: {e}")
 
-                    module_name = f"{package_name}.{subdir}.{py_file.stem}"
-                    try:
-                        importlib.import_module(module_name)
-                    except Exception as e:
-                        logger.debug(f"Failed to import {module_name}: {e}")
-                        continue
+        # New layout: builtins and user categories
+        for root in ["builtins", "user"]:
+            for cat in ["portfolio", "signal", "meta"]:
+                import_all_in(strategies_path / root / cat, f"{package_name}.{root}.{cat}")
+
+        # Legacy layout (kept for backward compatibility during migration)
+        for cat in ["portfolio", "signal", "meta"]:
+            import_all_in(strategies_path / cat, f"{package_name}.{cat}")
 
     def _collect_all_subclasses(self, base_class) -> set:
         """Recursively collect all subclasses of a base class."""
@@ -127,10 +134,12 @@ class StrategyConfigCrossValidator:
     def _is_concrete_strategy_class(self, cls) -> bool:
         """Check if a class is a concrete strategy (not abstract or base class)."""
         import inspect
-        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
-        from portfolio_backtester.strategies._core.base.signal_strategy import SignalStrategy
-        from portfolio_backtester.strategies._core.base.portfolio_strategy import PortfolioStrategy
-        from portfolio_backtester.strategies._core.base.meta_strategy import BaseMetaStrategy
+        from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base.signal_strategy import SignalStrategy
+        from portfolio_backtester.strategies._core.base.base.portfolio_strategy import (
+            PortfolioStrategy,
+        )
+        from portfolio_backtester.strategies._core.base.base.meta_strategy import BaseMetaStrategy
 
         # Known base classes that should not be considered concrete
         base_classes = {BaseStrategy, SignalStrategy, PortfolioStrategy, BaseMetaStrategy}
@@ -179,7 +188,7 @@ class StrategyConfigCrossValidator:
         errors: List[str] = []
         valid_strategy_names = self._get_valid_strategy_names()
 
-        strategy_categories = ["diagnostic", "meta", "portfolio", "signal"]
+        strategy_categories = ["meta", "portfolio", "signal"]
 
         # Roots to scan: builtins/, user/, and legacy top-level
         roots = [
@@ -317,7 +326,7 @@ class StrategyConfigCrossValidator:
         self._import_all_strategy_modules()
 
         # Get all BaseStrategy subclasses
-        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
 
         all_strategies = self._collect_all_subclasses(BaseStrategy)
 

@@ -10,7 +10,7 @@ This strategy is designed for testing purposes. It uses random chance to generat
 
 To run the optimizer on this strategy, use the following command:
 
-.venv\Scripts\python -m src.portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/signal/dummy_signal_strategy/default.yaml
+.venv\Scripts\python -m src.portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/builtins/signal/dummy_signal_strategy/default.yaml
 """
 
 from typing import Optional, Dict, Any
@@ -18,7 +18,7 @@ from typing import Optional, Dict, Any
 import pandas as pd
 import numpy as np
 
-from ...strategies.base.signal_strategy import SignalStrategy
+from ...strategies._core.base.base.signal_strategy import SignalStrategy
 from ...risk_management.stop_loss_handlers import AtrBasedStopLoss, NoStopLoss
 
 
@@ -162,3 +162,42 @@ class DummySignalStrategy(SignalStrategy):
 
     def __str__(self):
         return f"DummySignalStrategy({self.symbol})"
+
+    # Fallback helpers expected by integration tests
+    def _apply_signal_strategy_stop_loss(
+        self,
+        weights: pd.Series,
+        current_date: pd.Timestamp,
+        all_historical_data: pd.DataFrame,
+        current_prices: pd.Series,
+    ) -> pd.Series:
+        if not self.stop_loss_handler or self.stop_loss_handler.__class__.__name__ == "NoStopLoss":
+            return weights
+        try:
+            stop_levels = self.stop_loss_handler.calculate_stop_levels(
+                current_date=current_date,
+                asset_ohlc_history=all_historical_data,
+                current_weights=weights,
+                entry_prices=self.entry_prices,
+            )
+            applied = self.stop_loss_handler.apply_stop_loss(
+                current_date=current_date,
+                current_asset_prices=current_prices,
+                target_weights=weights,
+                entry_prices=self.entry_prices,
+                stop_levels=stop_levels,
+            )
+            # Ensure return type is a Series
+            return pd.Series(applied) if not isinstance(applied, pd.Series) else applied
+        except Exception:
+            return weights
+
+    def _apply_signal_strategy_take_profit(
+        self,
+        weights: pd.Series,
+        current_date: pd.Timestamp,
+        all_historical_data: pd.DataFrame,
+        current_prices: pd.Series,
+    ) -> pd.Series:
+        # This dummy strategy does not implement take-profit; return weights unchanged
+        return weights

@@ -70,7 +70,12 @@ class SeasonalSignalStrategy(SignalStrategy):
 
         # Handle MultiIndex columns; flatten to ticker list
         if isinstance(all_historical_data.columns, pd.MultiIndex):
-            tickers = sorted({str(c[0]) if isinstance(c, tuple) and len(c) > 0 else str(c) for c in all_historical_data.columns})
+            tickers = sorted(
+                {
+                    str(c[0]) if isinstance(c, tuple) and len(c) > 0 else str(c)
+                    for c in all_historical_data.columns
+                }
+            )
         else:
             tickers = list(all_historical_data.columns)
         result = pd.DataFrame(0.0, index=[current_date], columns=tickers)
@@ -79,13 +84,13 @@ class SeasonalSignalStrategy(SignalStrategy):
             return result
 
         entry_date = self.get_entry_date_for_month(current_date, self.entry_day)
-        if self.direction != "long":
-            return result
 
         if self._is_within_hold_window(current_date, entry_date):
             if len(tickers) > 0:
                 equal_weight = 1.0 / len(tickers)
-                result.loc[current_date, :] = equal_weight
+                result.loc[current_date, :] = (
+                    -equal_weight if self.direction == "short" else equal_weight
+                )
 
         return result
 

@@ -33,19 +33,25 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
     @classmethod
     def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
         return {
-            param: {"type": "float", "min": 0, "max": 1}
-            for param in [
-                "rolling_window",
-                "num_holdings",
-                "top_decile_fraction",
-                "smoothing_lambda",
-                "leverage",
-                "trade_longs",
-                "trade_shorts",
-                "sma_filter_window",
-                "derisk_days_under_sma",
-                "apply_trading_lag",
-            ]
+            # Core momentum parameters
+            "rolling_window": {"type": "int", "min": 1, "max": 24, "default": 6},
+            "num_holdings": {"type": "int", "min": 1, "max": 100, "default": 10},
+            "top_decile_fraction": {
+                "type": "float",
+                "min": 0.05,
+                "max": 0.5,
+                "default": 0.1,
+            },
+            # Smoothing and leverage
+            "smoothing_lambda": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.5},
+            "leverage": {"type": "float", "min": 1.0, "max": 2.0, "default": 1.0},
+            # Trading toggles
+            "trade_longs": {"type": "bool", "default": True},
+            "trade_shorts": {"type": "bool", "default": False},
+            # Risk filters
+            "sma_filter_window": {"type": "int", "min": 0, "max": 252, "default": 20},
+            "derisk_days_under_sma": {"type": "int", "min": 1, "max": 63, "default": 10},
+            "apply_trading_lag": {"type": "bool", "default": False},
         }
 
     def get_minimum_required_periods(self) -> int:
@@ -136,6 +142,13 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
             all_historical_data, benchmark_historical_data, current_date
         )
         if not is_sufficient:
+            # Log the reason to aid debugging and satisfy static analysis
+            logger.debug(
+                "Insufficient data for %s at %s: %s",
+                self.__class__.__name__,
+                current_date,
+                reason,
+            )
             columns = (
                 all_historical_data.columns.get_level_values(0).unique()
                 if isinstance(all_historical_data.columns, pd.MultiIndex)

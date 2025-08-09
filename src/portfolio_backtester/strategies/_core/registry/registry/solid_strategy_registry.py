@@ -182,7 +182,6 @@ class FileSystemStrategyDiscoveryEngine(IStrategyDiscoveryEngine):
             "portfolio",
             "signal",
             "meta",
-            "diagnostic",
             # Special-case for tests
             "testing",
         ]

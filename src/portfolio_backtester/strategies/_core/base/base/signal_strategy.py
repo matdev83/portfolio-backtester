@@ -27,8 +27,9 @@ class SignalStrategy(BaseStrategy, ABC):
        ✅ Good: my_awesome_signal_strategy.py
        ❌ Bad:  my_awesome.py
 
-    3. File MUST be in: src/portfolio_backtester/strategies/signal/
-       ✅ Good: src/portfolio_backtester/strategies/signal/my_awesome_signal_strategy.py
+    3. File MUST be in builtins/ or user/ category:
+       ✅ Good (built-ins): src/portfolio_backtester/strategies/builtins/signal/my_awesome_signal_strategy.py
+       ✅ Good (user):      src/portfolio_backtester/strategies/user/signal/my_awesome_signal_strategy.py
        ❌ Bad:  any other directory
 
     4. Class must be CONCRETE (implement all abstract methods)

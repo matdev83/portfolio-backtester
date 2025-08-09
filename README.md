@@ -685,6 +685,128 @@ graph TD
     class SP,GS workflow
 ```
 
+## Synthetic Data Quality Testing
+
+The Portfolio Backtester includes a specialized tool for testing the quality of synthetic financial data generation, which is essential for validating Monte Carlo simulations.
+
+### Purpose
+
+The synthetic data testing tool validates that generated synthetic data maintains the same statistical properties as real historical market data. This ensures that Monte Carlo simulations produce realistic and reliable results for strategy robustness testing.
+
+### Usage
+
+**Basic Usage:**
+
+```bash
+python scripts/test_synthetic_data.py AAPL
+```
+
+**Advanced Usage:**
+
+```bash
+python scripts/test_synthetic_data.py MSFT --paths 5 --period 1y
+```
+
+### Parameters
+
+- **`symbol`** (required): Stock symbol to analyze (e.g., AAPL, MSFT, GOOGL)
+- **`--paths`**: Number of synthetic data paths to generate (default: 3)
+- **`--period`**: Historical data period to use (default: 2y)
+  - Options: `1y`, `2y`, `5y`
+
+### What It Tests
+
+The tool performs comprehensive statistical validation:
+
+#### **Statistical Properties Comparison**
+- **Mean Return**: Average daily return comparison
+- **Volatility**: Standard deviation of returns
+- **Skewness**: Distribution asymmetry
+- **Kurtosis**: Distribution tail heaviness
+- **Value at Risk (VaR)**: 95th and 99th percentile risk measures
+- **Autocorrelation**: Serial correlation in returns
+
+#### **Statistical Tests**
+- **Kolmogorov-Smirnov Test**: Distribution similarity
+- **Mann-Whitney U Test**: Location parameter equality
+- **Levene Test**: Variance equality
+
+#### **Advanced Validation**
+- **Volatility Clustering**: Autocorrelation in squared returns
+- **Rolling Volatility**: 22-day rolling volatility comparison
+- **Fat Tails**: Kurtosis-based tail heaviness analysis
+- **Extreme Values**: Percentile-based extreme value validation
+
+#### **Quality Assessment**
+The tool provides clear ✅/⚠️ indicators for:
+- Mean difference < 0.001 (excellent match)
+- Volatility difference < 0.01 (good match)
+- Skewness difference < 0.5 (acceptable match)
+- Statistical test p-values > 0.05 (statistically similar)
+- Advanced validation metrics with specific tolerances
+- Overall quality score with rating (Excellent/Good/Fair/Poor)
+
+### Example Output
+
+```
+============================================================
+SYNTHETIC DATA QUALITY ANALYSIS FOR AAPL
+============================================================
+
+📊 HISTORICAL DATA STATISTICS:
+   Mean Return:     0.000562
+   Volatility:      0.011802
+   Skewness:        0.2180
+   Kurtosis:        0.3018
+   VaR (95%):       -0.017628
+   VaR (99%):       -0.023787
+   Autocorr (lag1): -0.0065
+
+🎲 SYNTHETIC DATA STATISTICS (Average across 3 paths):
+   Mean Return:     0.000641
+   Volatility:      0.012653
+   Skewness:        -0.0509
+   Kurtosis:        0.0801
+   VaR (95%):       -0.019951
+   VaR (99%):       -0.029425
+   Autocorr (lag1): 0.0087
+
+✅ QUALITY ASSESSMENT:
+   Mean Difference:     0.000080 ✅
+   Volatility Diff:     0.000852 ✅
+   Skewness Diff:       0.2689 ✅
+   Autocorr Diff:       0.0152 ✅
+
+🧪 STATISTICAL TESTS (p-values, Path 1):
+   Kolmogorov-Smirnov:  0.8192 ✅
+   Mann-Whitney U:      0.6722 ✅
+   Levene (variance):   0.0553 ✅
+
+📈 INDIVIDUAL PATH SUMMARY:
+   Path 1: Mean=0.000068, Vol=0.012859, Skew=-0.0091
+   Path 2: Mean=0.000392, Vol=0.012674, Skew=-0.0951
+   Path 3: Mean=0.001465, Vol=0.012427, Skew=-0.0485
+```
+
+### Data Source Integration
+
+The tool uses the project's built-in **Hybrid Data Source** system, which:
+- Automatically tries Stooq as the primary data source
+- Falls back to yfinance if Stooq fails
+- Includes data validation and format normalization
+- Falls back to realistic sample data generation if both sources fail
+
+This ensures the tool works reliably even with data source issues, while providing realistic testing scenarios.
+
+### When to Use
+
+- **Before Monte Carlo Analysis**: Validate synthetic data quality
+- **Strategy Development**: Ensure robustness testing uses realistic data
+- **Research Validation**: Verify that synthetic data preserves market characteristics
+- **Debugging**: Identify issues with synthetic data generation parameters
+
+The tool is essential for maintaining confidence in Monte Carlo simulation results and ensuring that strategy robustness testing reflects realistic market conditions.
+
 ## Contributing
 
 Contributions are welcome! If you'd like to help improve the Portfolio Backtester, please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get started.

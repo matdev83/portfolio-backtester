@@ -22,6 +22,6 @@ strategy_params:
   rolling_window: 6
   num_holdings: 10
   target_return: 0.0
-  sma_filter_window: null
+  sma_filter_window: 20
 mc_simulations: 500
 mc_years: 20

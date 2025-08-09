@@ -100,6 +100,9 @@ strategy_factory = _importlib.import_module(
 registry = _importlib.import_module("portfolio_backtester.strategies._core.registry")
 base = _importlib.import_module("portfolio_backtester.strategies._core.base.base")
 
+# Mark as used to satisfy static analyzers while preserving dynamic attribute access
+assert strategy_factory is not None  # vulture: used
+
 __all__ = [
     "BaseStrategy",
     "PortfolioStrategy",

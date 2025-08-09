@@ -26,9 +26,6 @@ strategy_params:
   num_holdings: 10
   top_decile_fraction: 0.1
   smoothing_lambda: 0.5
-  leverage: 0.5
-  trade_longs: true
-  trade_shorts: false
-  sma_filter_window: 20
+  leverage: 1.0
 mc_simulations: 500
 mc_years: 20

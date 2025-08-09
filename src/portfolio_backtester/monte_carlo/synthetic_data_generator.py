@@ -13,7 +13,10 @@ from typing import Dict, Any
 from dataclasses import dataclass
 
 # Import Numba optimizations
-from ..numba_optimized import garch_simulation_fast, generate_ohlc_from_prices_fast
+from portfolio_backtester.numba_optimized import (
+    garch_simulation_fast,
+    generate_ohlc_from_prices_fast,
+)
 
 # Set up logging
 logger = logging.getLogger(__name__)

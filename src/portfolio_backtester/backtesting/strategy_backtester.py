@@ -12,7 +12,7 @@ import numpy as np
 from typing import Any, Dict, Optional, Tuple
 
 from .results import BacktestResult, WindowResult
-from ..strategies._core.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
 from ..strategies._core.registry import get_strategy_registry
 from ..interfaces import create_cache_manager
 from ..backtester_logic.strategy_logic import generate_signals, size_positions
@@ -318,9 +318,32 @@ class StrategyBacktester:
         if strategy_class is None:
             raise ValueError(f"Unsupported strategy: {strategy_name}")
 
+        # Diagnostic: log resolved class details before instantiation
+        if logger.isEnabledFor(logging.DEBUG):
+            try:
+                logger.debug(
+                    "Resolved strategy_class: %s type=%s module=%s",
+                    strategy_class,
+                    type(strategy_class),
+                    getattr(strategy_class, "__module__", None),
+                )
+            except Exception:
+                pass
+
         instance = strategy_class(params)
 
         if not isinstance(instance, BaseStrategy):
+            if logger.isEnabledFor(logging.DEBUG):
+                try:
+                    logger.debug(
+                        "Instance type=%s module=%s base_expected=%s base_module=%s",
+                        type(instance),
+                        getattr(type(instance), "__module__", None),
+                        BaseStrategy,
+                        getattr(BaseStrategy, "__module__", None),
+                    )
+                except Exception:
+                    pass
             raise TypeError("Strategy factory did not return a BaseStrategy instance")
 
         self.strategy = instance

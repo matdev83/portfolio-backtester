@@ -27,7 +27,7 @@ from typing import List, Dict, Optional, Any
 import logging
 from pathlib import Path
 
-from .synthetic_data_generator import SyntheticDataGenerator
+from portfolio_backtester.monte_carlo.synthetic_data_generator import SyntheticDataGenerator
 
 # Set up logging
 logger = logging.getLogger(__name__)

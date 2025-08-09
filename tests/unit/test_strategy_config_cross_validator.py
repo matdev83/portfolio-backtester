@@ -26,7 +26,7 @@ class TestStrategyConfigCrossValidator(unittest.TestCase):
         self.config_scenarios_dir = self.temp_dir / "config" / "scenarios"
 
         # Create directory structure
-        for category in ["portfolio", "signal", "meta", "diagnostic"]:
+        for category in ["portfolio", "signal", "meta"]:
             (self.src_strategies_dir / category).mkdir(parents=True, exist_ok=True)
             (self.config_scenarios_dir / category).mkdir(parents=True, exist_ok=True)
 

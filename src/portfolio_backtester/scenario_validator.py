@@ -129,7 +129,8 @@ def _resolve_strategy_and_tunables(
                 error_type=YamlErrorType.VALIDATION_ERROR,
                 message=(
                     f"Unknown strategy '{scenario_data['strategy']}'. "
-                    "Ensure the strategy name matches an existing implementation."
+                    "Ensure the name matches a discovered class in built-ins or user strategies. "
+                    "Discovered roots: strategies/builtins/{portfolio,signal,meta} and strategies/user/{portfolio,signal,meta}."
                 ),
                 file_path=file_path_str,
             )
@@ -626,10 +627,7 @@ def _validate_strategy_type_specific_logic(
         )
     elif strategy_type == "signal":
         errors.extend(_validate_signal_strategy_logic(scenario_data, strategy_class, file_path_str))
-    elif strategy_type == "diagnostic":
-        errors.extend(
-            _validate_diagnostic_strategy_logic(scenario_data, strategy_class, file_path_str)
-        )
+    # No dedicated diagnostic branch: diagnostic utilities are no longer treated as strategies
 
     return errors
 
@@ -704,49 +702,9 @@ def _validate_signal_strategy_logic(
     )
 
 
-def _validate_diagnostic_strategy_logic(
-    scenario_data: Dict[str, Any],
-    strategy_class: Optional[type],
-    file_path_str: Optional[str],
-) -> List["YamlError"]:
-    """Validate diagnostic strategy specific configuration."""
-    errors: List[YamlError] = []
-
-    # Diagnostic strategies often have shorter windows for testing
-    train_window = scenario_data.get("train_window_months")
-    test_window = scenario_data.get("test_window_months")
-
-    if train_window is not None and test_window is not None:
-        # Emit multiple warnings to satisfy tests: too-short train, too-short test
-        if train_window < 6:
-            errors.append(
-                YamlError(
-                    error_type=YamlErrorType.VALIDATION_ERROR,
-                    message=f"train_window_months ({train_window}) is too short for meaningful diagnostics",
-                    file_path=file_path_str,
-                )
-            )
-        if test_window < 3:
-            errors.append(
-                YamlError(
-                    error_type=YamlErrorType.VALIDATION_ERROR,
-                    message=f"test_window_months ({test_window}) may be too short to evaluate performance",
-                    file_path=file_path_str,
-                )
-            )
-        # Also include combined-window advisory to generate an additional warning
-        if (train_window + test_window) < 6:
-            errors.append(
-                YamlError(
-                    error_type=YamlErrorType.VALIDATION_ERROR,
-                    message=(
-                        f"Total window ({train_window + test_window} months) is too short for robust evaluation"
-                    ),
-                    file_path=file_path_str,
-                )
-            )
-
-    return errors
+def _validate_diagnostic_strategy_logic(*args: Any, **kwargs: Any) -> List["YamlError"]:
+    """Deprecated: diagnostics are not strategies; retained as no-op for compatibility."""
+    return []
 
 
 def _validate_timing_config(
@@ -880,7 +838,7 @@ def validate_scenario_semantics(
         )
     )
 
-    # 5) Strategy params validation
+    # 5) Strategy params validation (uniform; no special diagnostic leniency)
     errors.extend(
         _validate_strategy_params(scenario_data, strategy_tunable_params, file_path_str, strat_cls)
     )
