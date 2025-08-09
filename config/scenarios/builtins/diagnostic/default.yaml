@@ -1,0 +1,19 @@
+# Minimal valid diagnostic scenario for tests/unit/test_enhanced_diagnostic_validator.py
+name: diagnostic_default
+strategy: DummySignalStrategy
+rebalance_frequency: D
+position_sizer: equal_weight
+train_window_months: 12
+test_window_months: 12
+
+# Add a minimal universe to satisfy validator expectations for portfolio strategies
+universe_config:
+  type: fixed
+  tickers: [SPY, QQQ]
+
+optimization_targets:
+  - name: Sharpe
+    direction: maximize
+strategy_params:
+  open_long_prob: 0.1
+  close_long_prob: 0.01

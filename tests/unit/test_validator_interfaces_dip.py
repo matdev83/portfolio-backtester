@@ -369,7 +369,7 @@ class TestDependencyInjectionIntegration:
     
     def test_trade_aggregator_accepts_validator_injection(self):
         """Test that TradeAggregator accepts dependency injection.""" 
-        from portfolio_backtester.strategies.base.trade_aggregator import TradeAggregator
+        from portfolio_backtester.strategies._core.base.base.trade_aggregator import TradeAggregator
         
         mock_allocation_validator = Mock(spec=IAllocationModeValidator)
         mock_allocation_validator.validate_allocation_mode.return_value = ValidationResult(True, "Valid")
@@ -419,7 +419,7 @@ class TestBackwardCompatibility:
     
     def test_trade_aggregator_works_without_injection(self):
         """Test that TradeAggregator works without explicit dependency injection."""
-        from portfolio_backtester.strategies.base.trade_aggregator import TradeAggregator
+        from portfolio_backtester.strategies._core.base.base.trade_aggregator import TradeAggregator
         
         # Should work with default factories
         aggregator = TradeAggregator(initial_capital=100000.0, allocation_mode="reinvestment")

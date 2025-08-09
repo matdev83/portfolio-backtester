@@ -2,8 +2,8 @@
 
 import pandas as pd
 
-from portfolio_backtester.strategies.base.trade_aggregator import TradeAggregator
-from portfolio_backtester.strategies.base.trade_record import TradeRecord, TradeSide
+from portfolio_backtester.strategies._core.base.base.trade_aggregator import TradeAggregator
+from portfolio_backtester.strategies._core.base.base.trade_record import TradeRecord, TradeSide
 
 
 class TestTradeAggregator:

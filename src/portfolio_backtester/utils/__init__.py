@@ -139,7 +139,26 @@ def _run_scenario_static(
     realistic_cost_bps = 13.0  # Conservative estimate for retail trading liquid large caps
     tc = turn * (realistic_cost_bps / 10_000)
 
-    return (gross - tc).reindex(price_daily.index).fillna(0)
+    portfolio_returns = (gross - tc).reindex(price_daily.index).fillna(0)
+    
+    # Calculate benchmark-relative metrics if benchmark data is provided
+    if benchmark_daily is not None and len(benchmark_daily) > 0:
+        # Calculate benchmark returns for comparison
+        benchmark_returns = benchmark_daily.pct_change().fillna(0)
+        aligned_benchmark_returns = benchmark_returns.reindex(portfolio_returns.index).fillna(0)
+        
+        # Calculate excess returns and tracking error
+        excess_returns = portfolio_returns - aligned_benchmark_returns
+        
+        # Return enhanced data structure with benchmark information
+        return {
+            'portfolio_returns': portfolio_returns,
+            'benchmark_returns': aligned_benchmark_returns,
+            'excess_returns': excess_returns,
+            'benchmark_daily': benchmark_daily.reindex(portfolio_returns.index)
+        }
+    
+    return portfolio_returns
 
 
 def _get_trading_days_in_month(year: int, month: int) -> pd.DatetimeIndex:

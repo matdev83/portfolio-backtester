@@ -8,7 +8,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import Mock
-from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 from portfolio_backtester.timing.custom_timing_registry import TimingControllerFactory
 from portfolio_backtester.timing.time_based_timing import TimeBasedTiming
 from typing import Dict, Any, List

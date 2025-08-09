@@ -12,7 +12,7 @@ warnings.warn(
     "Importing from 'portfolio_backtester.strategies.signal.price_data_processor' is deprecated. "
     "Please use 'portfolio_backtester.utils.signal_processing.price_data_processor' instead.",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
 __all__ = ["PriceDataProcessor"]

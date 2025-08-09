@@ -12,7 +12,7 @@ import pandas as pd
 from .timing_base_interface import ITimingBase
 
 if TYPE_CHECKING:
-    from ..strategies.base.base_strategy import BaseStrategy
+    from ..strategies._core.base.base_strategy import BaseStrategy
 
 
 class ITimeBasedTiming(ITimingBase):

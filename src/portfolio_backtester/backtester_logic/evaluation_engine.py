@@ -11,8 +11,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast, Protocol
 import numpy as np
 import pandas as pd
 
-from ..strategies.base.base_strategy import BaseStrategy
-from ..strategies.strategy_factory import StrategyFactory
+from ..strategies._core.base.base_strategy import BaseStrategy
+from ..strategies._core.strategy_factory import StrategyFactory
 from ..optimization.results import OptimizationData
 from ..interfaces.attribute_accessor_interface import (
     IAttributeAccessor,

@@ -4,7 +4,6 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "portfolio-backtester"
-packages = ["portfolio_backtester"]
 version = "0.1.0"
 authors = [
   { name="Mateusz B.", email="matdev83@github.com" },
@@ -63,12 +62,16 @@ dev = [
     "types-PyYAML",
     "types-seaborn",
     "scipy-stubs",
-    "black"
+    "black",
+    "vulture"
 ]
 
 [project.urls]
 "Homepage" = "https://github.com/matdev83/portfolio-backtester"
 "Bug Tracker" = "https://github.com/matdev83/portfolio-backtester/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.mypy]
 # Global mypy configuration

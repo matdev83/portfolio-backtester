@@ -420,14 +420,14 @@ class SyntheticDataVisualInspector:
 
         # 3. Q-Q plot
         ax3 = fig.add_subplot(gs[1, 0])
-        stats.probplot(np.asarray(hist_returns), dist="norm", plot=ax3)
+        stats.probplot(np.asarray(hist_returns, dtype=np.float64), dist="norm", plot=ax3)  # type: ignore[call-overload]
         ax3.set_title(f"{ticker} - Historical Q-Q Plot")
         ax3.grid(True, alpha=0.3)
 
         # 4. Synthetic Q-Q plot (first path)
         ax4 = fig.add_subplot(gs[1, 1])
         if synth_returns_list:
-            stats.probplot(np.asarray(synth_returns_list[0]), dist="norm", plot=ax4)
+            stats.probplot(np.asarray(synth_returns_list[0], dtype=np.float64), dist="norm", plot=ax4)  # type: ignore[call-overload]
         ax4.set_title(f"{ticker} - Synthetic Q-Q Plot")
         ax4.grid(True, alpha=0.3)
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 import pandas as pd
 
-from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 from portfolio_backtester.universe_loader import clear_universe_cache
 
 

@@ -12,7 +12,7 @@ warnings.warn(
     "Importing from 'portfolio_backtester.strategies.signal.rsi_calculator' is deprecated. "
     "Please use 'portfolio_backtester.utils.signal_processing.rsi_calculator' instead.",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
 __all__ = ["RSICalculator"]

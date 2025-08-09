@@ -12,7 +12,7 @@ warnings.warn(
     "Importing from 'portfolio_backtester.strategies.signal.signal_generator' is deprecated. "
     "Please use 'portfolio_backtester.utils.signal_processing.signal_generator' instead.",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
 __all__ = ["UvxySignalGenerator"]

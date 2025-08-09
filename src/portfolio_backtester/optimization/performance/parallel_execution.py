@@ -38,8 +38,23 @@ class BaseParallelRunner(AbstractParallelRunner, ABC):
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Context manager exit."""
-        self.stop()
+        """Context manager exit with proper exception handling."""
+        try:
+            self.stop()
+        except Exception as cleanup_error:
+            logger.error(f"Error during parallel execution cleanup: {cleanup_error}")
+            
+        # Handle any exceptions that occurred during execution
+        if exc_type is not None:
+            logger.error(f"Exception in parallel execution context: {exc_type.__name__}: {exc_val}")
+            if exc_tb is not None:
+                import traceback
+                logger.debug(f"Exception traceback: {''.join(traceback.format_tb(exc_tb))}")
+            
+            # Don't suppress the exception - let it propagate
+            return False
+        
+        return None
 
     def start(self) -> None:
         """Start the parallel execution pool."""

@@ -3,9 +3,9 @@
 import pandas as pd
 from unittest.mock import Mock
 
-from portfolio_backtester.strategies.base.trade_interceptor import MetaStrategyTradeInterceptor
-from portfolio_backtester.strategies.base.trade_record import TradeSide
-from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.base.base.trade_interceptor import MetaStrategyTradeInterceptor
+from portfolio_backtester.strategies._core.base.base.trade_record import TradeSide
+from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 
 
 class MockStrategy(BaseStrategy):

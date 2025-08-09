@@ -200,7 +200,7 @@ def plot_price_with_trades(
         entry_price = trade.get("entry_price")
         exit_price = trade.get("exit_price")
 
-        if pd.isna(entry_price) and entry_date in price_series.index:
+        if pd.isna(entry_price) and entry_date is not None and entry_date in price_series.index:
             entry_price = price_series.loc[entry_date]
         if pd.isna(exit_price) and exit_date in price_series.index:
             exit_price = price_series.loc[exit_date] if exit_date is not None else None

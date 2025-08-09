@@ -290,7 +290,7 @@ class OptimizationOrchestrator:
                 "num_trials_for_dsr": optimization_result.n_evaluations,
                 "train_end_date": train_end_date,
                 "best_trial_obj": optimization_result.best_trial,
-                "constraint_status": "passed",  # TODO: Implement constraint handling
+                "constraint_status": self._evaluate_constraints(trial_params, scenario_config),
                 "constraint_message": "",
                 "constraint_violations": [],
                 "constraints_config": {},
@@ -516,3 +516,65 @@ class OptimizationOrchestrator:
             errors.append("Strategy parameters are missing")
 
         return len(errors) == 0, errors
+
+    def _evaluate_constraints(self, trial_params: Dict[str, Any], scenario_config: Dict[str, Any]) -> str:
+        """
+        Evaluate parameter constraints for optimization results.
+        
+        Args:
+            trial_params: Dictionary of optimized parameters
+            scenario_config: Scenario configuration containing constraints
+            
+        Returns:
+            String indicating constraint status: "passed", "violated", or "not_configured"
+        """
+        # Check if constraints are configured
+        constraints_config = scenario_config.get("constraints", {})
+        if not constraints_config:
+            return "not_configured"
+        
+        # Evaluate parameter constraints
+        violations = []
+        
+        # Check parameter bounds constraints
+        param_constraints = constraints_config.get("parameters", {})
+        for param_name, constraint in param_constraints.items():
+            if param_name in trial_params:
+                param_value = trial_params[param_name]
+                
+                # Check minimum constraint
+                if "min" in constraint and param_value < constraint["min"]:
+                    violations.append(f"{param_name} ({param_value}) below minimum ({constraint['min']})")
+                
+                # Check maximum constraint  
+                if "max" in constraint and param_value > constraint["max"]:
+                    violations.append(f"{param_name} ({param_value}) above maximum ({constraint['max']})")
+                
+                # Check allowed values constraint
+                if "allowed_values" in constraint and param_value not in constraint["allowed_values"]:
+                    violations.append(f"{param_name} ({param_value}) not in allowed values ({constraint['allowed_values']})")
+        
+        # Check parameter relationship constraints
+        relationship_constraints = constraints_config.get("relationships", [])
+        for relationship in relationship_constraints:
+            constraint_type = relationship.get("type")
+            
+            if constraint_type == "greater_than":
+                param1 = relationship.get("param1")
+                param2 = relationship.get("param2")
+                if param1 in trial_params and param2 in trial_params:
+                    if trial_params[param1] <= trial_params[param2]:
+                        violations.append(f"{param1} ({trial_params[param1]}) must be greater than {param2} ({trial_params[param2]})")
+            
+            elif constraint_type == "ratio_bounds":
+                param1 = relationship.get("param1")
+                param2 = relationship.get("param2")
+                min_ratio = relationship.get("min_ratio", 0)
+                max_ratio = relationship.get("max_ratio", float('inf'))
+                
+                if param1 in trial_params and param2 in trial_params and trial_params[param2] != 0:
+                    ratio = trial_params[param1] / trial_params[param2]
+                    if ratio < min_ratio or ratio > max_ratio:
+                        violations.append(f"Ratio {param1}/{param2} ({ratio:.2f}) outside bounds [{min_ratio}, {max_ratio}]")
+        
+        return "violated" if violations else "passed"

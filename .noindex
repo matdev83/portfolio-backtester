@@ -1,0 +1,14 @@
+# Kodit ignore patterns (gitignore syntax)
+.venv/
+.git/
+node_modules/
+dist/
+build/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+*.log
+*.csv
+*.parquet
+data/
+

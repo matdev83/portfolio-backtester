@@ -76,7 +76,7 @@ def _calculate_position_changes(weights_array: np.ndarray) -> np.ndarray:
         2D array of position changes (same shape as input)
     """
     n_days, n_assets = weights_array.shape
-changes: np.ndarray = np.zeros_like(weights_array)
+    changes: np.ndarray = np.zeros_like(weights_array)
     # First day has no previous weights, so changes are just the weights
     changes[0, :] = weights_array[0, :]
 

@@ -16,7 +16,10 @@ def get_strategy_files(strategies_dir):
 
 
 def get_default_config_files(strategies_dir):
-    """Get all default.yaml configuration files from the strategies directory."""
+    """Get all default.yaml configuration files from the scenarios directory.
+
+    Supports both legacy layout and the new layout with builtins/ and user/ roots.
+    """
     return [p for p in Path(strategies_dir).rglob("default.yaml") if p.is_file()]
 
 
@@ -36,7 +39,7 @@ def validate_strategy_configs(strategies_dir, scenarios_dir):
     """
     all_strategy_files = get_strategy_files(strategies_dir)
 
-    # Get configuration files from scenarios directory
+    # Get configuration files from scenarios directory (builtins/, user/, and legacy)
     scenarios_path = Path(scenarios_dir)
     config_files = list(scenarios_path.rglob("default.yaml"))
     strategy_names_with_config = {f.parent.name for f in config_files}
@@ -44,6 +47,7 @@ def validate_strategy_configs(strategies_dir, scenarios_dir):
     validation_errors = []
 
     # Only validate actual strategy files, not base classes or utilities
+    # New layout discovery roots for YAML mirror: builtins/* and user/* categories
     strategy_categories = ["diagnostic", "meta", "portfolio", "signal"]
 
     # Group strategy files by their parent directory (strategy directory)
@@ -60,7 +64,16 @@ def validate_strategy_configs(strategies_dir, scenarios_dir):
         strategy_dir = py_file.parent
 
         # Check if the strategy's parent directory (the category) is known
-        if strategy_dir.parent.name not in strategy_categories:
+        # Accept new layout: builtins/<category>/<strategy> and user/<category>/<strategy>
+        parent = strategy_dir.parent
+        parent_name = parent.name
+        # If parent is builtins or user, look one level up for category
+        if parent_name in {"builtins", "user"}:
+            category_name = parent.parent.name if parent.parent else ""
+        else:
+            category_name = parent_name
+
+        if category_name not in strategy_categories:
             continue
 
         if strategy_dir not in strategy_dirs_to_files:
@@ -101,26 +114,26 @@ def validate_strategy_configs_comprehensive(
     strategies_dir: str, scenarios_dir: str, force_refresh: bool = False
 ) -> Tuple[bool, List[str]]:
     """Enhanced strategy config validation with mandatory cross-checks and caching.
-    
+
     This function always runs comprehensive cross-reference validation including:
     - Basic config validation (existing functionality)
     - Cross-reference validation for stale configs
     - Detection of invalid strategy references
     - Meta-strategy allocation validation
-    
+
     Uses intelligent caching to avoid redundant analysis when files haven't changed.
-    
+
     Args:
         strategies_dir: Path to strategy source directory
         scenarios_dir: Path to config scenarios directory
         force_refresh: If True, ignores cache and forces fresh validation
-        
+
     Returns:
         Tuple of (is_valid, list_of_errors)
     """
     cache = get_cache()
     cache_key = "strategy_validation_comprehensive"
-    
+
     # Check if we can use cached results (unless force refresh is requested)
     if not force_refresh:
         cached_result = cache.get_cached_result(cache_key)
@@ -136,26 +149,23 @@ def validate_strategy_configs_comprehensive(
                 logger.info("Running fresh strategy validation: no cached data")
     else:
         logger.info("Running fresh strategy validation: force refresh requested")
-    
+
     # Import here to avoid circular dependencies
     from .strategy_config_cross_validator import StrategyConfigCrossValidator
-    
+
     # Run comprehensive cross-check validation (includes basic validation)
     logger.info("Performing comprehensive strategy configuration validation...")
     cross_validator = StrategyConfigCrossValidator(strategies_dir, scenarios_dir)
     cross_valid, cross_errors = cross_validator.validate_cross_references()
-    
+
     # Cache the results
-    result = {
-        "is_valid": cross_valid,
-        "errors": cross_errors
-    }
+    result = {"is_valid": cross_valid, "errors": cross_errors}
     cache.store_result(result, cache_key)
-    
+
     if cross_valid:
         logger.info("Strategy validation completed successfully")
     else:
         logger.warning(f"Strategy validation found {len(cross_errors)} issues")
-    
+
     # Note: cross_errors already includes basic_errors since cross-validator calls basic validator
     return cross_valid, cross_errors

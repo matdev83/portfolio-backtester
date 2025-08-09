@@ -7,6 +7,11 @@ import pandas as pd
 from ta.momentum import RSIIndicator
 
 from .unfiltered_atr_momentum_portfolio_strategy import MomentumUnfilteredAtrPortfolioStrategy
+from ..builtins.portfolio.beta_filtered_momentum_portfolio_strategy import (  # noqa: F401
+    BetaFilteredMomentumPortfolioStrategy,
+)
+
+__all__ = ["BetaFilteredMomentumPortfolioStrategy"]
 
 
 class MomentumBetaFilteredPortfolioStrategy(MomentumUnfilteredAtrPortfolioStrategy):

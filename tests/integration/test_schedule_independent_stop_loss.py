@@ -16,7 +16,7 @@ from unittest.mock import Mock, patch
 
 from portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
 from portfolio_backtester.optimization.wfo_window import WFOWindow
-from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 
 
 class DummySignalStrategy(BaseStrategy):

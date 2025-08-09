@@ -10,8 +10,22 @@ logger = logging.getLogger(__name__)
 # Helper function for multiprocessing
 def _evaluate_solution_parallel(args):
     """Helper function to run a single backtest trial in a separate process."""
-    backtester_instance, scenario_config, params = args
-    return backtester_instance.evaluate_trial_parameters(scenario_config, params)
+    if len(args) == 4:
+        backtester_instance, scenario_config, params, solution_index = args
+        # Log the solution being evaluated for better tracking
+        logger.debug(f"Evaluating genetic solution {solution_index} with params: {params}")
+    else:
+        # Backward compatibility
+        backtester_instance, scenario_config, params = args
+        solution_index = None
+    
+    result = backtester_instance.evaluate_trial_parameters(scenario_config, params)
+    
+    # Add solution index to result for tracking if available
+    if solution_index is not None and isinstance(result, dict):
+        result['_solution_index'] = solution_index
+    
+    return result
 
 
 class GeneticOptimizer(BaseOptimizer):
@@ -27,13 +41,20 @@ class GeneticOptimizer(BaseOptimizer):
     def _batch_fitness_function(self, ga_instance, solutions, solutions_indices):
         """
         Fitness function that evaluates a batch of solutions in parallel.
+        
+        Args:
+            ga_instance: The genetic algorithm instance
+            solutions: Array of solution chromosomes to evaluate
+            solutions_indices: Indices of solutions in the population (for tracking)
         """
         if not self.pool:
             self.pool = multiprocessing.Pool()
 
         args_list = []
-        for sol in solutions:
+        for idx, sol in enumerate(solutions):
+            solution_index = solutions_indices[idx] if solutions_indices is not None else idx
             params = self._decode_solution(sol)
+            
             # For multi-categorical, we need to create a separate trial for each combination
             if any(p.get("type") == "multi-categorical" for p in self.optimization_params_spec):
                 # This is a simplified approach. A more robust implementation would handle
@@ -52,9 +73,11 @@ class GeneticOptimizer(BaseOptimizer):
                     temp_params[param_name] = list[str](
                         selected_values
                     )  # Cast to list[str] for type checker
-                    args_list.append((self.backtester, self.scenario_config, temp_params))
+                    # Include solution index for tracking
+                    args_list.append((self.backtester, self.scenario_config, temp_params, solution_index))
             else:
-                args_list.append((self.backtester, self.scenario_config, params))
+                # Include solution index for tracking
+                args_list.append((self.backtester, self.scenario_config, params, solution_index))
 
         results = self.pool.map(_evaluate_solution_parallel, args_list)
 

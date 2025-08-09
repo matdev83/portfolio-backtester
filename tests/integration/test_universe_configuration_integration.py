@@ -5,7 +5,7 @@ import pandas as pd
 from unittest.mock import patch
 
 from tests.fixtures.universe_test_fixtures import create_universe_fixture
-from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 from portfolio_backtester.universe_loader import (
     load_named_universe,
     load_multiple_named_universes,

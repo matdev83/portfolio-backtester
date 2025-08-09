@@ -12,8 +12,8 @@ import numpy as np
 from typing import Any, Dict, Optional, Tuple
 
 from .results import BacktestResult, WindowResult
-from ..strategies.base.base_strategy import BaseStrategy
-from ..strategies.registry import get_strategy_registry
+from ..strategies._core.base.base_strategy import BaseStrategy
+from ..strategies._core.registry import get_strategy_registry
 from ..interfaces import create_cache_manager
 from ..backtester_logic.strategy_logic import generate_signals, size_positions
 from ..backtester_logic.portfolio_logic import calculate_portfolio_returns
@@ -318,7 +318,7 @@ class StrategyBacktester:
         if strategy_class is None:
             raise ValueError(f"Unsupported strategy: {strategy_name}")
 
-        instance = strategy_class(params)  # type: ignore[call-arg]
+        instance = strategy_class(params)
 
         if not isinstance(instance, BaseStrategy):
             raise TypeError("Strategy factory did not return a BaseStrategy instance")

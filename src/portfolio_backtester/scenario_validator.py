@@ -151,10 +151,10 @@ def _resolve_strategy_and_tunables(
     # Fallback: if no tunables were resolved, try direct registry lookup by name
     if not strategy_tunable_params and isinstance(scenario_data.get("strategy"), str):
         try:
-            from .strategies.registry import get_strategy_registry
+            from .strategies._core.registry import get_strategy_registry
 
             reg = get_strategy_registry()
-            cls = reg.get_strategy_class(scenario_data["strategy"])  
+            cls = reg.get_strategy_class(scenario_data["strategy"])
             if cls is not None:
                 fn = getattr(cls, "tunable_parameters", None)
                 if callable(fn):

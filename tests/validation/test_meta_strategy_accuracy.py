@@ -10,7 +10,7 @@ import pandas as pd
 from typing import List
 
 from portfolio_backtester.strategies.meta.simple_meta_strategy import SimpleMetaStrategy
-from portfolio_backtester.strategies.base.trade_record import TradeRecord, TradeSide
+from portfolio_backtester.strategies._core.base.base.trade_record import TradeRecord, TradeSide
 from portfolio_backtester.backtester_logic.strategy_logic import generate_signals
 
 

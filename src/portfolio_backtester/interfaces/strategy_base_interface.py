@@ -165,7 +165,7 @@ class StrategyBaseAdapter(IStrategyBase):
     def __init__(self, strategy_config: Dict[str, Any]):
         """Initialize the adapter with strategy configuration."""
         # Import here to avoid circular imports
-        from ..strategies.base.base_strategy import BaseStrategy
+        from ..strategies._core.base.base_strategy import BaseStrategy
 
         # Create a concrete implementation of BaseStrategy for delegation
         class ConcreteBaseStrategy(BaseStrategy):

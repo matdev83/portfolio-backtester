@@ -73,7 +73,7 @@ class StrategyConfigCrossValidator:
         self._import_all_strategy_modules()
 
         # Get all BaseStrategy subclasses
-        from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 
         all_strategies = self._collect_all_subclasses(BaseStrategy)
 
@@ -127,10 +127,10 @@ class StrategyConfigCrossValidator:
     def _is_concrete_strategy_class(self, cls) -> bool:
         """Check if a class is a concrete strategy (not abstract or base class)."""
         import inspect
-        from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
-        from portfolio_backtester.strategies.base.signal_strategy import SignalStrategy
-        from portfolio_backtester.strategies.base.portfolio_strategy import PortfolioStrategy
-        from portfolio_backtester.strategies.base.meta_strategy import BaseMetaStrategy
+        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.signal_strategy import SignalStrategy
+        from portfolio_backtester.strategies._core.base.portfolio_strategy import PortfolioStrategy
+        from portfolio_backtester.strategies._core.base.meta_strategy import BaseMetaStrategy
 
         # Known base classes that should not be considered concrete
         base_classes = {BaseStrategy, SignalStrategy, PortfolioStrategy, BaseMetaStrategy}
@@ -170,39 +170,58 @@ class StrategyConfigCrossValidator:
         return None
 
     def _check_stale_config_folders(self) -> List[str]:
-        """Check for config folders that don't have corresponding strategies."""
-        errors = []
+        """Check for config folders that don't have corresponding strategies.
+
+        Supports both legacy layout and new layout:
+          - legacy: config/scenarios/<category>/<strategy>
+          - new:    config/scenarios/{builtins|user}/<category>/<strategy>
+        """
+        errors: List[str] = []
         valid_strategy_names = self._get_valid_strategy_names()
 
-        # Scan all scenario directories
         strategy_categories = ["diagnostic", "meta", "portfolio", "signal"]
 
-        for category in strategy_categories:
-            category_path = self.config_scenarios_dir / category
-            if not category_path.exists():
-                continue
+        # Roots to scan: builtins/, user/, and legacy top-level
+        roots = [
+            ("builtins", True),
+            ("user", True),
+            ("", False),  # legacy (no root component)
+        ]
 
-            # Get all strategy folders in this category
-            for strategy_folder in category_path.iterdir():
-                if not strategy_folder.is_dir():
+        for root, has_root in roots:
+            for category in strategy_categories:
+                category_path = (
+                    (self.config_scenarios_dir / root / category)
+                    if has_root
+                    else (self.config_scenarios_dir / category)
+                )
+
+                if not category_path.exists():
                     continue
 
-                strategy_name = strategy_folder.name
+                for strategy_folder in category_path.iterdir():
+                    if not strategy_folder.is_dir():
+                        continue
 
-                # Check if this strategy name exists in any valid form
-                if not any(
-                    name == strategy_name or strategy_name in name or name in strategy_name
-                    for name in valid_strategy_names
-                ):
-                    # Double-check by trying to resolve via strategy resolver
-                    resolved_strategy = self.strategy_resolver.resolve_strategy(strategy_name)
+                    strategy_name = strategy_folder.name
 
-                    if resolved_strategy is None:
-                        errors.append(
-                            f"Stale config folder detected: '{category}/{strategy_name}' - "
-                            f"no corresponding strategy implementation found. "
-                            f"This config folder should be removed or the strategy should be restored."
-                        )
+                    # Check if this strategy name exists in any valid form
+                    if not any(
+                        name == strategy_name or strategy_name in name or name in strategy_name
+                        for name in valid_strategy_names
+                    ):
+                        # Double-check by trying to resolve via strategy resolver
+                        resolved_strategy = self.strategy_resolver.resolve_strategy(strategy_name)
+
+                        if resolved_strategy is None:
+                            # Build path string for message
+                            prefix = f"{root}/" if has_root else ""
+                            rel_path = f"{prefix}{category}/{strategy_name}"
+                            errors.append(
+                                f"Stale config folder detected: '{rel_path}' - "
+                                f"no corresponding strategy implementation found. "
+                                f"This config folder should be removed or the strategy should be restored."
+                            )
 
         return errors
 
@@ -284,7 +303,7 @@ class StrategyConfigCrossValidator:
         """Check if a strategy_class reference is valid."""
         # First, consult the SOLID registry – unit tests may mock it
         try:
-            from portfolio_backtester.strategies.registry import get_strategy_registry
+            from portfolio_backtester.strategies._core.registry import get_strategy_registry
 
             registry = get_strategy_registry()
             registered = registry.get_all_strategies()
@@ -298,7 +317,7 @@ class StrategyConfigCrossValidator:
         self._import_all_strategy_modules()
 
         # Get all BaseStrategy subclasses
-        from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 
         all_strategies = self._collect_all_subclasses(BaseStrategy)
 

@@ -9,7 +9,7 @@ from .timing_controller import TimingController
 from ..interfaces.timing_state_interface import ITimingState
 
 if TYPE_CHECKING:
-    from ..strategies.base.base_strategy import BaseStrategy
+    from ..strategies._core.base.base_strategy import BaseStrategy
 
 
 class TimeBasedTiming(TimingController):

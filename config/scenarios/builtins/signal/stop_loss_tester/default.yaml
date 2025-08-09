@@ -1,0 +1,2 @@
+strategy: StopLossTesterStrategy
+strategy_params: {}

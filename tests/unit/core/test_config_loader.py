@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import mock_open, patch
 
 from portfolio_backtester import config_loader
-from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 
 # Define mock content for YAML files
 MOCK_PARAMS_YAML_CONTENT = """

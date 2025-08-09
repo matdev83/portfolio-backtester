@@ -8,9 +8,9 @@ including strategy creation, management, and validation.
 import logging
 from typing import Any, Dict, Type
 
-from ..strategies.base.base_strategy import BaseStrategy
-from ..strategies.registry import get_strategy_registry
-from ..strategies.strategy_factory import StrategyFactory
+from ..strategies._core.base.base_strategy import BaseStrategy
+from ..strategies._core.registry import get_strategy_registry
+from ..strategies._core.strategy_factory import StrategyFactory
 
 logger = logging.getLogger(__name__)
 

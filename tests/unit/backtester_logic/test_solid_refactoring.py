@@ -25,7 +25,7 @@ from portfolio_backtester.backtester_logic.optimization_orchestrator import (
     OptimizationOrchestrator,
 )
 from portfolio_backtester.backtester_logic.backtester_facade import BacktesterFacade
-from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 
 
 @pytest.fixture
@@ -361,7 +361,13 @@ class TestBacktesterFacade:
 
     def test_initialization_preserves_api(self, sample_global_config):
         """Test that BacktesterFacade preserves original Backtester API."""
-        scenarios = [{"name": "test", "strategy": "DummyStrategyForTestingSignalStrategy", "strategy_params": {}}]
+        scenarios = [
+            {
+                "name": "test",
+                "strategy": "DummyStrategyForTestingSignalStrategy",
+                "strategy_params": {},
+            }
+        ]
         args = argparse.Namespace(timeout=None, n_jobs=1, early_stop_patience=10, study_name=None)
 
         with (
@@ -392,7 +398,13 @@ class TestBacktesterFacade:
 
     def test_facade_delegates_to_components(self, sample_global_config):
         """Test that BacktesterFacade properly delegates to specialized components."""
-        scenarios = [{"name": "test", "strategy": "DummyStrategyForTestingSignalStrategy", "strategy_params": {}}]
+        scenarios = [
+            {
+                "name": "test",
+                "strategy": "DummyStrategyForTestingSignalStrategy",
+                "strategy_params": {},
+            }
+        ]
         args = argparse.Namespace(timeout=None, n_jobs=1, early_stop_patience=10, study_name=None)
 
         with (

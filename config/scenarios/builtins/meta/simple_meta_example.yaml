@@ -1,0 +1,38 @@
+name: simple_meta_example
+strategy: SimpleMetaStrategy
+
+rebalance_frequency: M
+position_sizer: equal_weight
+train_window_months: 36
+test_window_months: 48
+optimization_targets:
+- name: Sharpe
+  direction: maximize
+optimize: []
+strategy_params:
+  initial_capital: 1000000.0
+  min_allocation: 0.05
+  rebalance_threshold: 0.05
+  allocations:
+  - strategy_id: CalmarMomentumPortfolioStrategy
+    
+    strategy_params:
+      calmar_momentum_portfolio.rolling_window: 6
+      calmar_momentum_portfolio.num_holdings: 10
+      calmar_momentum_portfolio.sma_filter_window: 10
+      calmar_momentum_portfolio.price_column_benchmark: Close
+      calmar_momentum_portfolio.timing_config:
+        mode: time_based
+        rebalance_frequency: M
+    weight: 0.7
+  - strategy_id: SeasonalSignalStrategy
+    
+    strategy_params:
+      intramonth_seasonal.direction: long
+      intramonth_seasonal.entry_day: 5
+      intramonth_seasonal.hold_days: 10
+      intramonth_seasonal.trade_longs: true
+      intramonth_seasonal.trade_shorts: false
+      intramonth_seasonal.timing_config:
+        mode: signal_based
+    weight: 0.3

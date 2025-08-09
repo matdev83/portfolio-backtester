@@ -1,7 +1,7 @@
 
 import pytest
 
-from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 
 
 class MockStrategyForTest(BaseStrategy):

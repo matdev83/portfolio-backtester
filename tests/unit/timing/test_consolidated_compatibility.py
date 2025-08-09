@@ -7,7 +7,7 @@ import unittest
 import pytest
 import pandas as pd
 
-from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 from portfolio_backtester.timing.time_based_timing import TimeBasedTiming
 from portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
 from portfolio_backtester.interfaces.timing_state_interface import create_timing_state

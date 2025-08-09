@@ -3,7 +3,7 @@
 import pytest
 import pandas as pd
 
-from portfolio_backtester.strategies.base.trade_record import (
+from portfolio_backtester.strategies._core.base.base.trade_record import (
     TradeRecord, PositionRecord, TradeSide
 )
 

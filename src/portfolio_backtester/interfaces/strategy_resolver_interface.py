@@ -6,7 +6,7 @@ strategy specifications (dict, string) without using isinstance checks.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Any, Union, Dict
+from typing import Optional, Any, Union, Dict, cast
 
 
 class IStrategySpecificationResolver(ABC):
@@ -95,7 +95,14 @@ class DefaultStrategyLookup(IStrategyLookup):
 
     def lookup_strategy(self, name: str, strategy_params: Optional[Dict[str, Any]] = None) -> Any:
         """Look up strategy using the new strategy registry."""
-        from ..strategies.strategy_factory import StrategyFactory
+        try:
+            from ..strategies import (
+                strategy_factory as _sf_module,
+            )  # attribute exposed in strategies/__init__
+
+            StrategyFactory = getattr(_sf_module, "StrategyFactory")
+        except Exception:
+            from ..strategies._core.strategy_factory import StrategyFactory
 
         try:
             return StrategyFactory.create_strategy(name, strategy_params or {})
@@ -114,7 +121,7 @@ class PolymorphicStrategyResolver:
     def enumerate_strategies_with_params():
         """Enumerate discovered strategies with their tunable parameters."""
         try:
-            from ..strategies.registry import get_strategy_registry
+            from ..strategies._core.registry import get_strategy_registry
         except Exception:
             return {}
         registry = get_strategy_registry()
@@ -126,7 +133,7 @@ class PolymorphicStrategyResolver:
                 if hasattr(cls, "tunable_parameters") and callable(
                     getattr(cls, "tunable_parameters")
                 ):
-                    params = cls.tunable_parameters()  # type: ignore[assignment]
+                    params = cls.tunable_parameters()
             except Exception:
                 params = {}
             result[name] = params
@@ -163,7 +170,7 @@ class PolymorphicStrategyResolver:
                 return {}
             fn = getattr(strategy_class, "tunable_parameters", None)
             if callable(fn):
-                return fn()  # type: ignore[misc]
+                return cast(Dict[str, Any], fn())
         except Exception:
             pass
         return {}

@@ -108,7 +108,7 @@ class TestStrategyBacktester:
     def test_get_strategy_success(self, backtester, mock_strategy):
         """Test successful strategy retrieval."""
         # Make mock_strategy inherit from BaseStrategy
-        from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
         mock_strategy.__class__ = type('MockStrategy', (BaseStrategy,), {})
         
         # Mock the registry get_strategy_class method
@@ -155,7 +155,7 @@ class TestStrategyBacktester:
         daily_df, monthly_df, returns_df = sample_price_data
         
         # Make mock_strategy inherit from BaseStrategy
-        from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
         mock_strategy.__class__ = type('MockStrategy', (BaseStrategy,), {})
         
         # Setup mocks
@@ -200,7 +200,7 @@ class TestStrategyBacktester:
         daily_df, monthly_df, returns_df = sample_price_data
         
         # Create a proper mock strategy that inherits from BaseStrategy
-        from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
         mock_strategy = Mock()
         mock_strategy.__class__ = type('MockStrategy', (BaseStrategy,), {})
         backtester._registry.get_strategy_class.return_value = lambda params: mock_strategy

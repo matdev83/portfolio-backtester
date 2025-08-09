@@ -105,8 +105,14 @@ class TradeTracker:
         for ticker in current_tickers - target_tickers:
             if ticker in prices:
                 commission = commissions_dict.get(ticker, 0.0)
+                
+                # Extract detailed commission info for this ticker if available
+                ticker_commission_details = None
+                if detailed_commission_info and ticker in detailed_commission_info:
+                    ticker_commission_details = detailed_commission_info[ticker]
+                
                 closed_trade = self.trade_lifecycle_manager.close_position(
-                    date, ticker, prices[ticker], commission
+                    date, ticker, prices[ticker], commission, ticker_commission_details
                 )
                 if closed_trade:
                     self.portfolio_value_tracker.update_portfolio_value(closed_trade.pnl_net or 0.0)
@@ -115,8 +121,15 @@ class TradeTracker:
         for ticker in target_tickers - current_tickers:
             if ticker in prices:
                 commission = commissions_dict.get(str(ticker), 0.0)
+                
+                # Extract detailed commission info for this ticker if available
+                ticker_commission_details = None
+                if detailed_commission_info and ticker in detailed_commission_info:
+                    ticker_commission_details = detailed_commission_info[ticker]
+                
                 self.trade_lifecycle_manager.open_position(
-                    date, str(ticker), target_quantities[ticker], prices[ticker], commission
+                    date, str(ticker), target_quantities[ticker], prices[ticker], 
+                    commission, ticker_commission_details
                 )
 
         # Update daily metrics

@@ -13,7 +13,7 @@ from unittest.mock import Mock
 
 from portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
 from portfolio_backtester.optimization.wfo_window import WFOWindow
-from portfolio_backtester.strategies.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 from portfolio_backtester.risk_management.stop_loss_handlers import AtrBasedStopLoss
 from portfolio_backtester.risk_management.take_profit_handlers import (
     AtrBasedTakeProfit,

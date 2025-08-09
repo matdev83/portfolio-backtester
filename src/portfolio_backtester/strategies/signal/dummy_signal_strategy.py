@@ -4,6 +4,6 @@ Alias/compat imports have been removed in alpha to avoid maintaining legacy path
 Use `portfolio_backtester.testing.strategies.dummy_signal_strategy.DummySignalStrategy` directly.
 """
 
-from ...testing.strategies.dummy_signal_strategy import DummySignalStrategy
+from ..builtins.signal.dummy_signal_strategy import DummySignalStrategy  # noqa: F401
 
 __all__ = ["DummySignalStrategy"]

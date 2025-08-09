@@ -7,7 +7,7 @@ including MFE/MAE tracking and position updates.
 
 import logging
 import pandas as pd
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,9 @@ class Trade:
     pnl_gross: Optional[float] = None
     pnl_net: Optional[float] = None
     is_winner: Optional[bool] = None
+    # Enhanced commission tracking
+    detailed_commission_entry: Optional[Dict[str, Any]] = None
+    detailed_commission_exit: Optional[Dict[str, Any]] = None
 
     def finalize(self):
         """Calculate derived fields when trade is closed."""
@@ -75,7 +78,8 @@ class TradeLifecycleManager:
         self.open_positions: Dict[str, Trade] = {}
 
     def open_position(
-        self, date: pd.Timestamp, ticker: str, quantity: float, price: float, commission: float
+        self, date: pd.Timestamp, ticker: str, quantity: float, price: float, commission: float,
+        detailed_commission_info: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Open a new position.
@@ -86,6 +90,7 @@ class TradeLifecycleManager:
             quantity: Position size (positive for long, negative for short)
             price: Entry price
             commission: Entry commission cost
+            detailed_commission_info: Optional detailed commission breakdown
         """
         entry_value = abs(quantity) * price
 
@@ -99,6 +104,7 @@ class TradeLifecycleManager:
             entry_value=entry_value,
             commission_entry=commission,
             commission_exit=0.0,
+            detailed_commission_entry=detailed_commission_info,
         )
 
         self.open_positions[ticker] = trade
@@ -107,7 +113,8 @@ class TradeLifecycleManager:
             logger.debug(f"Opened position: {ticker} {quantity:.2f} shares at ${price:.2f}")
 
     def close_position(
-        self, date: pd.Timestamp, ticker: str, price: float, commission: float
+        self, date: pd.Timestamp, ticker: str, price: float, commission: float,
+        detailed_commission_info: Optional[Dict[str, Any]] = None
     ) -> Optional[Trade]:
         """
         Close an existing position.
@@ -117,6 +124,7 @@ class TradeLifecycleManager:
             ticker: Asset ticker symbol
             price: Exit price
             commission: Exit commission cost
+            detailed_commission_info: Optional detailed commission breakdown
 
         Returns:
             The closed trade if it existed, None otherwise
@@ -128,6 +136,7 @@ class TradeLifecycleManager:
         trade.exit_date = date
         trade.exit_price = price
         trade.commission_exit = commission
+        trade.detailed_commission_exit = detailed_commission_info
 
         # Finalize MFE/MAE in dollar terms
         trade.mfe = trade.mfe * abs(trade.quantity)

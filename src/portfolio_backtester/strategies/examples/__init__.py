@@ -1,12 +1,7 @@
+"""Examples and tutorials (excluded from auto-discovery).
+
+This package holds example strategy templates. It is intentionally
+excluded from strategy auto-discovery.
 """
-Example strategies for learning and demonstration.
 
-These strategies are designed to be educational and serve as starting
-points for developing your own strategies.
-"""
-
-from .simple_buy_hold import SimpleBuyHoldStrategy
-
-__all__ = [
-    "SimpleBuyHoldStrategy",
-]
+__all__: list[str] = []

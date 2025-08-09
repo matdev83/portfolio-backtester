@@ -282,7 +282,7 @@ class PositionTracker:
             row_label = weights.name
             if row_label is not None:
                 # Assign the row using .loc with the label and the values as a list
-                weights_df.loc[row_label] = list(aligned.values)
+                weights_df.loc[row_label, aligned.index] = aligned.values  # type: ignore[index]
 
         return weights_df.fillna(0.0)
 
