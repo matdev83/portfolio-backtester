@@ -225,6 +225,7 @@ class YamlValidator:
             Helpful suggestion string
         """
         error_str = str(yaml_error).lower()
+        _ = col_idx
 
         if line_idx < len(lines):
             error_line = lines[line_idx]

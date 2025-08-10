@@ -19,6 +19,8 @@ def evaluate_walk_forward(
 ):
     from ..reporting.performance_metrics import calculate_metrics
 
+    _ = get_strategy_method
+
     all_window_returns = []
     for window_idx, (tr_start, tr_end, te_start, te_end) in enumerate(windows):
         m_slice = monthly_data.loc[tr_start:tr_end]

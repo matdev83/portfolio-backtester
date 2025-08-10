@@ -236,6 +236,9 @@ class GeneticParallelRunner(AbstractParallelRunner):
         Returns:
             List of fitness values corresponding to the population
         """
+        # Suppress unused-parameter warnings until implemented
+        _ = fitness_function
+
         # Placeholder for parallel population evaluation
         # This would use multiprocessing to evaluate individuals in parallel
         raise NotImplementedError("Parallel population evaluation not yet implemented")
