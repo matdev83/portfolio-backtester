@@ -1,0 +1,2 @@
+name: low_volatility_factor_portfolio
+strategy: LowVolatilityFactorPortfolioStrategy

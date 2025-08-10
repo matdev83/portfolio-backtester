@@ -1,0 +1,2 @@
+name: filtered_lagged_momentum_portfolio
+strategy: FilteredLaggedMomentumPortfolioStrategy

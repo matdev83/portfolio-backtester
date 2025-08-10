@@ -1,0 +1,2 @@
+name: stop_loss_tester
+strategy: StopLossTesterStrategy

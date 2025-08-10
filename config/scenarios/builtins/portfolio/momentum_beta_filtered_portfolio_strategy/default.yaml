@@ -1,0 +1,2 @@
+name: momentum_beta_filtered_portfolio
+strategy: MomentumBetaFilteredPortfolioStrategy
