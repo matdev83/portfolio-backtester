@@ -4,6 +4,7 @@ import numpy as np
 
 from portfolio_backtester.reporting.metrics import calculate_metrics
 
+
 class TestPerformanceMetrics(unittest.TestCase):
     """
     Test suite for the performance metrics calculations.
@@ -13,8 +14,14 @@ class TestPerformanceMetrics(unittest.TestCase):
         """
         Set up mock returns data for testing.
         """
-        self.mock_rets = pd.Series(np.random.randn(252) / 100, index=pd.to_datetime(pd.date_range("2020-01-01", periods=252)))
-        self.mock_bench_rets = pd.Series(np.random.randn(252) / 100, index=pd.to_datetime(pd.date_range("2020-01-01", periods=252)))
+        self.mock_rets = pd.Series(
+            np.random.randn(252) / 100,
+            index=pd.to_datetime(pd.date_range("2020-01-01", periods=252)),
+        )
+        self.mock_bench_rets = pd.Series(
+            np.random.randn(252) / 100,
+            index=pd.to_datetime(pd.date_range("2020-01-01", periods=252)),
+        )
 
     def test_calculate_metrics(self):
         """
@@ -29,5 +36,5 @@ class TestPerformanceMetrics(unittest.TestCase):
         self.assertFalse(pd.isna(metrics["Sharpe"]))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

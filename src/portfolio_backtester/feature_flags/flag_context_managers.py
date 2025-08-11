@@ -55,7 +55,7 @@ class FlagContextManagers:
         Context manager to disable genetic parameter generator.
 
         This is used for testing component isolation to prove that
-        other components work without PyGAD dependencies.
+        other components work without genetic algorithm dependencies.
 
         Yields:
             None

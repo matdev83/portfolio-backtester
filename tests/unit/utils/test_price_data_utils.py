@@ -6,9 +6,10 @@ from portfolio_backtester.utils.price_data_utils import (
     normalize_price_series_to_dataframe,
 )
 
+
 def test_extract_current_prices_missing_date():
     dates = pd.date_range("2020-01-01", periods=3)
-    df = pd.DataFrame({"A": [1,2,3]}, index=dates)
+    df = pd.DataFrame({"A": [1, 2, 3]}, index=dates)
     result = extract_current_prices(df, pd.Timestamp("2021-01-01"), pd.Index(["A", "B"]))
     assert result.isna().all()
     assert list(result.index) == ["A", "B"]
@@ -32,10 +33,10 @@ def test_validate_price_data_sufficiency():
 
 
 def test_normalize_price_series_to_dataframe():
-    ser = pd.Series([1,2,3], index=["X","Y","Z"])
-    df = normalize_price_series_to_dataframe(ser, target_columns=pd.Index(["X","Y","Z"]))
+    ser = pd.Series([1, 2, 3], index=["X", "Y", "Z"])
+    df = normalize_price_series_to_dataframe(ser, target_columns=pd.Index(["X", "Y", "Z"]))
     assert isinstance(df, pd.DataFrame)
-    assert list(df.columns) == ["X","Y","Z"]
+    assert list(df.columns) == ["X", "Y", "Z"]
     # When DataFrame input, ensure it's copied not same object
     df2 = normalize_price_series_to_dataframe(df)
     assert df2.equals(df)

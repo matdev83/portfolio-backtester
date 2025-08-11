@@ -11,6 +11,6 @@ from .rsi_calculator import RSICalculator
 
 __all__ = [
     "UvxySignalGenerator",
-    "PriceDataProcessor", 
+    "PriceDataProcessor",
     "RSICalculator",
 ]

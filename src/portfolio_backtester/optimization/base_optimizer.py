@@ -60,7 +60,7 @@ class BaseOptimizer(abc.ABC):
             A tuple containing:
                 - The optimal parameters found.
                 - The number of evaluations/trials performed.
-                - An optimizer-specific best trial/solution object (e.g., Optuna Trial, PyGAD solution).
+                - An optimizer-specific best trial/solution object (e.g., Optuna Trial).
         """
         pass
 

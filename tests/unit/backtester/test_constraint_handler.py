@@ -11,7 +11,7 @@ def _build_handler():
     "current_leverage, attempt, expected_leverage",
     [
         (2.0, 0, 2.0 * 0.7),  # first attempt reduces by 30 %
-        (1.4, 1, 1.4 * 0.7 ** 2),  # second attempt continues reduction
+        (1.4, 1, 1.4 * 0.7**2),  # second attempt continues reduction
     ],
 )
 def test_adjust_parameters_reduces_leverage(current_leverage, attempt, expected_leverage):

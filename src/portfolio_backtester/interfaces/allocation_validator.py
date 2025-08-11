@@ -13,14 +13,14 @@ from portfolio_backtester.yaml_validator import YamlError, YamlErrorType
 
 class IAllocationValidator(ABC):
     """Interface for validating meta strategy allocations."""
-    
+
     @abstractmethod
     def validate_meta_strategy_logic(
         self, scenario_data: Dict[str, Any], strategy_class: Any, file_path_str: Optional[str]
     ) -> List[Any]:
         """Validate meta strategy specific configuration."""
         pass
-    
+
     @abstractmethod
     def validate_allocations(self, allocations: Any, file_path_str: Optional[str]) -> List[Any]:
         """Validate meta strategy allocations structure."""
@@ -29,14 +29,14 @@ class IAllocationValidator(ABC):
 
 class DefaultAllocationValidator(IAllocationValidator):
     """Default implementation of allocation validator."""
-    
+
     def validate_meta_strategy_logic(
         self, scenario_data: Dict[str, Any], strategy_class: Any, file_path_str: Optional[str]
     ) -> List[Any]:
         """Validate meta strategy specific configuration."""
         # YamlError and YamlErrorType imported at module level
         errors = []
-        
+
         # Check for universe_config in meta strategies
         if "universe_config" in scenario_data:
             errors.append(
@@ -49,7 +49,7 @@ class DefaultAllocationValidator(IAllocationValidator):
                     file_path=file_path_str,
                 )
             )
-        
+
         # Check for universe in meta strategies
         if "universe" in scenario_data:
             errors.append(
@@ -62,18 +62,18 @@ class DefaultAllocationValidator(IAllocationValidator):
                     file_path=file_path_str,
                 )
             )
-            
+
         # Check for allocations in strategy_params
         strategy_params = scenario_data.get("strategy_params", {})
         strategy_name = scenario_data.get("strategy", "")
-        
+
         if isinstance(strategy_params, dict):
             has_allocations = False
             for key in strategy_params:
                 if key.endswith(".allocations") or key == "allocations":
                     has_allocations = True
                     break
-                    
+
             if not has_allocations:
                 errors.append(
                     YamlError(
@@ -85,14 +85,14 @@ class DefaultAllocationValidator(IAllocationValidator):
                         file_path=file_path_str,
                     )
                 )
-        
+
         return errors
-    
+
     def validate_allocations(self, allocations: Any, file_path_str: Optional[str]) -> List[Any]:
         """Validate meta strategy allocations structure."""
         # YamlError and YamlErrorType imported at module level
         errors = []
-        
+
         if not isinstance(allocations, dict) and not isinstance(allocations, list):
             errors.append(
                 YamlError(
@@ -105,7 +105,7 @@ class DefaultAllocationValidator(IAllocationValidator):
                 )
             )
             return errors
-            
+
         if isinstance(allocations, dict):
             # Check that all values are numeric
             for strategy, weight in allocations.items():
@@ -120,13 +120,13 @@ class DefaultAllocationValidator(IAllocationValidator):
                             file_path=file_path_str,
                         )
                     )
-        
+
         return errors
 
 
 class AllocationValidatorFactory:
     """Factory for creating allocation validators."""
-    
+
     @staticmethod
     def create() -> IAllocationValidator:
         """Create a new allocation validator instance."""

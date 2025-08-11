@@ -6,16 +6,17 @@ across all evaluation dates within a single WFO window, supporting both
 daily and traditional monthly evaluation modes.
 """
 
-from typing import TYPE_CHECKING, Dict, Optional
-
 import pandas as pd
 from loguru import logger
+
+from typing import TYPE_CHECKING, Dict, Optional
 
 from ..interfaces.daily_risk_monitor_interface import (
     DefaultDailyRiskMonitorFactory,
     IDailyRiskMonitorFactory,
 )
 from ..optimization.wfo_window import WFOWindow
+from .position_tracker import PositionTracker
 from .results import WindowResult
 
 if TYPE_CHECKING:
@@ -81,6 +82,40 @@ class WindowEvaluator:
         # The strategy object passed here already has the correct parameters for the trial
         strategy_config = strategy.config
 
+        # Initialize risk monitors if strategy has risk handlers
+        stop_loss_monitor = None
+        take_profit_monitor = None
+        stop_loss_handler = None
+        take_profit_handler = None
+
+        # Check if strategy has stop loss handler
+        if hasattr(strategy, "get_stop_loss_handler") and callable(strategy.get_stop_loss_handler):
+            stop_loss_handler = strategy.get_stop_loss_handler()
+            if stop_loss_handler:
+                # Use the factory to create monitors (allows for easier testing)
+                stop_loss_monitor = self.risk_monitor_factory.create_stop_loss_monitor()
+                # logger.debug("Stop loss monitor initialized")
+
+        # Check if strategy has take profit handler
+        if hasattr(strategy, "get_take_profit_handler") and callable(
+            strategy.get_take_profit_handler
+        ):
+            take_profit_handler = strategy.get_take_profit_handler()
+            if take_profit_handler:
+                # Use the factory to create monitors (allows for easier testing)
+                take_profit_monitor = self.risk_monitor_factory.create_take_profit_monitor()
+                # logger.debug("Take profit monitor initialized")
+
+        # Set up position tracker for risk monitoring if needed
+        position_tracker = None
+
+        if stop_loss_monitor or take_profit_monitor:
+            position_tracker = PositionTracker()
+            # Get evaluation dates within the window
+            eval_dates = window.get_evaluation_dates(pd.DatetimeIndex(daily_data.index))
+            if len(eval_dates) > 0:
+                logger.debug(f"Daily risk monitoring will run on {len(eval_dates)} dates")
+
         # Run the main backtester for the specific window
         backtest_result = self.backtester.backtest_strategy(
             strategy_config=strategy_config,
@@ -90,6 +125,71 @@ class WindowEvaluator:
             start_date=window.test_start,
             end_date=window.test_end,
         )
+
+        # Perform daily risk monitoring if needed
+        if position_tracker and (stop_loss_monitor or take_profit_monitor) and len(eval_dates) > 0:
+            try:
+                # Process each evaluation date for risk monitoring
+                for current_date in eval_dates:
+                    # Skip dates outside the test window
+                    if current_date < window.test_start or current_date > window.test_end:
+                        continue
+
+                    # Get current prices for risk evaluation
+                    try:
+                        current_prices = self._get_current_prices(daily_data, current_date)
+                    except Exception as e:
+                        logger.error(f"Error getting current prices for {current_date.date()}: {e}")
+                        continue
+
+                    # Check for stop loss triggers
+                    if stop_loss_monitor and stop_loss_handler:
+                        try:
+                            stop_loss_signals = stop_loss_monitor.check_positions_for_stop_loss(
+                                current_date=current_date,
+                                position_tracker=position_tracker,
+                                current_prices=current_prices,
+                                stop_loss_handler=stop_loss_handler,
+                                historical_data=daily_data,
+                            )
+
+                            # Apply stop loss signals if any
+                            if not stop_loss_signals.empty:
+                                position_tracker.update_positions(stop_loss_signals, current_date)
+                                logger.info(
+                                    f"Applied stop loss liquidations on {current_date.date()}"
+                                )
+                        except Exception as e:
+                            logger.error(
+                                f"Error in stop loss monitoring on {current_date.date()}: {e}"
+                            )
+
+                    # Check for take profit triggers (after stop loss)
+                    if take_profit_monitor and take_profit_handler:
+                        try:
+                            take_profit_signals = (
+                                take_profit_monitor.check_positions_for_take_profit(
+                                    current_date=current_date,
+                                    position_tracker=position_tracker,
+                                    current_prices=current_prices,
+                                    take_profit_handler=take_profit_handler,
+                                    historical_data=daily_data,
+                                )
+                            )
+
+                            # Apply take profit signals if any
+                            if not take_profit_signals.empty:
+                                position_tracker.update_positions(take_profit_signals, current_date)
+                                logger.info(
+                                    f"Applied take profit liquidations on {current_date.date()}"
+                                )
+                        except Exception as e:
+                            logger.error(
+                                f"Error in take profit monitoring on {current_date.date()}: {e}"
+                            )
+            except Exception as e:
+                logger.error(f"Error in daily risk monitoring: {e}")
+                # Continue with evaluation even if risk monitoring fails
 
         # Adapt the BacktestResult to the WindowResult format
         return WindowResult(
@@ -102,3 +202,44 @@ class WindowEvaluator:
             trades=backtest_result.trade_history.to_dict("records"),
             final_weights=backtest_result.performance_stats.get("final_weights", {}),
         )
+
+    def _get_current_prices(
+        self, daily_data: pd.DataFrame, current_date: pd.Timestamp
+    ) -> pd.Series:
+        """Extract current prices for all assets on a specific date."""
+        try:
+            # Check if we have data for the current date
+            if current_date not in daily_data.index:
+                closest_date = daily_data.index[daily_data.index <= current_date][-1]
+                logger.debug(
+                    f"Using closest available date {closest_date.date()} for {current_date.date()}"
+                )
+                current_date = closest_date
+
+            # Extract close prices for all assets
+            if isinstance(daily_data.columns, pd.MultiIndex):
+                # Handle MultiIndex columns (ticker, field)
+                current_prices = {}
+                for ticker in set(idx[0] for idx in daily_data.columns):
+                    if (
+                        "Close" in daily_data.loc[current_date, ticker].index
+                        or "close" in daily_data.loc[current_date, ticker].index
+                    ):
+                        field = (
+                            "Close"
+                            if "Close" in daily_data.loc[current_date, ticker].index
+                            else "close"
+                        )
+                        current_prices[ticker] = daily_data.loc[current_date, (ticker, field)]
+                return pd.Series(current_prices)
+            else:
+                # Handle flat columns (assume it's price data directly)
+                squeezed_data = daily_data.loc[current_date].squeeze()
+                if isinstance(squeezed_data, pd.Series):
+                    return squeezed_data
+                else:
+                    return pd.Series(squeezed_data)
+        except Exception as e:
+            logger.error(f"Error extracting current prices: {e}")
+            # Return empty Series as fallback
+            return pd.Series(dtype=float)

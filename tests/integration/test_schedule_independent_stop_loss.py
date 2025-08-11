@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 from portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
 from portfolio_backtester.optimization.wfo_window import WFOWindow
 from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
+from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
 
 
 class DummySignalStrategy(BaseStrategy):
@@ -161,7 +162,8 @@ class TestScheduleIndependentStopLoss:
         2. Stop loss is checked daily
         3. Positions are liquidated immediately when stop loss triggers
         """
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock(spec=StrategyBacktester)
+        evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Track strategy signal generation calls
         original_generate_signals = monthly_ema_signal_strategy.generate_signals
@@ -181,6 +183,8 @@ class TestScheduleIndependentStopLoss:
             window=wfo_window,
             strategy=monthly_ema_signal_strategy,
             daily_data=daily_ohlc_data,
+            full_monthly_data=pd.DataFrame(),
+            full_rets_daily=pd.DataFrame(),
             benchmark_data=benchmark_data,
             universe_tickers=["AAPL", "MSFT", "GOOGL"],
             benchmark_ticker="SPY",
@@ -208,7 +212,8 @@ class TestScheduleIndependentStopLoss:
         2. Stop loss is checked daily
         3. Positions held for months are still monitored daily
         """
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock(spec=StrategyBacktester)
+        evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Track signal generation for quarterly strategy
         original_generate_signals = quarterly_portfolio_strategy.generate_signals
@@ -228,6 +233,8 @@ class TestScheduleIndependentStopLoss:
             window=wfo_window,
             strategy=quarterly_portfolio_strategy,
             daily_data=daily_ohlc_data,
+            full_monthly_data=pd.DataFrame(),
+            full_rets_daily=pd.DataFrame(),
             benchmark_data=benchmark_data,
             universe_tickers=["AAPL", "MSFT", "GOOGL"],
             benchmark_ticker="SPY",
@@ -255,7 +262,8 @@ class TestScheduleIndependentStopLoss:
         must be monitored daily and liquidated immediately when stop loss triggers,
         even if the strategy won't rebalance again for weeks.
         """
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock(spec=StrategyBacktester)
+        evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Create scenario where strategy rebalances early, then prices crash later
         crash_window = WFOWindow(
@@ -272,6 +280,8 @@ class TestScheduleIndependentStopLoss:
                 window=crash_window,
                 strategy=monthly_ema_signal_strategy,
                 daily_data=daily_ohlc_data,
+                full_monthly_data=pd.DataFrame(),
+                full_rets_daily=pd.DataFrame(),
                 benchmark_data=benchmark_data,
                 universe_tickers=["AAPL", "MSFT", "GOOGL"],
                 benchmark_ticker="SPY",
@@ -317,13 +327,16 @@ class TestScheduleIndependentStopLoss:
         }
         atr_stop_loss_strategy = DummySignalStrategy(atr_stop_loss_config)
 
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock(spec=StrategyBacktester)
+        evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Run both strategies
         no_sl_result = evaluator.evaluate_window(
             window=wfo_window,
             strategy=no_stop_loss_strategy,
             daily_data=daily_ohlc_data,
+            full_monthly_data=pd.DataFrame(),
+            full_rets_daily=pd.DataFrame(),
             benchmark_data=benchmark_data,
             universe_tickers=["AAPL", "MSFT", "GOOGL"],
             benchmark_ticker="SPY",
@@ -333,6 +346,8 @@ class TestScheduleIndependentStopLoss:
             window=wfo_window,
             strategy=atr_stop_loss_strategy,
             daily_data=daily_ohlc_data,
+            full_monthly_data=pd.DataFrame(),
+            full_rets_daily=pd.DataFrame(),
             benchmark_data=benchmark_data,
             universe_tickers=["AAPL", "MSFT", "GOOGL"],
             benchmark_ticker="SPY",
@@ -378,13 +393,16 @@ class TestScheduleIndependentStopLoss:
         }
 
         portfolio_strategy = DummyPortfolioStrategy(portfolio_config)
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock(spec=StrategyBacktester)
+        evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Run both strategy types
         signal_result = evaluator.evaluate_window(
             window=wfo_window,
             strategy=monthly_ema_signal_strategy,
             daily_data=daily_ohlc_data,
+            full_monthly_data=pd.DataFrame(),
+            full_rets_daily=pd.DataFrame(),
             benchmark_data=benchmark_data,
             universe_tickers=["AAPL", "MSFT", "GOOGL"],
             benchmark_ticker="SPY",
@@ -394,6 +412,8 @@ class TestScheduleIndependentStopLoss:
             window=wfo_window,
             strategy=portfolio_strategy,
             daily_data=daily_ohlc_data,
+            full_monthly_data=pd.DataFrame(),
+            full_rets_daily=pd.DataFrame(),
             benchmark_data=benchmark_data,
             universe_tickers=["AAPL", "MSFT", "GOOGL"],
             benchmark_ticker="SPY",
@@ -423,7 +443,8 @@ class TestScheduleIndependentStopLoss:
         frequencies = ["D", "W", "M"]  # Daily, Weekly, Monthly
         results = {}
 
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock(spec=StrategyBacktester)
+        evaluator = WindowEvaluator(backtester=mock_backtester)
         window = WFOWindow(
             train_start=pd.Timestamp("2023-01-01"),
             train_end=pd.Timestamp("2023-01-31"),
@@ -442,6 +463,8 @@ class TestScheduleIndependentStopLoss:
                 window=window,
                 strategy=strategy,
                 daily_data=daily_ohlc_data,
+                full_monthly_data=pd.DataFrame(),
+                full_rets_daily=pd.DataFrame(),
                 benchmark_data=benchmark_data,
                 universe_tickers=["AAPL", "MSFT"],
                 benchmark_ticker="SPY",
@@ -461,7 +484,8 @@ class TestStopLossErrorHandling:
 
     def test_stop_loss_handler_failure_graceful_degradation(self):
         """Test that system continues when stop loss handler fails."""
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock(spec=StrategyBacktester)
+        evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Create strategy with faulty stop loss handler
         config = {
@@ -499,17 +523,28 @@ class TestStopLossErrorHandling:
                 evaluation_frequency="D",
             )
 
+            # Configure the mock backtester to return a proper Series
+            mock_result = Mock()
+            mock_result.returns = pd.Series(
+                [0.01, -0.01, 0.02],
+                index=pd.to_datetime(["2023-01-06", "2023-01-07", "2023-01-08"]),
+            )
+            mock_backtester.backtest_strategy.return_value = mock_result
+
             # Should not crash when stop loss handler fails
             result = evaluator.evaluate_window(
                 window=window,
                 strategy=strategy,
                 daily_data=data,
+                full_monthly_data=pd.DataFrame(),
+                full_rets_daily=pd.DataFrame(),
                 benchmark_data=benchmark,
                 universe_tickers=["AAPL", "MSFT"],
                 benchmark_ticker="SPY",
             )
 
             # Should still produce results
+            assert result is not None
             assert isinstance(result.window_returns, pd.Series)
 
 

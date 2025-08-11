@@ -2,7 +2,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from portfolio_backtester.trading.unified_commission_calculator import get_unified_commission_calculator
+from portfolio_backtester.trading.unified_commission_calculator import (
+    get_unified_commission_calculator,
+)
 from portfolio_backtester.numba_kernels import (
     detailed_commission_slippage_kernel,
 )
@@ -51,7 +53,9 @@ def test_detailed_commissions_matches_calculator_series(use_numba):
 
     # Turnover per ticker per day is abs diff in weights; calculator expects daily series fraction or per-asset series
     # We pass weights_daily and prices daily, calculator derives quantities from weights diff and prices
-    turnover_series = pd.Series(1.0, index=dates, dtype=float)  # not used in detailed path except as fallback
+    turnover_series = pd.Series(
+        1.0, index=dates, dtype=float
+    )  # not used in detailed path except as fallback
     ref_total_costs, breakdown, _ = calc.calculate_portfolio_commissions(
         turnover=turnover_series,
         weights_daily=weights,
@@ -78,7 +82,8 @@ def test_detailed_commissions_matches_calculator_series(use_numba):
         price_mask=mask_arr,
     )
 
-    fast_series = pd.Series(tc_frac, index=dates)
+    total_costs_frac, _ = tc_frac  # Unpack the tuple
+    fast_series = pd.Series(total_costs_frac, index=dates)
 
     # Compare with a reasonable tolerance – the calculator iterates per-asset similarly; the math should match
     # Tolerance accounts for minor float ops differences
@@ -130,7 +135,8 @@ def test_zero_weights_zero_costs():
         slippage_bps=float(global_config["slippage_bps"]),
         price_mask=mask_arr,
     )
-    fast_series = pd.Series(tc_frac, index=dates)
+    total_costs_frac, _ = tc_frac  # Unpack the tuple
+    fast_series = pd.Series(total_costs_frac, index=dates)
 
     # All zeros
     assert np.allclose(np.asarray(ref_total_costs.to_numpy(dtype=float)), 0.0)

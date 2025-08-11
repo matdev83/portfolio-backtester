@@ -10,7 +10,7 @@ with warnings.catch_warnings():
         "DummyRoRoSignal -> DummyRiskOffSignalGenerator. "
         "Note: Signal semantics have changed - True now means risk-off (was risk-on).",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
 
 from .roro_signals import BaseRoRoSignal, DummyRoRoSignal

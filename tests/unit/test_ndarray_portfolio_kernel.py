@@ -11,7 +11,9 @@ def _pandas_path(weights_for_returns: pd.DataFrame, rets: pd.DataFrame) -> pd.Se
     if not common_cols:
         return pd.Series(0.0, index=weights_for_returns.index)
     # Use the same pandas formulation as in portfolio_logic fallback
-    prod_df = pd.DataFrame(weights_for_returns[common_cols]).mul(pd.DataFrame(rets[common_cols]), axis=0)
+    prod_df = pd.DataFrame(weights_for_returns[common_cols]).mul(
+        pd.DataFrame(rets[common_cols]), axis=0
+    )
     return pd.Series(prod_df.sum(axis="columns"), index=weights_for_returns.index)
 
 
@@ -23,7 +25,9 @@ def test_position_and_pnl_kernel_matches_pandas(dtype):
 
     # Build weights_daily and returns
     rng = np.random.default_rng(0)
-    weights_daily = pd.DataFrame(rng.random((len(dates), len(tickers))), index=dates, columns=tickers)
+    weights_daily = pd.DataFrame(
+        rng.random((len(dates), len(tickers))), index=dates, columns=tickers
+    )
     # Normalize rows to sum to 1.0 to mimic portfolio weights
     weights_daily = weights_daily.div(weights_daily.sum(axis=1), axis=0)
 
@@ -31,10 +35,14 @@ def test_position_and_pnl_kernel_matches_pandas(dtype):
     weights_for_returns = weights_daily.shift(1).fillna(0.0)
 
     # Returns
-    rets = pd.DataFrame(rng.normal(0, 0.01, (len(dates), len(tickers))), index=dates, columns=tickers)
+    rets = pd.DataFrame(
+        rng.normal(0, 0.01, (len(dates), len(tickers))), index=dates, columns=tickers
+    )
 
     # Adapter
-    adapter = to_ndarrays(weights_for_returns, rets, tickers, dates, use_float32=(dtype == np.float32))
+    adapter = to_ndarrays(
+        weights_for_returns, rets, tickers, dates, use_float32=(dtype == np.float32)
+    )
     w = adapter["weights"].astype(dtype, copy=False)
     r = adapter["rets"].astype(dtype, copy=False)
     m = adapter["mask"]

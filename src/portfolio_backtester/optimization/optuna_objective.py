@@ -88,21 +88,24 @@ def _run_scenario_static(
     )
 
     portfolio_returns = (gross - tc).reindex(price_daily.index).fillna(0)
-    
+
     # Calculate excess returns vs benchmark for better optimization
     if benchmark_daily is not None and len(benchmark_daily) > 0:
         # Align benchmark with portfolio returns
         aligned_benchmark = benchmark_daily.reindex(portfolio_returns.index).fillna(0)
         excess_returns = portfolio_returns - aligned_benchmark
-        
+
         # Store both portfolio and excess returns for flexible optimization
-        portfolio_returns = portfolio_returns.to_frame('portfolio_returns') if hasattr(portfolio_returns, 'to_frame') else portfolio_returns
-        if hasattr(portfolio_returns, 'assign'):
+        portfolio_returns = (
+            portfolio_returns.to_frame("portfolio_returns")
+            if hasattr(portfolio_returns, "to_frame")
+            else portfolio_returns
+        )
+        if hasattr(portfolio_returns, "assign"):
             portfolio_returns = portfolio_returns.assign(
-                excess_returns=excess_returns,
-                benchmark_returns=aligned_benchmark
+                excess_returns=excess_returns, benchmark_returns=aligned_benchmark
             )
-    
+
     return portfolio_returns
 
 

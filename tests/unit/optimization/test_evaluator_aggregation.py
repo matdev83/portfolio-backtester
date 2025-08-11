@@ -26,7 +26,11 @@ def test_aggregate_objective_single_avg():
 
 
 def test_aggregate_objective_weighted():
-    evaluator = BacktestEvaluator(metrics_to_optimize=["sharpe_ratio"], is_multi_objective=False, aggregate_length_weighted=True)
+    evaluator = BacktestEvaluator(
+        metrics_to_optimize=["sharpe_ratio"],
+        is_multi_objective=False,
+        aggregate_length_weighted=True,
+    )
     obj = evaluator._aggregate_objective_values([1.0, 3.0], window_lengths=[1, 3])
     # weighted average (1*1 +3*3)/4 = 2.5
     assert np.isclose(obj, 2.5)

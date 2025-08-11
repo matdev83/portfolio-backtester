@@ -106,5 +106,5 @@ class SignalGeneratorFactory:
 # Global factory instance
 signal_generator_factory = SignalGeneratorFactory()
 
-# Alias for backwards compatibility  
+# Alias for backwards compatibility
 SignalGeneratorProvider = ISignalGenerator

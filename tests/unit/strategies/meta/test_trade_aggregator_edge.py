@@ -41,5 +41,5 @@ def test_buy_and_sell_closes_position_and_updates_pnl():
 def test_weighted_performance_keys_present():
     agg = TradeAggregator(initial_capital=10000)
     keys = agg.calculate_weighted_performance().keys()
-    for k in ["total_return","total_pnl"]:
+    for k in ["total_return", "total_pnl"]:
         assert k in keys

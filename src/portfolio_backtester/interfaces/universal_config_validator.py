@@ -13,14 +13,14 @@ from portfolio_backtester.yaml_validator import YamlError, YamlErrorType
 
 class IUniversalConfigValidator(ABC):
     """Interface for validating universal configuration rules."""
-    
+
     @abstractmethod
     def validate_universal_configuration_logic(
-        self, 
-        scenario_data: Dict[str, Any], 
+        self,
+        scenario_data: Dict[str, Any],
         strategy_tunable_params: Dict[str, Any],
-        strategy_class: Any, 
-        file_path_str: Optional[str]
+        strategy_class: Any,
+        file_path_str: Optional[str],
     ) -> List[Any]:
         """Apply universal validation rules that apply to all strategy types."""
         pass
@@ -28,18 +28,18 @@ class IUniversalConfigValidator(ABC):
 
 class DefaultUniversalConfigValidator(IUniversalConfigValidator):
     """Default implementation of universal config validator."""
-    
+
     def validate_universal_configuration_logic(
-        self, 
-        scenario_data: Dict[str, Any], 
+        self,
+        scenario_data: Dict[str, Any],
         strategy_tunable_params: Dict[str, Any],
-        strategy_class: Any, 
-        file_path_str: Optional[str]
+        strategy_class: Any,
+        file_path_str: Optional[str],
     ) -> List[Any]:
         """Apply universal validation rules that apply to all strategy types."""
         # YamlError and YamlErrorType imported at module level
         errors = []
-        
+
         # Validate rebalance_frequency
         rebalance_frequency = scenario_data.get("rebalance_frequency")
         if rebalance_frequency is not None:
@@ -55,7 +55,7 @@ class DefaultUniversalConfigValidator(IUniversalConfigValidator):
                         file_path=file_path_str,
                     )
                 )
-                
+
         # Validate position_sizer
         position_sizer = scenario_data.get("position_sizer")
         if position_sizer is not None:
@@ -71,7 +71,7 @@ class DefaultUniversalConfigValidator(IUniversalConfigValidator):
                         file_path=file_path_str,
                     )
                 )
-                
+
         # Validate window sizes
         train_window = scenario_data.get("train_window_months")
         if isinstance(train_window, int) and train_window < 6:
@@ -85,7 +85,7 @@ class DefaultUniversalConfigValidator(IUniversalConfigValidator):
                     file_path=file_path_str,
                 )
             )
-            
+
         # Validate optimization targets
         optimization_targets = scenario_data.get("optimization_targets", [])
         if isinstance(optimization_targets, list):
@@ -93,14 +93,20 @@ class DefaultUniversalConfigValidator(IUniversalConfigValidator):
                 if isinstance(target, dict):
                     metric = target.get("name")
                     direction = target.get("direction")
-                    
+
                     # Check metric direction recommendations
                     if metric and direction:
                         # Metrics that should typically be maximized
-                        maximize_metrics = {"Sharpe", "Sortino", "Calmar", "CAGR", "AnnualizedReturn"}
+                        maximize_metrics = {
+                            "Sharpe",
+                            "Sortino",
+                            "Calmar",
+                            "CAGR",
+                            "AnnualizedReturn",
+                        }
                         # Metrics that should typically be minimized
                         minimize_metrics = {"MaxDrawdown", "Volatility", "Downside", "UlcerIndex"}
-                        
+
                         if metric in maximize_metrics and direction == "minimize":
                             errors.append(
                                 YamlError(
@@ -123,13 +129,13 @@ class DefaultUniversalConfigValidator(IUniversalConfigValidator):
                                     file_path=file_path_str,
                                 )
                             )
-        
+
         return errors
 
 
 class UniversalConfigValidatorFactory:
     """Factory for creating universal config validators."""
-    
+
     @staticmethod
     def create() -> IUniversalConfigValidator:
         """Create a new universal config validator instance."""

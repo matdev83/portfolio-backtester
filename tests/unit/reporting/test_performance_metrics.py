@@ -5,14 +5,15 @@ from scipy.stats import linregress
 from portfolio_backtester.reporting.performance_metrics import calculate_metrics
 import warnings
 
+
 class TestPerformanceMetrics(unittest.TestCase):
 
     def setUp(self):
         # Create a sample returns series for the portfolio and benchmark
-        dates = pd.to_datetime(pd.date_range(start='2020-01-01', periods=24, freq='ME'))
-        self.rets = pd.Series([0.02, -0.01, 0.03, -0.02] * 6, index=dates, name='Portfolio')
-        self.bench_rets = pd.Series([0.01, -0.005, 0.015, -0.01] * 6, index=dates, name='Benchmark')
-        self.bench_ticker_name = 'Benchmark'
+        dates = pd.to_datetime(pd.date_range(start="2020-01-01", periods=24, freq="ME"))
+        self.rets = pd.Series([0.02, -0.01, 0.03, -0.02] * 6, index=dates, name="Portfolio")
+        self.bench_rets = pd.Series([0.01, -0.005, 0.015, -0.01] * 6, index=dates, name="Benchmark")
+        self.bench_ticker_name = "Benchmark"
 
     def test_calculate_metrics_smoke(self):
         # Smoke test to ensure the function runs without errors
@@ -24,66 +25,85 @@ class TestPerformanceMetrics(unittest.TestCase):
     def test_total_return(self):
         metrics = calculate_metrics(self.rets, self.bench_rets, self.bench_ticker_name)
         # Expected: (1.02 * 0.99 * 1.03 * 0.98)^6 - 1
-        expected_return = (1.02 * 0.99 * 1.03 * 0.98)**6 - 1
-        self.assertAlmostEqual(metrics['Total Return'], expected_return, places=4)
+        expected_return = (1.02 * 0.99 * 1.03 * 0.98) ** 6 - 1
+        self.assertAlmostEqual(metrics["Total Return"], expected_return, places=4)
 
     def test_annualized_return(self):
         metrics = calculate_metrics(self.rets, self.bench_rets, self.bench_ticker_name)
         # Expected: ((1 + total_return)^(12/24)) - 1
-        total_return = (1.02 * 0.99 * 1.03 * 0.98)**6 - 1
-        expected_ann_return = (1 + total_return)**(12/24) - 1
-        self.assertAlmostEqual(metrics['Ann. Return'], expected_ann_return, places=4)
+        total_return = (1.02 * 0.99 * 1.03 * 0.98) ** 6 - 1
+        expected_ann_return = (1 + total_return) ** (12 / 24) - 1
+        self.assertAlmostEqual(metrics["Ann. Return"], expected_ann_return, places=4)
 
     def test_sharpe_ratio(self):
         # Test with a zero volatility series
         zero_vol_rets = pd.Series([0.01] * 24, index=self.rets.index)
-        
+
         # Expect RuntimeWarning from scipy.stats.skew/kurtosis for constant data
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning) # Ignore other potential warnings
+            warnings.simplefilter("ignore", RuntimeWarning)  # Ignore other potential warnings
             with self.assertWarns(RuntimeWarning):
                 metrics = calculate_metrics(zero_vol_rets, self.bench_rets, self.bench_ticker_name)
-        
+
         # self.assertTrue(np.isnan(metrics['Sharpe'])) # Old behavior
         # New behavior: Sharpe should be inf if mean return is positive and vol is zero
         # For this specific zero_vol_rets (all 0.01), annualized return is positive.
-        self.assertEqual(metrics['Sharpe'], np.inf)
-
+        self.assertEqual(metrics["Sharpe"], np.inf)
 
     def test_zero_denominator_metrics(self):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
-            dates = pd.to_datetime(pd.date_range(start='2020-01-01', periods=252, freq='B')) # Approx 1 year daily
-            bench_dummy = pd.Series(0.0, index=dates) # Dummy benchmark
+            dates = pd.to_datetime(
+                pd.date_range(start="2020-01-01", periods=252, freq="B")
+            )  # Approx 1 year daily
+            bench_dummy = pd.Series(0.0, index=dates)  # Dummy benchmark
 
             # --- Test Sharpe Ratio ---
             # Positive return, zero volatility
             rets_pos_zero_vol = pd.Series([0.0001] * 252, index=dates)
             metrics_pos_zero_vol = calculate_metrics(rets_pos_zero_vol, bench_dummy, "Bench")
-            self.assertEqual(metrics_pos_zero_vol['Sharpe'], np.inf, "Sharpe: Positive return, zero vol should be inf")
+            self.assertEqual(
+                metrics_pos_zero_vol["Sharpe"],
+                np.inf,
+                "Sharpe: Positive return, zero vol should be inf",
+            )
 
             # Negative return, zero volatility
             rets_neg_zero_vol = pd.Series([-0.0001] * 252, index=dates)
             metrics_neg_zero_vol = calculate_metrics(rets_neg_zero_vol, bench_dummy, "Bench")
-            self.assertEqual(metrics_neg_zero_vol['Sharpe'], -np.inf, "Sharpe: Negative return, zero vol should be -inf")
+            self.assertEqual(
+                metrics_neg_zero_vol["Sharpe"],
+                -np.inf,
+                "Sharpe: Negative return, zero vol should be -inf",
+            )
 
             # Zero return, zero volatility
             rets_zero_zero_vol = pd.Series([0.0] * 252, index=dates)
             metrics_zero_zero_vol = calculate_metrics(rets_zero_zero_vol, bench_dummy, "Bench")
-            self.assertEqual(metrics_zero_zero_vol['Sharpe'], 0.0, "Sharpe: Zero return, zero vol should be 0.0")
+            self.assertEqual(
+                metrics_zero_zero_vol["Sharpe"], 0.0, "Sharpe: Zero return, zero vol should be 0.0"
+            )
 
             # --- Test Calmar Ratio ---
             # Positive return, zero max drawdown (e.g., all positive or zero returns)
-            rets_pos_zero_mdd = pd.Series([0.0001] * 252, index=dates) # Also zero vol, but testing MDD effect
+            rets_pos_zero_mdd = pd.Series(
+                [0.0001] * 252, index=dates
+            )  # Also zero vol, but testing MDD effect
             metrics_pos_zero_mdd = calculate_metrics(rets_pos_zero_mdd, bench_dummy, "Bench")
-            self.assertEqual(metrics_pos_zero_mdd['Calmar'], np.inf, "Calmar: Positive return, zero MDD should be inf")
+            self.assertEqual(
+                metrics_pos_zero_mdd["Calmar"],
+                np.inf,
+                "Calmar: Positive return, zero MDD should be inf",
+            )
 
             # Negative return, zero max drawdown (e.g., all returns are zero, ann_ret is zero, but if it were neg)
             # This case is tricky: if ann_ret is negative, but MDD is zero (e.g. flat returns then one drop, but we test with flat)
             # For purely flat returns (all 0.0), ann_ret is 0, mdd is 0, Calmar should be 0.0
             rets_zero_zero_mdd = pd.Series([0.0] * 252, index=dates)
             metrics_zero_zero_mdd = calculate_metrics(rets_zero_zero_mdd, bench_dummy, "Bench")
-            self.assertEqual(metrics_zero_zero_mdd['Calmar'], 0.0, "Calmar: Zero return, zero MDD should be 0.0")
+            self.assertEqual(
+                metrics_zero_zero_mdd["Calmar"], 0.0, "Calmar: Zero return, zero MDD should be 0.0"
+            )
 
             # If we had a series that ends up with negative annualized return but somehow zero MDD (hard to construct naturally without manipulation)
             # For instance, if ann_ret was negative and mdd was epsilon. The code path for -np.inf in Calmar:
@@ -96,13 +116,21 @@ class TestPerformanceMetrics(unittest.TestCase):
             # Positive mean return, zero downside risk (all returns >= target_return, default 0)
             rets_pos_zero_dr = pd.Series([0.0001] * 252, index=dates)
             metrics_pos_zero_dr = calculate_metrics(rets_pos_zero_dr, bench_dummy, "Bench")
-            self.assertEqual(metrics_pos_zero_dr['Sortino'], np.inf, "Sortino: Positive return, zero downside risk should be inf")
+            self.assertEqual(
+                metrics_pos_zero_dr["Sortino"],
+                np.inf,
+                "Sortino: Positive return, zero downside risk should be inf",
+            )
 
             # Negative mean return, zero downside risk (e.g. all returns are 0.0001, but target_return is 0.0002)
             # Or, more simply, all returns are 0.0, mean is 0, downside risk is 0.
-            rets_zero_zero_dr = pd.Series([0.0] * 252, index=dates) # target_return = 0
+            rets_zero_zero_dr = pd.Series([0.0] * 252, index=dates)  # target_return = 0
             metrics_zero_zero_dr = calculate_metrics(rets_zero_zero_dr, bench_dummy, "Bench")
-            self.assertEqual(metrics_zero_zero_dr['Sortino'], 0.0, "Sortino: Zero return, zero downside risk should be 0.0")
+            self.assertEqual(
+                metrics_zero_zero_dr["Sortino"],
+                0.0,
+                "Sortino: Zero return, zero downside risk should be 0.0",
+            )
 
             # Negative mean return, zero downside risk (all returns positive, but mean < target)
             # e.g. r.mean() is -0.0001 (because target is higher than actual returns), downside_risk is 0
@@ -123,7 +151,11 @@ class TestPerformanceMetrics(unittest.TestCase):
             # Let's use a series of small negative numbers, which will have non-zero downside risk.
             rets_neg_nonzero_dr = pd.Series([-0.0001] * 252, index=dates)
             metrics_neg_nonzero_dr = calculate_metrics(rets_neg_nonzero_dr, bench_dummy, "Bench")
-            self.assertTrue(metrics_neg_nonzero_dr['Sortino'] < 0 and np.isfinite(metrics_neg_nonzero_dr['Sortino']), "Sortino: Negative return, non-zero downside risk should be finite negative")
+            self.assertTrue(
+                metrics_neg_nonzero_dr["Sortino"] < 0
+                and np.isfinite(metrics_neg_nonzero_dr["Sortino"]),
+                "Sortino: Negative return, non-zero downside risk should be finite negative",
+            )
             # The -np.inf for Sortino happens if mean return is negative AND downside deviation is zero.
             # For example, if target_return = 0.01, and all actual returns are 0.005.
             # Then target_returns are all -0.005. np.minimum(0, target_returns) are all -0.005. downside_risk > 0.
@@ -150,11 +182,10 @@ class TestPerformanceMetrics(unittest.TestCase):
             # However, if `r.mean() * steps_per_year` was truly negative and `downside_risk` was zero, it *would* return -np.inf.
             # The tests for 0.0 and np.inf for Sortino are sufficient given its definition with target=0.
 
-
     def test_r_squared(self):
         metrics = calculate_metrics(self.rets, self.bench_rets, self.bench_ticker_name)
         expected = np.corrcoef(self.rets, self.bench_rets)[0, 1] ** 2
-        self.assertAlmostEqual(metrics['R^2'], expected, places=6)
+        self.assertAlmostEqual(metrics["R^2"], expected, places=6)
 
     def test_k_ratio(self):
         metrics = calculate_metrics(self.rets, self.bench_rets, self.bench_ticker_name)
@@ -162,7 +193,8 @@ class TestPerformanceMetrics(unittest.TestCase):
         idx = np.arange(len(log_eq))
         reg = linregress(idx, log_eq)
         expected = (reg.slope / reg.stderr) * np.sqrt(len(log_eq))
-        self.assertAlmostEqual(metrics['K-Ratio'], expected, places=6)
+        self.assertAlmostEqual(metrics["K-Ratio"], expected, places=6)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

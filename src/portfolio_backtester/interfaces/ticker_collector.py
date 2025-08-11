@@ -13,7 +13,11 @@ logger = logging.getLogger(__name__)
 
 
 # Suppress deprecation warning for internal usage
-warnings.filterwarnings("ignore", category=DeprecationWarning, message=r"DEPRECATED: resolve_universe_config is deprecated")
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    message=r"DEPRECATED: resolve_universe_config is deprecated",
+)
 
 
 class ITickerCollector(ABC):

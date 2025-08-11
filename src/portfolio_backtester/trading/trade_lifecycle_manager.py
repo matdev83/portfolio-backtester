@@ -78,8 +78,13 @@ class TradeLifecycleManager:
         self.open_positions: Dict[str, Trade] = {}
 
     def open_position(
-        self, date: pd.Timestamp, ticker: str, quantity: float, price: float, commission: float,
-        detailed_commission_info: Optional[Dict[str, Any]] = None
+        self,
+        date: pd.Timestamp,
+        ticker: str,
+        quantity: float,
+        price: float,
+        commission: float,
+        detailed_commission_info: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Open a new position.
@@ -113,8 +118,12 @@ class TradeLifecycleManager:
             logger.debug(f"Opened position: {ticker} {quantity:.2f} shares at ${price:.2f}")
 
     def close_position(
-        self, date: pd.Timestamp, ticker: str, price: float, commission: float,
-        detailed_commission_info: Optional[Dict[str, Any]] = None
+        self,
+        date: pd.Timestamp,
+        ticker: str,
+        price: float,
+        commission: float,
+        detailed_commission_info: Optional[Dict[str, Any]] = None,
     ) -> Optional[Trade]:
         """
         Close an existing position.

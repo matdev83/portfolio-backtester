@@ -42,6 +42,7 @@ import logging
 from typing import cast
 from .solid_strategy_registry import StrategyRegistryFactory
 from portfolio_backtester.interfaces.strategy_registry_interface import IStrategyRegistry
+
 logger = logging.getLogger(__name__)
 
 
@@ -113,8 +114,6 @@ class StrategyRegistry:
                 "4. System will automatically discover and register it!\n\n"
                 "DO NOT hardcode class names or call register_strategy()!"
             )
-
-
 
     def add(self, name: str, strategy_class: Type) -> None:
         """🚨 PROHIBITED! Use automatic discovery instead."""

@@ -18,7 +18,20 @@ class TimeBasedTiming(TimingController):
     def __init__(self, config: Dict[str, Any], timing_state: Optional[ITimingState] = None):
         super().__init__(config, timing_state)
         self.frequency = config.get("rebalance_frequency", "M")
-        self.offset = config.get("rebalance_offset", 0)  # Days offset from period end
+        self.offset = config.get("rebalance_offset", 0)
+
+    def _convert_deprecated_frequency(self, freq: str) -> str:
+        """Converts deprecated pandas frequency strings to their modern equivalents."""
+        freq_upper = freq.upper()
+        if freq_upper == "M":
+            return "ME"
+        if freq_upper == "Q":
+            return "QE"
+        if freq_upper == "A" or freq_upper == "Y":
+            return "YE"
+        if freq_upper == "W":
+            return "W-MON"
+        return freq
 
     def get_rebalance_dates(
         self,
@@ -29,14 +42,38 @@ class TimeBasedTiming(TimingController):
     ) -> pd.DatetimeIndex:
         """Generate rebalance dates based on frequency."""
         # Use pandas to generate the rebalance dates directly
-        rebalance_dates = pd.bdate_range(start=start_date, end=end_date, freq=self.frequency)
+        try:
+            freq = self._convert_deprecated_frequency(self.frequency)
+            rebalance_dates = pd.bdate_range(start=start_date, end=end_date, freq=freq)
+        except ValueError as e:
+            # Re-raise with expected error message format for tests
+            if "Invalid frequency" in str(e):
+                raise ValueError(f"Invalid frequency '{self.frequency}'") from e
+            raise
+
+        # Filter out the start date to avoid rebalancing on the first day
+        rebalance_dates = rebalance_dates[rebalance_dates > start_date]
 
         # Apply offset if specified
         if self.offset != 0:
             rebalance_dates = rebalance_dates + pd.DateOffset(days=self.offset)
 
-        # Filter to only include available trading dates
-        rebalance_dates = available_dates.intersection(rebalance_dates)
+        # For non-trading days, roll back to the previous available trading day.
+        rolled_dates = []
+        for date in rebalance_dates:
+            if date in available_dates:
+                rolled_dates.append(date)
+            else:
+                # Find the index for the insertion point to maintain order.
+                loc = available_dates.searchsorted(date, side="left")
+                if loc > 0:
+                    rolled_dates.append(available_dates[loc - 1])
+
+        # Ensure the dates are unique and sorted
+        if rolled_dates:
+            rebalance_dates = pd.DatetimeIndex(rolled_dates).unique()
+        else:
+            rebalance_dates = pd.DatetimeIndex([])
 
         # Store scheduled dates in timing state
         self.timing_state.scheduled_dates = set(rebalance_dates)

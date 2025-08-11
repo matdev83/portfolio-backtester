@@ -1,14 +1,19 @@
 """Print top cumulative functions from a cProfile stats file.
 Usage: python profile_summary.py profile.prof [N]
 """
+
 import pstats
 import argparse
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Print top cumulative time functions from a cProfile stats file")
+    parser = argparse.ArgumentParser(
+        description="Print top cumulative time functions from a cProfile stats file"
+    )
     parser.add_argument("profile", help="Path to .prof file")
-    parser.add_argument("-n", "--num", type=int, default=40, help="Number of rows to print (default 40)")
+    parser.add_argument(
+        "-n", "--num", type=int, default=40, help="Number of rows to print (default 40)"
+    )
     args = parser.parse_args()
 
     stats = pstats.Stats(args.profile)

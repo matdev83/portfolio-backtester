@@ -1,0 +1,83 @@
+,SPY,momentum_unfiltered_atr_portfolio
+ADF Statistic,0.9863209192239452,3.831172299683723
+ADF p-value,0.9941195009297881,1.0
+Alpha (ann),-7.673610282355608e-17,0.1797787310884794
+Ann. Return,0.14288018716350348,0.28348350075152307
+Ann. Vol,0.1715713897653713,0.29726631601530296
+Avg DD Duration,11.259574468085106,22.174647887323943
+Avg MAE (All),,0.0
+Avg MAE (Long),,0.0
+Avg MAE (Short),,0.0
+Avg MFE (All),,0.0
+Avg MFE (Long),,0.0
+Avg MFE (Short),,0.0
+Avg Recovery Time,0.00425531914893617,0.0
+Beta,1.0000000000000013,1.1856362530551683
+CVaR (5%),-0.02612187641865613,-0.04266004260705681
+Calmar,0.4237833371476569,0.41082539599088563
+Commissions Paid (All),,0.18579373601392352
+Commissions Paid (Long),,0.18579373601392254
+Commissions Paid (Short),,1.0168303695581753e-15
+Deflated Sharpe,1.0,1.0
+Information Score (All),,0.03270450854217664
+Information Score (Long),,0.03424199200116524
+Information Score (Short),,-0.5634233067966055
+K-Ratio,18515.908196974953,42858.44331633595
+Kurtosis,14.597476138075724,3.9590646460891277
+Largest Single Loss (All),,-83965556.8289009
+Largest Single Loss (Long),,-83965556.8289009
+Largest Single Loss (Short),,-1.0182420013259834e-06
+Largest Single Profit (All),,84486482.67105654
+Largest Single Profit (Long),,84486482.67105654
+Largest Single Profit (Short),,5.419866966048441e-07
+Max DD Recovery Time (days),708.0,2524.0
+Max Drawdown,-0.337153858207786,-0.690034023013057
+Max Flat Period (days),5797.0,274.0
+Max Margin Load,,0.0
+Max Trade Duration Days (All),,4542.0
+Max Trade Duration Days (Long),,4542.0
+Max Trade Duration Days (Short),,4066.0
+Mean Loss (All),,-129191.76437716509
+Mean Loss (Long),,-129219.36335445377
+Mean Loss (Short),,-6.779716832647926e-08
+Mean Margin Load,,0.0
+Mean Profit (All),,138424.5964475326
+Mean Profit (Long),,138437.44557108718
+Mean Profit (Short),,4.65781546307416e-08
+Mean Trade Duration Days (All),,1.31076485814343
+Mean Trade Duration Days (Long),,1.2615953589557651
+Mean Trade Duration Days (Short),,324.1904761904762
+Mean Trade P&L (All),,6694.541356514445
+Mean Trade P&L (Long),,6695.560829817474
+Mean Trade P&L (Short),,-3.239528264924424e-08
+Min Trade Duration Days (All),,0.0
+Min Trade Duration Days (Long),,0.0
+Min Trade Duration Days (Short),,2.0
+Number of Losers (All),,135779.0
+Number of Losers (Long),,135750.0
+Number of Losers (Short),,29.0
+Number of Trades (All),,275842.0
+Number of Trades (Long),,275800.0
+Number of Trades (Short),,42.0
+Number of Winners (All),,140063.0
+Number of Winners (Long),,140050.0
+Number of Winners (Short),,13.0
+R^2,1.0,0.627792283524216
+Reward/Risk Ratio (All),,1.071466104011189
+Reward/Risk Ratio (Long),,1.0713366942642168
+Reward/Risk Ratio (Short),,0.6870221246769942
+Sharpe,0.8327739686604867,0.9536347896777165
+Skew,-0.3244099275516498,-0.09846394824442495
+Sortino,1.218035007664232,1.442779318635292
+Tail Ratio,0.801119692416407,0.9744992849570037
+Total P&L Net (All),,1846635676.863684
+Total P&L Net (Long),,1846635676.8636854
+Total P&L Net (Short),,-1.3606018712682577e-06
+Total Return,4.25297783521371,5326.965508749663
+Trades per Month (All),,668.0428419126423
+Trades per Month (Long),,667.941124990055
+Trades per Month (Short),,0.11445658012533573
+VaR (5%),-0.016159641144223826,-0.028770957607775927
+Win Rate % (All),,50.77653149266609
+Win Rate % (Long),,50.77955039883973
+Win Rate % (Short),,30.952380952380953

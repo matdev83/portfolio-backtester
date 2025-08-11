@@ -9,9 +9,4 @@ from .strategy_test_base import BaseStrategyTest, BaseMomentumStrategyTest
 from .timing_test_base import BaseTimingTest
 from .integration_test_base import BaseIntegrationTest
 
-__all__ = [
-    'BaseStrategyTest',
-    'BaseMomentumStrategyTest', 
-    'BaseTimingTest',
-    'BaseIntegrationTest'
-]
+__all__ = ["BaseStrategyTest", "BaseMomentumStrategyTest", "BaseTimingTest", "BaseIntegrationTest"]

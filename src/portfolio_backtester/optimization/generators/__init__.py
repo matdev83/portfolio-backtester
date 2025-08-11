@@ -8,6 +8,6 @@ and mock generators for testing.
 
 # Import all generators to make them available at package level
 from .optuna_generator import OptunaParameterGenerator
-from .genetic_generator import GeneticParameterGenerator
+from .fixed_genetic_generator import FixedGeneticParameterGenerator
 
-__all__ = ["OptunaParameterGenerator", "GeneticParameterGenerator"]
+__all__ = ["OptunaParameterGenerator", "FixedGeneticParameterGenerator"]

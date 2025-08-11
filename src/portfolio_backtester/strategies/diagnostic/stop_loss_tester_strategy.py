@@ -12,7 +12,7 @@ warnings.warn(
     "Importing from 'portfolio_backtester.strategies.diagnostic.stop_loss_tester_strategy' is deprecated. "
     "Please use 'portfolio_backtester.testing.strategies.stop_loss_tester_strategy' instead.",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
 __all__ = ["StopLossTesterStrategy"]

@@ -1,6 +1,9 @@
 import pandas as pd
 import pytest
-from portfolio_backtester.strategies.builtins.signal.seasonal_signal_strategy import SeasonalSignalStrategy
+from portfolio_backtester.strategies.builtins.signal.seasonal_signal_strategy import (
+    SeasonalSignalStrategy,
+)
+
 
 @pytest.fixture
 def sample_historical_data():
@@ -10,6 +13,7 @@ def sample_historical_data():
     for col in df.columns:
         df[col] = data[col]
     return df
+
 
 def test_month_filter_with_bool_params(sample_historical_data):
     """Strategy should handle boolean flags for allowed_months."""
@@ -43,6 +47,7 @@ def test_month_filter_with_bool_params(sample_historical_data):
     )
     assert (signals_mar.loc[mar_first] != 0).any()
 
+
 def test_get_entry_date_for_month_positive():
     strategy = SeasonalSignalStrategy({})
     date = pd.Timestamp("2023-01-15")
@@ -50,12 +55,14 @@ def test_get_entry_date_for_month_positive():
     expected_date = pd.Timestamp("2023-01-06")
     assert strategy.get_entry_date_for_month(date, entry_day) == expected_date
 
+
 def test_get_entry_date_for_month_negative():
     strategy = SeasonalSignalStrategy({})
     date = pd.Timestamp("2023-01-15")
     entry_day = -3
     expected_date = pd.Timestamp("2023-01-27")
     assert strategy.get_entry_date_for_month(date, entry_day) == expected_date
+
 
 def test_long_strategy_entry_and_exit(sample_historical_data):
     config = {
@@ -76,7 +83,10 @@ def test_long_strategy_entry_and_exit(sample_historical_data):
     assert signals.loc[entry_date, "GOOG"] == 0.5
 
     signals = strategy.generate_signals(
-        sample_historical_data, pd.DataFrame(), pd.DataFrame(), entry_date + pd.tseries.offsets.BDay(1)
+        sample_historical_data,
+        pd.DataFrame(),
+        pd.DataFrame(),
+        entry_date + pd.tseries.offsets.BDay(1),
     )
     assert signals.loc[entry_date + pd.tseries.offsets.BDay(1), "AAPL"] == 0.5
     assert signals.loc[entry_date + pd.tseries.offsets.BDay(1), "GOOG"] == 0.5

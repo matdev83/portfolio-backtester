@@ -163,10 +163,10 @@ class TestClassAttributeAccessor:
         mock_module.__name__ = "test_module"
         # Configure mock to not have the attribute
         del mock_module.NonexistentClass  # This will make getattr raise AttributeError
-        
+
         with pytest.raises(AttributeError) as exc_info:
             self.accessor.get_class_from_module(mock_module, "NonexistentClass")
-        
+
         error_msg = str(exc_info.value)
         assert "test_module" in error_msg
         assert "NonexistentClass" in error_msg
@@ -280,12 +280,12 @@ class TestDependencyInjectionIntegration:
     def test_log_analyzer_accepts_field_accessor_injection(self):
         """Test that LogAnalyzer accepts dependency injection."""
         from portfolio_backtester.timing.log_analyzer import LogAnalyzer
-        
+
         mock_accessor = Mock(spec=IObjectFieldAccessor)
-        
+
         # Should not raise exception
         analyzer = LogAnalyzer(field_accessor=mock_accessor)
-        
+
         # Verify dependency was injected
         assert analyzer._field_accessor == mock_accessor
 
@@ -293,32 +293,32 @@ class TestDependencyInjectionIntegration:
         """Test that CustomTimingRegistry accepts dependency injection."""
         from portfolio_backtester.timing.custom_timing_registry import TimingControllerFactory
         from portfolio_backtester.timing.timing_controller import TimingController
-        
+
         mock_accessor = Mock(spec=IClassAttributeAccessor)
-        
+
         # Create a proper mock class that inherits from TimingController
         class MockTimingController(TimingController):
             def should_rebalance(self, current_date, strategy_state, backtest_data):
                 return False
-                
+
             def get_rebalance_frequency_days(self):
                 return 30
-                
+
             def __init__(self):
                 pass  # Skip parent init for test
-        
+
         mock_accessor.get_class_from_module.return_value = MockTimingController
-        
+
         # Mock the import_module to avoid actual import
-        with patch('importlib.import_module') as mock_import:
+        with patch("importlib.import_module") as mock_import:
             mock_module = Mock()
             mock_import.return_value = mock_module
-            
+
             # Test static method with dependency injection
             import_result = TimingControllerFactory._import_class(
                 "test.module.TestClass", class_accessor=mock_accessor
             )
-            
+
             # Verify result and that injected dependency was used
             assert import_result == MockTimingController
             mock_accessor.get_class_from_module.assert_called_once()
@@ -338,7 +338,7 @@ class TestBackwardCompatibility:
     def test_log_analyzer_works_without_injection(self):
         """Test that LogAnalyzer works without explicit dependency injection."""
         from portfolio_backtester.timing.log_analyzer import LogAnalyzer
-        
+
         # Should work with default factory
         analyzer = LogAnalyzer()
         assert analyzer._field_accessor is not None
@@ -358,10 +358,10 @@ class TestBackwardCompatibility:
             class MockTimingController(TimingController):
                 def should_rebalance(self, current_date, strategy_state, backtest_data):
                     return False
-                    
+
                 def get_rebalance_frequency_days(self):
                     return 30
-                    
+
                 def __init__(self):
                     pass  # Skip parent init for test
 

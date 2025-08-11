@@ -165,7 +165,7 @@ class DummyRiskOffSignalGenerator(IRiskOffSignalGenerator):
                 return True  # Risk-off signal
 
         # Return default state when not in risk-off windows
-        return bool(self._default_risk_state == 'off')
+        return bool(self._default_risk_state == "off")
 
     def get_configuration(self) -> Dict[str, Any]:
         """Get current configuration parameters."""

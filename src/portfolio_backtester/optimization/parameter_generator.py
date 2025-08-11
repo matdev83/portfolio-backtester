@@ -13,6 +13,7 @@ ensures consistent behavior across all optimization backends.
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Union, Optional
+import numpy as np
 
 from .results import EvaluationResult, OptimizationResult
 
@@ -219,7 +220,7 @@ class ParameterGenerator(ABC):
         """
         return None
 
-    def set_random_state(self, random_state: Optional[int]) -> None:
+    def set_random_state(self, random_state: Optional[np.random.Generator]) -> None:
         """Set the random state for reproducible results.
 
         Args:
@@ -250,6 +251,36 @@ class ParameterGenerator(ABC):
             return not self.is_finished()
         except Exception:
             return False
+
+
+class PopulationBasedParameterGenerator(ParameterGenerator):
+    """Abstract base class for population-based parameter generators."""
+
+    @abstractmethod
+    def suggest_population(self) -> List[Dict[str, Any]]:
+        """Suggest an entire population of parameter sets to evaluate."""
+        pass
+
+    @abstractmethod
+    def report_population_results(
+        self, population: List[Dict[str, Any]], results: List[EvaluationResult]
+    ) -> None:
+        """Report the results for an entire population."""
+        pass
+
+    def suggest_parameters(self) -> Dict[str, Any]:
+        """Not supported in population-based generators."""
+        raise NotImplementedError(
+            "suggest_parameters is not supported for population-based generators. "
+            "Use suggest_population instead."
+        )
+
+    def report_result(self, parameters: Dict[str, Any], result: EvaluationResult) -> None:
+        """Not supported in population-based generators."""
+        raise NotImplementedError(
+            "report_result is not supported for population-based generators. "
+            "Use report_population_results instead."
+        )
 
 
 class ParameterGeneratorError(Exception):

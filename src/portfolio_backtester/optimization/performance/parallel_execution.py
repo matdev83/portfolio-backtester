@@ -43,17 +43,18 @@ class BaseParallelRunner(AbstractParallelRunner, ABC):
             self.stop()
         except Exception as cleanup_error:
             logger.error(f"Error during parallel execution cleanup: {cleanup_error}")
-            
+
         # Handle any exceptions that occurred during execution
         if exc_type is not None:
             logger.error(f"Exception in parallel execution context: {exc_type.__name__}: {exc_val}")
             if exc_tb is not None:
                 import traceback
+
                 logger.debug(f"Exception traceback: {''.join(traceback.format_tb(exc_tb))}")
-            
+
             # Don't suppress the exception - let it propagate
             return False  # type: ignore[return-value]
-        
+
         return None
 
     def start(self) -> None:

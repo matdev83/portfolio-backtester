@@ -9,7 +9,7 @@ optimization concerns.
 import logging
 import pandas as pd
 import numpy as np
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from .results import BacktestResult, WindowResult
 from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
@@ -19,6 +19,7 @@ from ..backtester_logic.strategy_logic import generate_signals, size_positions
 from ..backtester_logic.portfolio_logic import calculate_portfolio_returns
 from ..backtester_logic.data_manager import prepare_scenario_data
 from ..reporting.performance_metrics import calculate_metrics
+from ..optimization.wfo_window import WFOWindow
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +228,7 @@ class StrategyBacktester:
     def evaluate_window(
         self,
         strategy_config: Dict[str, Any],
-        window: Tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp, pd.Timestamp],
+        window: WFOWindow,
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
@@ -239,7 +240,7 @@ class StrategyBacktester:
 
         Args:
             strategy_config: Strategy configuration including parameters
-            window: Tuple of (train_start, train_end, test_start, test_end)
+            window: A WFOWindow object defining the train/test periods.
             monthly_data: Monthly price data
             daily_data: Daily OHLC price data
             rets_full: Daily returns data
@@ -247,7 +248,12 @@ class StrategyBacktester:
         Returns:
             WindowResult: Results for this specific window
         """
-        train_start, train_end, test_start, test_end = window
+        train_start, train_end, test_start, test_end = (
+            window.train_start,
+            window.train_end,
+            window.test_start,
+            window.test_end,
+        )
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Evaluating window: {train_start} to {test_end}")

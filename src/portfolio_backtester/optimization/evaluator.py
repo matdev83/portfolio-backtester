@@ -7,20 +7,25 @@ backends and supports both single and multi-objective optimization.
 """
 
 import logging
-import copy
 import numpy as np
 import pandas as pd
 import os
 from typing import Any, Dict, List, Union, Optional
+try:
+    # Prefer optional import; used only when parallel path is enabled
+    from joblib import Parallel, delayed  # type: ignore
+except Exception:  # pragma: no cover - joblib may not be available in some envs
+    Parallel = None  # type: ignore[assignment]
+    delayed = None  # type: ignore[assignment]
 
 from .results import EvaluationResult, OptimizationData
 from ..backtesting.results import WindowResult
 from ..backtesting.strategy_backtester import StrategyBacktester
 from ..parallel_wfo import ParallelWFOProcessor, create_parallel_wfo_processor
+from ..optimization.wfo_window import WFOWindow
 
 # WFO enhancement imports
 from ..backtesting.window_evaluator import WindowEvaluator
-from .wfo_window import WFOWindow
 
 # Performance optimizer imports - hard dependency for Alpha
 from .performance_optimizer import (
@@ -131,44 +136,6 @@ class BacktestEvaluator:
                 f"multi_objective={self.is_multi_objective}, length_weighted={self.aggregate_length_weighted}"
             )
 
-    def _determine_evaluation_frequency(self, scenario_config: Dict[str, Any]) -> str:
-        """Determine required evaluation frequency based on strategy configuration.
-
-        Args:
-            scenario_config: Scenario configuration dictionary
-
-        Returns:
-            Evaluation frequency ('D', 'W', or 'M')
-        """
-        strategy_class = scenario_config.get("strategy_class", "")
-        strategy_name = scenario_config.get("strategy", "")
-        timing_config = scenario_config.get("timing_config", {})
-
-        # Intramonth or seasonal signal strategies need daily evaluation
-        lowered_class = strategy_class.lower()
-        lowered_name = strategy_name.lower()
-        if (
-            "intramonth" in lowered_class
-            or "intramonth" in lowered_name
-            or "seasonalsignal" in lowered_class
-            or "seasonalsignal" in lowered_name
-        ):
-            return "D"
-
-        # Signal-based timing with daily scanning
-        if timing_config.get("mode") == "signal_based":
-            scan_freq = timing_config.get("scan_frequency", "D")
-            if scan_freq.upper() == "D":
-                return "D"
-
-        # Check rebalance frequency
-        rebalance_freq = scenario_config.get("rebalance_frequency", "M")
-        if rebalance_freq == "D":
-            return "D"
-
-        # Default to monthly for backward compatibility
-        return "M"
-
     def _get_universe_tickers(self, strategy: Any) -> List[str]:
         """Get universe tickers from strategy or use default.
 
@@ -197,145 +164,30 @@ class BacktestEvaluator:
         backtester: "StrategyBacktester",
     ) -> EvaluationResult:
         """
-        Evaluate a given set of parameters.
+        Evaluate a given set of parameters by running a backtest.
+        This is the single, unified evaluation path.
         """
-        # Data is now prepared in the OptimizationOrchestrator, so we can use it directly.
-
-        # Determine evaluation frequency for this scenario
-        self.evaluation_frequency = self._determine_evaluation_frequency(scenario_config)
-
-        # Use enhanced daily evaluation if needed
-        if self.evaluation_frequency == "D" and hasattr(data, "daily") and data.daily is not None:
-            return self._evaluate_parameters_daily(parameters, scenario_config, data, backtester)
-        else:
-            # Use existing monthly evaluation for backward compatibility
-            return self._evaluate_parameters_monthly(parameters, scenario_config, data, backtester)
-
-    def _evaluate_parameters_monthly(
-        self,
-        parameters: Dict[str, Any],
-        scenario_config: Dict[str, Any],
-        data: OptimizationData,
-        backtester: StrategyBacktester,
-    ) -> EvaluationResult:
-        """Evaluate parameters with existing monthly evaluation (backward compatibility).
-
-        Args:
-            parameters: Dictionary of parameter values to evaluate
-            scenario_config: Base scenario configuration
-            data: OptimizationData containing price data and windows
-            backtester: StrategyBacktester instance for evaluation
-
-        Returns:
-            EvaluationResult: Aggregated evaluation results across all windows
-        """
-        # Optimize data memory usage if enabled
-        if self.enable_memory_optimization:
-            data = self._optimize_data_memory(data)
-
-        # Create scenario config with the parameters to evaluate
-        trial_scenario_config = copy.deepcopy(scenario_config)
-        if "strategy_params" not in trial_scenario_config:
-            trial_scenario_config["strategy_params"] = {}
-
-        # Add strategy prefix to parameters if needed
-        strategy_name = trial_scenario_config.get("strategy", "")
-        prefixed_parameters = {}
-        for param_name, param_value in parameters.items():
-            # Check if parameter already has a prefix
-            if "." in param_name:
-                prefixed_parameters[param_name] = param_value
-            else:
-                # Add strategy prefix
-                prefixed_param_name = f"{strategy_name}.{param_name}"
-                prefixed_parameters[prefixed_param_name] = param_value
-
-        trial_scenario_config["strategy_params"].update(prefixed_parameters)
-
-        # Evaluate each window
-        # Use integrated parallel WFO processing (handles both parallel and sequential internally)
-        window_results = self._evaluate_windows_parallel(
-            data.windows, trial_scenario_config, data, backtester
-        )
-
-        # Extract objective values and window lengths
-        objective_values: List[Union[float, List[float]]] = []
-        window_lengths = []
-        for window_result in window_results:
-            # Extract objective value(s) from window metrics
-            if self.is_multi_objective:
-                obj_values = []
-                for metric_name in self.metrics_to_optimize:
-                    metric_value = _lookup_metric(window_result.metrics, metric_name)
-                    if pd.isna(metric_value):
-                        metric_value = -1e9
-                    obj_values.append(float(metric_value))
-                objective_values.append(obj_values)
-            else:
-                metric_name = self.metrics_to_optimize[0]
-                metric_value = _lookup_metric(window_result.metrics, metric_name)
-                if pd.isna(metric_value):
-                    metric_value = -1e9
-                objective_values.append(float(metric_value))
-            window_lengths.append(len(window_result.window_returns))
-
-        # Aggregate results across windows
-        aggregated_objective = self._aggregate_objective_values(objective_values, window_lengths)
-
-        # Aggregate metrics across windows
-        aggregated_metrics = self._aggregate_metrics(window_results, window_lengths)
+        # If not a WFO, create a single window for the entire period
+        if not scenario_config.get("is_wfo", True):
+            single_window = WFOWindow(
+                train_start=pd.to_datetime(scenario_config["start_date"]),
+                train_end=pd.to_datetime(scenario_config["end_date"]),
+                test_start=pd.to_datetime(scenario_config["start_date"]),
+                test_end=pd.to_datetime(scenario_config["end_date"]),
+            )
+            data.windows = [single_window]
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Aggregated objective: {aggregated_objective}")
-
-        return EvaluationResult(
-            objective_value=aggregated_objective,
-            metrics=aggregated_metrics,
-            window_results=window_results,
-        )
-
-    def _evaluate_parameters_daily(
-        self,
-        parameters: Dict[str, Any],
-        scenario_config: Dict[str, Any],
-        data: OptimizationData,
-        backtester: StrategyBacktester,
-    ) -> EvaluationResult:
-        """Evaluate parameters with daily strategy evaluation.
-
-        Args:
-            parameters: Dictionary of parameter values to evaluate
-            scenario_config: Base scenario configuration
-            data: OptimizationData containing price data and windows
-            backtester: StrategyBacktester instance for evaluation
-
-        Returns:
-            EvaluationResult: Aggregated evaluation results across all windows
-        """
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Using daily evaluation for parameters: {parameters}")
+            logger.debug(f"Evaluating parameters: {parameters}")
 
         # Initialize window evaluator if needed, now with backtester instance
         if self.window_evaluator is None:
             self.window_evaluator = WindowEvaluator(backtester=backtester)
 
-        # Convert existing windows to enhanced WFOWindow objects
-        enhanced_windows = []
-        for window in data.windows:
-            enhanced_windows.append(
-                WFOWindow(
-                    train_start=window[0],
-                    train_end=window[1],
-                    test_start=window[2],
-                    test_end=window[3],
-                    evaluation_frequency=self.evaluation_frequency or "M",
-                    strategy_name=scenario_config.get("name", "unknown"),
-                )
-            )
+        enhanced_windows = data.windows
+        window_results: List[WindowResult] = []
 
-        # Evaluate each window with daily evaluation
-        window_results = []
-        # Derive universe tickers from daily data if available, else fallback to strategy/meta detection
+        # Derive universe tickers from daily data if available
         if data.daily is not None and not data.daily.empty:
             if isinstance(data.daily.columns, pd.MultiIndex):
                 derived_universe = data.daily.columns.get_level_values(0).unique().tolist()
@@ -344,36 +196,61 @@ class BacktestEvaluator:
         else:
             derived_universe = []
 
-        for idx, enhanced_window in enumerate(enhanced_windows, start=1):
-            logger.info(
-                "[Trial Progress] Window %d/%d %s–%s evaluation started",
-                idx,
-                len(enhanced_windows),
-                enhanced_window.test_start.date(),
-                enhanced_window.test_end.date(),
-            )
+        def _eval_single_window(win: WFOWindow) -> WindowResult:
+            """Worker-safe single window evaluation."""
             try:
-                # Create strategy instance with parameters
                 strategy = backtester._get_strategy(
                     scenario_config["strategy"], parameters, scenario_config
                 )
-
-                # Get universe tickers (prefer derived list)
-                universe_tickers = derived_universe or self._get_universe_tickers(strategy)
-                benchmark_ticker = universe_tickers[0] if universe_tickers else "SPY"
-
-                # Evaluate window with daily evaluation
-                result = self.window_evaluator.evaluate_window(
-                    window=enhanced_window,
+                universe_tickers_local = derived_universe or self._get_universe_tickers(strategy)
+                benchmark_ticker_local = (
+                    universe_tickers_local[0] if universe_tickers_local else "SPY"
+                )
+                return self.window_evaluator.evaluate_window(
+                    window=win,
                     strategy=strategy,
                     daily_data=data.daily,
                     full_monthly_data=data.monthly,
                     full_rets_daily=data.returns,
-                    benchmark_data=data.daily,  # Assuming benchmark is in daily data
-                    universe_tickers=universe_tickers,
-                    benchmark_ticker=benchmark_ticker,
+                    benchmark_data=data.daily,
+                    universe_tickers=universe_tickers_local,
+                    benchmark_ticker=benchmark_ticker_local,
+                )
+            except Exception:
+                return WindowResult(
+                    window_returns=pd.Series(dtype=float),
+                    metrics={metric: -1e9 for metric in self.metrics_to_optimize},
+                    train_start=win.train_start,
+                    train_end=win.train_end,
+                    test_start=win.test_start,
+                    test_end=win.test_end,
+                    trades=[],
+                    final_weights={},
                 )
 
+        # Parallelize across windows when enabled and beneficial
+        can_parallelize = (
+            self.enable_parallel_optimization
+            and Parallel is not None
+            and self.n_jobs > 1
+            and len(enhanced_windows) >= 2
+        )
+
+        if can_parallelize:
+            workers = min(self.n_jobs, 4)  # cap to avoid oversubscription
+            window_results = Parallel(n_jobs=workers, prefer="processes")(
+                delayed(_eval_single_window)(win) for win in enhanced_windows
+            )
+        else:
+            for idx, enhanced_window in enumerate(enhanced_windows, start=1):
+                logger.info(
+                    "[Trial Progress] Window %d/%d %s–%s evaluation started",
+                    idx,
+                    len(enhanced_windows),
+                    enhanced_window.test_start.date(),
+                    enhanced_window.test_end.date(),
+                )
+                result = _eval_single_window(enhanced_window)
                 logger.info(
                     "[Trial Progress] Window %d/%d finished: Sharpe=%s",
                     idx,
@@ -381,23 +258,6 @@ class BacktestEvaluator:
                     _lookup_metric(result.metrics, "Sharpe", float("nan")),
                 )
                 window_results.append(result)
-
-            except Exception as e:
-                logger.error(
-                    f"Error evaluating window {enhanced_window.test_start.date()} to {enhanced_window.test_end.date()}: {e}"
-                )
-                # Create empty result for failed window
-                empty_result = WindowResult(
-                    window_returns=pd.Series(dtype=float),
-                    metrics={metric: -1e9 for metric in self.metrics_to_optimize},
-                    train_start=enhanced_window.train_start,
-                    train_end=enhanced_window.train_end,
-                    test_start=enhanced_window.test_start,
-                    test_end=enhanced_window.test_end,
-                    trades=[],
-                    final_weights={},
-                )
-                window_results.append(empty_result)
 
         # Aggregate results
         return self._aggregate_window_results(window_results, parameters)
@@ -593,7 +453,8 @@ class BacktestEvaluator:
         # Collect all metric names
         all_metric_names: set[str] = set()
         for window_result in window_results:
-            all_metric_names.update(window_result.metrics.keys())
+            if isinstance(window_result, WindowResult):
+                all_metric_names.update(window_result.metrics.keys())
 
         aggregated_metrics = {}
 
@@ -601,11 +462,12 @@ class BacktestEvaluator:
             # Extract metric values from all windows
             metric_values = []
             for window_result in window_results:
-                value = _lookup_metric(window_result.metrics, metric_name, np.nan)
-                # Replace NaN with a large negative value for aggregation
-                if pd.isna(value) or value is None:
-                    value = -1e9
-                metric_values.append(float(value))
+                if isinstance(window_result, WindowResult):
+                    value = _lookup_metric(window_result.metrics, metric_name, np.nan)
+                    # Replace NaN with a large negative value for aggregation
+                    if pd.isna(value) or value is None:
+                        value = -1e9
+                    metric_values.append(float(value))
 
             # Aggregate the metric
             if self.aggregate_length_weighted and len(window_lengths) == len(metric_values):
@@ -641,106 +503,3 @@ class BacktestEvaluator:
         except Exception as e:
             logger.warning(f"Memory optimization failed: {e}")
             return data
-
-    def _evaluate_windows_parallel(
-        self,
-        windows: List[Any],
-        scenario_config: Dict[str, Any],
-        data: OptimizationData,
-        backtester: StrategyBacktester,
-    ) -> List[WindowResult]:
-        """Evaluate windows in parallel using the refactored ParallelWFOProcessor."""
-
-        def evaluate_window_func(window_config, config, shared_data):
-            """Worker function for parallel window evaluation."""
-            try:
-                # Extract the actual window from the config dictionary
-                window = window_config["window"]
-                window_result = backtester.evaluate_window(
-                    config,
-                    window,
-                    shared_data["monthly"],
-                    shared_data["daily"],
-                    shared_data["returns"],
-                )
-                if window_result is None:
-                    # Create empty window result for failed evaluation
-                    if len(window) >= 4:
-                        train_start, train_end, test_start, test_end = window[:4]
-                    else:
-                        train_start = train_end = test_start = test_end = pd.Timestamp.now()
-                    window_result = WindowResult(
-                        window_returns=pd.Series(dtype=float),
-                        metrics={metric: -1e9 for metric in self.metrics_to_optimize},
-                        train_start=train_start,
-                        train_end=train_end,
-                        test_start=test_start,
-                        test_end=test_end,
-                    )
-                return window_result, pd.Series(dtype=float)  # Return expected tuple format
-            except Exception as e:
-                logger.warning(f"Failed to evaluate window {window}: {e}")
-                # Create empty window result for failed evaluation
-                if len(window) >= 4:
-                    train_start, train_end, test_start, test_end = window[:4]
-                else:
-                    train_start = train_end = test_start = test_end = pd.Timestamp.now()
-                empty_window = WindowResult(
-                    window_returns=pd.Series(dtype=float),
-                    metrics={metric: -1e9 for metric in self.metrics_to_optimize},
-                    train_start=train_start,
-                    train_end=train_end,
-                    test_start=test_start,
-                    test_end=test_end,
-                )
-                return empty_window, pd.Series(dtype=float)
-
-        # Prepare shared data for parallel processing
-        shared_data = {"monthly": data.monthly, "daily": data.daily, "returns": data.returns}
-
-        # Convert windows to the format expected by ParallelWFOProcessor
-        window_configs = [{"window": window} for window in windows]
-
-        # Use the refactored ParallelWFOProcessor for window-level parallelization
-        if self.wfo_parallel_processor is not None:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    f"Evaluating {len(windows)} windows in parallel using ParallelWFOProcessor"
-                )
-
-            parallel_results = self.wfo_parallel_processor.process_windows_parallel(
-                windows=window_configs,
-                evaluate_window_func=evaluate_window_func,
-                scenario_config=scenario_config,
-                shared_data=shared_data,
-            )
-
-            # Extract just the WindowResult objects (first element of each tuple)
-            window_results = [result[0] for result in parallel_results]
-        else:
-            # Fallback to sequential processing
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    f"Evaluating {len(windows)} windows sequentially (parallel processing disabled)"
-                )
-
-            window_results = []
-            for idx, window_config in enumerate(window_configs, start=1):
-                win = window_config["window"]
-                logger.info(
-                    "[Trial Progress] Window %d/%d %s–%s evaluation started",
-                    idx,
-                    len(window_configs),
-                    win[2].date() if len(win) >= 3 else "?",
-                    win[3].date() if len(win) >= 4 else "?",
-                )
-                result, _ = evaluate_window_func(window_config, scenario_config, shared_data)
-                logger.info(
-                    "[Trial Progress] Window %d/%d finished: Sharpe=%s",
-                    idx,
-                    len(window_configs),
-                    _lookup_metric(result.metrics, "Sharpe", float("nan")),
-                )
-                window_results.append(result)
-
-        return window_results

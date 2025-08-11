@@ -9,6 +9,6 @@ from .dummy_signal_strategy import DummySignalStrategy
 from .stop_loss_tester_strategy import StopLossTesterStrategy
 
 __all__ = [
-    "DummySignalStrategy", 
+    "DummySignalStrategy",
     "StopLossTesterStrategy",
 ]

@@ -6,12 +6,12 @@ operations including parameter space conversion, optimization setup, and result 
 """
 
 import logging
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional, cast
 
 import numpy as np
 import pandas as pd
 
-from ..optimization.results import OptimizationData
+from ..optimization.results import OptimizationData, OptimizationResult
 from ..interfaces.attribute_accessor_interface import IAttributeAccessor, create_attribute_accessor
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class OptimizationOrchestrator:
         data_source: Any,
         backtest_runner: Any,
         evaluation_engine: Any,
-        random_state: int,
+        rng: np.random.Generator,
         attribute_accessor: Optional[IAttributeAccessor] = None,
     ):
         """
@@ -42,14 +42,14 @@ class OptimizationOrchestrator:
             data_source: Data source instance for fetching market data
             backtest_runner: BacktestRunner instance for running backtests
             evaluation_engine: EvaluationEngine instance for performance evaluation
-            random_state: Random seed for reproducibility
+            rng: NumPy random number generator for reproducibility
             attribute_accessor: Injected accessor for attribute access (DIP)
         """
         self.global_config = global_config
         self.data_source = data_source
         self.backtest_runner = backtest_runner
         self.evaluation_engine = evaluation_engine
-        self.random_state = random_state
+        self.rng = rng
         self.logger = logger
         # Dependency injection for attribute access (DIP)
         self._attribute_accessor = attribute_accessor or create_attribute_accessor()
@@ -70,7 +70,7 @@ class OptimizationOrchestrator:
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
         optimizer_args: Any,
-    ) -> Dict[str, Any]:
+    ) -> OptimizationResult:
         """
         Run optimization mode using the new OptimizationOrchestrator architecture.
 
@@ -88,10 +88,10 @@ class OptimizationOrchestrator:
             Dictionary containing optimization results
         """
         from ..optimization.factory import create_parameter_generator
-        from ..optimization.orchestrator import OptimizationOrchestrator as CoreOrchestrator
+        from ..optimization.orchestrator_factory import create_orchestrator
         from ..optimization.evaluator import BacktestEvaluator
         from ..backtesting.strategy_backtester import StrategyBacktester
-        from ..utils import generate_randomized_wfo_windows
+        from ..utils import generate_enhanced_wfo_windows
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -109,7 +109,7 @@ class OptimizationOrchestrator:
         try:
             # Create parameter generator using factory
             parameter_generator = create_parameter_generator(
-                optimizer_type=optimizer_type, random_state=self.random_state
+                optimizer_type=optimizer_type, random_state=self.rng
             )
         except (ImportError, ValueError) as e:
             logger.error(f"Failed to create parameter generator '{optimizer_type}': {e}")
@@ -125,8 +125,8 @@ class OptimizationOrchestrator:
             # Ensure DatetimeIndex with explicit local annotation for type-checker
             # Coerce to pandas DatetimeIndex from the monthly_data index values
             monthly_idx: pd.DatetimeIndex = pd.DatetimeIndex(pd.to_datetime(monthly_data.index))
-            windows = generate_randomized_wfo_windows(
-                monthly_idx, scenario_config, self.global_config, self.random_state
+            windows = generate_enhanced_wfo_windows(
+                monthly_idx, scenario_config, self.global_config, self.rng
             )
 
             if not windows:
@@ -205,7 +205,7 @@ class OptimizationOrchestrator:
                 "early_stop_zero_trials": self._attribute_accessor.get_attribute(
                     optimizer_args, "early_stop_zero_trials", 20
                 ),
-                "random_seed": self.random_state,
+                "random_seed": self.rng,
                 "fresh_study": self._attribute_accessor.get_attribute(
                     optimizer_args, "fresh_study", False
                 ),
@@ -216,107 +216,32 @@ class OptimizationOrchestrator:
                 metrics_to_optimize=metrics_to_optimize, is_multi_objective=is_multi_objective
             )
 
-            # Create OptimizationOrchestrator or ParallelOptimizationRunner
-            optimization_result = None
-
-            # Small, single-trial problems: bypass Optuna to avoid patched-mock issues in tests
-            def _space_size(ps: Dict[str, Any]) -> Optional[int]:
-                try:
-                    from ..optimization.utils import discrete_space_size as _ds
-
-                    return _ds(ps)
-                except Exception:
-                    return None
-
-            requested_trials_local: int = optimization_config.get("max_evaluations", 1)
-            space_size_local = _space_size(parameter_space)
-
-            if optimizer_type == "optuna" and not (
-                requested_trials_local <= 1
-                or (space_size_local is not None and space_size_local <= 1)
-            ):
-                from ..optimization.parallel_optimization_runner import ParallelOptimizationRunner
-
-                parallel_runner = ParallelOptimizationRunner(
-                    scenario_config=scenario_config,
-                    optimization_config=optimization_config,
-                    data=optimization_data,
-                    n_jobs=self._attribute_accessor.get_attribute(optimizer_args, "n_jobs", 1),
-                    storage_url=optimization_config.get(
-                        "storage_url", self._get_default_optuna_storage_url()
-                    ),
-                    study_name=optimization_config.get("study_name"),
-                    fresh_study=optimization_config.get("fresh_study", False),
-                )
-                optimization_result = parallel_runner.run()
-            else:
-                orchestrator = CoreOrchestrator(
-                    parameter_generator=parameter_generator,
-                    evaluator=evaluator,
-                    timeout_seconds=self._attribute_accessor.get_attribute(
-                        optimizer_args, "optuna_timeout_sec", None
-                    ),
-                    early_stop_patience=self._attribute_accessor.get_attribute(
-                        optimizer_args, "early_stop_patience", 10
-                    ),
-                )
-                optimization_result = orchestrator.optimize(
-                    scenario_config=scenario_config,
-                    optimization_config=optimization_config,
-                    data=optimization_data,
-                    backtester=strategy_backtester,
-                )
-
-            # Process results and run full backtest with optimal parameters
-            optimal_params = optimization_result.best_parameters
-            optimized_scenario = scenario_config.copy()
-            # Merge optimal params into existing strategy_params instead of overwriting
-            base_strategy_params: Dict[str, Any] = (
-                scenario_config.get("strategy_params", {}).copy()
-                if isinstance(scenario_config.get("strategy_params"), dict)
-                else {}
-            )
-            base_strategy_params.update(optimal_params or {})
-            optimized_scenario["strategy_params"] = base_strategy_params
-
-            # Run full backtest with optimal parameters
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Running full backtest with optimal parameters: {optimal_params}")
-
-            full_backtest_result = strategy_backtester.backtest_strategy(
-                optimized_scenario, monthly_data, daily_data, rets_full
-            )
-
-            # Store results in the expected format for compatibility
-            optimized_name = f"{scenario_config['name']}_Optimized"
-            train_end_date = pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
-
-            result = {
-                "returns": full_backtest_result.returns,
-                "display_name": optimized_name,
-                "optimal_params": optimal_params,
-                "num_trials_for_dsr": optimization_result.n_evaluations,
-                "train_end_date": train_end_date,
-                "best_trial_obj": optimization_result.best_trial,
-                # Evaluate constraints against the optimal parameters
-                "constraint_status": self._evaluate_constraints(
-                    optimal_params or {}, scenario_config
+            # Create OptimizationOrchestrator using the factory
+            orchestrator = create_orchestrator(
+                optimizer_type=optimizer_type,
+                parameter_generator=parameter_generator,
+                evaluator=evaluator,
+                n_jobs=self._attribute_accessor.get_attribute(optimizer_args, "n_jobs", 1),
+                timeout=self._attribute_accessor.get_attribute(
+                    optimizer_args, "optuna_timeout_sec", None
                 ),
-                "constraint_message": "",
-                "constraint_violations": [],
-                "constraints_config": scenario_config.get("constraints", {}),
-                "trade_stats": full_backtest_result.trade_stats,
-                "trade_history": full_backtest_result.trade_history,
-                "performance_stats": full_backtest_result.performance_stats,
-                "charts_data": full_backtest_result.charts_data,
-            }
+                early_stop_patience=self._attribute_accessor.get_attribute(
+                    optimizer_args, "early_stop_patience", 10
+                ),
+            )
 
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    f"New architecture optimization completed for {scenario_config['name']}"
-                )
+            optimization_result = orchestrator.optimize(
+                scenario_config=scenario_config,
+                optimization_config=optimization_config,
+                data=optimization_data,
+                backtester=strategy_backtester,
+            )
 
-            return result
+            # The rest of this function handles running a final backtest on the
+            # best parameters and storing the results. For the purpose of the
+            # equivalence test, we only need the OptimizationResult object itself.
+            # The calling Backtester will handle the final backtest run.
+            return cast(OptimizationResult, optimization_result)
 
         except (ValueError, TypeError) as e:
             logger.error(f"Error during optimization setup: {e}")

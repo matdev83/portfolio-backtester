@@ -15,6 +15,7 @@ def run_backtest_mode(self, scenario_config, monthly_data, daily_data, rets_full
             import optuna
 
             from ..constants import DEFAULT_OPTUNA_STORAGE_URL
+
             study = optuna.load_study(
                 study_name=self.args.study_name, storage=DEFAULT_OPTUNA_STORAGE_URL
             )

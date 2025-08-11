@@ -11,6 +11,7 @@ import logging
 from unittest.mock import Mock
 from typing import Any, Dict, List, Optional, Union
 import warnings
+import numpy as np
 
 from ...interfaces.attribute_accessor_interface import IAttributeAccessor, create_attribute_accessor
 
@@ -65,7 +66,7 @@ class OptunaParameterGenerator(ParameterGenerator):
 
     def __init__(
         self,
-        random_state: Optional[int] = None,
+        random_state: Optional[np.random.Generator] = None,
         study_name: Optional[str] = None,
         storage_url: Optional[str] = None,
         enable_pruning: bool = True,
@@ -225,12 +226,25 @@ class OptunaParameterGenerator(ParameterGenerator):
             scenario_name = scenario_config.get("name", "optimization")
             base_name = f"{scenario_name}_optuna"
             if self.random_state is not None:
-                base_name += f"_seed_{self.random_state}"
+                # Extract integer seed if a Generator is passed
+                seed_val = (
+                    self.random_state.integers(np.iinfo(np.int32).max)
+                    if isinstance(self.random_state, np.random.Generator)
+                    else self.random_state
+                )
+                base_name += f"_seed_{seed_val}"
             # Use unique name generation to avoid conflicts
             self.study_name = StudyNameGenerator.generate_unique_name(base_name)
 
         # Configure sampler
-        sampler_kwargs = {"seed": self.random_state, **self.sampler_config}
+        seed: Optional[int] = None
+        if isinstance(self.random_state, np.random.Generator):
+            seed = int(self.random_state.integers(np.iinfo(np.int32).max))
+        elif isinstance(self.random_state, int):
+            seed = self.random_state
+
+        sampler_kwargs: Dict[str, Any] = {"seed": seed}
+        sampler_kwargs.update(self.sampler_config)
         sampler = TPESampler(**sampler_kwargs)
 
         # Configure pruner
@@ -326,7 +340,12 @@ class OptunaParameterGenerator(ParameterGenerator):
                         from optuna.samplers import RandomSampler
 
                         if self.study is not None:
-                            self.study.sampler = RandomSampler(seed=self.random_state)
+                            local_seed: Optional[int] = None
+                            if isinstance(self.random_state, np.random.Generator):
+                                local_seed = int(self.random_state.integers(np.iinfo(np.int32).max))
+                            elif isinstance(self.random_state, int):
+                                local_seed = self.random_state
+                            self.study.sampler = RandomSampler(seed=local_seed)
                     except Exception:
                         pass
                     self._fast_sampler_enabled = True
@@ -734,7 +753,7 @@ class OptunaParameterGenerator(ParameterGenerator):
             )
             return None
 
-    def set_random_state(self, random_state: Optional[int]) -> None:
+    def set_random_state(self, random_state: Optional[np.random.Generator]) -> None:
         """Set the random state for reproducible results.
 
         Args:

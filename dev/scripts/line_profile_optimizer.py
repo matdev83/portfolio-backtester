@@ -1,5 +1,4 @@
 import cProfile
-import pstats
 import sys
 import tempfile
 import time
@@ -14,10 +13,12 @@ else:
     # Fallback for different execution contexts
     sys.path.insert(0, str(project_root))
 
-from line_profiler import LineProfiler
+from line_profiler import LineProfiler  # noqa: E402
 
-from portfolio_backtester.backtester import main as backtester_main
-from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
+from portfolio_backtester.backtester import main as backtester_main  # noqa: E402
+from portfolio_backtester.backtesting.strategy_backtester import (  # noqa: E402
+    StrategyBacktester,
+)
 
 
 def profile_optimizer():
@@ -38,10 +39,14 @@ def profile_optimizer():
     )
     sys.argv = [
         "backtester",
+        "--mode",
         "optimize",
+        "--scenario-filename",
         str(scenario_path),
         "--optuna-trials",
-        "5", # A few trials to get a good sample
+        "5",  # A few trials to get a good sample
+        "--n-jobs",
+        "-1",
     ]
 
     # Set up profilers

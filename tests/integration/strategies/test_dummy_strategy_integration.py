@@ -3,7 +3,7 @@ import pandas as pd
 from unittest.mock import Mock
 import pytest
 
-from portfolio_backtester.backtester_logic.backtester_facade import BacktesterFacade as Backtester
+from portfolio_backtester.core import Backtester
 
 
 @pytest.mark.integration

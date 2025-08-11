@@ -51,9 +51,11 @@ class TestStrategyConfigCrossValidator(unittest.TestCase):
         strategy_file.parent.mkdir(parents=True, exist_ok=True)
         strategy_file.touch()
 
-    @patch('portfolio_backtester.strategies.registry.get_strategy_registry')
-    @patch('portfolio_backtester.strategy_config_validator.validate_strategy_configs')
-    def test_validate_cross_references_with_valid_strategies(self, mock_validate_configs, mock_get_registry):
+    @patch("portfolio_backtester.strategies.registry.get_strategy_registry")
+    @patch("portfolio_backtester.strategy_config_validator.validate_strategy_configs")
+    def test_validate_cross_references_with_valid_strategies(
+        self, mock_validate_configs, mock_get_registry
+    ):
         """Test cross-reference validation with all valid strategies."""
         # Mock basic validator success
         mock_validate_configs.return_value = (True, [])
@@ -88,8 +90,8 @@ class TestStrategyConfigCrossValidator(unittest.TestCase):
         self.assertTrue(is_valid)
         self.assertEqual(errors, [])
 
-    @patch('portfolio_backtester.strategies.registry.get_strategy_registry')
-    @patch('portfolio_backtester.strategy_config_validator.validate_strategy_configs')
+    @patch("portfolio_backtester.strategies.registry.get_strategy_registry")
+    @patch("portfolio_backtester.strategy_config_validator.validate_strategy_configs")
     def test_detect_stale_config_folders(self, mock_validate_configs, mock_get_registry):
         """Test detection of stale config folders."""
         # Mock basic validator success
@@ -121,9 +123,11 @@ class TestStrategyConfigCrossValidator(unittest.TestCase):
         self.assertTrue(any("Stale config folder detected" in error for error in errors))
         self.assertTrue(any("nonexistent_strategy" in error for error in errors))
 
-    @patch('portfolio_backtester.strategies.registry.get_strategy_registry')
-    @patch('portfolio_backtester.strategy_config_validator.validate_strategy_configs')
-    def test_detect_invalid_strategy_references_in_config(self, mock_validate_configs, mock_get_registry):
+    @patch("portfolio_backtester.strategies.registry.get_strategy_registry")
+    @patch("portfolio_backtester.strategy_config_validator.validate_strategy_configs")
+    def test_detect_invalid_strategy_references_in_config(
+        self, mock_validate_configs, mock_get_registry
+    ):
         """Test detection of invalid strategy references in YAML configs."""
         # Mock basic validator success
         mock_validate_configs.return_value = (True, [])
@@ -158,9 +162,11 @@ class TestStrategyConfigCrossValidator(unittest.TestCase):
         self.assertTrue(any("Invalid strategy reference" in error for error in errors))
         self.assertTrue(any("invalid_strategy_name" in error for error in errors))
 
-    @patch('portfolio_backtester.strategies.registry.get_strategy_registry')
-    @patch('portfolio_backtester.strategy_config_validator.validate_strategy_configs')
-    def test_detect_invalid_meta_strategy_allocations(self, mock_validate_configs, mock_get_registry):
+    @patch("portfolio_backtester.strategies.registry.get_strategy_registry")
+    @patch("portfolio_backtester.strategy_config_validator.validate_strategy_configs")
+    def test_detect_invalid_meta_strategy_allocations(
+        self, mock_validate_configs, mock_get_registry
+    ):
         """Test detection of invalid strategy references in meta-strategy allocations."""
         # Mock basic validator success
         mock_validate_configs.return_value = (True, [])

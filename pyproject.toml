@@ -20,7 +20,6 @@ dependencies = [
     "pandas",
     "numpy",
     "scipy",
-    "pygad",
     "optuna",
     "matplotlib",
     "seaborn",
@@ -38,6 +37,7 @@ dependencies = [
     "openpyxl",
     "plotly",
     "kaleido",
+    "loguru",
     "parameterized",
     "ta",
     "edgar",
@@ -141,7 +141,6 @@ check_untyped_defs = true
 # Ignore third-party libraries that don't have type stubs
 [[tool.mypy.overrides]]
 module = [
-    "pygad.*",
     "optuna.*",
     "yfinance.*",
     "pandas_datareader.*",
@@ -172,6 +171,7 @@ exclude = '''
     | \.mypy_cache
     | \.ruff_cache
     | \.venv
+    | \venv
     | build
     | dist
     | data
@@ -193,12 +193,7 @@ project-excludes = [
 search-path = ["src"]
 python-version = "3.10.0"
 ignore-missing-imports = [
-    "pygad.*",
     "optuna.*",
     "yfinance.*",
     "pandas_datareader.*",
-    "pandas_market_calendars.*",
-    "ta.*",
-    "numba.*",
-    "statsmodels.*",
 ]

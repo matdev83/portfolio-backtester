@@ -41,6 +41,7 @@ class OptunaObjectiveAdapter:
         self.data = data
         self.n_jobs = n_jobs
         self.parameter_space = parameter_space or {}
+        self._local: threading.local = threading.local()
 
     def __call__(self, trial: optuna.Trial) -> float:
         logger.info(f"--- Starting Trial {trial.number} ---")
@@ -55,11 +56,11 @@ class OptunaObjectiveAdapter:
             logger.info(f"Trial {trial.number} - Initializing thread-local storage.")
             self._local = threading.local()
             local = self._local
-        
+
         if not hasattr(local, "backtester"):
             logger.info(f"Trial {trial.number} - Creating new StrategyBacktester instance.")
             local.backtester = StrategyBacktester(global_config=GLOBAL_CONFIG, data_source=None)
-        
+
         if not hasattr(local, "evaluator"):
             logger.info(f"Trial {trial.number} - Creating new BacktestEvaluator instance.")
             # Extract metrics to optimize from either optimization_targets or optimization_metric
@@ -71,14 +72,13 @@ class OptunaObjectiveAdapter:
                 metrics_to_optimize = [self.scenario_config.get("optimization_metric", "Calmar")]
                 is_multi_objective = False
 
-            # Inside Optuna worker we already isolate trials; using parallel WFO windows can
-            # cause extra processes and hides progress logs.  Disable window-level parallel
-            # processing when n_jobs==1 so we remain in-process and can emit per-window logs.
+            # Inside Optuna worker, we only disable window-level parallelism when single-threaded
+            # to avoid nested parallel contention. If user requested n_jobs>1, allow it.
             local.evaluator = BacktestEvaluator(
                 metrics_to_optimize=metrics_to_optimize,
                 is_multi_objective=is_multi_objective,
                 n_jobs=self.n_jobs,
-                enable_parallel_optimization=False,
+                enable_parallel_optimization=(self.n_jobs and self.n_jobs > 1),
             )
         backtester = local.backtester
         evaluator = local.evaluator

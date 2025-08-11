@@ -12,7 +12,6 @@ from portfolio_backtester.optimization.parallel_optimization_runner import (
     ParallelOptimizationRunner,
 )
 from portfolio_backtester.optimization.results import OptimizationData
-from portfolio_backtester.strategies._core.registry import get_strategy_registry
 from tests.unit.optimization.dummy_strategy_for_context_test import DummyStrategyForContextTest
 
 
@@ -69,15 +68,20 @@ def mock_runner_dependencies():
     # Simulate a persistent database for studies
     fake_db = {}
 
-    with patch(
-        "portfolio_backtester.optimization.parallel_optimization_runner._optuna_worker"
-    ) as mock_worker, patch(
-        "portfolio_backtester.optimization.parallel_optimization_runner.get_strategy_registry"
-    ) as mock_get_registry, patch(
-        "portfolio_backtester.optimization.parallel_optimization_runner.os.path.exists"
-    ) as mock_exists, patch(
-        "portfolio_backtester.optimization.parallel_optimization_runner.os.remove"
-    ) as mock_remove:
+    with (
+        patch(
+            "portfolio_backtester.optimization.parallel_optimization_runner._optuna_worker"
+        ) as mock_worker,
+        patch(
+            "portfolio_backtester.optimization.parallel_optimization_runner.get_strategy_registry"
+        ) as mock_get_registry,
+        patch(
+            "portfolio_backtester.optimization.parallel_optimization_runner.os.path.exists"
+        ) as mock_exists,
+        patch(
+            "portfolio_backtester.optimization.parallel_optimization_runner.os.remove"
+        ) as mock_remove,
+    ):
 
         mock_registry = Mock()
         mock_registry.get_strategy_class.return_value = DummyStrategyForContextTest
@@ -114,11 +118,10 @@ def mock_runner_dependencies():
         mock_exists.side_effect = lambda path: "fixed_test_study" in fake_db
         mock_remove.side_effect = mock_remove_func
 
-        with patch(
-            "optuna.create_study", side_effect=mock_create_study_func
-        ) as mock_create_study, patch(
-            "optuna.load_study", side_effect=mock_load_study_func
-        ) as mock_load_study:
+        with (
+            patch("optuna.create_study", side_effect=mock_create_study_func) as mock_create_study,
+            patch("optuna.load_study", side_effect=mock_load_study_func) as mock_load_study,
+        ):
 
             yield {
                 "worker": mock_worker,
@@ -134,6 +137,7 @@ def _run_optimizer(workspace_data, fresh_study=False):
     """Helper function to run the optimization."""
     # Load scenario from the temporary file to detect changes
     import yaml
+
     with open(workspace_data["scenario_file"], "r") as f:
         scenario_config = yaml.safe_load(f)
 
@@ -179,10 +183,9 @@ def test_fresh_study_on_scenario_change(test_workspace, mock_runner_dependencies
     # Modify the scenario
     with open(test_workspace["scenario_file"], "r") as f:
         scenario = yaml.safe_load(f)
-    scenario["optimize"][0]["max_value"] = 0.9 # Change a value
+    scenario["optimize"][0]["max_value"] = 0.9  # Change a value
     with open(test_workspace["scenario_file"], "w") as f:
         yaml.dump(scenario, f)
-
 
     # Run again and check that the old study was removed
     _run_optimizer(test_workspace)

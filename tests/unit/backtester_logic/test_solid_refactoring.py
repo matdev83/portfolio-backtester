@@ -7,7 +7,7 @@ This module tests all the extracted classes from the SOLID refactoring:
 - EvaluationEngine: Performance evaluation
 - BacktestRunner: Core backtest execution
 - OptimizationOrchestrator: Optimization workflow
-- BacktesterFacade: Unified interface
+- Backtester: Unified interface
 """
 
 import argparse
@@ -24,7 +24,7 @@ from portfolio_backtester.backtester_logic.backtest_runner import BacktestRunner
 from portfolio_backtester.backtester_logic.optimization_orchestrator import (
     OptimizationOrchestrator,
 )
-from portfolio_backtester.backtester_logic.backtester_facade import BacktesterFacade
+from portfolio_backtester.backtester_logic.backtester_facade import Backtester
 from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 
 
@@ -287,26 +287,28 @@ class TestOptimizationOrchestrator:
         data_source = Mock()
         backtest_runner = Mock()
         evaluation_engine = Mock()
-        random_state = 42
+        rng = np.random.default_rng(42)
 
         orchestrator = OptimizationOrchestrator(
-            sample_global_config, data_source, backtest_runner, evaluation_engine, random_state
+            sample_global_config, data_source, backtest_runner, evaluation_engine, rng
         )
 
         assert orchestrator.global_config == sample_global_config
         assert orchestrator.data_source == data_source
         assert orchestrator.backtest_runner == backtest_runner
         assert orchestrator.evaluation_engine == evaluation_engine
-        assert orchestrator.random_state == random_state
+        assert hasattr(orchestrator, "rng")
+        assert orchestrator.rng == rng
 
     def test_convert_optimization_specs_legacy_format(self, sample_global_config):
         """Test conversion of legacy optimization specifications."""
         data_source = Mock()
         backtest_runner = Mock()
         evaluation_engine = Mock()
+        rng = np.random.default_rng(42)
 
         orchestrator = OptimizationOrchestrator(
-            sample_global_config, data_source, backtest_runner, evaluation_engine, 42
+            sample_global_config, data_source, backtest_runner, evaluation_engine, rng
         )
 
         scenario_config = {
@@ -332,9 +334,10 @@ class TestOptimizationOrchestrator:
         data_source = Mock()
         backtest_runner = Mock()
         evaluation_engine = Mock()
+        rng = np.random.default_rng(42)
 
         orchestrator = OptimizationOrchestrator(
-            sample_global_config, data_source, backtest_runner, evaluation_engine, 42
+            sample_global_config, data_source, backtest_runner, evaluation_engine, rng
         )
 
         # Valid configuration
@@ -356,11 +359,11 @@ class TestOptimizationOrchestrator:
         assert len(errors) > 0
 
 
-class TestBacktesterFacade:
-    """Test suite for BacktesterFacade class."""
+class TestBacktester:
+    """Test suite for Backtester class."""
 
     def test_initialization_preserves_api(self, sample_global_config):
-        """Test that BacktesterFacade preserves original Backtester API."""
+        """Test that Backtester preserves expected API."""
         scenarios = [
             {
                 "name": "test",
@@ -376,7 +379,7 @@ class TestBacktesterFacade:
             patch("portfolio_backtester.backtester_logic.backtester_facade.create_timeout_manager"),
         ):
 
-            facade = BacktesterFacade(sample_global_config, scenarios, args, random_state=42)
+            facade = Backtester(sample_global_config, scenarios, args, random_state=42)
 
             # Check that all original attributes are present
             assert hasattr(facade, "global_config")
@@ -393,7 +396,7 @@ class TestBacktesterFacade:
             assert hasattr(facade, "optimization_orchestrator")
 
     def test_facade_delegates_to_components(self, sample_global_config):
-        """Test that BacktesterFacade properly delegates to specialized components."""
+        """Test that Backtester properly delegates to specialized components."""
         scenarios = [
             {
                 "name": "test",
@@ -409,7 +412,7 @@ class TestBacktesterFacade:
             patch("portfolio_backtester.backtester_logic.backtester_facade.create_timeout_manager"),
         ):
 
-            facade = BacktesterFacade(sample_global_config, scenarios, args, random_state=42)
+            facade = Backtester(sample_global_config, scenarios, args, random_state=42)
 
             # Mock the backtest runner
             facade.backtest_runner.run_scenario = Mock(return_value=pd.Series([0.01, 0.02, 0.03]))
@@ -473,11 +476,11 @@ class TestSolidPrinciplesCompliance:
 
     def test_dependency_inversion_principle(self):
         """Test that high-level modules don't depend on low-level modules."""
-        # BacktesterFacade should depend on abstractions (injected dependencies)
+        # Backtester should depend on abstractions (injected dependencies)
         # Check constructor parameters - all dependencies should be injected
         import inspect
 
-        facade_signature = inspect.signature(BacktesterFacade.__init__)
+        facade_signature = inspect.signature(Backtester.__init__)
         params = list(facade_signature.parameters.keys())
 
         # Should accept dependencies as parameters, not create them internally

@@ -1,7 +1,7 @@
 """
-BacktesterFacade implementing the Facade pattern for the refactored Backtester.
+Backtester implementing the Facade pattern for modular backtesting components.
 
-This module implements the BacktesterFacade class that maintains the original API
+This module implements the Backtester class that provides a unified interface
 while internally delegating to specialized classes following SOLID principles.
 """
 
@@ -32,12 +32,12 @@ from ..interfaces import (
 logger = logging.getLogger(__name__)
 
 
-class BacktesterFacade:
+class Backtester:
     """
-    Facade for the refactored Backtester maintaining backward compatibility.
+    Unified interface for modular backtesting components.
 
-    This class provides the same interface as the original monolithic Backtester class
-    but internally delegates to specialized classes following SOLID principles.
+    This class provides a clean interface to the backtesting system
+    while internally delegating to specialized classes following SOLID principles.
     """
 
     def __init__(
@@ -48,7 +48,7 @@ class BacktesterFacade:
         random_state: Optional[int] = None,
     ) -> None:
         """
-        Initialize BacktesterFacade with the same interface as original Backtester.
+        Initialize Backtester with configuration and scenarios.
 
         Args:
             global_config: Global configuration dictionary
@@ -64,7 +64,7 @@ class BacktesterFacade:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"BacktesterFacade initialized with scenario strategy_params: {self.scenarios[0].get('strategy_params')}"
+                f"Backtester initialized with scenario strategy_params: {self.scenarios[0].get('strategy_params')}"
             )
 
         populate_default_optimizations(self.scenarios, OPTIMIZER_PARAMETER_DEFAULTS)
@@ -82,6 +82,9 @@ class BacktesterFacade:
                 logger.debug(f"No random seed provided. Using generated seed: {self.random_state}.")
         else:
             self.random_state = random_state
+
+        # Create a dedicated RNG for reproducibility
+        self.rng = np.random.default_rng(self.random_state)
 
         np.random.seed(self.random_state)
         if logger.isEnabledFor(logging.DEBUG):
@@ -119,7 +122,7 @@ class BacktesterFacade:
             data_source=self.data_source,
             backtest_runner=self.backtest_runner,
             evaluation_engine=self.evaluation_engine,
-            random_state=self.random_state,
+            rng=self.rng,
         )
 
         # Initialize data storage (maintaining original interface)
@@ -149,7 +152,7 @@ class BacktesterFacade:
             self._initialize_monte_carlo_components()
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("BacktesterFacade initialized with all specialized components")
+            logger.debug("Backtester initialized with all specialized components")
 
     @property
     def has_timed_out(self):
@@ -348,14 +351,39 @@ class BacktesterFacade:
         rets_full: pd.DataFrame,
     ) -> None:
         """Run optimization mode - delegates to OptimizationOrchestrator."""
-        result = self.optimization_orchestrator.run_optimization(
+        optimization_result = self.optimization_orchestrator.run_optimization(
             scenario_config, monthly_data, daily_data, rets_full, self.args
         )
+
+        # Run a final backtest using the best parameters found
+        optimal_params = optimization_result.best_parameters
+        optimized_scenario = scenario_config.copy()
+        base_strategy_params = optimized_scenario.get("strategy_params", {}).copy()
+        base_strategy_params.update(optimal_params or {})
+        optimized_scenario["strategy_params"] = base_strategy_params
+
+        # The run_backtest_mode will use the StrategyBacktester internally
+        # and return a dictionary of results.
+        final_backtest_results = self.backtest_runner.run_backtest_mode(
+            optimized_scenario, monthly_data, daily_data, rets_full
+        )
+
+        # Store the final backtest results, enriched with optimization info
         optimized_name = f"{scenario_config['name']}_Optimized"
-        # Store under optimized key
-        self.results[optimized_name] = result
-        # Also store under original scenario name for backward-compat tests
-        self.results[scenario_config["name"]] = result
+
+        # Merge the optimization results into the final backtest results dict
+        final_backtest_results.update(
+            {
+                "display_name": optimized_name,
+                "optimal_params": optimal_params,
+                "num_trials_for_dsr": optimization_result.n_evaluations,
+                "best_trial_obj": optimization_result.best_trial,
+                "optimization_result": optimization_result,
+            }
+        )
+
+        self.results[optimized_name] = final_backtest_results
+        self.results[scenario_config["name"]] = final_backtest_results
 
     def _display_results(self) -> None:
         """Display results using the original reporting system."""

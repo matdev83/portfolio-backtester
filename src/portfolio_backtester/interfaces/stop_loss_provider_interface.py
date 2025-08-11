@@ -126,7 +126,7 @@ class ConfigBasedStopLossProvider(IStopLossProvider):
 
         valid_types = [
             "NoStopLoss",
-            "AtrBasedStopLoss"
+            "AtrBasedStopLoss",
             # Note: Additional types will be added when implemented:
             # "PercentageStopLoss", "TrailingStopLoss", "TimeBasedStopLoss"
         ]

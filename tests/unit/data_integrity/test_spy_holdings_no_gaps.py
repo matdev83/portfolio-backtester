@@ -15,6 +15,7 @@ FILLED_PARQUET = Path("data/spy_holdings_full.parquet")
 # Helpers
 # --------------------------------------------------------------------------------------
 
+
 def _load_filled_history() -> pd.DataFrame:
     if not FILLED_PARQUET.exists():
         pytest.skip(f"Filled parquet missing: {FILLED_PARQUET}")
@@ -28,6 +29,7 @@ def _business_days(start: pd.Timestamp, end: pd.Timestamp) -> pd.DatetimeIndex:
 # --------------------------------------------------------------------------------------
 # Tests
 # --------------------------------------------------------------------------------------
+
 
 def test_spy_holdings_coverage_no_gaps():
     """Ensure every NYSE business day since 2004-01-01 has holdings data."""

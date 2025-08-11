@@ -7,6 +7,7 @@ def _get_strategy_tunable_params(strategy_spec) -> Set[str]:
     """Resolve a strategy specification (string name or dict) to its tunable parameters."""
     # Use polymorphic parameter extractor instead of isinstance checks
     from unittest.mock import Mock
+
     if isinstance(strategy_spec, Mock):
         return set()
     parameter_extractor_factory = ParameterExtractorFactory()

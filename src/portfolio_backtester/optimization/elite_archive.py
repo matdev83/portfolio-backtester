@@ -92,20 +92,22 @@ class EliteArchive:
     ) -> Tuple[np.ndarray, np.ndarray]:
         if not self.elites:
             return population, fitness
-        
+
         # Create pool of current population + elites
         pool = list(zip(population, fitness)) + [
             (e.chromosome, e.fitness_score) for e in self.elites
         ]
-        
+
         num_replace = max(1, len(population) // 10)
-        
+
         # Use tournament selection to choose which individuals to replace
         for _ in range(num_replace):
             # Tournament selection for replacement position
-            tournament_indices = np.random.choice(len(population), size=tournament_size, replace=False)
+            tournament_indices = np.random.choice(
+                len(population), size=tournament_size, replace=False
+            )
             worst_idx = min(tournament_indices, key=lambda i: fitness[i])
-            
+
             # Select best from elite pool to inject
             if pool:
                 best_elite = max(pool, key=lambda x: x[1])
@@ -113,7 +115,7 @@ class EliteArchive:
                 fitness[worst_idx] = best_elite[1]
                 # Remove used elite to avoid duplicates
                 pool.remove(best_elite)
-        
+
         return population, fitness
 
     # Generic dispatcher

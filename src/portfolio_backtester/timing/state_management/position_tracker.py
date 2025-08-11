@@ -302,9 +302,12 @@ class PositionTracker:
 
     def add_test_position_history(self, position_entries: List[Dict[str, Any]]):
         """Add test position history entries - for testing purposes only.
-        
+
         Args:
             position_entries: List of position history dictionaries to add
         """
         self.position_history.extend(position_entries)
-        self._log_debug("Test position history added", {"entries_count": len(position_entries), "timestamp": pd.Timestamp.now()})
+        self._log_debug(
+            "Test position history added",
+            {"entries_count": len(position_entries), "timestamp": pd.Timestamp.now()},
+        )

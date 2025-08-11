@@ -16,6 +16,7 @@ from portfolio_backtester.optimization.parallel_optimization_runner import (
 )
 from portfolio_backtester.optimization.results import OptimizationData, OptimizationResult
 from portfolio_backtester.optimization.study_utils import StudyNameGenerator, ensure_study_cleanup
+from portfolio_backtester.optimization.wfo_window import WFOWindow
 
 
 class TestParallelOptimizationEnhanced:
@@ -31,9 +32,9 @@ class TestParallelOptimizationEnhanced:
         """Automatically cleanup any test database files after each test."""
         import os
         import glob
-        
+
         yield  # Run the test
-        
+
         # Clean up any remaining test database files
         test_db_pattern = "test_parallel_optimization_enhanced_*.db"
         for db_file in glob.glob(test_db_pattern):
@@ -64,11 +65,12 @@ class TestParallelOptimizationEnhanced:
             daily=prices,
             returns=returns,
             windows=[
-                (
-                    pd.Timestamp(2023, 1, 1),
-                    pd.Timestamp(2023, 6, 30),
-                    pd.Timestamp(2023, 7, 1),
-                    pd.Timestamp(2023, 12, 31),
+                WFOWindow(
+                    train_start=pd.Timestamp(2023, 1, 1),
+                    train_end=pd.Timestamp(2023, 6, 30),
+                    test_start=pd.Timestamp(2023, 7, 1),
+                    test_end=pd.Timestamp(2023, 12, 31),
+                    evaluation_frequency="D",
                 )
             ],
         )
@@ -131,7 +133,7 @@ class TestParallelOptimizationEnhanced:
                 _optuna_worker(
                     scenario_config=intramonth_scenario_config,
                     optimization_config=optimization_config,
-                    data=sample_data,
+                    data_or_context=sample_data,
                     storage_url=storage_url,
                     study_name=unique_study_name,
                     n_trials=2,
@@ -178,7 +180,7 @@ class TestParallelOptimizationEnhanced:
                 _optuna_worker(
                     scenario_config=monthly_scenario_config,
                     optimization_config=optimization_config,
-                    data=sample_data,
+                    data_or_context=sample_data,
                     storage_url=storage_url,
                     study_name=unique_study_name,
                     n_trials=2,
@@ -247,9 +249,8 @@ class TestParallelOptimizationEnhanced:
 
                 # Verify enhanced logging
                 mock_logger.info.assert_any_call(
-                    "Running optimisation in a single process (%d trials, %s evaluation)",
+                    "Running optimisation in a single process (%d trials)",
                     5,
-                    "daily",
                 )
 
                 # Verify worker was called
@@ -312,7 +313,7 @@ class TestParallelOptimizationEnhanced:
 
             # Verify enhanced logging
             mock_logger.info.assert_any_call(
-                "Launching %d worker processes for %d trials (%s evaluation)", 2, 5, "daily"
+                "Launching %d worker processes for %d trials", 2, 5
             )
 
             # Verify processes were started
@@ -358,12 +359,11 @@ class TestParallelOptimizationEnhanced:
             ) as mock_logger:
                 runner.run()
 
-                # Verify success logging with evaluation mode
+                # Verify success logging
                 mock_logger.info.assert_any_call(
-                    "✅ Optimization completed successfully: %d trials, best value: %.6f (%s evaluation)",
+                    "✅ Optimization completed successfully: %d trials, best value: %.6f",
                     5,
                     1.8,
-                    "daily",
                 )
 
     @patch("portfolio_backtester.optimization.parallel_optimization_runner.optuna.create_study")
@@ -400,12 +400,11 @@ class TestParallelOptimizationEnhanced:
             ) as mock_logger:
                 runner.run()
 
-                # Verify success logging with evaluation mode
+                # Verify success logging
                 mock_logger.info.assert_any_call(
-                    "✅ Optimization completed successfully: %d trials, best value: %.6f (%s evaluation)",
+                    "✅ Optimization completed successfully: %d trials, best value: %.6f",
                     3,
                     1.2,
-                    "monthly",
                 )
 
     def test_evaluation_mode_detection_intramonth(self, intramonth_scenario_config):

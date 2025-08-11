@@ -265,42 +265,42 @@ class _TimingStateAdapter(ITimingState):
     def debug_log(self):
         """Get debug log - backward compatibility."""
         return self._timing_state.debug_log
-    
+
     def add_test_position_history(self, position_entries):
         """Add test position history entries - for testing purposes only."""
         self._timing_state.add_test_position_history(position_entries)
-    
+
     # Additional methods expected by tests
     def enable_debug(self, enabled=True):
         """Enable or disable debug logging."""
         self._timing_state.enable_debug(enabled)
-    
+
     def _log_debug(self, message, data):
         """Internal debug logging method."""
         self._timing_state._log_debug(message, data)
-    
+
     def print_state_summary(self):
         """Print detailed state summary for debugging."""
         self._timing_state.print_state_summary()
-    
+
     def get_position_info(self, asset):
         """Get detailed position information for an asset."""
         return self._timing_state.get_position_info(asset)
-    
+
     @property
     def debug_enabled(self):
         """Get debug enabled state."""
         return self._timing_state.debug_enabled
-    
+
     @property
     def state_version(self):
         """Get state version."""
         return self._timing_state.state_version
-    
+
     def get_debug_log(self, last_n=None):
         """Get debug log entries."""
         return self._timing_state.get_debug_log(last_n)
-    
+
     def clear_debug_log(self):
         """Clear debug log."""
         self._timing_state.clear_debug_log()

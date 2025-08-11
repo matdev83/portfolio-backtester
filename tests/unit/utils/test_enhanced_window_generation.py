@@ -10,6 +10,7 @@ from portfolio_backtester.utils import (
     generate_enhanced_wfo_windows,
     _determine_evaluation_frequency,
 )
+import numpy as np
 
 
 class TestEnhancedWindowGeneration:
@@ -17,14 +18,20 @@ class TestEnhancedWindowGeneration:
 
     def test_determine_evaluation_frequency_intramonth_class(self):
         """Test frequency detection for intramonth strategy class."""
-        scenario_config = {"strategy_class": "SeasonalSignalStrategy", "strategy": "momentum"}
+        scenario_config = {
+            "strategy_class": "SeasonalSignalStrategy",
+            "strategy": "momentum",
+        }
 
         freq = _determine_evaluation_frequency(scenario_config)
         assert freq == "D"
 
     def test_determine_evaluation_frequency_intramonth_name(self):
         """Test frequency detection for intramonth strategy name."""
-        scenario_config = {"strategy_class": "SeasonalStrategy", "strategy": "intramonth_momentum"}
+        scenario_config = {
+            "strategy_class": "SeasonalStrategy",
+            "strategy": "intramonth_momentum",
+        }
 
         freq = _determine_evaluation_frequency(scenario_config)
         assert freq == "D"
@@ -77,7 +84,9 @@ class TestEnhancedWindowGeneration:
         assert freq == "M"
 
     @patch("portfolio_backtester.utils.generate_randomized_wfo_windows")
-    def test_generate_enhanced_wfo_windows_with_wfo_window_available(self, mock_generate_base):
+    def test_generate_enhanced_wfo_windows_with_wfo_window_available(
+        self, mock_generate_base
+    ):
         """Test enhanced window generation when WFOWindow is available."""
         # Mock base window generation
         mock_generate_base.return_value = [
@@ -97,15 +106,21 @@ class TestEnhancedWindowGeneration:
 
         # Test data - need at least 84 months for window generation
         monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="M")
-        scenario_config = {"strategy_class": "SeasonalSignalStrategy", "name": "test_strategy"}
+        scenario_config = {
+            "strategy_class": "SeasonalSignalStrategy",
+            "name": "test_strategy",
+        }
         global_config: dict = {}
+        rng = np.random.default_rng(42)
 
         # Generate enhanced windows
-        windows = generate_enhanced_wfo_windows(monthly_data_index, scenario_config, global_config)
+        windows = generate_enhanced_wfo_windows(
+            monthly_data_index, scenario_config, global_config, rng
+        )
 
         # Check that base generation was called
         mock_generate_base.assert_called_once_with(
-            monthly_data_index, scenario_config, global_config, None
+            monthly_data_index, scenario_config, global_config, rng
         )
 
         # Check enhanced windows
@@ -140,9 +155,12 @@ class TestEnhancedWindowGeneration:
             "name": "momentum_test",
         }
         global_config: dict = {}
+        rng = np.random.default_rng(42)
 
         # Generate enhanced windows
-        windows = generate_enhanced_wfo_windows(monthly_data_index, scenario_config, global_config)
+        windows = generate_enhanced_wfo_windows(
+            monthly_data_index, scenario_config, global_config, rng
+        )
 
         # Check enhanced windows
         assert len(windows) == 1
@@ -169,20 +187,22 @@ class TestEnhancedWindowGeneration:
         monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="M")
         scenario_config = {"strategy_class": "SimpleMomentumPortfolioStrategy"}
         global_config: dict = {}
-        random_state = 42
+        rng = np.random.default_rng(42)
 
         # Generate enhanced windows
         generate_enhanced_wfo_windows(
-            monthly_data_index, scenario_config, global_config, random_state
+            monthly_data_index, scenario_config, global_config, rng
         )
 
         # Check that random state was passed through
         mock_generate_base.assert_called_once_with(
-            monthly_data_index, scenario_config, global_config, random_state
+            monthly_data_index, scenario_config, global_config, rng
         )
 
     @patch("portfolio_backtester.utils.generate_randomized_wfo_windows")
-    def test_generate_enhanced_wfo_windows_fallback_when_import_fails(self, mock_generate_base):
+    def test_generate_enhanced_wfo_windows_fallback_when_import_fails(
+        self, mock_generate_base
+    ):
         """Test fallback to regular windows when WFOWindow import fails."""
         # Mock base window generation
         base_windows = [
@@ -199,9 +219,12 @@ class TestEnhancedWindowGeneration:
         monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="M")
         scenario_config = {"strategy_class": "SimpleMomentumPortfolioStrategy"}
         global_config: dict = {}
+        rng = np.random.default_rng(42)
 
         # Mock import failure by patching the import inside the function
-        with patch("portfolio_backtester.utils.generate_enhanced_wfo_windows") as mock_enhanced:
+        with patch(
+            "portfolio_backtester.utils.generate_enhanced_wfo_windows"
+        ) as mock_enhanced:
             # Make the mock function simulate import failure and call the original fallback
             def mock_fallback(*args, **kwargs):
                 # Simulate the import failure path in the actual function
@@ -213,7 +236,7 @@ class TestEnhancedWindowGeneration:
             from portfolio_backtester.utils import generate_randomized_wfo_windows
 
             windows = generate_randomized_wfo_windows(
-                monthly_data_index, scenario_config, global_config
+                monthly_data_index, scenario_config, global_config, rng
             )
 
         # Should return base windows (fallback)
@@ -227,13 +250,19 @@ class TestEnhancedWindowGeneration:
     def test_determine_evaluation_frequency_case_insensitive(self):
         """Test that frequency detection is case insensitive."""
         # Test uppercase
-        scenario_config = {"strategy_class": "INTRAMONTHMOMENTSTRATEGY", "strategy": "momentum"}
+        scenario_config = {
+            "strategy_class": "INTRAMONTHMOMENTSTRATEGY",
+            "strategy": "momentum",
+        }
 
         freq = _determine_evaluation_frequency(scenario_config)
         assert freq == "D"
 
         # Test mixed case
-        scenario_config = {"strategy_class": "SomeStrategy", "strategy": "IntraMonth_Seasonal"}
+        scenario_config = {
+            "strategy_class": "SomeStrategy",
+            "strategy": "IntraMonth_Seasonal",
+        }
 
         freq = _determine_evaluation_frequency(scenario_config)
         assert freq == "D"
@@ -260,7 +289,9 @@ class TestEnhancedWindowGeneration:
         assert freq == "D"  # Should be daily due to signal-based, not monthly
 
     @patch("portfolio_backtester.utils.generate_randomized_wfo_windows")
-    def test_generate_enhanced_wfo_windows_preserves_window_boundaries(self, mock_generate_base):
+    def test_generate_enhanced_wfo_windows_preserves_window_boundaries(
+        self, mock_generate_base
+    ):
         """Test that enhanced windows preserve original window boundaries."""
         # Mock base window generation with specific dates
         original_windows = [
@@ -283,9 +314,12 @@ class TestEnhancedWindowGeneration:
         monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="M")
         scenario_config = {"strategy_class": "SimpleMomentumPortfolioStrategy"}
         global_config: dict = {}
+        rng = np.random.default_rng(42)
 
         # Generate enhanced windows
-        windows = generate_enhanced_wfo_windows(monthly_data_index, scenario_config, global_config)
+        windows = generate_enhanced_wfo_windows(
+            monthly_data_index, scenario_config, global_config, rng
+        )
 
         # Check that boundaries are preserved
         assert len(windows) == 2

@@ -16,7 +16,7 @@ from .atr_service import calculate_atr_fast
 class BaseTakeProfit(ABC):
     """
     Abstract base class for take profit handlers.
-    
+
     All take profit implementations should inherit from this class
     and implement the required abstract methods.
     """
@@ -75,7 +75,7 @@ class BaseTakeProfit(ABC):
 class NoTakeProfit(BaseTakeProfit):
     """
     A take-profit handler that does nothing (no take profit applied).
-    
+
     This is useful for strategies that don't want any take profit mechanism.
     """
 
@@ -167,16 +167,12 @@ class AtrBasedTakeProfit(BaseTakeProfit):
 
         # For long positions: close if current price >= take profit level
         long_take_profit_trigger = (
-            valid_mask
-            & long_positions
-            & (current_asset_prices >= take_profit_levels)
+            valid_mask & long_positions & (current_asset_prices >= take_profit_levels)
         )
 
-        # For short positions: close if current price <= take profit level  
+        # For short positions: close if current price <= take profit level
         short_take_profit_trigger = (
-            valid_mask
-            & short_positions
-            & (current_asset_prices <= take_profit_levels)
+            valid_mask & short_positions & (current_asset_prices <= take_profit_levels)
         )
 
         # Close positions that hit take profit

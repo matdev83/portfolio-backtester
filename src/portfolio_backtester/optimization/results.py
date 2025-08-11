@@ -6,10 +6,11 @@ optimization process, ensuring type safety and clear data flow between component
 """
 
 from dataclasses import dataclass
-from typing import Dict, Any, List, Union, Tuple, Optional
+from typing import Dict, Any, List, Union, Optional
 import pandas as pd
 
 from ..backtesting.results import WindowResult
+from .wfo_window import WFOWindow
 
 
 @dataclass
@@ -32,7 +33,7 @@ class OptimizationDataContext:
     monthly_data_path: str
     returns_data_path: str
     metadata_path: str
-    windows: List[Tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp, pd.Timestamp]]
+    windows: List[WFOWindow]
 
 
 @dataclass
@@ -92,4 +93,4 @@ class OptimizationData:
     monthly: pd.DataFrame
     daily: pd.DataFrame
     returns: pd.DataFrame
-    windows: List[Tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp, pd.Timestamp]]
+    windows: List[WFOWindow]

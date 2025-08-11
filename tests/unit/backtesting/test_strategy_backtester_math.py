@@ -18,7 +18,7 @@ def test_calculate_max_drawdown_simple():
 
 
 def test_drawdown_series_monotonic():
-    rets = _make_returns([0.05]*10 + [-0.1]*5)
+    rets = _make_returns([0.05] * 10 + [-0.1] * 5)
     bt = StrategyBacktester(global_config={"benchmark": "SPY"}, data_source=None)
     dd_series = bt._calculate_drawdown_series(rets.cumsum())
     # Drawdown series should never exceed 0 and end negative after loss
@@ -28,7 +28,7 @@ def test_drawdown_series_monotonic():
 
 def test_rolling_sharpe_basic():
     # constant positive return gives infinite sharpe (std 0 -> result 0 per implementation)
-    rets = _make_returns([0.01]*300)
+    rets = _make_returns([0.01] * 300)
     bt = StrategyBacktester(global_config={"benchmark": "SPY"}, data_source=None)
     sharpe = bt._calculate_rolling_sharpe(rets, window=252)
     # With zero rolling std the Sharpe formula yields inf

@@ -9,6 +9,8 @@ with proper error handling and extensibility.
 import logging
 from typing import Any, Dict, Optional
 
+import numpy as np
+
 from .parameter_generator import (
     ParameterGenerator,
     ParameterGeneratorError as BaseParameterGeneratorError,
@@ -36,7 +38,7 @@ class OptimizerImportError(ParameterGeneratorError):
 
 
 def create_parameter_generator(
-    optimizer_type: str, random_state: Optional[int] = None, **kwargs: Any
+    optimizer_type: str, random_state: Optional[np.random.Generator] = None, **kwargs: Any
 ) -> "ParameterGenerator":
     """Factory function to create parameter generators.
 
@@ -93,7 +95,9 @@ def create_parameter_generator(
         )
 
 
-def _create_optuna_generator(random_state: Optional[int], **kwargs) -> "ParameterGenerator":
+def _create_optuna_generator(
+    random_state: Optional[np.random.Generator], **kwargs
+) -> "ParameterGenerator":
     """Create an Optuna parameter generator.
 
     Args:
@@ -108,19 +112,22 @@ def _create_optuna_generator(random_state: Optional[int], **kwargs) -> "Paramete
     return OptunaParameterGenerator(random_state=random_state, **kwargs)
 
 
-def _create_genetic_generator(random_state: Optional[int], **kwargs) -> "ParameterGenerator":
+def _create_genetic_generator(
+    random_state: Optional[np.random.Generator], **kwargs
+) -> "ParameterGenerator":
     """Create a genetic algorithm parameter generator.
 
     Args:
         random_state: Random seed for reproducible results
-        **kwargs: Additional arguments for GeneticParameterGenerator
+        **kwargs: Additional arguments for FixedGeneticParameterGenerator
 
     Returns:
-        GeneticParameterGenerator instance
+        FixedGeneticParameterGenerator instance
     """
-    from .generators.genetic_generator import GeneticParameterGenerator
+    from .generators.fixed_genetic_generator import FixedGeneticParameterGenerator
 
-    return GeneticParameterGenerator(random_state=random_state, **kwargs)
+    seed = int(random_state.integers(int(1e9))) if random_state is not None else None
+    return FixedGeneticParameterGenerator(random_seed=seed, **kwargs)
 
 
 # Mock generator removed - use Optuna or Genetic generators for testing
@@ -142,8 +149,8 @@ def get_available_optimizers() -> Dict[str, Dict[str, Any]]:
             "available": True,
         },
         "genetic": {
-            "description": "Genetic algorithm optimization using PyGAD",
-            "dependencies": ["pygad"],
+            "description": "Fixed genetic algorithm optimization",
+            "dependencies": ["numpy"],
             "supports_multi_objective": False,
             "supports_pruning": False,
             "available": True,

@@ -10,6 +10,7 @@ not already start with that prefix or any prefix (i.e., it contains no dot).
 For meta-strategy scenarios, only the meta strategy's own `strategy_params`
 block is updated – nested `allocations[*].strategy_params` are left untouched.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

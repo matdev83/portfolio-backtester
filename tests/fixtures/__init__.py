@@ -11,8 +11,8 @@ from .timing_data import TimingDataFixture
 from .optimized_data_generator import OptimizedDataGenerator
 
 __all__ = [
-    'MarketDataFixture',
-    'StrategyDataFixture', 
-    'TimingDataFixture',
-    'OptimizedDataGenerator'
+    "MarketDataFixture",
+    "StrategyDataFixture",
+    "TimingDataFixture",
+    "OptimizedDataGenerator",
 ]

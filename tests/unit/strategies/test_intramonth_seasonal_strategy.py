@@ -1,7 +1,9 @@
 import pandas as pd
 import pytest
 
-from portfolio_backtester.strategies.builtins.signal.seasonal_signal_strategy import SeasonalSignalStrategy
+from portfolio_backtester.strategies.builtins.signal.seasonal_signal_strategy import (
+    SeasonalSignalStrategy,
+)
 
 
 @pytest.fixture
@@ -51,7 +53,10 @@ def test_long_strategy_entry_and_exit(sample_historical_data):
 
     # Day after entry
     signals = strategy.generate_signals(
-        sample_historical_data, pd.DataFrame(), pd.DataFrame(), entry_date + pd.tseries.offsets.BDay(1)
+        sample_historical_data,
+        pd.DataFrame(),
+        pd.DataFrame(),
+        entry_date + pd.tseries.offsets.BDay(1),
     )
     assert signals.loc[entry_date + pd.tseries.offsets.BDay(1), "AAPL"] == 0.5
     assert signals.loc[entry_date + pd.tseries.offsets.BDay(1), "GOOG"] == 0.5

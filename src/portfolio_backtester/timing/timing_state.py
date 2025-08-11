@@ -37,7 +37,7 @@ class TimingState:
         self.position_tracker = PositionTracker(debug_enabled=self.debug_enabled)
         self.statistics = StateStatistics(self.position_tracker)
         self.serializer = StateSerializer(self.position_tracker)
-        
+
         # Log debug enabled message if debug was enabled during initialization
         if self.debug_enabled:
             self._log_debug("Debug enabled", {"timestamp": pd.Timestamp.now()})
@@ -309,10 +309,10 @@ class TimingState:
             print(f"\nDebug Log Entries: {len(self.debug_log)}")
 
         print("=" * 50)
-    
+
     def add_test_position_history(self, position_entries: List[Dict[str, Any]]):
         """Add test position history entries - for testing purposes only.
-        
+
         Args:
             position_entries: List of position history dictionaries to add
         """

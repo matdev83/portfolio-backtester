@@ -7,6 +7,7 @@ all `@api_stable` decorated callables register themselves, then overwrite
 `src/portfolio_backtester/api_stability/api_stable_signatures.json` with
 the current signature meta-data.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,7 +18,13 @@ from pathlib import Path
 
 # Root dotted package to scan
 PACKAGE_ROOT = "portfolio_backtester"
-SIGNATURE_PATH = Path(__file__).parent.parent / "src" / "portfolio_backtester" / "api_stability" / "api_stable_signatures.json"
+SIGNATURE_PATH = (
+    Path(__file__).parent.parent
+    / "src"
+    / "portfolio_backtester"
+    / "api_stability"
+    / "api_stable_signatures.json"
+)
 
 
 def _import_all_package_files(package_root: str) -> None:
@@ -41,6 +48,7 @@ def _import_all_package_files(package_root: str) -> None:
                 import contextlib
                 import io
                 import logging
+
                 # Suppress any noisy stdout / stderr and lower loglevel during import
                 _stdout, _stderr = io.StringIO(), io.StringIO()
                 prev_level = logging.getLogger().level
@@ -59,9 +67,12 @@ def main() -> None:
 
     if not args.quiet:
         print("[update_protected_signatures] Regenerating API-stable signatures.")
-        print("Any RuntimeWarnings or '[WARN] Skipped …' messages you see below are expected – they merely\n"
-              "indicate helper packages or CLI entry-points that don’t need to be imported for signature\n"
-              "collection.", flush=True)
+        print(
+            "Any RuntimeWarnings or '[WARN] Skipped …' messages you see below are expected – they merely\n"
+            "indicate helper packages or CLI entry-points that don’t need to be imported for signature\n"
+            "collection.",
+            flush=True,
+        )
 
     # Prepend 'src' directory to sys.path so top-level package 'portfolio_backtester' is importable
     repo_root = Path(__file__).parent.parent

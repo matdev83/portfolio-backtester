@@ -28,6 +28,10 @@ optimize:
     max_value: 0.05
     step: 0.01
 
+ga_settings:
+  population_size: 10
+  max_generations: 5
+
 strategy_params:
   # Keep only parameters allowed by DummySignalStrategy.tunable_parameters
   open_long_prob: 0.1

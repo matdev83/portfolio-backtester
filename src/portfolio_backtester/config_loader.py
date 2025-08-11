@@ -216,6 +216,7 @@ def load_config():
     try:
         # Load and validate parameters file
         import sys as _sys
+
         _this_mod = _sys.modules.get(__name__)
         parameters_file_path = getattr(_this_mod, "PARAMETERS_FILE", PARAMETERS_FILE)
         logger.info(f"Loading parameters from: {parameters_file_path}")

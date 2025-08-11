@@ -50,4 +50,4 @@ def test_cache_consistency():
     date, n = "2021-05-28", 30
     first_call = get_top_weight_sp500_components(date, n)
     second_call = get_top_weight_sp500_components(date, n)
-    assert first_call == second_call  # LRU cache should guarantee identical result 
+    assert first_call == second_call  # LRU cache should guarantee identical result

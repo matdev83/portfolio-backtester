@@ -19,6 +19,6 @@ def test_strategy_param_prefixes(yaml_path):
     errors = StrategyConfigSchema.validate_yaml_file(yaml_path)
     prefix_errors = [e for e in errors if e.severity == "error"]
     assert not prefix_errors, (
-        f"Prefix validation failed for {yaml_path.relative_to(SCENARIO_DIR.parent)}:\n" +
-        StrategyConfigSchema.format_report(prefix_errors)
+        f"Prefix validation failed for {yaml_path.relative_to(SCENARIO_DIR.parent)}:\n"
+        + StrategyConfigSchema.format_report(prefix_errors)
     )

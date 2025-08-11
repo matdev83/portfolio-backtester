@@ -193,7 +193,17 @@ class TestCombinedStopLossTakeProfit:
         This verifies that both systems can be configured and operate without
         interfering with each other.
         """
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock()
+        
+        # Configure mock to return proper data structures
+        mock_result = Mock()
+        mock_result.returns = pd.Series([0.01, 0.02], index=pd.date_range("2023-02-01", periods=2))
+        mock_result.metrics = {"total_return": 0.03, "sharpe_ratio": 1.5, "volatility": 0.1}
+        mock_result.trade_history = pd.DataFrame()
+        mock_result.performance_stats = {"final_weights": {"AAPL": 0.25, "MSFT": 0.25, "GOOGL": 0.25, "AMZN": 0.25}}
+        mock_backtester.backtest_strategy.return_value = mock_result
+        
+        evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Verify both handlers are configured correctly
         stop_loss_handler = combined_risk_strategy.get_stop_loss_handler()
@@ -209,6 +219,8 @@ class TestCombinedStopLossTakeProfit:
             window=test_window,
             strategy=combined_risk_strategy,
             daily_data=daily_ohlc_data,
+            full_monthly_data=daily_ohlc_data.resample("ME").last(),
+            full_rets_daily=daily_ohlc_data.pct_change().fillna(0),
             benchmark_data=benchmark_data,
             universe_tickers=["AAPL", "MSFT", "GOOGL", "AMZN"],
             benchmark_ticker="SPY",
@@ -263,7 +275,8 @@ class TestCombinedStopLossTakeProfit:
             "timing_config": {"mode": "time_based", "rebalance_frequency": "M"},
         }
 
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock()
+        evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Run all three scenarios
         stop_loss_only = DummySignalStrategy(stop_loss_only_config)
@@ -453,7 +466,8 @@ class TestCombinedStopLossTakeProfit:
         }
 
         strategy = DummySignalStrategy(config)
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock()
+        evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Verify different parameters are set correctly
         sl_handler = strategy.get_stop_loss_handler()
@@ -612,7 +626,8 @@ class TestCombinedStopLossTakeProfit:
         """
         Compare performance when using both systems vs individual systems.
         """
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock()
+        evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Base configuration
         base_config = {
@@ -725,7 +740,8 @@ class TestCombinedStopLossTakeProfit:
         }
 
         strategy = DummyPortfolioStrategy(config)
-        evaluator = WindowEvaluator()
+        mock_backtester = Mock()
+        evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Verify both systems are configured
         sl_handler = strategy.get_stop_loss_handler()

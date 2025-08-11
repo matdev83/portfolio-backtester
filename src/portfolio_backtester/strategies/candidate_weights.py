@@ -12,7 +12,7 @@ warnings.warn(
     "Importing from 'portfolio_backtester.strategies.candidate_weights' is deprecated. "
     "Please use 'portfolio_backtester.utils.portfolio_utils.default_candidate_weights' instead.",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
 __all__ = ["default_candidate_weights"]

@@ -9,7 +9,6 @@ with a hash stored in the study's user attributes.
 import hashlib
 import inspect
 import logging
-import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
 

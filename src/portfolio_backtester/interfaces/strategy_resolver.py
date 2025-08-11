@@ -10,7 +10,7 @@ from .strategy_resolver_interface import PolymorphicStrategyResolver, create_str
 
 class StrategyResolverFactory:
     """Factory for creating strategy resolvers."""
-    
+
     @staticmethod
     def create() -> PolymorphicStrategyResolver:
         """Create a new strategy resolver instance."""

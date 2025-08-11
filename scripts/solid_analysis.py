@@ -3,12 +3,13 @@ import ast
 import os
 from collections import defaultdict
 
+
 def analyze_directory(directory, output_file=None):
     """
     Analyzes a directory for class dependencies and SOLID principles violations.
     """
     print(f"Analyzing directory: {directory}")
-    
+
     all_dependencies = defaultdict(set)
     all_classes = {}
 
@@ -53,10 +54,12 @@ def generate_mermaid_graph(dependencies, classes, output_file):
                     f.write(f"    {class_name} --|> {dep}\n")
     print(f"Mermaid graph saved to {output_file}")
 
+
 class SOLIDAnalyzer(ast.NodeVisitor):
     """
     AST visitor to analyze a single Python file for SOLID principles.
     """
+
     def __init__(self, file_path):
         self.file_path = file_path
         self.classes = {}
@@ -69,7 +72,7 @@ class SOLIDAnalyzer(ast.NodeVisitor):
             "cohesion": 0,
             "init_dependencies": set(),
         }
-        
+
         self.classes[node.name]["size"] = node.end_lineno - node.lineno
 
         for item in node.body:
@@ -79,7 +82,7 @@ class SOLIDAnalyzer(ast.NodeVisitor):
                     for sub_node in ast.walk(item):
                         if isinstance(sub_node, ast.Call) and isinstance(sub_node.func, ast.Name):
                             self.classes[node.name]["init_dependencies"].add(sub_node.func.id)
-        
+
         self.generic_visit(node)
 
     def visit_FunctionDef(self, node):
@@ -99,10 +102,14 @@ class SOLIDAnalyzer(ast.NodeVisitor):
 
             # OCP Check
             if isinstance(sub_node, ast.If):
-                if isinstance(sub_node.test, ast.Call) and \
-                   isinstance(sub_node.test.func, ast.Name) and \
-                   sub_node.test.func.id == 'isinstance':
-                    print(f"  - OCP Violation?: 'isinstance' check in function '{node.name}'. Consider using polymorphism.")
+                if (
+                    isinstance(sub_node.test, ast.Call)
+                    and isinstance(sub_node.test.func, ast.Name)
+                    and sub_node.test.func.id == "isinstance"
+                ):
+                    print(
+                        f"  - OCP Violation?: 'isinstance' check in function '{node.name}'. Consider using polymorphism."
+                    )
 
         self.generic_visit(node)
 
@@ -115,19 +122,22 @@ class SOLIDAnalyzer(ast.NodeVisitor):
             print(f"Class: {class_name}")
             print(f"  - Methods: {', '.join(data['methods'])}")
             print(f"  - Size (lines): {data['size']}")
-            
+
             if data["size"] > 100:
                 print("  - SRP Violation?: Class is large, may have too many responsibilities.")
 
             # DIP Check
             if data["init_dependencies"]:
-                print(f"  - DIP Violation?: Class '{class_name}' depends on concrete classes in __init__: {', '.join(data['init_dependencies'])}")
+                print(
+                    f"  - DIP Violation?: Class '{class_name}' depends on concrete classes in __init__: {', '.join(data['init_dependencies'])}"
+                )
 
         if self.dependencies:
             print("\nDependencies:")
             for key, value in self.dependencies.items():
                 print(f"  - {key} depends on: {', '.join(value)}")
         print("--- End of Report ---")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze Python code for SOLID principles.")
@@ -140,6 +150,7 @@ def main():
         return
 
     analyze_directory(args.directory, args.output_file)
+
 
 if __name__ == "__main__":
     main()

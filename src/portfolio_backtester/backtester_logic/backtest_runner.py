@@ -54,6 +54,7 @@ class BacktestRunner:
     def _get_default_optuna_storage_url(self) -> str:
         """Get the default Optuna storage URL."""
         from ..constants import DEFAULT_OPTUNA_STORAGE_URL
+
         return DEFAULT_OPTUNA_STORAGE_URL
 
     @api_stable(version="1.0", strict_params=True, strict_return=True)

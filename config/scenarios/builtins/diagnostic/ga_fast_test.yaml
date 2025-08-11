@@ -1,0 +1,36 @@
+name: ga_fast_test
+strategy: DummySignalStrategy
+
+# Single, short, non-WFO backtest for speed
+start_date: 2018-01-01
+end_date: 2018-12-31
+is_wfo: false # Explicitly disable Walk-Forward Optimization
+
+universe_config:
+  type: fixed
+  tickers: [SPY]
+
+optimization_targets:
+  - name: Sharpe
+    direction: maximize
+
+# Minimal GA settings for a very fast run
+ga_settings:
+  population_size: 5
+  max_generations: 3
+
+# Parameter space for the GA
+parameter_space:
+  open_long_prob:
+    type: float
+    low: 0.05
+    high: 0.2
+  close_long_prob:
+    type: float
+    low: 0.01
+    high: 0.05
+
+# Default strategy parameters (will be overridden by GA)
+strategy_params:
+  open_long_prob: 0.1
+  close_long_prob: 0.01

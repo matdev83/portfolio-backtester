@@ -83,16 +83,15 @@ To run all Python commands inside this project use the `.venv/Scripts/python.exe
 
 ---
 
-## Actions AFTER Each File Edit
+## Actions To Take After EACH File Edit
 
 After each completed file Python (*.py) edit, agents MUST run the following quality-assurance command. This applies only to Python files:
 
 ```bash
-./.venv/Scripts/python.exe -m black <modified_filename> && ./.venv/Scripts/python.exe -m ruff check --fix <modified_filename> && ./.venv/Scripts/python.exe -m mypy <modified_filename>
+./.venv/Scripts/python.exe -m ruff check --fix <modified_filename> && ./.venv/Scripts/python.exe -m black <modified_filename> && ./.venv/Scripts/python.exe -m mypy <modified_filename>
 ```
 
 Notes:
-
 - Always use the Windows venv interpreter path shown above.
 - Replace `<modified_filename>` with the exact path to the changed file.
 - Run these before proceeding to additional edits or committing.

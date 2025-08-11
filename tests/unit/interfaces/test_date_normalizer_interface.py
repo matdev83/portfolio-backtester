@@ -157,7 +157,7 @@ class TestDateNormalizerFactory:
     def test_get_normalizer_for_invalid_type(self):
         """Test factory raises error for unsupported type."""
         factory = DateNormalizerFactory()
-        
+
         with pytest.raises(TypeError):
             factory.get_normalizer(12345)  # type: ignore[arg-type]
 

@@ -1,5 +1,4 @@
 import logging  # Assuming logger might be useful here or for other utils
-import random
 import signal
 from typing import List, Optional, Dict, Any
 
@@ -170,16 +169,12 @@ def generate_randomized_wfo_windows(
     monthly_data_index: pd.DatetimeIndex,
     scenario_config: dict,
     global_config: dict,
-    random_state: int | None = None,
+    rng: np.random.Generator,
 ) -> list[tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp, pd.Timestamp]]:
     """
     Generate walk-forward optimization windows with optional randomization for robustness.
     Windows are aligned to calendar months and adjusted to business days.
     """
-    if random_state is not None:
-        random.seed(random_state)
-        np.random.seed(random_state)
-
     base_train_window_m = int(scenario_config.get("train_window_months", 36))
     base_test_window_m = int(scenario_config.get("test_window_months", 48))
     wf_type = str(scenario_config.get("walk_forward_type", "expanding")).lower()
@@ -222,13 +217,17 @@ def generate_randomized_wfo_windows(
 
     while True:
         start_offset = (
-            random.randint(start_min_offset, start_max_offset)
+            int(rng.integers(start_min_offset, start_max_offset, endpoint=True))
             if enable_start_date_randomization
             else 0
         )
         if enable_window_randomization:
-            train_win = base_train_window_m + random.randint(train_min_offset, train_max_offset)
-            test_win = base_test_window_m + random.randint(test_min_offset, test_max_offset)
+            train_win = base_train_window_m + int(rng.integers(
+                train_min_offset, train_max_offset, endpoint=True
+            ))
+            test_win = base_test_window_m + int(rng.integers(
+                test_min_offset, test_max_offset, endpoint=True
+            ))
         else:
             train_win = base_train_window_m
             test_win = base_test_window_m
@@ -253,7 +252,7 @@ def generate_randomized_wfo_windows(
 
         windows.append((train_start_date, train_end_date, test_start_date, test_end_date))
 
-        step = test_win
+        step = int(test_win)
         current_window_start_idx += step
         if current_window_start_idx + base_train_window_m + base_test_window_m > len(
             monthly_data_index
@@ -278,7 +277,7 @@ def generate_enhanced_wfo_windows(
     monthly_data_index: pd.DatetimeIndex,
     scenario_config: dict,
     global_config: dict,
-    random_state=None,
+    rng: np.random.Generator,
 ) -> List:
     """Generate enhanced WFO windows with strategy-appropriate evaluation frequency.
 
@@ -286,7 +285,7 @@ def generate_enhanced_wfo_windows(
         monthly_data_index: DatetimeIndex of monthly data (assumed to be month-end dates)
         scenario_config: Scenario configuration dictionary
         global_config: Global configuration dictionary
-        random_state: Random seed for reproducibility
+        rng: Random number generator instance for reproducibility
 
     Returns:
         List of WFOWindow objects with appropriate evaluation frequency
@@ -297,12 +296,12 @@ def generate_enhanced_wfo_windows(
     except ImportError:
         # Fallback to regular window generation if WFOWindow not available
         return generate_randomized_wfo_windows(
-            monthly_data_index, scenario_config, global_config, random_state
+            monthly_data_index, scenario_config, global_config, rng
         )
 
     # Generate base windows using existing logic
     base_windows = generate_randomized_wfo_windows(
-        monthly_data_index, scenario_config, global_config, random_state
+        monthly_data_index, scenario_config, global_config, rng
     )
 
     # Determine evaluation frequency

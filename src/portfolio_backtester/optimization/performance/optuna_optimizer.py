@@ -170,6 +170,7 @@ class OptunaParallelRunner(AbstractParallelRunner):
     def _get_default_optuna_storage_url(self) -> str:
         """Get the default Optuna storage URL."""
         from ...constants import DEFAULT_OPTUNA_STORAGE_URL
+
         return DEFAULT_OPTUNA_STORAGE_URL
 
     def run(self, config: Dict[str, Any]) -> Any:
@@ -187,7 +188,9 @@ class OptunaParallelRunner(AbstractParallelRunner):
                 optimization_config=optimization_config,
                 data=data,
                 n_jobs=n_jobs,
-                storage_url=optimization_config.get("storage_url", self._get_default_optuna_storage_url()),
+                storage_url=optimization_config.get(
+                    "storage_url", self._get_default_optuna_storage_url()
+                ),
                 enable_deduplication=True,
             )
             return runner.run()

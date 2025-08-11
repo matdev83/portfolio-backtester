@@ -1,4 +1,4 @@
-from ...portfolio.momentum_unfiltered_atr_portfolio_strategy import (  # noqa: F401
+from .momentum_unfiltered_atr_portfolio_strategy import (
     MomentumUnfilteredAtrPortfolioStrategy,
 )
 

@@ -39,7 +39,6 @@ def profile_hotspots():
         profiler.add_function(func)
 
     # Prepare arguments for the backtester
-    original_argv = sys.argv
     scenario_path = (
         project_root
         / "config"
@@ -51,10 +50,14 @@ def profile_hotspots():
     )
     sys.argv = [
         "backtester",
+        "--mode",
         "optimize",
+        "--scenario-filename",
         str(scenario_path),
         "--optuna-trials",
         "1",
+        "--n-jobs",
+        "-1",
     ]
 
     print("Running profiler on hotspots...")

@@ -1,5 +1,4 @@
 import cProfile
-import pstats
 import sys
 import tempfile
 from pathlib import Path
@@ -15,9 +14,9 @@ else:
     # Fallback for different execution contexts
     sys.path.insert(0, str(project_root))
 
-from portfolio_backtester.backtester import main as backtester_main
-from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
-from portfolio_backtester.optimization.evaluator import BacktestEvaluator
+from portfolio_backtester.backtester import main as backtester_main  # noqa: E402
+from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester  # noqa: E402
+from portfolio_backtester.optimization.evaluator import BacktestEvaluator  # noqa: E402
 
 
 def profile_wfo():
@@ -38,16 +37,19 @@ def profile_wfo():
     )
     sys.argv = [
         "backtester",
+        "--mode",
         "optimize",
+        "--scenario-filename",
         str(scenario_path),
         "--optuna-trials",
-        "1", # One trial is enough to profile the WFO loop
+        "1",  # One trial is enough to profile the WFO loop
+        "--n-jobs",
+        "-1",
     ]
 
     # Set up profilers
     line_profiler = LineProfiler()
     line_profiler.add_function(BacktestEvaluator.evaluate_parameters)
-    line_profiler.add_function(BacktestEvaluator._evaluate_parameters_daily)
     line_profiler.add_function(StrategyBacktester.backtest_strategy)
 
     c_profiler = cProfile.Profile()
