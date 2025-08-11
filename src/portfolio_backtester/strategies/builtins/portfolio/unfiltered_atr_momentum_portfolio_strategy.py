@@ -1,5 +1,5 @@
-from ...portfolio.unfiltered_atr_momentum_portfolio_strategy import (
+from ...portfolio.momentum_unfiltered_atr_portfolio_strategy import (  # noqa: F401
     MomentumUnfilteredAtrPortfolioStrategy,
-)  # noqa: F401
+)
 
 __all__ = ["MomentumUnfilteredAtrPortfolioStrategy"]

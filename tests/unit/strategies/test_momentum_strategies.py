@@ -2,16 +2,16 @@ import pandas as pd
 import numpy as np
 import pytest
 from unittest.mock import patch
-from portfolio_backtester.strategies.portfolio.base_momentum_portfolio_strategy import (
+from portfolio_backtester.strategies.builtins.portfolio.base_momentum_portfolio_strategy import (
     BaseMomentumPortfolioStrategy,
 )
-from portfolio_backtester.strategies.portfolio.simple_momentum_portfolio_strategy import (
+from portfolio_backtester.strategies.builtins.portfolio.simple_momentum_portfolio_strategy import (
     SimpleMomentumPortfolioStrategy,
 )
-from portfolio_backtester.strategies.portfolio.calmar_momentum_portfolio_strategy import (
+from portfolio_backtester.strategies.builtins.portfolio.calmar_momentum_portfolio_strategy import (
     CalmarMomentumPortfolioStrategy,
 )
-from portfolio_backtester.strategies.portfolio.sortino_momentum_portfolio_strategy import (
+from portfolio_backtester.strategies.builtins.portfolio.sortino_momentum_portfolio_strategy import (
     SortinoMomentumPortfolioStrategy,
 )
 
@@ -141,7 +141,9 @@ class TestBaseMomentumPortfolioStrategy:
         assert len(final_weights) == 4
         # Should be a blend of candidate and previous weights due to smoothing
 
-    @patch("portfolio_backtester.strategies.portfolio.base_momentum_portfolio_strategy.logger")
+    @patch(
+        "portfolio_backtester.strategies.builtins.portfolio.base_momentum_portfolio_strategy.logger"
+    )
     def test_data_sufficiency_validation(self, mock_logger, momentum_test_data):
         """Test data sufficiency validation."""
 
@@ -426,9 +428,7 @@ def test_generate_signals_smoke(strategy_class, config, momentum_test_data):
 class TestCalmarMomentumPortfolioStrategy:
     """Tests for the CalmarMomentumPortfolioStrategy."""
 
-    @patch(
-        "portfolio_backtester.strategies.portfolio.calmar_momentum_portfolio_strategy.CalmarRatio"
-    )
+    @patch("portfolio_backtester.features.calmar_ratio.CalmarRatio")
     def test_calculate_scores(self, mock_calmar_ratio, momentum_test_data):
         """Test that _calculate_scores correctly uses the CalmarRatio feature."""
         # Arrange
@@ -463,9 +463,7 @@ class TestCalmarMomentumPortfolioStrategy:
 class TestSortinoMomentumPortfolioStrategy:
     """Tests for the SortinoMomentumPortfolioStrategy."""
 
-    @patch(
-        "portfolio_backtester.strategies.portfolio.sortino_momentum_portfolio_strategy.SortinoRatio"
-    )
+    @patch("portfolio_backtester.features.sortino_ratio.SortinoRatio")
     def test_calculate_scores(self, mock_sortino_ratio, momentum_test_data):
         """Test that _calculate_scores correctly uses the SortinoRatio feature."""
         # Arrange

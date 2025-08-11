@@ -267,7 +267,7 @@ class TestScheduleIndependentStopLoss:
         )
 
         # Monitor position liquidations
-        with patch("src.portfolio_backtester.backtesting.window_evaluator.logger") as mock_logger:
+        with patch("portfolio_backtester.backtesting.window_evaluator.logger") as mock_logger:
             result = evaluator.evaluate_window(
                 window=crash_window,
                 strategy=monthly_ema_signal_strategy,

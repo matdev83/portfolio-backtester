@@ -34,7 +34,7 @@ class SimpleMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
             params_dict_to_update.setdefault(k, v)
 
     @classmethod
-    def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
+    def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         """
         Define core tunable parameters for simple momentum strategy.
 

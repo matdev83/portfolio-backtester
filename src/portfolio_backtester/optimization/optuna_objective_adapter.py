@@ -43,20 +43,25 @@ class OptunaObjectiveAdapter:
         self.parameter_space = parameter_space or {}
 
     def __call__(self, trial: optuna.Trial) -> float:
-        logger.info("Trial %d started", trial.number)
+        logger.info(f"--- Starting Trial {trial.number} ---")
 
         # 1. Build parameters from trial
         params = self._trial_to_params(trial)
-        logger.debug(f"Trial {trial.number} parameters: {params}")
+        logger.info(f"Trial {trial.number} - Parameters: {params}")
 
         # 2. Get or create thread-local backtester + evaluator
         local = getattr(self, "_local", None)
         if local is None:
+            logger.info(f"Trial {trial.number} - Initializing thread-local storage.")
             self._local = threading.local()
             local = self._local
+        
         if not hasattr(local, "backtester"):
+            logger.info(f"Trial {trial.number} - Creating new StrategyBacktester instance.")
             local.backtester = StrategyBacktester(global_config=GLOBAL_CONFIG, data_source=None)
+        
         if not hasattr(local, "evaluator"):
+            logger.info(f"Trial {trial.number} - Creating new BacktestEvaluator instance.")
             # Extract metrics to optimize from either optimization_targets or optimization_metric
             optimization_targets = self.scenario_config.get("optimization_targets", [])
             if optimization_targets:
@@ -66,16 +71,20 @@ class OptunaObjectiveAdapter:
                 metrics_to_optimize = [self.scenario_config.get("optimization_metric", "Calmar")]
                 is_multi_objective = False
 
+            # Inside Optuna worker we already isolate trials; using parallel WFO windows can
+            # cause extra processes and hides progress logs.  Disable window-level parallel
+            # processing when n_jobs==1 so we remain in-process and can emit per-window logs.
             local.evaluator = BacktestEvaluator(
                 metrics_to_optimize=metrics_to_optimize,
                 is_multi_objective=is_multi_objective,
                 n_jobs=self.n_jobs,
-                enable_parallel_optimization=True,
+                enable_parallel_optimization=False,
             )
         backtester = local.backtester
         evaluator = local.evaluator
 
         # 3. Evaluate
+        logger.info(f"Trial {trial.number} - Calling evaluator.evaluate_parameters...")
         result = evaluator.evaluate_parameters(
             parameters=params,
             scenario_config=self.scenario_config,
@@ -84,10 +93,13 @@ class OptunaObjectiveAdapter:
         )
 
         objective_value = result.objective_value
+        logger.info(f"Trial {trial.number} - Evaluator returned objective value: {objective_value}")
+
         if isinstance(objective_value, list):
             # For multi-objective, return the first objective value.
             # This might need adjustment based on how Optuna handles multi-objective.
             return float(objective_value[0])
+        logger.info(f"--- Finished Trial {trial.number} ---")
         return float(objective_value)
 
     # ------------------------------------------------------------------

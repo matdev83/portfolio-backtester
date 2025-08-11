@@ -78,6 +78,7 @@ class BaseStrategy(ABC):
         self._take_profit_handler_instance: BaseTakeProfit | None = None
         self.entry_prices: pd.Series | None = None
         self._timing_controller: Optional[TimingController] = None
+        self.config: Dict[str, Any] = {}
 
         # Initialize provider interfaces
         self._universe_provider: Optional[Any] = None

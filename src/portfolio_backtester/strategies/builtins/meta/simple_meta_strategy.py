@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Any, cast
+from typing import Dict, Any
 
 from ..._core.base.base.meta_strategy import BaseMetaStrategy
 
@@ -23,7 +23,7 @@ class SimpleMetaStrategy(BaseMetaStrategy):
         return allocations
 
     @classmethod
-    def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
+    def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         base_params = super().tunable_parameters()
         return base_params
 

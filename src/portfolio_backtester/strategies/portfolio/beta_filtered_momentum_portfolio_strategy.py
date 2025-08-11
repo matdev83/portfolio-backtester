@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set, Optional, cast
+from typing import Any, Dict, List, Set, Optional
 
 import numpy as np
 import pandas as pd
 from ta.momentum import RSIIndicator
 
-from .unfiltered_atr_momentum_portfolio_strategy import (
-    UnfilteredAtrMomentumPortfolioStrategy,
+from ..builtins.portfolio.momentum_unfiltered_atr_portfolio_strategy import (
+    MomentumUnfilteredAtrPortfolioStrategy,
 )
 
 __all__ = ["MomentumBetaFilteredPortfolioStrategy"]
 
 
-class MomentumBetaFilteredPortfolioStrategy(UnfilteredAtrMomentumPortfolioStrategy):
+class MomentumBetaFilteredPortfolioStrategy(MomentumUnfilteredAtrPortfolioStrategy):
     """Momentum strategy variant that removes the highest-beta stocks from the long leg
     and allows tactical shorts when those high-beta names become overbought.
 
@@ -70,7 +70,7 @@ class MomentumBetaFilteredPortfolioStrategy(UnfilteredAtrMomentumPortfolioStrate
     # Optimiser support
     # ------------------------------------------------------------------
     @classmethod
-    def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
+    def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         parent_params: Dict[str, Dict[str, Any]] = super().tunable_parameters()
         parent_params.update(
             {
@@ -271,16 +271,13 @@ class MomentumBetaFilteredPortfolioStrategy(UnfilteredAtrMomentumPortfolioStrate
         # --------------------------------------------------------------
         # Delegate the heavy-lifting to the parent class
         # --------------------------------------------------------------
-        return cast(
-            pd.DataFrame,
-            super().generate_signals(
-                all_historical_data,
-                benchmark_historical_data,
-                non_universe_historical_data,
-                current_date,
-                start_date,
-                end_date,
-            ),
+        return super().generate_signals(
+            all_historical_data,
+            benchmark_historical_data,
+            non_universe_historical_data,
+            current_date,
+            start_date,
+            end_date,
         )
 
     # ------------------------------------------------------------------

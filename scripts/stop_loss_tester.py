@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 import sys
 
-from src.portfolio_backtester.backtester import main as backtester_main
+from portfolio_backtester.backtester import main as backtester_main
 
 
 def run_with_scenario(scenario_file: Path) -> None:

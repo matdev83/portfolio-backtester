@@ -63,6 +63,20 @@ class PortfolioValueTracker:
                 f"PortfolioValueTracker initialized with allocation_mode='{allocation_mode}'"
             )
 
+    def set_portfolio_values_from_series(self, portfolio_values: pd.Series) -> None:
+        """
+        Directly sets the daily portfolio value series from a vectorized calculation.
+
+        Args:
+            portfolio_values (pd.Series): A Series where the index is the date
+                                          and values are the total portfolio value.
+        """
+        self.daily_portfolio_value = portfolio_values
+        if not portfolio_values.empty:
+            self.current_portfolio_value = portfolio_values.iloc[-1]
+            if self.initial_portfolio_value == 0 and len(portfolio_values) > 0:
+                self.initial_portfolio_value = portfolio_values.iloc[0]
+
     def update_portfolio_value(self, trade_pnl: float) -> None:
         """
         Update portfolio value with trade P&L.

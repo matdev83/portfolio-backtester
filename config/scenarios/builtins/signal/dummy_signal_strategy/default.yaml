@@ -1,0 +1,36 @@
+name: dummy_signal_default
+strategy: DummySignalStrategy
+
+# Keep it minimal and fast for profiling
+start_date: 2015-01-01
+end_date: 2020-12-31
+rebalance_frequency: D
+position_sizer: equal_weight
+train_window_months: 12
+test_window_months: 12
+
+universe_config:
+  type: fixed
+  tickers: [SPY]
+
+optimization_targets:
+  - name: Sharpe
+    direction: maximize
+
+# 4 x 5 = 20 combinations
+optimize:
+  - parameter: open_long_prob
+    min_value: 0.05
+    max_value: 0.2
+    step: 0.05
+  - parameter: close_long_prob
+    min_value: 0.01
+    max_value: 0.05
+    step: 0.01
+
+strategy_params:
+  # Keep only parameters allowed by DummySignalStrategy.tunable_parameters
+  open_long_prob: 0.1
+  close_long_prob: 0.01
+
+

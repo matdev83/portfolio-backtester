@@ -213,37 +213,23 @@ def load_config():
     """
     global GLOBAL_CONFIG, OPTIMIZER_PARAMETER_DEFAULTS, BACKTEST_SCENARIOS
 
-    # Validate that all strategies have configuration files before loading
-    from pathlib import Path
-    from .strategy_config_validator import validate_strategy_configs_comprehensive
-
-    project_root = Path(__file__).parent.parent.parent
-    strategies_directory = project_root / "src" / "portfolio_backtester" / "strategies"
-    scenarios_directory = project_root / "config" / "scenarios"
-
-    is_valid, validation_errors = validate_strategy_configs_comprehensive(
-        str(strategies_directory), str(scenarios_directory)
-    )
-    if not is_valid:
-        error_message = "\n".join(validation_errors)
-        logger.error("Strategy configuration validation failed!")
-        print(error_message, file=sys.stderr)
-        raise ConfigurationError(
-            "Strategy configuration validation failed. See error details above."
-        )
-
     try:
         # Load and validate parameters file
-        logger.info(f"Loading parameters from: {PARAMETERS_FILE}")
-        is_valid, params_data, error_message = validate_yaml_file(PARAMETERS_FILE)
+        import sys as _sys
+        _this_mod = _sys.modules.get(__name__)
+        parameters_file_path = getattr(_this_mod, "PARAMETERS_FILE", PARAMETERS_FILE)
+        logger.info(f"Loading parameters from: {parameters_file_path}")
+        # Validate the currently configured parameters file path
+        is_valid, params_data, error_message = validate_yaml_file(parameters_file_path)
 
         if not is_valid:
-            logger.error(f"Parameters file validation failed: {PARAMETERS_FILE}")
+            logger.error(f"Parameters file validation failed: {parameters_file_path}")
             print(error_message, file=sys.stderr)
-            raise ConfigurationError("Invalid parameters.yaml file. See error details above.")
+            # Keep message compatible with tests expecting 'validation failed'
+            raise ConfigurationError("parameters.yaml validation failed. See error details above.")
 
         if params_data is None:
-            raise ConfigurationError(f"Parameters file is empty: {PARAMETERS_FILE}")
+            raise ConfigurationError(f"Parameters file is empty: {parameters_file_path}")
 
         # Extract configuration sections with validation
         GLOBAL_CONFIG = params_data.get("GLOBAL_CONFIG", {})
@@ -291,7 +277,9 @@ def load_config():
                             logger.info(f"Skipping example file: {scenario_file}")
                             continue
 
-                        scenario_path = Path(root) / scenario_file
+                        from pathlib import Path as _Path
+
+                        scenario_path = _Path(root) / scenario_file
                         is_valid, scenario_data, error_message = validate_yaml_file(scenario_path)
                         if not is_valid:
                             logger.error(f"Scenario file validation failed: {scenario_path}")
@@ -343,6 +331,25 @@ def load_config():
 
         if not BACKTEST_SCENARIOS:
             logger.warning(f"No scenarios found in {SCENARIOS_DIR}.")
+
+        # After parameters and scenarios are verified, validate strategy configs cross-references
+        from pathlib import Path
+        from .strategy_config_validator import validate_strategy_configs_comprehensive
+
+        project_root = Path(__file__).parent.parent.parent
+        strategies_directory = project_root / "src" / "portfolio_backtester" / "strategies"
+        scenarios_directory = project_root / "config" / "scenarios"
+
+        is_valid, validation_errors = validate_strategy_configs_comprehensive(
+            str(strategies_directory), str(scenarios_directory)
+        )
+        if not is_valid:
+            error_message = "\n".join(validation_errors)
+            logger.error("Strategy configuration validation failed!")
+            print(error_message, file=sys.stderr)
+            raise ConfigurationError(
+                "Strategy configuration validation failed. See error details above."
+            )
 
         logger.info(f"Successfully loaded configuration: {len(BACKTEST_SCENARIOS)} scenarios found")
 

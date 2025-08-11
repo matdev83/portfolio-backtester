@@ -39,7 +39,7 @@ This module provides SOLID-compliant strategy discovery following framework patt
 from typing import Dict, Type, Optional
 import logging
 
-from typing import Type, cast
+from typing import cast
 from .solid_strategy_registry import StrategyRegistryFactory
 from portfolio_backtester.interfaces.strategy_registry_interface import IStrategyRegistry
 logger = logging.getLogger(__name__)

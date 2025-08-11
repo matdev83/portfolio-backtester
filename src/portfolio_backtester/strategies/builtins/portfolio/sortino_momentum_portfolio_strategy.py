@@ -22,14 +22,8 @@ class SortinoMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
         for k, v in sortino_defaults.items():
             params_dict_to_update.setdefault(k, v)
 
-        # Import SortinoRatio from the alias module first to support test monkeypatching,
-        # fall back to the feature implementation if alias is unavailable.
-        try:
-            from portfolio_backtester.strategies.portfolio.sortino_momentum_portfolio_strategy import (
-                SortinoRatio as _SortinoRatio,
-            )
-        except Exception:  # pragma: no cover - fallback path
-            from portfolio_backtester.features.sortino_ratio import SortinoRatio as _SortinoRatio
+        # Import SortinoRatio directly from features (alpha: legacy shim removed)
+        from portfolio_backtester.features.sortino_ratio import SortinoRatio as _SortinoRatio
 
         self.sortino_feature = _SortinoRatio(
             rolling_window=params_dict_to_update["rolling_window"],
@@ -37,7 +31,7 @@ class SortinoMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
         )
 
     @classmethod
-    def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
+    def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         return {
             "num_holdings": {"type": "int", "min": 1, "max": 100, "default": 10},
             "rolling_window": {"type": "int", "min": 3, "max": 24, "default": 3},

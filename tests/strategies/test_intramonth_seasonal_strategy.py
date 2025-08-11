@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-from portfolio_backtester.strategies.signal.seasonal_signal_strategy import SeasonalSignalStrategy
+from portfolio_backtester.strategies.builtins.signal.seasonal_signal_strategy import SeasonalSignalStrategy
 
 @pytest.fixture
 def sample_historical_data():

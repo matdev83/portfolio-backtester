@@ -66,6 +66,46 @@ def generate_signals(
 
     all_monthly_weights = []
 
+    # OPTIMIZATION: Pre-calculate unique fields to avoid repeated computation in the loop.
+    unique_fields = []
+    if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
+        unique_fields = list(price_data_daily_ohlc.columns.get_level_values("Field").unique())
+
+    # --- PERFORMANCE OPTIMIZATION: Hoist data preparations out of the loop ---
+    is_multi_index = (
+        isinstance(price_data_daily_ohlc.columns, pd.MultiIndex)
+        and "Ticker" in price_data_daily_ohlc.columns.names
+    )
+
+    asset_data_view = None
+    benchmark_data_view = None
+    non_universe_data_view = None
+    non_universe_tickers = strategy.get_non_universe_data_requirements()
+
+    if is_multi_index:
+        asset_hist_data_cols = pd.MultiIndex.from_product(
+            [universe_tickers, unique_fields], names=["Ticker", "Field"]
+        ).intersection(price_data_daily_ohlc.columns)
+        asset_data_view = price_data_daily_ohlc[asset_hist_data_cols]
+
+        benchmark_hist_data_cols = pd.MultiIndex.from_product(
+            [[benchmark_ticker], unique_fields], names=["Ticker", "Field"]
+        ).intersection(price_data_daily_ohlc.columns)
+        benchmark_data_view = price_data_daily_ohlc[benchmark_hist_data_cols]
+
+        if non_universe_tickers:
+            non_universe_hist_data_cols = pd.MultiIndex.from_product(
+                [non_universe_tickers, unique_fields], names=["Ticker", "Field"]
+            ).intersection(price_data_daily_ohlc.columns)
+            non_universe_data_view = price_data_daily_ohlc[non_universe_hist_data_cols]
+
+    else:
+        asset_data_view = price_data_daily_ohlc[universe_tickers]
+        benchmark_data_view = price_data_daily_ohlc[[benchmark_ticker]]
+        if non_universe_tickers:
+            non_universe_data_view = price_data_daily_ohlc[non_universe_tickers]
+    # --- END PERFORMANCE OPTIMIZATION ---
+
     for current_rebalance_date in rebalance_dates:
         if has_timed_out():
             logger.warning("Timeout reached during scenario run. Halting signal generation.")
@@ -85,69 +125,15 @@ def generate_signals(
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Generating signals for date: {current_rebalance_date}")
 
-        if (
-            isinstance(price_data_daily_ohlc.columns, pd.MultiIndex)
-            and "Ticker" in price_data_daily_ohlc.columns.names
-        ):
-            asset_hist_data_cols = pd.MultiIndex.from_product(
-                [
-                    universe_tickers,
-                    list(price_data_daily_ohlc.columns.get_level_values("Field").unique()),
-                ],
-                names=["Ticker", "Field"],
-            )
-            # Use intersection to preserve MultiIndex dtype
-            asset_hist_data_cols = asset_hist_data_cols.intersection(price_data_daily_ohlc.columns)
-            all_historical_data_for_strat = price_data_daily_ohlc.loc[
-                price_data_daily_ohlc.index <= current_rebalance_date, asset_hist_data_cols
-            ]
+        # SLICING OPTIMIZATION: Use pre-sliced views and slice them by date.
+        all_historical_data_for_strat = asset_data_view.loc[:current_rebalance_date]
+        benchmark_historical_data_for_strat = benchmark_data_view.loc[:current_rebalance_date]
 
-            benchmark_hist_data_cols = pd.MultiIndex.from_product(
-                [
-                    [benchmark_ticker],
-                    list(price_data_daily_ohlc.columns.get_level_values("Field").unique()),
-                ],
-                names=["Ticker", "Field"],
-            )
-            benchmark_hist_data_cols = benchmark_hist_data_cols.intersection(
-                price_data_daily_ohlc.columns
-            )
-            benchmark_historical_data_for_strat = price_data_daily_ohlc.loc[
-                price_data_daily_ohlc.index <= current_rebalance_date, benchmark_hist_data_cols
-            ]
-        else:
-            all_historical_data_for_strat = price_data_daily_ohlc.loc[
-                price_data_daily_ohlc.index <= current_rebalance_date, universe_tickers
-            ]
-            benchmark_historical_data_for_strat = price_data_daily_ohlc.loc[
-                price_data_daily_ohlc.index <= current_rebalance_date, [benchmark_ticker]
-            ]
-
-        non_universe_tickers = strategy.get_non_universe_data_requirements()
         non_universe_historical_data_for_strat = pd.DataFrame()
-        if non_universe_tickers:
-            if (
-                isinstance(price_data_daily_ohlc.columns, pd.MultiIndex)
-                and "Ticker" in price_data_daily_ohlc.columns.names
-            ):
-                non_universe_hist_data_cols = pd.MultiIndex.from_product(
-                    [
-                        non_universe_tickers,
-                        list(price_data_daily_ohlc.columns.get_level_values("Field").unique()),
-                    ],
-                    names=["Ticker", "Field"],
-                )
-                non_universe_hist_data_cols = non_universe_hist_data_cols.intersection(
-                    price_data_daily_ohlc.columns
-                )
-                non_universe_historical_data_for_strat = price_data_daily_ohlc.loc[
-                    price_data_daily_ohlc.index <= current_rebalance_date,
-                    non_universe_hist_data_cols,
-                ]
-            else:
-                non_universe_historical_data_for_strat = price_data_daily_ohlc.loc[
-                    price_data_daily_ohlc.index <= current_rebalance_date, non_universe_tickers
-                ]
+        if non_universe_data_view is not None:
+            non_universe_historical_data_for_strat = non_universe_data_view.loc[
+                :current_rebalance_date
+            ]
 
         import inspect
 
@@ -286,6 +272,46 @@ def _generate_meta_strategy_signals(
 
     all_monthly_weights = []
 
+    # OPTIMIZATION: Pre-calculate unique fields to avoid repeated computation in the loop.
+    unique_fields = []
+    if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
+        unique_fields = list(price_data_daily_ohlc.columns.get_level_values("Field").unique())
+
+    # --- PERFORMANCE OPTIMIZATION: Hoist data preparations out of the loop ---
+    is_multi_index = (
+        isinstance(price_data_daily_ohlc.columns, pd.MultiIndex)
+        and "Ticker" in price_data_daily_ohlc.columns.names
+    )
+
+    asset_data_view = None
+    benchmark_data_view = None
+    non_universe_data_view = None
+    non_universe_tickers = strategy.get_non_universe_data_requirements()
+
+    if is_multi_index:
+        asset_hist_data_cols = pd.MultiIndex.from_product(
+            [universe_tickers, unique_fields], names=["Ticker", "Field"]
+        ).intersection(price_data_daily_ohlc.columns)
+        asset_data_view = price_data_daily_ohlc[asset_hist_data_cols]
+
+        benchmark_hist_data_cols = pd.MultiIndex.from_product(
+            [[benchmark_ticker], unique_fields], names=["Ticker", "Field"]
+        ).intersection(price_data_daily_ohlc.columns)
+        benchmark_data_view = price_data_daily_ohlc[benchmark_hist_data_cols]
+
+        if non_universe_tickers:
+            non_universe_hist_data_cols = pd.MultiIndex.from_product(
+                [non_universe_tickers, unique_fields], names=["Ticker", "Field"]
+            ).intersection(price_data_daily_ohlc.columns)
+            non_universe_data_view = price_data_daily_ohlc[non_universe_hist_data_cols]
+
+    else:
+        asset_data_view = price_data_daily_ohlc[universe_tickers]
+        benchmark_data_view = price_data_daily_ohlc[[benchmark_ticker]]
+        if non_universe_tickers:
+            non_universe_data_view = price_data_daily_ohlc[non_universe_tickers]
+    # --- END PERFORMANCE OPTIMIZATION ---
+
     for current_rebalance_date in rebalance_dates:
         if has_timed_out():
             logger.warning(
@@ -317,69 +343,15 @@ def _generate_meta_strategy_signals(
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Generating meta strategy signals for date: {current_rebalance_date}")
 
-        # Prepare data for meta strategy (same as regular strategy)
-        if (
-            isinstance(price_data_daily_ohlc.columns, pd.MultiIndex)
-            and "Ticker" in price_data_daily_ohlc.columns.names
-        ):
-            asset_hist_data_cols = pd.MultiIndex.from_product(
-                [
-                    universe_tickers,
-                    list(price_data_daily_ohlc.columns.get_level_values("Field").unique()),
-                ],
-                names=["Ticker", "Field"],
-            )
-            asset_hist_data_cols = asset_hist_data_cols.intersection(price_data_daily_ohlc.columns)
-            all_historical_data_for_strat = price_data_daily_ohlc.loc[
-                price_data_daily_ohlc.index <= current_rebalance_date, asset_hist_data_cols
-            ]
+        # SLICING OPTIMIZATION: Use pre-sliced views and slice them by date.
+        all_historical_data_for_strat = asset_data_view.loc[:current_rebalance_date]
+        benchmark_historical_data_for_strat = benchmark_data_view.loc[:current_rebalance_date]
 
-            benchmark_hist_data_cols = pd.MultiIndex.from_product(
-                [
-                    [benchmark_ticker],
-                    list(price_data_daily_ohlc.columns.get_level_values("Field").unique()),
-                ],
-                names=["Ticker", "Field"],
-            )
-            benchmark_hist_data_cols = benchmark_hist_data_cols.intersection(
-                price_data_daily_ohlc.columns
-            )
-            benchmark_historical_data_for_strat = price_data_daily_ohlc.loc[
-                price_data_daily_ohlc.index <= current_rebalance_date, benchmark_hist_data_cols
-            ]
-        else:
-            all_historical_data_for_strat = price_data_daily_ohlc.loc[
-                price_data_daily_ohlc.index <= current_rebalance_date, universe_tickers
-            ]
-            benchmark_historical_data_for_strat = price_data_daily_ohlc.loc[
-                price_data_daily_ohlc.index <= current_rebalance_date, [benchmark_ticker]
-            ]
-
-        non_universe_tickers = strategy.get_non_universe_data_requirements()
         non_universe_historical_data_for_strat = pd.DataFrame()
-        if non_universe_tickers:
-            if (
-                isinstance(price_data_daily_ohlc.columns, pd.MultiIndex)
-                and "Ticker" in price_data_daily_ohlc.columns.names
-            ):
-                non_universe_hist_data_cols = pd.MultiIndex.from_product(
-                    [
-                        non_universe_tickers,
-                        list(price_data_daily_ohlc.columns.get_level_values("Field").unique()),
-                    ],
-                    names=["Ticker", "Field"],
-                )
-                non_universe_hist_data_cols = non_universe_hist_data_cols.intersection(
-                    price_data_daily_ohlc.columns
-                )
-                non_universe_historical_data_for_strat = price_data_daily_ohlc.loc[
-                    price_data_daily_ohlc.index <= current_rebalance_date,
-                    non_universe_hist_data_cols,
-                ]
-            else:
-                non_universe_historical_data_for_strat = price_data_daily_ohlc.loc[
-                    price_data_daily_ohlc.index <= current_rebalance_date, non_universe_tickers
-                ]
+        if non_universe_data_view is not None:
+            non_universe_historical_data_for_strat = non_universe_data_view.loc[
+                :current_rebalance_date
+            ]
 
         # Generate signals from meta strategy (this will trigger trade interceptors)
         import inspect

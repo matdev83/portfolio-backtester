@@ -22,7 +22,7 @@ class UvxyRsiSignalStrategy(SignalStrategy):
         self.rsi_threshold: float = float(params.get("rsi_threshold", 30.0))
 
     @classmethod
-    def tunable_parameters(cls) -> Dict[str, Dict[str, object]]:  # used by tests
+    def tunable_parameters(_cls) -> Dict[str, Dict[str, object]]:  # used by tests
         return {
             "rsi_period": {"type": "int", "default": 2, "min": 2, "max": 10},
             "rsi_threshold": {"type": "float", "default": 30.0, "min": 1.0, "max": 99.0},

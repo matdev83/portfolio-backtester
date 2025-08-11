@@ -52,7 +52,7 @@ class BaseParallelRunner(AbstractParallelRunner, ABC):
                 logger.debug(f"Exception traceback: {''.join(traceback.format_tb(exc_tb))}")
             
             # Don't suppress the exception - let it propagate
-            return False
+            return False  # type: ignore[return-value]
         
         return None
 

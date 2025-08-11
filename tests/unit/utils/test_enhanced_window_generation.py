@@ -51,14 +51,20 @@ class TestEnhancedWindowGeneration:
 
     def test_determine_evaluation_frequency_daily_rebalance(self):
         """Test frequency detection for daily rebalance strategy."""
-        scenario_config = {"strategy_class": "SimpleMomentumPortfolioStrategy", "rebalance_frequency": "D"}
+        scenario_config = {
+            "strategy_class": "SimpleMomentumPortfolioStrategy",
+            "rebalance_frequency": "D",
+        }
 
         freq = _determine_evaluation_frequency(scenario_config)
         assert freq == "D"
 
     def test_determine_evaluation_frequency_monthly_default(self):
         """Test frequency detection defaults to monthly."""
-        scenario_config = {"strategy_class": "SimpleMomentumPortfolioStrategy", "rebalance_frequency": "M"}
+        scenario_config = {
+            "strategy_class": "SimpleMomentumPortfolioStrategy",
+            "rebalance_frequency": "M",
+        }
 
         freq = _determine_evaluation_frequency(scenario_config)
         assert freq == "M"
@@ -195,7 +201,7 @@ class TestEnhancedWindowGeneration:
         global_config: dict = {}
 
         # Mock import failure by patching the import inside the function
-        with patch("src.portfolio_backtester.utils.generate_enhanced_wfo_windows") as mock_enhanced:
+        with patch("portfolio_backtester.utils.generate_enhanced_wfo_windows") as mock_enhanced:
             # Make the mock function simulate import failure and call the original fallback
             def mock_fallback(*args, **kwargs):
                 # Simulate the import failure path in the actual function

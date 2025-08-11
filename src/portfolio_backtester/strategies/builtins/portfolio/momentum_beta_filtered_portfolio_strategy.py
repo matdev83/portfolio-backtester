@@ -1,4 +1,4 @@
-from ...portfolio.momentum_beta_filtered_portfolio_strategy import (
+from ...portfolio.beta_filtered_momentum_portfolio_strategy import (
     MomentumBetaFilteredPortfolioStrategy,
 )  # noqa: F401
 

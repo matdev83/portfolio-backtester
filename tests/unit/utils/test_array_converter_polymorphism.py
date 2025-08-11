@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from unittest.mock import Mock
 
-from src.portfolio_backtester.interfaces.array_converter_interface import (
+from portfolio_backtester.interfaces.array_converter_interface import (
     DataFrameValidator,
     NullDataFrameValidator,
     DataFrameValidatorFactory,
@@ -122,9 +122,9 @@ class TestMultiIndexColumnProcessor:
         arrays = [["A", "A", "B", "B"], ["Close", "Volume", "Close", "Volume"]]
         columns = pd.MultiIndex.from_arrays(arrays, names=["Ticker", "Field"])
         df = pd.DataFrame(np.random.randn(5, 4), columns=columns)
-        
+
         result = self.processor.process_columns(df, field="Close")
-        
+
         assert isinstance(result, pd.DataFrame)
         assert list(result.columns) == ["A", "B"]
         assert len(result) == 5
@@ -134,9 +134,9 @@ class TestMultiIndexColumnProcessor:
         arrays = [["A", "A", "B", "B"], ["Close", "Volume", "Close", "Volume"]]
         columns = pd.MultiIndex.from_arrays(arrays, names=["Ticker", "Data"])
         df = pd.DataFrame(np.random.randn(5, 4), columns=columns)
-        
+
         result = self.processor.process_columns(df, field="Close")
-        
+
         assert isinstance(result, pd.DataFrame)
         assert list(result.columns) == ["A", "B"]
 
@@ -145,8 +145,10 @@ class TestMultiIndexColumnProcessor:
         arrays = [["A", "A", "B", "B"], ["Close", "Volume", "Close", "Volume"]]
         columns = pd.MultiIndex.from_arrays(arrays, names=["Ticker", "Field"])
         df = pd.DataFrame(np.random.randn(5, 4), columns=columns)
-        
-        with pytest.raises(ValueError, match="Multi-Index DataFrame requires \\*field\\* parameter"):
+
+        with pytest.raises(
+            ValueError, match="Multi-Index DataFrame requires \\*field\\* parameter"
+        ):
             self.processor.process_columns(df, field=None)
 
     def test_process_columns_field_not_found(self):
@@ -154,7 +156,7 @@ class TestMultiIndexColumnProcessor:
         arrays = [["A", "A", "B", "B"], ["Close", "Volume", "Close", "Volume"]]
         columns = pd.MultiIndex.from_arrays(arrays, names=["Ticker", "Field"])
         df = pd.DataFrame(np.random.randn(5, 4), columns=columns)
-        
+
         with pytest.raises(KeyError, match="Field 'Open' not found in DataFrame columns"):
             self.processor.process_columns(df, field="Open")
 
@@ -163,7 +165,7 @@ class TestMultiIndexColumnProcessor:
         arrays = [["A", "A", "B", "B"], ["Close", "Volume", "Close", "Volume"]]
         columns = pd.MultiIndex.from_arrays(arrays, names=[None, None])
         df = pd.DataFrame(np.random.randn(5, 4), columns=columns)
-        
+
         # Should use default "Field" when level name is None
         result = self.processor.process_columns(df, field="Close")
         assert isinstance(result, pd.DataFrame)
@@ -191,7 +193,7 @@ class TestSimpleColumnProcessor:
         """Test that processing returns a copy of the DataFrame."""
         df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
         result = self.processor.process_columns(df)
-        
+
         assert isinstance(result, pd.DataFrame)
         assert result is not df  # Should be a copy
         assert result.equals(df)  # But content should be the same
@@ -200,7 +202,7 @@ class TestSimpleColumnProcessor:
         """Test that field parameter is ignored for simple columns."""
         df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
         result = self.processor.process_columns(df, field="ignored")
-        
+
         assert isinstance(result, pd.DataFrame)
         assert result.equals(df)
 
@@ -233,13 +235,16 @@ class TestPolymorphicArrayConverter:
 
     def test_convert_simple_dataframe(self):
         """Test converting simple DataFrame to array."""
-        df = pd.DataFrame({
-            "AAPL": [100.0, 101.0, 102.0],
-            "GOOGL": [1500.0, 1510.0, 1520.0],
-        }, index=pd.date_range("2023-01-01", periods=3))
-        
+        df = pd.DataFrame(
+            {
+                "AAPL": [100.0, 101.0, 102.0],
+                "GOOGL": [1500.0, 1510.0, 1520.0],
+            },
+            index=pd.date_range("2023-01-01", periods=3),
+        )
+
         matrix, tickers = self.converter.convert_to_array(df)
-        
+
         assert isinstance(matrix, np.ndarray)
         assert matrix.dtype == np.float32
         assert matrix.shape == (3, 2)
@@ -248,18 +253,16 @@ class TestPolymorphicArrayConverter:
 
     def test_convert_multiindex_dataframe(self):
         """Test converting MultiIndex DataFrame to array."""
-        arrays = [["AAPL", "AAPL", "GOOGL", "GOOGL"], 
-                  ["Close", "Volume", "Close", "Volume"]]
+        arrays = [["AAPL", "AAPL", "GOOGL", "GOOGL"], ["Close", "Volume", "Close", "Volume"]]
         columns = pd.MultiIndex.from_arrays(arrays, names=["Ticker", "Field"])
         df = pd.DataFrame(
-            [[100.0, 1000, 1500.0, 2000], 
-             [101.0, 1100, 1510.0, 2100]], 
+            [[100.0, 1000, 1500.0, 2000], [101.0, 1100, 1510.0, 2100]],
             columns=columns,
-            index=pd.date_range("2023-01-01", periods=2)
+            index=pd.date_range("2023-01-01", periods=2),
         )
-        
+
         matrix, tickers = self.converter.convert_to_array(df, field="Close")
-        
+
         assert isinstance(matrix, np.ndarray)
         assert matrix.dtype == np.float32
         assert matrix.shape == (2, 2)
@@ -268,13 +271,16 @@ class TestPolymorphicArrayConverter:
 
     def test_convert_sorts_non_monotonic_index(self):
         """Test that converter sorts non-monotonic index."""
-        df = pd.DataFrame({
-            "A": [1.0, 3.0, 2.0],
-            "B": [4.0, 6.0, 5.0],
-        }, index=pd.date_range("2023-01-01", periods=3)[::-1])  # Reverse order
-        
+        df = pd.DataFrame(
+            {
+                "A": [1.0, 3.0, 2.0],
+                "B": [4.0, 6.0, 5.0],
+            },
+            index=pd.date_range("2023-01-01", periods=3)[::-1],
+        )  # Reverse order
+
         matrix, tickers = self.converter.convert_to_array(df)
-        
+
         # Should be sorted by index
         assert matrix.shape == (3, 2)
         np.testing.assert_array_almost_equal(matrix[0], [2.0, 5.0])  # Last row became first
@@ -282,13 +288,16 @@ class TestPolymorphicArrayConverter:
 
     def test_convert_handles_nan_values(self):
         """Test that converter handles NaN values correctly."""
-        df = pd.DataFrame({
-            "A": [1.0, np.nan, 3.0],
-            "B": [4.0, 5.0, np.nan],
-        }, index=pd.date_range("2023-01-01", periods=3))
-        
+        df = pd.DataFrame(
+            {
+                "A": [1.0, np.nan, 3.0],
+                "B": [4.0, 5.0, np.nan],
+            },
+            index=pd.date_range("2023-01-01", periods=3),
+        )
+
         matrix, tickers = self.converter.convert_to_array(df)
-        
+
         assert isinstance(matrix, np.ndarray)
         assert np.isnan(matrix[1, 0])  # NaN preserved
         assert np.isnan(matrix[2, 1])  # NaN preserved
@@ -303,8 +312,10 @@ class TestPolymorphicArrayConverter:
         arrays = [["A", "A", "B", "B"], ["Close", "Volume", "Close", "Volume"]]
         columns = pd.MultiIndex.from_arrays(arrays, names=["Ticker", "Field"])
         df = pd.DataFrame(np.random.randn(5, 4), columns=columns)
-        
-        with pytest.raises(ValueError, match="Multi-Index DataFrame requires \\*field\\* parameter"):
+
+        with pytest.raises(
+            ValueError, match="Multi-Index DataFrame requires \\*field\\* parameter"
+        ):
             self.converter.convert_to_array(df)
 
     def test_convert_multiindex_field_not_found_raises_error(self):
@@ -312,7 +323,7 @@ class TestPolymorphicArrayConverter:
         arrays = [["A", "A", "B", "B"], ["Close", "Volume", "Close", "Volume"]]
         columns = pd.MultiIndex.from_arrays(arrays, names=["Ticker", "Field"])
         df = pd.DataFrame(np.random.randn(5, 4), columns=columns)
-        
+
         with pytest.raises(KeyError, match="Field 'Open' not found in DataFrame columns"):
             self.converter.convert_to_array(df, field="Open")
 
@@ -332,7 +343,7 @@ class TestPolymorphicIntegration:
     def test_no_isinstance_usage_in_polymorphic_converter(self):
         """Test that polymorphic converter doesn't use isinstance internally."""
         converter = create_array_converter()
-        
+
         # Test with various DataFrame types that would have triggered isinstance checks
         test_cases = [
             # Simple DataFrame
@@ -340,19 +351,20 @@ class TestPolymorphicIntegration:
             # MultiIndex DataFrame
             pd.DataFrame(
                 np.random.randn(3, 4),
-                columns=pd.MultiIndex.from_arrays([["A", "A", "B", "B"], 
-                                                   ["Close", "Volume", "Close", "Volume"]],
-                                                  names=["Ticker", "Field"])
+                columns=pd.MultiIndex.from_arrays(
+                    [["A", "A", "B", "B"], ["Close", "Volume", "Close", "Volume"]],
+                    names=["Ticker", "Field"],
+                ),
             ),
         ]
-        
+
         # All these should work without isinstance checks
         for df in test_cases:
             if isinstance(df.columns, pd.MultiIndex):
                 matrix, tickers = converter.convert_to_array(df, field="Close")
             else:
                 matrix, tickers = converter.convert_to_array(df)
-            
+
             # Basic success test
             assert isinstance(matrix, np.ndarray)
             assert isinstance(tickers, list)
@@ -360,33 +372,34 @@ class TestPolymorphicIntegration:
     def test_polymorphic_converter_equivalent_to_original_logic(self):
         """Test that polymorphic converter produces same results as original isinstance logic."""
         converter = create_array_converter()
-        
+
         # Test case 1: Simple DataFrame
-        df_simple = pd.DataFrame({
-            "AAPL": [100.0, 101.0],
-            "GOOGL": [1500.0, 1510.0],
-        }, index=pd.date_range("2023-01-01", periods=2))
-        
+        df_simple = pd.DataFrame(
+            {
+                "AAPL": [100.0, 101.0],
+                "GOOGL": [1500.0, 1510.0],
+            },
+            index=pd.date_range("2023-01-01", periods=2),
+        )
+
         matrix, tickers = converter.convert_to_array(df_simple)
-        
+
         # Verify results match expected behavior
         assert matrix.dtype == np.float32
         assert matrix.shape == (2, 2)
         assert tickers == ["AAPL", "GOOGL"]
-        
+
         # Test case 2: MultiIndex DataFrame
-        arrays = [["AAPL", "AAPL", "GOOGL", "GOOGL"], 
-                  ["Close", "Volume", "Close", "Volume"]]
+        arrays = [["AAPL", "AAPL", "GOOGL", "GOOGL"], ["Close", "Volume", "Close", "Volume"]]
         columns = pd.MultiIndex.from_arrays(arrays, names=["Ticker", "Field"])
         df_multi = pd.DataFrame(
-            [[100.0, 1000, 1500.0, 2000], 
-             [101.0, 1100, 1510.0, 2100]], 
+            [[100.0, 1000, 1500.0, 2000], [101.0, 1100, 1510.0, 2100]],
             columns=columns,
-            index=pd.date_range("2023-01-01", periods=2)
+            index=pd.date_range("2023-01-01", periods=2),
         )
-        
+
         matrix, tickers = converter.convert_to_array(df_multi, field="Close")
-        
+
         assert matrix.dtype == np.float32
         assert matrix.shape == (2, 2)
         assert tickers == ["AAPL", "GOOGL"]
@@ -395,19 +408,21 @@ class TestPolymorphicIntegration:
     def test_error_handling_equivalent_to_original(self):
         """Test that error handling matches original isinstance-based logic."""
         converter = create_array_converter()
-        
+
         # Test invalid input type
         with pytest.raises(TypeError, match="Input must be a pandas DataFrame"):
             converter.convert_to_array("not_a_dataframe")
-        
+
         # Test MultiIndex without field
         arrays = [["A", "A", "B", "B"], ["Close", "Volume", "Close", "Volume"]]
         columns = pd.MultiIndex.from_arrays(arrays, names=["Ticker", "Field"])
         df = pd.DataFrame(np.random.randn(2, 4), columns=columns)
-        
-        with pytest.raises(ValueError, match="Multi-Index DataFrame requires \\*field\\* parameter"):
+
+        with pytest.raises(
+            ValueError, match="Multi-Index DataFrame requires \\*field\\* parameter"
+        ):
             converter.convert_to_array(df)
-        
+
         # Test field not found
         with pytest.raises(KeyError, match="Field 'Nonexistent' not found in DataFrame columns"):
             converter.convert_to_array(df, field="Nonexistent")

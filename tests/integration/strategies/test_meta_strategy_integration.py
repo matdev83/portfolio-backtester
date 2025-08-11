@@ -4,7 +4,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from portfolio_backtester.strategies.meta.simple_meta_strategy import SimpleMetaStrategy
+from portfolio_backtester.strategies.builtins.meta.simple_meta_strategy import SimpleMetaStrategy
 from portfolio_backtester.backtester_logic.strategy_logic import generate_signals
 from portfolio_backtester.backtester_logic.portfolio_logic import calculate_portfolio_returns
 
@@ -16,27 +16,39 @@ class TestMetaStrategyIntegration:
     def sample_data(self):
         dates = pd.date_range("2023-01-01", "2023-12-31", freq="D")
         assets = ["AAPL", "MSFT", "GOOGL"]
-        columns = pd.MultiIndex.from_product([assets, ["Open", "High", "Low", "Close", "Volume"]], names=["Ticker", "Field"])
+        columns = pd.MultiIndex.from_product(
+            [assets, ["Open", "High", "Low", "Close", "Volume"]], names=["Ticker", "Field"]
+        )
         np.random.seed(42)
         data = np.random.randn(len(dates), len(columns)) * 0.02 + 1.0
         data = np.cumprod(data, axis=0) * 100
         df = pd.DataFrame(data, index=dates, columns=columns)
         for asset in assets:
-            df[(asset, "High")] = df[[(asset, "Open"), (asset, "Close")]].max(axis=1) * (1 + np.random.rand(len(dates)) * 0.01)
-            df[(asset, "Low")] = df[[(asset, "Open"), (asset, "Close")]].min(axis=1) * (1 - np.random.rand(len(dates)) * 0.01)
+            df[(asset, "High")] = df[[(asset, "Open"), (asset, "Close")]].max(axis=1) * (
+                1 + np.random.rand(len(dates)) * 0.01
+            )
+            df[(asset, "Low")] = df[[(asset, "Open"), (asset, "Close")]].min(axis=1) * (
+                1 - np.random.rand(len(dates)) * 0.01
+            )
             df[(asset, "Volume")] = np.random.randint(1_000_000, 10_000_000, len(dates))
         return df
 
     @pytest.fixture
     def benchmark_data(self):
         dates = pd.date_range("2023-01-01", "2023-12-31", freq="D")
-        columns = pd.MultiIndex.from_product([["SPY"], ["Open", "High", "Low", "Close", "Volume"]], names=["Ticker", "Field"])
+        columns = pd.MultiIndex.from_product(
+            [["SPY"], ["Open", "High", "Low", "Close", "Volume"]], names=["Ticker", "Field"]
+        )
         np.random.seed(43)
         data = np.random.randn(len(dates), len(columns)) * 0.015 + 1.0
         data = np.cumprod(data, axis=0) * 100
         df = pd.DataFrame(data, index=dates, columns=columns)
-        df[("SPY", "High")] = df[("SPY", "Open")].combine(df[("SPY", "Close")], max) * (1 + np.random.rand(len(dates)) * 0.005)
-        df[("SPY", "Low")] = df[("SPY", "Open")].combine(df[("SPY", "Close")], min) * (1 - np.random.rand(len(dates)) * 0.005)
+        df[("SPY", "High")] = df[("SPY", "Open")].combine(df[("SPY", "Close")], max) * (
+            1 + np.random.rand(len(dates)) * 0.005
+        )
+        df[("SPY", "Low")] = df[("SPY", "Open")].combine(df[("SPY", "Close")], min) * (
+            1 - np.random.rand(len(dates)) * 0.005
+        )
         df[("SPY", "Volume")] = np.random.randint(50_000_000, 200_000_000, len(dates))
         return df
 
@@ -94,7 +106,10 @@ class TestMetaStrategyIntegration:
                 {
                     "strategy_id": "strategy1",
                     "strategy_class": "CalmarMomentumPortfolioStrategy",
-                    "strategy_params": {"rolling_window": 6, "timing_config": {"mode": "time_based", "rebalance_frequency": "M"}},
+                    "strategy_params": {
+                        "rolling_window": 6,
+                        "timing_config": {"mode": "time_based", "rebalance_frequency": "M"},
+                    },
                     "weight": 0.6,
                 },
                 {
@@ -122,13 +137,19 @@ class TestMetaStrategyIntegration:
                 {
                     "strategy_id": "strategy1",
                     "strategy_class": "CalmarMomentumPortfolioStrategy",
-                    "strategy_params": {"universe_config": ["AAPL", "MSFT"], "timing_config": {"mode": "time_based", "rebalance_frequency": "M"}},
+                    "strategy_params": {
+                        "universe_config": ["AAPL", "MSFT"],
+                        "timing_config": {"mode": "time_based", "rebalance_frequency": "M"},
+                    },
                     "weight": 0.5,
                 },
                 {
                     "strategy_id": "strategy2",
                     "strategy_class": "SeasonalSignalStrategy",
-                    "strategy_params": {"universe_config": ["GOOGL", "AMZN"], "timing_config": {"mode": "signal_based"}},
+                    "strategy_params": {
+                        "universe_config": ["GOOGL", "AMZN"],
+                        "timing_config": {"mode": "signal_based"},
+                    },
                     "weight": 0.5,
                 },
             ]
@@ -146,13 +167,27 @@ class TestMetaStrategyIntegration:
                 {
                     "strategy_id": "momentum",
                     "strategy_class": "CalmarMomentumPortfolioStrategy",
-                    "strategy_params": {"rolling_window": 3, "num_holdings": 2, "price_column_asset": "Close", "price_column_benchmark": "Close", "timing_config": {"mode": "time_based", "rebalance_frequency": "M"}},
+                    "strategy_params": {
+                        "rolling_window": 3,
+                        "num_holdings": 2,
+                        "price_column_asset": "Close",
+                        "price_column_benchmark": "Close",
+                        "timing_config": {"mode": "time_based", "rebalance_frequency": "M"},
+                    },
                     "weight": 0.7,
                 },
                 {
                     "strategy_id": "seasonal",
                     "strategy_class": "SeasonalSignalStrategy",
-                    "strategy_params": {"direction": "long", "entry_day": 5, "hold_days": 5, "price_column_asset": "Close", "trade_longs": True, "trade_shorts": False, "timing_config": {"mode": "signal_based"}},
+                    "strategy_params": {
+                        "direction": "long",
+                        "entry_day": 5,
+                        "hold_days": 5,
+                        "price_column_asset": "Close",
+                        "trade_longs": True,
+                        "trade_shorts": False,
+                        "timing_config": {"mode": "signal_based"},
+                    },
                     "weight": 0.3,
                 },
             ],

@@ -168,21 +168,19 @@ class FileSystemStrategyDiscoveryEngine(IStrategyDiscoveryEngine):
         Args:
             discovery_paths: List of directory names to scan (defaults to standard paths)
         """
-        # Default discovery covers new layout first (builtins/user),
-        # plus legacy paths and testing for backward compatibility during migration.
+        # Default discovery covers new layout only (builtins/user) and testing fixtures.
+        # Legacy directories ("portfolio", "signal", "meta") are no longer scanned to
+        # enforce separation of framework components from legacy paths.
         self._discovery_paths = discovery_paths or [
-            # New layout
+            # Canonical framework strategies
             "builtins/portfolio",
             "builtins/signal",
             "builtins/meta",
+            # User-provided strategies
             "user/portfolio",
             "user/signal",
             "user/meta",
-            # Legacy layout (to be removed once migration completes)
-            "portfolio",
-            "signal",
-            "meta",
-            # Special-case for tests
+            # Test fixtures (kept to support test-only strategies)
             "testing",
         ]
 
@@ -191,6 +189,7 @@ class FileSystemStrategyDiscoveryEngine(IStrategyDiscoveryEngine):
         import importlib
         import pkgutil
         import os
+        import time
 
         discovered = {}
 
@@ -199,6 +198,7 @@ class FileSystemStrategyDiscoveryEngine(IStrategyDiscoveryEngine):
 
         strategies_dir = os.path.dirname(strategies_pkg.__file__)
 
+        start_time = time.perf_counter()
         for subdir in self._discovery_paths:
             if subdir == "testing":
                 # Special case for testing directory - it's under portfolio_backtester.testing.strategies
@@ -237,7 +237,10 @@ class FileSystemStrategyDiscoveryEngine(IStrategyDiscoveryEngine):
 
         for cls in all_subclasses:
             discovered[cls.__name__] = cls
-
+        elapsed = (time.perf_counter() - start_time) * 1000.0
+        logger.debug(
+            f"Strategy discovery time: {elapsed:.2f} ms across paths: {self._discovery_paths}"
+        )
         return discovered
 
     def get_discovery_paths(self) -> List[str]:

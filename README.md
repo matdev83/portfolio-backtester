@@ -8,7 +8,8 @@ Run a simple momentum strategy backtest with a single command:
 
 ```bash
 # Make sure you have installed the dependencies (see Setup section)
-python -m src.portfolio_backtester.backtester --mode backtest --scenario-name "Momentum_Unfiltered"
+python -m src.portfolio_backtester.backtester --mode backtest \
+  --scenario-filename "config/scenarios/builtins/portfolio/simple_momentum_strategy/default.yaml"
 ```
 
 This will run the backtest and generate a performance report in the `data/reports` directory.
@@ -24,7 +25,7 @@ You can run an optimization with a single command using the provided shortcut sc
 For example:
 
 ```bash
-./optimize.py config/scenarios/portfolio/calmar_momentum_strategy/default.yaml --optuna-trials 100 --n-jobs 4
+./optimize.py config/scenarios/builtins/portfolio/calmar_momentum_portfolio_strategy/default.yaml --optuna-trials 100 --n-jobs 4
 ```
 
 This will invoke the optimizer with the specified scenario YAML and any additional arguments you provide. The script automatically uses the correct Python environment and CLI flags.
@@ -211,26 +212,12 @@ All related scripts are located in `src/portfolio_backtester/universe_data/`.
 python -m src.portfolio_backtester.backtester --mode backtest --scenario-name "Momentum_Unfiltered"
 ```
 
-**2. Advanced Optimization with Robustness (using scenario name):**
+**2. Advanced Optimization with Robustness (using scenario filename):**
 
 ```bash
 python -m src.portfolio_backtester.backtester \
   --mode optimize \
-  --scenario-name "Momentum_Unfiltered" \
-  --study-name "robust_momentum_v1" \
-  --optimizer optuna \
-  --optuna-trials 500 \
-  --pruning-enabled \
-  --n-jobs -1 \
-  --random-seed 42
-```
-
-**3. Advanced Optimization with Robustness (using scenario filename):**
-
-```bash
-python -m src.portfolio_backtester.backtester \
-  --mode optimize \
-  --scenario-filename "config/scenarios/momentum/Momentum_Unfiltered.yaml" \
+  --scenario-filename "config/scenarios/builtins/signal/ema_crossover_signal_strategy/default.yaml" \
   --study-name "robust_momentum_v1" \
   --optimizer optuna \
   --optuna-trials 500 \
@@ -244,10 +231,21 @@ python -m src.portfolio_backtester.backtester \
 ```bash
 python -m src.portfolio_backtester.backtester \
   --mode monte_carlo \
-  --scenario-name "Momentum_Unfiltered" \
+  --scenario-filename "config/scenarios/builtins/portfolio/simple_momentum_strategy/default.yaml" \
   --mc-simulations 2000 \
   --mc-years 15 \
   --interactive
+```
+
+**4. Genetic Algorithm Optimization:**
+
+```bash
+python -m src.portfolio_backtester.backtester \
+  --mode optimize \
+  --scenario-filename "config/scenarios/builtins/portfolio/vams_momentum_portfolio_strategy/default.yaml" \
+  --optimizer genetic \
+  --optuna-trials 200 \
+  --study-name "genetic_vams_opt"
 ```
 
 **4. Genetic Algorithm Optimization:**
@@ -266,7 +264,7 @@ python -m src.portfolio_backtester.backtester \
 ```bash
 python -m src.portfolio_backtester.backtester \
   --mode optimize \
-  --scenario-filename "config/scenarios/signal/intramonth_seasonal_strategy/TLT_long_month_1.yaml" \
+  --scenario-filename "config/scenarios/builtins/signal/ema_crossover_signal_strategy/default.yaml" \
   --early-stop-zero-trials 5 \
   --optuna-trials 100
 ```
@@ -582,8 +580,8 @@ For comprehensive examples of different risk management configurations, see:
 
 - **[Risk Management Examples](config/scenarios/examples/risk_management_examples.yaml)** - Basic configurations for various strategy types
 - **[Take Profit Showcase](config/scenarios/examples/take_profit_showcase.yaml)** - Trading style-specific risk management setups
-- **[EMA Crossover Test](config/scenarios/signal/technical/ema_crossover_signal_strategy/test.yaml)** - Optimization with risk management parameters
-- **[Sharpe Momentum Strategy](config/scenarios/portfolio/momentum/sharpe_momentum_portfolio_strategy/default.yaml)** - Portfolio strategy with risk management
+- **[EMA Crossover](config/scenarios/builtins/signal/ema_crossover_signal_strategy/default.yaml)** - Optimization with risk management parameters
+- **[Sharpe Momentum Strategy](config/scenarios/builtins/portfolio/sharpe_momentum_portfolio_strategy/default.yaml)** - Portfolio strategy with risk management
 
 #### Architecture Diagram
 
@@ -806,6 +804,26 @@ This ensures the tool works reliably even with data source issues, while providi
 - **Debugging**: Identify issues with synthetic data generation parameters
 
 The tool is essential for maintaining confidence in Monte Carlo simulation results and ensuring that strategy robustness testing reflects realistic market conditions.
+
+## Performance
+
+The backtesting and optimization process has been significantly optimized to improve performance. The following changes have been made:
+
+*   **Vectorized Signal Generation**: The signal generation logic in the `DummySignalStrategy` has been vectorized to use efficient pandas operations instead of for loops.
+*   **Optimized Data Slicing**: The `generate_signals` function in `strategy_logic.py` has been refactored to avoid repeated slicing of the historical data, which was a major performance bottleneck.
+*   **Vectorized Portfolio Calculations**: The `_track_trades_with_dynamic_capital` function in `portfolio_logic.py` has been vectorized to eliminate a daily loop, resulting in a massive performance improvement.
+
+These changes have reduced the runtime of the dummy signal strategy optimization from over 300 seconds to just over 4 seconds.
+
+### Profiling
+
+To run the line profiler and gather performance data, use the following command:
+
+```bash
+.venv/Scripts/python.exe scripts/line_profile_optimizer.py
+```
+
+The profiling results will be saved to a timestamped file in the system's temporary directory.
 
 ## Contributing
 

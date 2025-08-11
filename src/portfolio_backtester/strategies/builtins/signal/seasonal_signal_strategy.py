@@ -30,7 +30,7 @@ class SeasonalSignalStrategy(SignalStrategy):
         }
 
     @classmethod
-    def tunable_parameters(cls) -> Dict[str, Dict[str, object]]:  # not used by tests
+    def tunable_parameters(_cls) -> Dict[str, Dict[str, object]]:  # not used by tests
         return {
             "direction": {"type": "str", "default": "long"},
             "entry_day": {"type": "int", "default": 1, "min": -21, "max": 21},

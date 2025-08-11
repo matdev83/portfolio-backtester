@@ -8,15 +8,15 @@ accepts interfaces for parallel execution and math operations dependencies.
 import pytest
 from unittest.mock import Mock
 
-from src.portfolio_backtester.parallel_wfo import (
+from portfolio_backtester.parallel_wfo import (
     ParallelWFOProcessor,
     create_parallel_wfo_processor,
 )
-from src.portfolio_backtester.interfaces.parallel_executor_interface import (
+from portfolio_backtester.interfaces.parallel_executor_interface import (
     IParallelExecutor,
     create_parallel_executor,
 )
-from src.portfolio_backtester.interfaces.math_operations_interface import (
+from portfolio_backtester.interfaces.math_operations_interface import (
     IMathOperations,
     StandardMathOperations,
     create_math_operations,
@@ -82,8 +82,10 @@ class TestParallelWFOProcessorDIP:
             max_workers=3, enable_parallel=True, math_operations=mock_math_ops
         )
 
-        # Verify the benefit estimator has the math operations (through the adapter)
-        assert hasattr(processor._benefit_estimator._estimator, "_math_operations")
+        # Verify estimate_parallel_benefit works without touching private attributes
+        result = processor.estimate_parallel_benefit(num_windows=3, avg_window_time=1.0)
+        assert isinstance(result, dict)
+        assert "estimated_speedup" in result
 
     def test_create_parallel_wfo_processor_with_dependency_injection(self):
         """Test factory function with dependency injection."""

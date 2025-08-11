@@ -28,74 +28,20 @@ class TimeBasedTiming(TimingController):
         strategy_context: "BaseStrategy",
     ) -> pd.DatetimeIndex:
         """Generate rebalance dates based on frequency."""
-        # Convert legacy frequencies to new pandas format
-        freq_mapping = {
-            "M": "ME",  # Month end
-            "Q": "QE",  # Quarter end
-            "A": "YE",  # Year end
-            "Y": "YE",  # Year end (alias)
-            "W": "W",  # Weekly (unchanged)
-            "D": "D",  # Daily (unchanged)
-        }
-        freq = freq_mapping.get(self.frequency.upper(), self.frequency)
-
-        # Generate base dates
-        try:
-            base_dates = pd.date_range(start_date, end_date, freq=freq)
-        except ValueError as e:
-            raise ValueError(f"Invalid frequency '{self.frequency}': {e}")
+        # Use pandas to generate the rebalance dates directly
+        rebalance_dates = pd.bdate_range(start=start_date, end=end_date, freq=self.frequency)
 
         # Apply offset if specified
         if self.offset != 0:
-            base_dates = base_dates + pd.Timedelta(days=self.offset)
+            rebalance_dates = rebalance_dates + pd.DateOffset(days=self.offset)
 
         # Filter to only include available trading dates
-        rebalance_dates = []
-        for date in base_dates:
-            # Find nearest available trading date
-            # Check if the target date is already a business day
-            if date in available_dates:
-                nearest_date = date
-            else:
-                # For month-end frequencies (ME), prefer last business day of period
-                # For other frequencies, prefer next business day if target is not available
-                if freq in ["ME", "M"]:
-                    # Month-end: prefer next business day if within end_date range, otherwise last business day
-                    future_dates = available_dates[available_dates >= date]
-                    if len(future_dates) > 0 and future_dates.min() <= end_date:
-                        nearest_date = future_dates.min()
-                    else:
-                        # If no future dates within range, use last business day
-                        past_dates = available_dates[available_dates <= date]
-                        if len(past_dates) > 0:
-                            nearest_date = past_dates.max()
-                        else:
-                            continue
-                else:
-                    # Other frequencies: prefer next business day on or after target
-                    future_dates = available_dates[available_dates >= date]
-                    if len(future_dates) > 0:
-                        nearest_date = future_dates.min()
-                    else:
-                        # If no future dates, find last available trading date
-                        past_dates = available_dates[available_dates < date]
-                        if len(past_dates) > 0:
-                            nearest_date = past_dates.max()
-                        else:
-                            continue
-
-            # Only include if the nearest date is within reasonable range
-            if start_date <= nearest_date <= end_date:
-                rebalance_dates.append(nearest_date)
-
-        # Remove duplicates and sort
-        rebalance_dates = sorted(set(rebalance_dates))
+        rebalance_dates = available_dates.intersection(rebalance_dates)
 
         # Store scheduled dates in timing state
-        scheduled_dates_set = set(rebalance_dates)
-        self.timing_state.scheduled_dates = scheduled_dates_set
+        self.timing_state.scheduled_dates = set(rebalance_dates)
 
-        return pd.DatetimeIndex(rebalance_dates)
+        return rebalance_dates
 
     def should_generate_signal(
         self, current_date: pd.Timestamp, strategy_context: "BaseStrategy"

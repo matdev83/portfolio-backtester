@@ -16,12 +16,13 @@ class MockStrategy(BaseStrategy):
 
     def generate_signals(
         self,
-        all_historical_data,
-        benchmark_historical_data,
-        current_date,
-        start_date=None,
-        end_date=None,
-    ):
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        non_universe_historical_data: pd.DataFrame,
+        current_date: pd.Timestamp,
+        start_date: pd.Timestamp | None = None,
+        end_date: pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
         """Dummy implementation for testing."""
         return pd.DataFrame()
 
@@ -395,7 +396,7 @@ class TestErrorHandlingAndLogging:
         shutil.rmtree(self.temp_dir)
         clear_universe_cache()
 
-    @patch("portfolio_backtester.strategies.base.base_strategy.logger")
+    @patch("portfolio_backtester.strategies._core.base.base.base_strategy.logger")
     def test_error_logging_and_fallback(self, mock_logger):
         """Test that errors are logged and fallback works."""
         global_config = {"universe": ["FALLBACK1", "FALLBACK2"]}
@@ -414,7 +415,7 @@ class TestErrorHandlingAndLogging:
         mock_logger.error.assert_called_once()
         mock_logger.info.assert_called_once_with("Falling back to global universe")
 
-    @patch("portfolio_backtester.strategies.base.base_strategy.logger")
+    @patch("portfolio_backtester.strategies._core.base.base.base_strategy.logger")
     def test_universe_loader_error_handling(self, mock_logger):
         """Test handling of UniverseLoaderError."""
         global_config = {"universe": ["FALLBACK"]}

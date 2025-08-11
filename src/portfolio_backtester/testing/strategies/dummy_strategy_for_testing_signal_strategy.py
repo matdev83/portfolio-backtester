@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 import pandas as pd
 import numpy as np
 
-from ...strategies.base.signal_strategy import SignalStrategy
+from portfolio_backtester.strategies._core.base.base.signal_strategy import SignalStrategy
 
 
 class DummyStrategyForTestingSignalStrategy(SignalStrategy):

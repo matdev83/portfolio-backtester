@@ -206,6 +206,9 @@ class OptimizationOrchestrator:
                     optimizer_args, "early_stop_zero_trials", 20
                 ),
                 "random_seed": self.random_state,
+                "fresh_study": self._attribute_accessor.get_attribute(
+                    optimizer_args, "fresh_study", False
+                ),
             }
 
             # Create BacktestEvaluator
@@ -242,6 +245,8 @@ class OptimizationOrchestrator:
                     storage_url=optimization_config.get(
                         "storage_url", self._get_default_optuna_storage_url()
                     ),
+                    study_name=optimization_config.get("study_name"),
+                    fresh_study=optimization_config.get("fresh_study", False),
                 )
                 optimization_result = parallel_runner.run()
             else:

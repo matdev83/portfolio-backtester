@@ -24,8 +24,10 @@ import optuna
 
 from .optuna_objective_adapter import OptunaObjectiveAdapter
 from .results import OptimizationData, OptimizationResult
+from .study_context_manager import generate_context_hash, get_strategy_source_path
 from .utils import discrete_space_size
 from .trial_deduplication import create_deduplicating_objective, DedupOptunaObjectiveAdapter
+from ..strategies._core.registry import get_strategy_registry
 
 logger = logging.getLogger(__name__)
 
@@ -201,16 +203,26 @@ class ParallelOptimizationRunner:
         *,
         study_name: Optional[str] = None,
         enable_deduplication: bool = True,
+        fresh_study: bool = False,
     ) -> None:
         self.scenario_config = scenario_config
         self.optimization_config = optimization_config
         self.data = data
         self.n_jobs = os.cpu_count() if n_jobs == -1 else max(1, n_jobs)
-        from ..constants import DEFAULT_OPTUNA_STORAGE_URL
 
-        self.storage_url = storage_url or DEFAULT_OPTUNA_STORAGE_URL
+        # MODIFICATION: Construct scenario-specific storage URL
+        if storage_url:
+            self.storage_url = storage_url
+        else:
+            scenario_name = self.scenario_config.get("name", "default_scenario")
+            db_dir = "data/optuna/studies"
+            os.makedirs(db_dir, exist_ok=True)
+            db_path = os.path.join(db_dir, f"{scenario_name}.db")
+            self.storage_url = f"sqlite:///{db_path}"
+
         self.study_name = study_name
         self.enable_deduplication = enable_deduplication
+        self.fresh_study = fresh_study
 
     # ---------------------------------------------------------------------
     # Public API
@@ -224,16 +236,80 @@ class ParallelOptimizationRunner:
             base_name = f"{self.scenario_config['name']}_optuna"
             study_name = StudyNameGenerator.generate_unique_name(base_name)
 
+        # Automated context-aware study management
+        db_path = None
+        if self.storage_url.startswith("sqlite:///"):
+            db_path = self.storage_url[len("sqlite:///") :]
+
+        if self.fresh_study:
+            if db_path and os.path.exists(db_path):
+                try:
+                    os.remove(db_path)
+                    logger.info(
+                        f"Removed existing study database due to --fresh-study flag: {db_path}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not remove study database {db_path}: {e}")
+        else:
+            # Automated check based on context hash
+            try:
+                registry = get_strategy_registry()
+                strategy_name = self.scenario_config.get("strategy")
+                strategy_class = (
+                    registry.get_strategy_class(strategy_name) if strategy_name else None
+                )
+                strategy_path = get_strategy_source_path(strategy_class) if strategy_class else None
+
+                if strategy_path and db_path and os.path.exists(db_path):
+                    current_hash = generate_context_hash(self.scenario_config, strategy_path)
+
+                    # Load study to check existing hash
+                    try:
+                        existing_study = optuna.load_study(
+                            study_name=study_name, storage=self.storage_url
+                        )
+                        previous_hash = existing_study.user_attrs.get("context_hash")
+
+                        if current_hash != previous_hash:
+                            logger.info("Configuration changed. Starting a new optimization study.")
+                            os.remove(db_path)
+                            logger.info(f"Removed outdated study database: {db_path}")
+
+                    except KeyError:  # Study does not exist yet
+                        pass
+
+            except Exception as e:
+                logger.warning(
+                    f"Error during context-aware study check, proceeding without check: {e}"
+                )
+
         # Ensure study exists (idempotent).
-        optuna.create_study(
+        study = optuna.create_study(
             study_name=study_name,
             storage=self.storage_url,
             direction="maximize",
             load_if_exists=True,
         )
 
+        # Store the current context hash in the study
+        try:
+            registry = get_strategy_registry()
+            strategy_name = self.scenario_config.get("strategy")
+            strategy_class = registry.get_strategy_class(strategy_name) if strategy_name else None
+            strategy_path = get_strategy_source_path(strategy_class) if strategy_class else None
+            if strategy_path:
+                current_hash = generate_context_hash(self.scenario_config, strategy_path)
+                study.set_user_attr("context_hash", current_hash)
+        except Exception as e:
+            logger.warning(f"Could not set context hash for study: {e}")
+
         # Determine number of trials to run in total.
-        requested_trials: int = self.optimization_config.get("optuna_trials", 100)
+        # Accept both keys for compatibility with the new orchestration layer:
+        # - "max_evaluations" (preferred, used across generators)
+        # - "optuna_trials" (legacy/CLI naming)
+        requested_trials: Optional[int] = self.optimization_config.get("optuna_trials")
+        if requested_trials is None:
+            requested_trials = self.optimization_config.get("max_evaluations", 100)
         space_size = discrete_space_size(self.optimization_config.get("parameter_space", {}))
         if space_size is not None and requested_trials > space_size:
             logger.error(

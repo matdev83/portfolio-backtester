@@ -1,5 +1,3 @@
-"""Compatibility wrapper for BaseMetaStrategy in new core path."""
-
-from ...base.meta_strategy import BaseMetaStrategy  # noqa: F401
+from .base.meta_strategy import BaseMetaStrategy
 
 __all__ = ["BaseMetaStrategy"]

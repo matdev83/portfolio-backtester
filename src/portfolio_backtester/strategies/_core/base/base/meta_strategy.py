@@ -426,15 +426,15 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         return self._trade_aggregator.get_aggregated_trades()
 
     def get_trade_aggregator(self) -> TradeAggregator:
-        """Get the trade aggregator instance."""
+        """Get the trade aggregator instance (public API)."""
         return self._trade_aggregator
 
     def get_current_portfolio_value(self) -> float:
-        """Get current portfolio value based on actual trades."""
+        """Get current portfolio value based on actual trades (public API)."""
         return self._trade_aggregator.calculate_portfolio_value(pd.Timestamp.now())
 
     def get_performance_metrics(self) -> Dict[str, float]:
-        """Get performance metrics based on actual trade execution."""
+        """Get performance metrics based on actual trade execution (public API)."""
         return self._trade_aggregator.calculate_weighted_performance()
 
     def get_strategy_attribution(self) -> Dict[str, Dict[str, float]]:

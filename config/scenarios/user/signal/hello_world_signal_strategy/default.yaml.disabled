@@ -1,0 +1,31 @@
+name: hello_world_signal
+strategy: HelloWorldSignalStrategy
+
+rebalance_frequency: ME
+position_sizer: equal_weight
+timing_config:
+  mode: signal_based
+  scan_frequency: D
+  min_holding_period: 1
+
+train_window_months: 12
+test_window_months: 6
+
+universe_config:
+  type: fixed
+  tickers: [SPY, QQQ, GLD]
+
+optimization_targets:
+  - name: Sortino
+    direction: maximize
+
+optimize:
+  - parameter: leverage
+    min_value: 0.5
+    max_value: 2.0
+    step: 0.5
+
+strategy_params:
+  leverage: 1.0
+
+

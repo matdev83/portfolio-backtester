@@ -31,7 +31,7 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
             params_dict_to_update.setdefault(k, v)
 
     @classmethod
-    def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
+    def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         return {
             # Core momentum parameters
             "rolling_window": {"type": "int", "min": 1, "max": 24, "default": 6},

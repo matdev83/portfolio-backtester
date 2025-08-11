@@ -371,13 +371,9 @@ class TestBacktesterFacade:
         args = argparse.Namespace(timeout=None, n_jobs=1, early_stop_patience=10, study_name=None)
 
         with (
-            patch("src.portfolio_backtester.backtester_logic.backtester_facade.create_data_source"),
-            patch(
-                "src.portfolio_backtester.backtester_logic.backtester_facade.create_cache_manager"
-            ),
-            patch(
-                "src.portfolio_backtester.backtester_logic.backtester_facade.create_timeout_manager"
-            ),
+            patch("portfolio_backtester.backtester_logic.backtester_facade.create_data_source"),
+            patch("portfolio_backtester.backtester_logic.backtester_facade.create_cache_manager"),
+            patch("portfolio_backtester.backtester_logic.backtester_facade.create_timeout_manager"),
         ):
 
             facade = BacktesterFacade(sample_global_config, scenarios, args, random_state=42)
@@ -408,13 +404,9 @@ class TestBacktesterFacade:
         args = argparse.Namespace(timeout=None, n_jobs=1, early_stop_patience=10, study_name=None)
 
         with (
-            patch("src.portfolio_backtester.backtester_logic.backtester_facade.create_data_source"),
-            patch(
-                "src.portfolio_backtester.backtester_logic.backtester_facade.create_cache_manager"
-            ),
-            patch(
-                "src.portfolio_backtester.backtester_logic.backtester_facade.create_timeout_manager"
-            ),
+            patch("portfolio_backtester.backtester_logic.backtester_facade.create_data_source"),
+            patch("portfolio_backtester.backtester_logic.backtester_facade.create_cache_manager"),
+            patch("portfolio_backtester.backtester_logic.backtester_facade.create_timeout_manager"),
         ):
 
             facade = BacktesterFacade(sample_global_config, scenarios, args, random_state=42)

@@ -1,5 +1,5 @@
-from ...portfolio.dvol_sizer_momentum_portfolio_strategy import (
+from ...portfolio.momentum_dvol_sizer_portfolio_strategy import (  # noqa: F401
     MomentumDvolSizerPortfolioStrategy,
-)  # noqa: F401
+)
 
 __all__ = ["MomentumDvolSizerPortfolioStrategy"]

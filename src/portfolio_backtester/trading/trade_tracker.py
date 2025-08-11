@@ -105,12 +105,12 @@ class TradeTracker:
         for ticker in current_tickers - target_tickers:
             if ticker in prices:
                 commission = commissions_dict.get(ticker, 0.0)
-                
+
                 # Extract detailed commission info for this ticker if available
                 ticker_commission_details = None
                 if detailed_commission_info and ticker in detailed_commission_info:
                     ticker_commission_details = detailed_commission_info[ticker]
-                
+
                 closed_trade = self.trade_lifecycle_manager.close_position(
                     date, ticker, prices[ticker], commission, ticker_commission_details
                 )
@@ -121,15 +121,19 @@ class TradeTracker:
         for ticker in target_tickers - current_tickers:
             if ticker in prices:
                 commission = commissions_dict.get(str(ticker), 0.0)
-                
+
                 # Extract detailed commission info for this ticker if available
                 ticker_commission_details = None
                 if detailed_commission_info and ticker in detailed_commission_info:
                     ticker_commission_details = detailed_commission_info[ticker]
-                
+
                 self.trade_lifecycle_manager.open_position(
-                    date, str(ticker), target_quantities[ticker], prices[ticker], 
-                    commission, ticker_commission_details
+                    date,
+                    str(ticker),
+                    target_quantities[ticker],
+                    prices[ticker],
+                    commission,
+                    ticker_commission_details,
                 )
 
         # Update daily metrics
@@ -140,6 +144,80 @@ class TradeTracker:
     def update_mfe_mae(self, date: pd.Timestamp, prices: pd.Series) -> None:
         """Update Maximum Favorable/Adverse Excursion for open positions."""
         self.trade_lifecycle_manager.update_mfe_mae(date, prices)
+
+    def populate_from_vectorized(
+        self,
+        portfolio_values: pd.Series,
+        positions: pd.DataFrame,
+        prices: pd.DataFrame,
+        commissions: pd.DataFrame,
+    ) -> None:
+        """
+        Efficiently populates the TradeTracker state from vectorized kernel output.
+
+        Args:
+            portfolio_values (pd.Series): Daily portfolio values.
+            positions (pd.DataFrame): Daily asset quantities (shares).
+            prices (pd.DataFrame): Daily asset prices.
+            commissions (pd.DataFrame): Daily per-asset commission costs.
+        """
+        # Directly set the portfolio value timeline
+        self.portfolio_value_tracker.set_portfolio_values_from_series(portfolio_values)
+
+        # Reconstruct trades from the positions matrix
+        # A trade occurs when the position in an asset changes from one day to the next.
+        position_changes = positions.diff().fillna(positions.iloc[0])
+
+        for date_val, changes in position_changes.iterrows():
+            if not isinstance(date_val, (str, int, float, pd.Timestamp)):
+                continue  # Or handle error appropriately
+            date = pd.Timestamp(date_val)
+
+            day_prices = prices.loc[date]
+            day_commissions = commissions.loc[date]
+
+            for ticker, quantity_change in changes.items():
+                if abs(quantity_change) > 1e-9:  # A trade happened
+                    trade_price = day_prices.get(ticker)
+                    if trade_price is None or pd.isna(trade_price):
+                        continue
+
+                    commission_cost = day_commissions.get(ticker, 0.0)
+
+                    # Determine if it's an open, close, or adjustment
+                    current_position = self.trade_lifecycle_manager.open_positions.get(ticker)
+
+                    if current_position is None:  # New position
+                        self.trade_lifecycle_manager.open_position(
+                            date, ticker, quantity_change, trade_price, commission_cost
+                        )
+                    else:
+                        # Existing position is being modified
+                        # For simplicity in this vectorized context, we'll treat changes as adjustments.
+                        # A full open/close model would require more state tracking.
+                        # Closing the old position and opening a new one is a robust way to handle this.
+                        closed_trade = self.trade_lifecycle_manager.close_position(
+                            date, ticker, trade_price, 0  # Commission is on the new trade
+                        )
+                        if closed_trade:
+                            pnl = closed_trade.pnl_net or 0.0
+                            self.portfolio_value_tracker.update_portfolio_value(pnl)
+
+                        new_total_quantity = current_position.quantity + quantity_change
+                        if abs(new_total_quantity) > 1e-9:
+                            self.trade_lifecycle_manager.open_position(
+                                date, ticker, new_total_quantity, trade_price, commission_cost
+                            )
+
+        # Close any remaining open positions at the end of the backtest
+        if not positions.empty:
+            final_date = positions.index[-1]
+            final_prices = prices.loc[final_date]
+            if isinstance(final_prices, pd.DataFrame):
+                # If prices for a single day are a DataFrame (e.g., MultiIndex), convert to Series
+                final_prices = final_prices.iloc[0] if not final_prices.empty else pd.Series()
+
+            self.close_all_positions(final_date, final_prices, {})
 
     def get_trade_statistics(self) -> Dict[str, Any]:
         """Calculate comprehensive trade statistics."""

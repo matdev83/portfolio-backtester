@@ -13,6 +13,29 @@ from ..backtesting.results import WindowResult
 
 
 @dataclass
+class OptimizationDataContext:
+    """Lightweight, serializable context for parallel optimization workers.
+
+    Contains file paths to memory-mapped NumPy arrays and pickled metadata,
+    allowing workers to reconstruct the full `OptimizationData` without
+    incurring the high cost of pickling large DataFrames.
+
+    Attributes:
+        daily_data_path: Path to the memory-mapped file for daily OHLC data.
+        monthly_data_path: Path to the memory-mapped file for monthly data.
+        returns_data_path: Path to the memory-mapped file for daily returns data.
+        metadata_path: Path to the pickled file containing index/column info.
+        windows: List of walk-forward window definitions (small enough to pickle).
+    """
+
+    daily_data_path: str
+    monthly_data_path: str
+    returns_data_path: str
+    metadata_path: str
+    windows: List[Tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp, pd.Timestamp]]
+
+
+@dataclass
 class EvaluationResult:
     """Result of evaluating a parameter set across all windows.
 

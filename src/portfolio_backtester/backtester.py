@@ -168,6 +168,11 @@ def main():
         help="MedianPruner: Report intermediate value and check for pruning every X walk-forward windows. Default: 1.",
     )
     parser.add_argument(
+        "--fresh-study",
+        action="store_true",
+        help="Force a new Optuna study by deleting any existing study with the same name. Default: False.",
+    )
+    parser.add_argument(
         "--mc-simulations",
         type=int,
         default=1000,
@@ -239,8 +244,8 @@ def main():
         logger.error("Configuration validation failed!")
         print(f"\n❌ Configuration Error: {e}", file=sys.stderr)
         print("\nTo validate your configuration files, run:", file=sys.stderr)
-        print("  python -m src.portfolio_backtester.config_loader --validate", file=sys.stderr)
-        print("  python -m src.portfolio_backtester.yaml_lint --config-check", file=sys.stderr)
+        print("  python -m portfolio_backtester.config_loader --validate", file=sys.stderr)
+        print("  python -m portfolio_backtester.yaml_lint --config-check", file=sys.stderr)
         sys.exit(1)
 
     except Exception as e:

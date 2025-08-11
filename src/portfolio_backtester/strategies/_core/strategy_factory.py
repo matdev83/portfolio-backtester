@@ -13,19 +13,9 @@ User guidance
     strategy = StrategyFactory.create_strategy({"type": "SimpleMomentumPortfolioStrategy", ...})
 
 This module re-exports the concrete ``StrategyFactory`` API from the new
-implementation module in ``_core`` and maintains a back-compat alias allowing tests
-and external code that import ``portfolio_backtester.strategies.strategy_factory``
-to continue working.
+implementation module in ``_core``.
 """
 
 from .strategy_factory_impl import StrategyFactory  # noqa: F401
-
-# Back-compat aliases for tests that patch portfolio_backtester.strategies.strategy_factory
-import sys as _sys
-
-_sys.modules.setdefault(
-    "portfolio_backtester.strategies.strategy_factory",
-    _sys.modules[__name__],
-)
 
 __all__ = ["StrategyFactory"]

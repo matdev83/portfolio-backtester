@@ -147,7 +147,7 @@ class StrategyFactory:
 
     @classmethod
     def clear_registry(cls) -> None:
-        """Clear the strategy registry (mainly for testing)."""
+        """Clear the strategy registry (testing utility)."""
         from .registry import clear_strategy_registry
 
         clear_strategy_registry()

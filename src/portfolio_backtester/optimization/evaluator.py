@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Union, Optional
 from .results import EvaluationResult, OptimizationData
 from ..backtesting.results import WindowResult
 from ..backtesting.strategy_backtester import StrategyBacktester
-from ..prepared_arrays import get_or_prepare
 from ..parallel_wfo import ParallelWFOProcessor, create_parallel_wfo_processor
 
 # WFO enhancement imports
@@ -195,127 +194,15 @@ class BacktestEvaluator:
         parameters: Dict[str, Any],
         scenario_config: Dict[str, Any],
         data: OptimizationData,
-        backtester: StrategyBacktester,
+        backtester: "StrategyBacktester",
     ) -> EvaluationResult:
-        """Evaluate parameters across all time windows using walk-forward analysis.
-
-        This method evaluates a parameter set across all walk-forward windows,
-        aggregates the results, and returns a structured EvaluationResult.
-
-        Args:
-            parameters: Dictionary of parameter values to evaluate
-            scenario_config: Base scenario configuration
-            data: OptimizationData containing price data and windows
-            backtester: StrategyBacktester instance for evaluation
-
-        Returns:
-            EvaluationResult: Aggregated evaluation results across all windows
         """
-        # Start time tracking could be added here for performance monitoring
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Evaluating parameters: {parameters}")
+        Evaluate a given set of parameters.
+        """
+        # Data is now prepared in the OptimizationOrchestrator, so we can use it directly.
 
         # Determine evaluation frequency for this scenario
         self.evaluation_frequency = self._determine_evaluation_frequency(scenario_config)
-
-        # Prepare and cache ndarray views once per evaluation run (per scenario/universe/date-range)
-        # and enable ndarray fast path for simulation.
-        try:
-            feature_flags = (
-                dict(scenario_config.get("feature_flags", {}))
-                if isinstance(scenario_config, dict)
-                else {}
-            )
-            feature_flags.setdefault("ndarray_simulation", True)
-            feature_flags.setdefault("prepared_arrays", True)
-            scenario_config["feature_flags"] = feature_flags  # in-place for this evaluation call
-
-            # Derive universe tickers and index using available data containers
-            # Prefer daily data index for alignment when available; else monthly
-            price_index = None
-            if (
-                getattr(data, "daily", None) is not None
-                and isinstance(data.daily, pd.DataFrame)
-                and not data.daily.empty
-            ):
-                price_index = data.daily.index
-            elif (
-                getattr(data, "monthly", None) is not None
-                and isinstance(data.monthly, pd.DataFrame)
-                and not data.monthly.empty
-            ):
-                price_index = data.monthly.index
-
-            # Returns (rets_daily) should exist in data.returns; weights will be prepared by portfolio_logic
-            # We pass previous-day weights later, so here we just ensure returns Daily frame is present.
-            if (
-                price_index is not None
-                and getattr(data, "returns", None) is not None
-                and isinstance(data.returns, pd.DataFrame)
-            ):
-                # Construct a minimal weights placeholder aligned to returns' columns; real weights are computed downstream,
-                # but we still want PreparedArrays to pre-align returns and masks for ndarray kernels.
-                returns_cols = data.returns.columns.tolist()
-                minimal_weights = pd.DataFrame(0.0, index=price_index, columns=returns_cols)
-
-                # Universe name and scenario name hints for cache key
-                universe_name = (
-                    scenario_config.get("universe_config", {}).get("universe_name")
-                    if isinstance(scenario_config.get("universe_config"), dict)
-                    else None
-                )
-                scenario_name = scenario_config.get("name")
-
-                # Date range bounds
-                date_start = price_index[0] if len(price_index) else None
-                date_end = price_index[-1] if len(price_index) else None
-
-                prepared = get_or_prepare(
-                    weights_daily=minimal_weights,
-                    rets_daily=data.returns,
-                    universe_tickers=returns_cols,
-                    price_index=pd.DatetimeIndex(price_index),
-                    universe_name=universe_name,
-                    date_start=date_start,
-                    date_end=date_end,
-                    scenario_name=scenario_name,
-                    feature_flags=feature_flags,
-                    use_float32=True,
-                )
-                # Attach for downstream use (so per-trial path can skip re-conversion)
-                setattr(data, "prepared_arrays", prepared)
-        except Exception as _prep_exc:
-            # Non-fatal; fallback path remains available
-            if logger.isEnabledFor(logging.WARNING):
-                logger.warning(
-                    f"PreparedArrays setup failed, continuing without cache: {_prep_exc}"
-                )
-
-        # ------------------------------------------------------------------
-        # Ensure daily data is present when daily evaluation is required
-        # ------------------------------------------------------------------
-        if self.evaluation_frequency == "D" and (
-            getattr(data, "daily", None) is None or data.daily.empty
-        ):
-            logger.warning(
-                "Daily evaluation requested but 'daily' price data is missing – generating synthetic daily frame from monthly closes (forward-filled)."
-            )
-            if getattr(data, "monthly", None) is not None and not data.monthly.empty:
-                try:
-                    # Upsample monthly data to business-day frequency and ffill so intramonth strategies can operate.
-                    generated_daily = data.monthly.resample("B").ffill()
-                    data.daily = generated_daily
-                except Exception as exc:
-                    logger.error("Failed to generate synthetic daily data: %s", exc)
-                    # Fall back to monthly evaluation if we cannot create a daily frame
-                    self.evaluation_frequency = "M"
-            else:
-                # No source to build daily data – fall back
-                logger.warning(
-                    "Monthly data is also empty – falling back to monthly evaluation mode."
-                )
-                self.evaluation_frequency = "M"
 
         # Use enhanced daily evaluation if needed
         if self.evaluation_frequency == "D" and hasattr(data, "daily") and data.daily is not None:
@@ -428,9 +315,9 @@ class BacktestEvaluator:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Using daily evaluation for parameters: {parameters}")
 
-        # Initialize window evaluator if needed
+        # Initialize window evaluator if needed, now with backtester instance
         if self.window_evaluator is None:
-            self.window_evaluator = WindowEvaluator()
+            self.window_evaluator = WindowEvaluator(backtester=backtester)
 
         # Convert existing windows to enhanced WFOWindow objects
         enhanced_windows = []
@@ -457,10 +344,19 @@ class BacktestEvaluator:
         else:
             derived_universe = []
 
-        for enhanced_window in enhanced_windows:
+        for idx, enhanced_window in enumerate(enhanced_windows, start=1):
+            logger.info(
+                "[Trial Progress] Window %d/%d %s–%s evaluation started",
+                idx,
+                len(enhanced_windows),
+                enhanced_window.test_start.date(),
+                enhanced_window.test_end.date(),
+            )
             try:
                 # Create strategy instance with parameters
-                strategy = backtester._get_strategy(scenario_config, parameters)
+                strategy = backtester._get_strategy(
+                    scenario_config["strategy"], parameters, scenario_config
+                )
 
                 # Get universe tickers (prefer derived list)
                 universe_tickers = derived_universe or self._get_universe_tickers(strategy)
@@ -471,11 +367,19 @@ class BacktestEvaluator:
                     window=enhanced_window,
                     strategy=strategy,
                     daily_data=data.daily,
+                    full_monthly_data=data.monthly,
+                    full_rets_daily=data.returns,
                     benchmark_data=data.daily,  # Assuming benchmark is in daily data
                     universe_tickers=universe_tickers,
                     benchmark_ticker=benchmark_ticker,
                 )
 
+                logger.info(
+                    "[Trial Progress] Window %d/%d finished: Sharpe=%s",
+                    idx,
+                    len(enhanced_windows),
+                    _lookup_metric(result.metrics, "Sharpe", float("nan")),
+                )
                 window_results.append(result)
 
             except Exception as e:
@@ -821,8 +725,22 @@ class BacktestEvaluator:
                 )
 
             window_results = []
-            for window_config in window_configs:
+            for idx, window_config in enumerate(window_configs, start=1):
+                win = window_config["window"]
+                logger.info(
+                    "[Trial Progress] Window %d/%d %s–%s evaluation started",
+                    idx,
+                    len(window_configs),
+                    win[2].date() if len(win) >= 3 else "?",
+                    win[3].date() if len(win) >= 4 else "?",
+                )
                 result, _ = evaluate_window_func(window_config, scenario_config, shared_data)
+                logger.info(
+                    "[Trial Progress] Window %d/%d finished: Sharpe=%s",
+                    idx,
+                    len(window_configs),
+                    _lookup_metric(result.metrics, "Sharpe", float("nan")),
+                )
                 window_results.append(result)
 
         return window_results

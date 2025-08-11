@@ -331,17 +331,18 @@ class MetaStrategyReporter:
         comparison_data = []
 
         for strategy_id, stats in attribution["strategies"].items():
+            # Guard against missing keys in partial attribution records
             comparison_data.append(
                 {
                     "Strategy": strategy_id,
-                    "Total Trades": stats["total_trades"],
-                    "Buy Trades": stats["buy_trades"],
-                    "Sell Trades": stats["sell_trades"],
-                    "Total Trade Value": stats["total_trade_value"],
-                    "Avg Trade Size": stats["avg_trade_size"],
-                    "Assets Traded": stats["num_assets"],
-                    "Trading Days": stats["trading_days"],
-                    "Transaction Costs": stats["total_transaction_costs"],
+                    "Total Trades": stats.get("total_trades", 0),
+                    "Buy Trades": stats.get("buy_trades", 0),
+                    "Sell Trades": stats.get("sell_trades", 0),
+                    "Total Trade Value": stats.get("total_trade_value", 0.0),
+                    "Avg Trade Size": stats.get("avg_trade_size", 0.0),
+                    "Assets Traded": stats.get("num_assets", 0),
+                    "Trading Days": stats.get("trading_days", 0),
+                    "Transaction Costs": stats.get("total_transaction_costs", 0.0),
                 }
             )
 

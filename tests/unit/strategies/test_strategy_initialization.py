@@ -1,6 +1,6 @@
 import pytest
-from portfolio_backtester.strategies.signal.uvxy_rsi_signal_strategy import UvxyRsiSignalStrategy
-from portfolio_backtester.strategies.signal.ema_roro_signal_strategy import EmaRoroSignalStrategy
+from portfolio_backtester.strategies.builtins.signal.uvxy_rsi_signal_strategy import UvxyRsiSignalStrategy
+from portfolio_backtester.strategies.builtins.signal.ema_roro_signal_strategy import EmaRoroSignalStrategy
 
 @pytest.mark.parametrize("strategy_class, config, expected_tunable_params, expected_non_universe_reqs", [
     (UvxyRsiSignalStrategy, {"strategy_params": {"rsi_period": 2, "rsi_threshold": 30.0}}, {"rsi_period", "rsi_threshold"}, ["SPY"]),

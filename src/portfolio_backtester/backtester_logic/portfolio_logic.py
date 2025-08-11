@@ -1,5 +1,6 @@
 import logging
 import pandas as pd
+import numpy as np
 
 from ..interfaces.strategy_resolver import StrategyResolverFactory
 from ..portfolio.rebalancing import rebalance
@@ -8,8 +9,8 @@ from ..trading.unified_commission_calculator import get_unified_commission_calcu
 from ..numba_kernels import (
     position_and_pnl_kernel,
     detailed_commission_slippage_kernel,
+    trade_tracking_kernel,
 )
-from typing import Any
 
 
 logger = logging.getLogger(__name__)
@@ -74,212 +75,99 @@ def calculate_portfolio_returns(
     if use_ndarray_sim:
         import numpy as np
 
-        predef_index = (
-            price_data_daily_ohlc.index if hasattr(price_data_daily_ohlc, "index") else None
-        )
-        daily_portfolio_returns_gross = pd.Series(0.0, index=predef_index)
-        try:
-            if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and (
-                "Close" in price_data_daily_ohlc.columns.get_level_values(-1)
-            ):
-                close_prices_df = price_data_daily_ohlc.xs("Close", level="Field", axis=1)
-                price_index = close_prices_df.index
-            else:
-                close_prices_df = price_data_daily_ohlc
-                price_index = price_data_daily_ohlc.index
-
-            valid_cols = [t for t in universe_tickers if t in aligned_rets_daily.columns]
-            r = (
-                aligned_rets_daily.reindex(index=price_index, columns=valid_cols)
-                .fillna(0.0)
-                .to_numpy(dtype=np.float32)
-            )
-            m = ~np.isnan(r)
-            w = (
-                weights_for_returns.reindex(index=price_index, columns=valid_cols)
-                .fillna(0.0)
-                .to_numpy(dtype=np.float32)
-            )
-
-            # Use single optimized kernel implementation
-            gross_arr, _, _ = position_and_pnl_kernel(w, r, m)
-
-            daily_portfolio_returns_gross = pd.Series(gross_arr, index=price_index)
-
-            # Compute detailed IBKR-style commission+slippage in ndarray path
-            # Build close price matrix aligned to valid_cols and price_index
-            close_prices_use = close_prices_df.reindex(
-                index=price_index, columns=valid_cols
-            ).astype(float)
-            price_mask = close_prices_use.notna() & (close_prices_use > 0)
-            close_arr = close_prices_use.fillna(0.0).to_numpy(copy=True)
-            price_mask_arr = price_mask.to_numpy(copy=True)
-
-            # Read commission params from global_config
-            commission_per_share = (
-                float(global_config.get("commission_per_share", 0.005))
-                if isinstance(global_config, dict)
-                else 0.005
-            )
-            commission_min_per_order = (
-                float(global_config.get("commission_min_per_order", 1.0))
-                if isinstance(global_config, dict)
-                else 1.0
-            )
-            commission_max_percent = (
-                float(global_config.get("commission_max_percent_of_trade", 0.005))
-                if isinstance(global_config, dict)
-                else 0.005
-            )
-            slippage_bps = (
-                float(global_config.get("slippage_bps", 2.5))
-                if isinstance(global_config, dict)
-                else 2.5
-            )
-            portfolio_value = (
-                float(global_config.get("portfolio_value", 100000.0))
-                if isinstance(global_config, dict)
-                else 100000.0
-            )
-
-            # Use current weights (not shifted) for turnover/commissions
-            weights_current = (
-                weights_daily.reindex(index=price_index, columns=valid_cols).fillna(0.0).to_numpy()
-            )
-
-            # Use single optimized kernel implementation
-            tc_frac = detailed_commission_slippage_kernel(
-                weights_current=weights_current,
-                close_prices=close_arr,
-                portfolio_value=portfolio_value,
-                commission_per_share=commission_per_share,
-                commission_min_per_order=commission_min_per_order,
-                commission_max_percent=commission_max_percent,
-                slippage_bps=slippage_bps,
-                price_mask=price_mask_arr,
-            )
-
-            transaction_costs = pd.Series(tc_frac, index=price_index, dtype=float)
-        except Exception as e:
-            if logger.isEnabledFor(logging.WARNING):
-                logger.warning(f"ndarray_simulation failed, falling back to pandas path: {e}")
-            valid_universe_tickers_in_rets = [
-                ticker for ticker in universe_tickers if ticker in aligned_rets_daily.columns
-            ]
-            if len(valid_universe_tickers_in_rets) < len(universe_tickers):
-                missing_tickers = set(universe_tickers) - set(valid_universe_tickers_in_rets)
-                if logger.isEnabledFor(logging.WARNING):
-                    logger.warning(
-                        f"Tickers {missing_tickers} not found in aligned_rets_daily columns. Portfolio calculations might be affected."
-                    )
-            if not valid_universe_tickers_in_rets:
-                if logger.isEnabledFor(logging.WARNING):
-                    logger.warning(
-                        "No valid universe tickers found in daily returns. Gross portfolio returns will be zero."
-                    )
-                daily_portfolio_returns_gross = pd.Series(0.0, index=weights_for_returns.index)
-            else:
-                # Typing-friendly sum over columns (explicit DataFrame construction)
-                prod_df = pd.DataFrame(weights_for_returns[valid_universe_tickers_in_rets]).mul(
-                    pd.DataFrame(aligned_rets_daily[valid_universe_tickers_in_rets]), axis=0
-                )
-                # Sum across assets (columns) to a per-day Series
-                daily_portfolio_returns_gross = pd.Series(
-                    prod_df.sum(axis=1, numeric_only=True), index=prod_df.index
-                )
-                # Make sure transaction_costs is explicitly None to trigger pandas commission calc
-                transaction_costs = None
-    else:
-        valid_universe_tickers_in_rets = [
-            ticker for ticker in universe_tickers if ticker in aligned_rets_daily.columns
-        ]
-        if len(valid_universe_tickers_in_rets) < len(universe_tickers):
-            missing_tickers = set(universe_tickers) - set(valid_universe_tickers_in_rets)
-            if logger.isEnabledFor(logging.WARNING):
-                logger.warning(
-                    f"Tickers {missing_tickers} not found in aligned_rets_daily columns. Portfolio calculations might be affected."
-                )
-
-        if not valid_universe_tickers_in_rets:
-            if logger.isEnabledFor(logging.WARNING):
-                logger.warning(
-                    "No valid universe tickers found in daily returns. Gross portfolio returns will be zero."
-                )
-            daily_portfolio_returns_gross = pd.Series(0.0, index=weights_for_returns.index)
+        # The ndarray simulation is now the only path. If it fails, the system will raise an exception.
+        if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and (
+            "Close" in price_data_daily_ohlc.columns.get_level_values(-1)
+        ):
+            close_prices_df = price_data_daily_ohlc.xs("Close", level="Field", axis=1)
+            price_index = close_prices_df.index
         else:
-            # Gross returns: use previous-day weights → first day gross = 0
-            # Typing-friendly sum over columns (explicit DataFrame construction)
-            prod_df = pd.DataFrame(weights_for_returns[valid_universe_tickers_in_rets]).mul(
-                pd.DataFrame(aligned_rets_daily[valid_universe_tickers_in_rets]), axis=0
-            )
-            # Sum across assets (columns) to a per-day Series
-            daily_portfolio_returns_gross = pd.Series(
-                prod_df.sum(axis=1, numeric_only=True), index=prod_df.index
-            )
+            close_prices_df = price_data_daily_ohlc
+            price_index = price_data_daily_ohlc.index
 
-    # Turnover per asset per day – change from previous day, but first day equal to current weights
-    # Note: Some cost models may consume turnover; compute only if needed
-    # turnover_per_asset = (weights_daily - weights_for_turnover.shift(1).fillna(0.0)).abs()
+        valid_cols = [t for t in universe_tickers if t in aligned_rets_daily.columns]
+        r = (
+            aligned_rets_daily.reindex(index=price_index, columns=valid_cols)
+            .fillna(0.0)
+            .to_numpy(dtype=np.float32)
+        )
+        m = ~np.isnan(r)
+        w = (
+            weights_for_returns.reindex(index=price_index, columns=valid_cols)
+            .fillna(0.0)
+            .to_numpy(dtype=np.float32)
+        )
 
-    # If ndarray fast path produced transaction_costs already, skip the pandas calculators; else use existing path
-    if (not use_ndarray_sim) or (transaction_costs is None):
-        turnover = pd.Series(1.0, index=weights_daily.index, dtype=float)
-        transaction_costs_bps = scenario_config.get("transaction_costs_bps")
+        # Use single optimized kernel implementation
+        gross_arr, _, _ = position_and_pnl_kernel(w, r, m)
 
-        # Prefer the legacy factory if present (so monkeypatch in tests works),
-        # otherwise use the unified calculator.
-        try:
-            from ..trading import get_transaction_cost_model
+        daily_portfolio_returns_gross = pd.Series(gross_arr, index=price_index)
 
-            # Legacy factory returns a TransactionCostModel, but in some deployments it may be replaced.
-            # Keep a separate variable name to avoid mypy narrowing issues.
-            legacy_tx_cost_model = get_transaction_cost_model(global_config)
-            # Legacy calculate may return scalar/Series/DataFrame. Normalize to per-day Series.
-            tc = legacy_tx_cost_model.calculate(
-                turnover=turnover,
-                weights_daily=weights_daily,
-                price_data=price_data_daily_ohlc,
-                portfolio_value=float(global_config.get("portfolio_value", 100000.0)),
-                transaction_costs_bps=transaction_costs_bps,
-            )
-            # Normalize to per-day Series
-            transaction_costs_obj: Any = tc[0] if isinstance(tc, tuple) else tc
-            if isinstance(transaction_costs_obj, pd.DataFrame):
-                # Sum across assets to daily series
-                transaction_costs = pd.Series(
-                    transaction_costs_obj.sum(axis=1),
-                    index=transaction_costs_obj.index,
-                    dtype=float,
-                )
-            elif isinstance(transaction_costs_obj, pd.Series):
-                # If index mismatch (e.g., per-asset), reduce to scalar per day
-                if not transaction_costs_obj.index.equals(weights_daily.index):
-                    val = (
-                        float(transaction_costs_obj.iloc[0]) if len(transaction_costs_obj) else 0.0
-                    )
-                    transaction_costs = pd.Series(val, index=weights_daily.index, dtype=float)
-                else:
-                    transaction_costs = transaction_costs_obj.astype(float)
-            else:
-                # Scalar or other → broadcast to daily index
-                transaction_costs = pd.Series(
-                    float(transaction_costs_obj), index=weights_daily.index, dtype=float
-                )
-            transaction_costs = (
-                transaction_costs.reindex(weights_daily.index).fillna(0.0).astype(float)
-            )
-        except Exception:
-            # Fallback to unified commission calculator
-            calculator = get_unified_commission_calculator(global_config)
-            # Unified calculator returns (Series, breakdown, detailed)
-            transaction_costs, _, _ = calculator.calculate(
-                turnover=turnover,
-                weights_daily=weights_daily,
-                price_data=price_data_daily_ohlc,
-                portfolio_value=float(global_config.get("portfolio_value", 100000.0)),
-                transaction_costs_bps=transaction_costs_bps,
-            )
-            # transaction_costs is already a per-day Series expressed as fraction of portfolio value
+        # Compute detailed IBKR-style commission+slippage in ndarray path
+        # Build close price matrix aligned to valid_cols and price_index
+        close_prices_use = close_prices_df.reindex(index=price_index, columns=valid_cols).astype(
+            float
+        )
+        price_mask = close_prices_use.notna() & (close_prices_use > 0)
+        close_arr = close_prices_use.fillna(0.0).to_numpy(copy=True)
+        price_mask_arr = price_mask.to_numpy(copy=True)
+
+        # Read commission params from global_config
+        commission_per_share = (
+            float(global_config.get("commission_per_share", 0.005))
+            if isinstance(global_config, dict)
+            else 0.005
+        )
+        commission_min_per_order = (
+            float(global_config.get("commission_min_per_order", 1.0))
+            if isinstance(global_config, dict)
+            else 1.0
+        )
+        commission_max_percent = (
+            float(global_config.get("commission_max_percent_of_trade", 0.005))
+            if isinstance(global_config, dict)
+            else 0.005
+        )
+        slippage_bps = (
+            float(global_config.get("slippage_bps", 2.5))
+            if isinstance(global_config, dict)
+            else 2.5
+        )
+        portfolio_value = (
+            float(global_config.get("portfolio_value", 100000.0))
+            if isinstance(global_config, dict)
+            else 100000.0
+        )
+
+        # Use current weights (not shifted) for turnover/commissions
+        weights_current = (
+            weights_daily.reindex(index=price_index, columns=valid_cols).fillna(0.0).to_numpy()
+        )
+
+        # Use single optimized kernel implementation
+        tc_frac, tc_frac_detailed = detailed_commission_slippage_kernel(
+            weights_current=weights_current,
+            close_prices=close_arr,
+            portfolio_value=portfolio_value,
+            commission_per_share=commission_per_share,
+            commission_min_per_order=commission_min_per_order,
+            commission_max_percent=commission_max_percent,
+            slippage_bps=slippage_bps,
+            price_mask=price_mask_arr,
+        )
+
+        transaction_costs = pd.Series(tc_frac, index=price_index, dtype=float)
+        transaction_costs_detailed = pd.DataFrame(
+            tc_frac_detailed, index=price_index, columns=valid_cols
+        )
+
+    else:
+        # The fallback path has been intentionally removed.
+        # If use_ndarray_sim is False, this will now raise an error.
+        raise RuntimeError(
+            "The legacy Pandas-based portfolio simulation has been removed. "
+            "Please enable 'ndarray_simulation' in the feature flags."
+        )
 
     # Net = gross - per-day transaction costs (already portfolio-value normalized)
     # Ensure transaction_costs is a Series aligned to daily_portfolio_returns_gross index
@@ -309,7 +197,12 @@ def calculate_portfolio_returns(
         # Use unified commission calculator for trade tracking too
         tx_cost_model = get_unified_commission_calculator(global_config)
         _track_trades_with_dynamic_capital(
-            trade_tracker, weights_daily, price_data_daily_ohlc, tx_cost_model, global_config
+            trade_tracker,
+            weights_daily,
+            price_data_daily_ohlc,
+            tx_cost_model,
+            global_config,
+            transaction_costs_detailed,
         )
 
     return portfolio_rets_net, trade_tracker
@@ -564,103 +457,66 @@ def _track_trades(
 
 
 def _track_trades_with_dynamic_capital(
-    trade_tracker, weights_daily, price_data_daily_ohlc, tx_cost_model, global_config
+    trade_tracker,
+    weights_daily,
+    price_data_daily_ohlc,
+    tx_cost_model,
+    global_config,
+    transaction_costs_detailed=None,
 ):
     """Enhanced trade tracking with dynamic capital updates for compounding."""
-    detailed_trade_info: dict = {}
-
     # Extract close prices
     if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
         close_prices = price_data_daily_ohlc.xs("Close", level="Field", axis=1)
     else:
         close_prices = price_data_daily_ohlc
 
-    # Process each day
-    for date in weights_daily.index:
-        if date in close_prices.index:
-            current_weights = weights_daily.loc[date]
-            previous_weights = weights_daily.shift(1).loc[date]
-            current_prices = close_prices.loc[date]
+    # Align all dataframes to a common index and columns
+    valid_cols = weights_daily.columns.intersection(close_prices.columns)
+    common_index = weights_daily.index.intersection(close_prices.index)
 
-            # Calculate turnover per ticker
-            turnover_per_ticker = (current_weights - previous_weights).abs()
-
-            # Calculate commissions per ticker using appropriate capital base based on allocation mode
-            if trade_tracker.allocation_mode in ["reinvestment", "compound"]:
-                commission_base_capital = trade_tracker.get_current_portfolio_value()
-            else:  # fixed_fractional or fixed_capital
-                commission_base_capital = trade_tracker.initial_portfolio_value
-
-            commissions, _, _ = tx_cost_model.calculate(
-                turnover=turnover_per_ticker.to_frame().T,
-                weights_daily=current_weights.to_frame().T,
-                price_data=price_data_daily_ohlc.loc[[date]],
-                portfolio_value=float(commission_base_capital),
-            )
-
-            # Normalise commission output to a ticker->value dict
-            if isinstance(commissions, pd.DataFrame):
-                commissions_dict = commissions.iloc[0].to_dict()
-            elif isinstance(commissions, pd.Series):
-                if set(commissions.index) <= set(current_weights.index):
-                    commissions_dict = commissions.to_dict()
-                else:
-                    scalar_comm = (
-                        float(commissions.iloc[0]) if len(commissions) else float(commissions)
-                    )
-                    commissions_dict = {asset: scalar_comm for asset in current_weights.index}
-            else:
-                commissions_dict = {asset: float(commissions) for asset in current_weights.index}
-
-            # Ensure at least minimal non-zero commission so downstream tests expecting >0 pass
-            if all(v == 0 for v in commissions_dict.values()):
-                commissions_dict = {k: 0.0001 for k in commissions_dict}
-
-            # Update positions with detailed commission info
-            date_commission_info = detailed_trade_info.get(date, {})
-            trade_tracker.update_positions(
-                date,
-                current_weights,
-                current_prices,
-                commissions_dict,
-                detailed_commission_info=date_commission_info,
-            )
-
-            # Update MFE/MAE
-            trade_tracker.update_mfe_mae(date, current_prices)
-
-    final_date = weights_daily.index[-1]
-    final_prices = (
-        close_prices.loc[final_date] if final_date in close_prices.index else close_prices.iloc[-1]
+    weights_arr = (
+        weights_daily.reindex(index=common_index, columns=valid_cols).fillna(0.0).to_numpy()
     )
-    # Ensure final_prices is a Series
-    if not isinstance(final_prices, pd.Series):
-        final_prices = pd.Series(final_prices, dtype=float)
+    prices_arr = close_prices.reindex(index=common_index, columns=valid_cols).fillna(0.0).to_numpy()
 
-    # Calculate commissions for closing all positions using appropriate capital base
-    if trade_tracker.allocation_mode in ["reinvestment", "compound"]:
-        commission_base_capital = trade_tracker.get_current_portfolio_value()
-    else:  # fixed_fractional or fixed_capital
-        commission_base_capital = trade_tracker.initial_portfolio_value
-
-    turnover_per_ticker = weights_daily.loc[final_date].abs()
-    commissions, _, _ = tx_cost_model.calculate(
-        turnover=turnover_per_ticker,
-        weights_daily=weights_daily.loc[[final_date]],
-        price_data=price_data_daily_ohlc.loc[[final_date]],
-        portfolio_value=float(commission_base_capital),
-    )
-    if isinstance(commissions, pd.DataFrame):
-        commissions_dict = commissions.iloc[0].to_dict()
-    elif isinstance(commissions, pd.Series):
-        commissions_dict = commissions.to_dict()
+    if transaction_costs_detailed is not None:
+        commissions_arr = (
+            transaction_costs_detailed.reindex(index=common_index, columns=valid_cols)
+            .fillna(0.0)
+            .to_numpy()
+        )
     else:
-        commissions_dict = {asset: float(commissions) for asset in weights_daily.columns}
+        commissions_arr = np.zeros_like(weights_arr)
 
-    trade_tracker.close_all_positions(final_date, final_prices, commissions_dict)
+    price_mask = prices_arr > 0
 
-    # Deprecated fallback removed to avoid unreachable code and duplication
-    return
+    # Get initial value and allocation mode
+    initial_portfolio_value = trade_tracker.initial_portfolio_value
+    allocation_mode_map = {"reinvestment": 0, "fixed": 1}
+    allocation_mode = allocation_mode_map.get(trade_tracker.allocation_mode, 0)
+
+    # Call the Numba kernel
+    portfolio_values, _, positions = trade_tracking_kernel(
+        initial_portfolio_value=initial_portfolio_value,
+        allocation_mode=allocation_mode,
+        weights=weights_arr,
+        prices=prices_arr,
+        price_mask=price_mask,
+        commissions=commissions_arr,
+    )
+
+    # Convert results back to DataFrames/Series
+    portfolio_values_series = pd.Series(portfolio_values, index=common_index)
+    positions_df = pd.DataFrame(positions, index=common_index, columns=valid_cols)
+
+    # Populate the trade tracker with the results from the kernel
+    trade_tracker.populate_from_vectorized(
+        portfolio_values=portfolio_values_series,
+        positions=positions_df,
+        prices=close_prices.reindex(index=common_index, columns=valid_cols),
+        commissions=pd.DataFrame(commissions_arr, index=common_index, columns=valid_cols),
+    )
 
 
 def _calculate_position_weights(current_positions, prices, base_portfolio_value):

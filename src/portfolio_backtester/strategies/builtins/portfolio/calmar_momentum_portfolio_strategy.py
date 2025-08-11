@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Dict, Any, cast
 import pandas as pd
 
-from portfolio_backtester.features.calmar_ratio import CalmarRatio
 from .base_momentum_portfolio_strategy import BaseMomentumPortfolioStrategy
 
 
@@ -20,10 +19,14 @@ class CalmarMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
         for k, v in calmar_defaults.items():
             params_dict_to_update.setdefault(k, v)
 
-        self.calmar_feature = CalmarRatio(rolling_window=params_dict_to_update["rolling_window"])
+        # Import CalmarRatio at runtime so test patches on
+        # portfolio_backtester.features.calmar_ratio.CalmarRatio are effective
+        from portfolio_backtester.features.calmar_ratio import CalmarRatio as _CalmarRatio
+
+        self.calmar_feature = _CalmarRatio(rolling_window=params_dict_to_update["rolling_window"])
 
     @classmethod
-    def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
+    def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         return {
             "num_holdings": {"type": "int", "min": 1, "max": 100, "default": 10},
             "rolling_window": {"type": "int", "min": 3, "max": 24, "default": 6},

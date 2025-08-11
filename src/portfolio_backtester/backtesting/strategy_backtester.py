@@ -65,6 +65,8 @@ class StrategyBacktester:
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
     ) -> BacktestResult:
         """Execute a complete backtest for a strategy configuration.
 
@@ -83,9 +85,15 @@ class StrategyBacktester:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Running backtest for strategy: {strategy_config.get('name', 'Unknown')}")
 
+        # Filter data based on the window if start_date and end_date are provided
+        if start_date and end_date:
+            daily_data = daily_data.loc[start_date:end_date]
+            monthly_data = monthly_data.loc[start_date:end_date]
+            rets_full = rets_full.loc[start_date:end_date]
+
         # Get strategy instance
         strategy = self._get_strategy(
-            strategy_config["strategy"], strategy_config["strategy_params"]
+            strategy_config["strategy"], strategy_config["strategy_params"], strategy_config
         )
 
         # Determine universe
@@ -287,7 +295,9 @@ class StrategyBacktester:
             test_end=test_end,
         )
 
-    def _get_strategy(self, strategy_spec, params: Dict[str, Any]) -> BaseStrategy:
+    def _get_strategy(
+        self, strategy_spec, params: Dict[str, Any], strategy_config: Dict[str, Any]
+    ) -> BaseStrategy:
         """Get a strategy instance by name and parameters.
 
         Args:
@@ -316,7 +326,23 @@ class StrategyBacktester:
         # Resolve strategy class via registry to support unit-test mocking and DIP
         strategy_class = self._registry.get_strategy_class(str(strategy_name))
         if strategy_class is None:
-            raise ValueError(f"Unsupported strategy: {strategy_name}")
+            # Fallback for test-defined strategies declared after registry discovery
+            try:
+
+                def _all_subclasses(cls: type) -> set[type]:
+                    subs = set()
+                    for sub in cls.__subclasses__():
+                        subs.add(sub)
+                        subs.update(_all_subclasses(sub))
+                    return subs
+
+                dynamic_map = {cls.__name__: cls for cls in _all_subclasses(BaseStrategy)}
+                strategy_class = dynamic_map.get(str(strategy_name))
+            except Exception:
+                strategy_class = None
+
+            if strategy_class is None:
+                raise ValueError(f"Unsupported strategy: {strategy_name}")
 
         # Diagnostic: log resolved class details before instantiation
         if logger.isEnabledFor(logging.DEBUG):
@@ -331,6 +357,7 @@ class StrategyBacktester:
                 pass
 
         instance = strategy_class(params)
+        instance.config = strategy_config  # Attach the full config
 
         if not isinstance(instance, BaseStrategy):
             if logger.isEnabledFor(logging.DEBUG):
@@ -370,6 +397,7 @@ class StrategyBacktester:
         strategy = self._get_strategy(
             strategy_config["strategy"],
             strategy_config["strategy_params"],
+            strategy_config,
         )
 
         if "universe" in strategy_config:

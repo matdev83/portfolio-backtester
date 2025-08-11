@@ -677,7 +677,7 @@ class TestIntramonthStrategyIntegration:
     def test_exit_timing_accuracy(self, intramonth_scenario_config, optimization_data):
         """Validate that exit timing matches strategy logic exactly."""
         # Create strategy instance
-        from portfolio_backtester.strategies.signal.seasonal_signal_strategy import SeasonalSignalStrategy
+        from portfolio_backtester.strategies.builtins.signal.seasonal_signal_strategy import SeasonalSignalStrategy
         strategy = SeasonalSignalStrategy(intramonth_scenario_config)
         
         # Test specific dates to validate entry and exit logic

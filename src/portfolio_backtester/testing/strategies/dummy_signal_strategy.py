@@ -10,7 +10,7 @@ This strategy is designed for testing purposes. It uses random chance to generat
 
 To run the optimizer on this strategy, use the following command:
 
-.venv\Scripts\python -m src.portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/builtins/signal/dummy_signal_strategy/default.yaml
+.venv\Scripts\python -m portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/builtins/signal/dummy_signal_strategy/default.yaml
 """
 
 from typing import Optional, Dict, Any
@@ -47,6 +47,8 @@ class DummySignalStrategy(SignalStrategy):
         self.rng = np.random.default_rng(self.seed)
         self.stop_loss_handler = self._initialize_stop_loss_handler()
         self.entry_prices = pd.Series(dtype=float)
+        self._last_date: Optional[pd.Timestamp] = None
+        self._is_long = False
 
     @classmethod
     def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
@@ -92,40 +94,24 @@ class DummySignalStrategy(SignalStrategy):
         **kwargs,
     ) -> pd.DataFrame:
         """
-        Generate signals based on random chance.
+        Generates trading signals for the dummy strategy.
         """
         if current_date is None:
             current_date = all_historical_data.index[-1]
 
-        # Create a seeded random number generator for deterministic signals
+        # Generate random numbers for the entire series at once
         open_long_random = self.rng.random(size=len(all_historical_data.index))
         close_long_random = self.rng.random(size=len(all_historical_data.index))
 
-        # Create a DataFrame with the random numbers
-        random_df = pd.DataFrame(
-            {
-                "open_long": open_long_random,
-                "close_long": close_long_random,
-            },
-            index=all_historical_data.index,
-        )
+        # Create boolean masks for entry and exit signals
+        open_long_mask = open_long_random < self.open_long_prob
+        close_long_mask = close_long_random < self.close_long_prob
 
-        # Generate signals based on the random numbers
+        # Create a forward-filled series to represent being in a long position
         signals = pd.Series(0.0, index=all_historical_data.index)
-        is_long = False
-        for i in range(len(signals)):
-            if is_long:
-                if random_df["close_long"].iloc[i] < self.close_long_prob:
-                    is_long = False
-                    signals.iloc[i] = 0.0
-                else:
-                    signals.iloc[i] = 1.0
-            else:
-                if random_df["open_long"].iloc[i] < self.open_long_prob:
-                    is_long = True
-                    signals.iloc[i] = 1.0
-                else:
-                    signals.iloc[i] = 0.0
+        signals[open_long_mask] = 1.0
+        signals[close_long_mask] = 0.0
+        signals = signals.ffill()
 
         # Create the final DataFrame with the signal for the current date
         weights = pd.Series(0.0, index=[self.symbol])

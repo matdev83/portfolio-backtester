@@ -9,10 +9,10 @@ import pytest
 import pandas as pd
 from unittest.mock import Mock, patch
 
-from src.portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
-from src.portfolio_backtester.optimization.wfo_window import WFOWindow
-from src.portfolio_backtester.risk_management.stop_loss_handlers import AtrBasedStopLoss
-from src.portfolio_backtester.risk_management.take_profit_handlers import AtrBasedTakeProfit
+from portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
+from portfolio_backtester.optimization.wfo_window import WFOWindow
+from portfolio_backtester.risk_management.stop_loss_handlers import AtrBasedStopLoss
+from portfolio_backtester.risk_management.take_profit_handlers import AtrBasedTakeProfit
 
 
 class TestCombinedRiskWindowEvaluator:
@@ -97,10 +97,10 @@ class TestCombinedRiskWindowEvaluator:
         """Test that both DailyStopLossMonitor and DailyTakeProfitMonitor are initialized."""
         with (
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
             ) as mock_sl_monitor_class,
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
             ) as mock_tp_monitor_class,
         ):
 
@@ -131,10 +131,10 @@ class TestCombinedRiskWindowEvaluator:
         """Test that both monitors are called for each evaluation date."""
         with (
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
             ) as mock_sl_monitor_class,
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
             ) as mock_tp_monitor_class,
         ):
 
@@ -178,10 +178,10 @@ class TestCombinedRiskWindowEvaluator:
 
         with (
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
             ) as mock_sl_monitor_class,
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
             ) as mock_tp_monitor_class,
         ):
 
@@ -219,13 +219,13 @@ class TestCombinedRiskWindowEvaluator:
         """Test that liquidations from both systems are applied to position tracker."""
         with (
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
             ) as mock_sl_monitor_class,
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
             ) as mock_tp_monitor_class,
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.PositionTracker"
+                "portfolio_backtester.backtesting.window_evaluator.PositionTracker"
             ) as mock_position_tracker_class,
         ):
 
@@ -271,10 +271,10 @@ class TestCombinedRiskWindowEvaluator:
         """Test that errors in one system don't prevent the other from working."""
         with (
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
             ) as mock_sl_monitor_class,
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
             ) as mock_tp_monitor_class,
         ):
 
@@ -313,10 +313,10 @@ class TestCombinedRiskWindowEvaluator:
         """Test that the correct handlers are passed to the respective monitors."""
         with (
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
             ) as mock_sl_monitor_class,
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
             ) as mock_tp_monitor_class,
         ):
 
@@ -363,12 +363,12 @@ class TestCombinedRiskWindowEvaluator:
         """Test that liquidations from both systems are logged appropriately."""
         with (
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
             ) as mock_sl_monitor_class,
             patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
+                "portfolio_backtester.backtesting.window_evaluator.DailyTakeProfitMonitor"
             ) as mock_tp_monitor_class,
-            patch("src.portfolio_backtester.backtesting.window_evaluator.logger") as mock_logger,
+            patch("portfolio_backtester.backtesting.window_evaluator.logger") as mock_logger,
         ):
 
             mock_sl_monitor = Mock()

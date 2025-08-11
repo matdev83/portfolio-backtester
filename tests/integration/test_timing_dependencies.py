@@ -6,16 +6,16 @@ Tests that the interfaces work correctly and dependency injection is functioning
 
 import pandas as pd
 
-from src.portfolio_backtester.interfaces.timing_state_interface import (
+from portfolio_backtester.interfaces.timing_state_interface import (
     create_timing_state,
     ITimingState,
 )
-from src.portfolio_backtester.interfaces.time_based_timing_interface import (
+from portfolio_backtester.interfaces.time_based_timing_interface import (
     create_time_based_timing,
     ITimeBasedTiming,
 )
-from src.portfolio_backtester.timing.time_based_timing import TimeBasedTiming
-from src.portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
+from portfolio_backtester.timing.time_based_timing import TimeBasedTiming
+from portfolio_backtester.timing.signal_based_timing import SignalBasedTiming
 
 
 class TestTimingDependencyInversion:
@@ -74,7 +74,7 @@ class TestTimingDependencyInversion:
 
     def test_adaptive_timing_controller_dependency_injection(self):
         """Test that AdaptiveTimingController uses dependency injection correctly."""
-        from src.portfolio_backtester.timing.custom_timing_registry import (
+        from portfolio_backtester.timing.custom_timing_registry import (
             AdaptiveTimingController,
         )
 
@@ -93,7 +93,7 @@ class TestTimingDependencyInversion:
 
     def test_momentum_timing_controller_dependency_injection(self):
         """Test that MomentumTimingController uses dependency injection correctly."""
-        from src.portfolio_backtester.timing.custom_timing_registry import (
+        from portfolio_backtester.timing.custom_timing_registry import (
             MomentumTimingController,
         )
 
@@ -141,7 +141,7 @@ class TestTimingDependencyInversion:
         time_based_timing = create_time_based_timing(config)
 
         # Use in adaptive controller
-        from src.portfolio_backtester.timing.custom_timing_registry import (
+        from portfolio_backtester.timing.custom_timing_registry import (
             AdaptiveTimingController,
         )
 

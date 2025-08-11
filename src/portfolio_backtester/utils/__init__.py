@@ -7,8 +7,6 @@ import numpy as np
 import pandas as pd
 
 
-
-
 # Get a logger for this module (or use a more general one if available)
 logger = logging.getLogger(__name__)
 
@@ -38,7 +36,7 @@ def register_signal_handler():
         logger.error(f"Failed to register SIGINT handler: {e}")
 
 
-def _resolve_strategy(name: str, strategy_params: Optional[Dict[str, Any]] = None):
+def _resolve_strategy(name: object, strategy_params: Optional[Dict[str, Any]] = None) -> Any:
     """
     Resolve strategy specification to a strategy class using polymorphic interfaces.
 
@@ -55,18 +53,18 @@ def _resolve_strategy(name: str, strategy_params: Optional[Dict[str, Any]] = Non
     """
     from ..interfaces import create_strategy_resolver
     from ..interfaces.strategy_resolver_interface import PolymorphicStrategyResolver
-    
+
     # Check if there are any mocked strategies for testing
     mocked_strategies = PolymorphicStrategyResolver.enumerate_strategies_with_params()
     if mocked_strategies:
         # For tests, use the mocked strategies
         if isinstance(name, dict):
-            strategy_name = name.get('name') or name.get('strategy') or name.get('type')
+            strategy_name = name.get("name") or name.get("strategy") or name.get("type")
             if strategy_name in mocked_strategies:
                 return mocked_strategies[strategy_name]
         elif isinstance(name, str) and name in mocked_strategies:
             return mocked_strategies[name]
-    
+
     # Use polymorphic strategy resolver to eliminate isinstance violations
     resolver = create_strategy_resolver()
     return resolver.resolve_strategy(name, strategy_params)
@@ -140,24 +138,24 @@ def _run_scenario_static(
     tc = turn * (realistic_cost_bps / 10_000)
 
     portfolio_returns = (gross - tc).reindex(price_daily.index).fillna(0)
-    
+
     # Calculate benchmark-relative metrics if benchmark data is provided
     if benchmark_daily is not None and len(benchmark_daily) > 0:
         # Calculate benchmark returns for comparison
         benchmark_returns = benchmark_daily.pct_change().fillna(0)
         aligned_benchmark_returns = benchmark_returns.reindex(portfolio_returns.index).fillna(0)
-        
+
         # Calculate excess returns and tracking error
         excess_returns = portfolio_returns - aligned_benchmark_returns
-        
+
         # Return enhanced data structure with benchmark information
         return {
-            'portfolio_returns': portfolio_returns,
-            'benchmark_returns': aligned_benchmark_returns,
-            'excess_returns': excess_returns,
-            'benchmark_daily': benchmark_daily.reindex(portfolio_returns.index)
+            "portfolio_returns": portfolio_returns,
+            "benchmark_returns": aligned_benchmark_returns,
+            "excess_returns": excess_returns,
+            "benchmark_daily": benchmark_daily.reindex(portfolio_returns.index),
         }
-    
+
     return portfolio_returns
 
 
@@ -341,8 +339,12 @@ def _determine_evaluation_frequency(scenario_config: dict) -> str:
     timing_config = scenario_config.get("timing_config", {})
 
     # Intramonth and seasonal strategies need daily evaluation
-    if ("intramonth" in strategy_class.lower() or "intramonth" in strategy_name.lower() or
-        "seasonalsignal" in strategy_class.lower() or "seasonalsignal" in strategy_name.lower()):
+    if (
+        "intramonth" in strategy_class.lower()
+        or "intramonth" in strategy_name.lower()
+        or "seasonalsignal" in strategy_class.lower()
+        or "seasonalsignal" in strategy_name.lower()
+    ):
         return "D"
 
     # Signal-based timing with daily scanning

@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import Any, Dict, Optional
 
-from ...strategies.base.base_strategy import BaseStrategy
+from ...strategies._core.base.base.base_strategy import BaseStrategy
 
 
 class StopLossTesterStrategy(BaseStrategy):

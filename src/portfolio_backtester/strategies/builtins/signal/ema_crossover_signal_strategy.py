@@ -23,7 +23,7 @@ class EmaCrossoverSignalStrategy(SignalStrategy):
         self.leverage: float = float(sp.get("leverage", 1.0))
 
     @classmethod
-    def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
+    def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         return {
             "fast_ema_days": {"type": "int", "default": 20, "min": 10, "max": 200, "step": 5},
             "slow_ema_days": {"type": "int", "default": 64, "min": 20, "max": 300, "step": 10},
@@ -37,9 +37,9 @@ class EmaCrossoverSignalStrategy(SignalStrategy):
         if isinstance(df.columns, pd.MultiIndex):
             # Try each level to find 'Close'
             for lvl in range(df.columns.nlevels):
-                if 'Close' in df.columns.get_level_values(lvl):
+                if "Close" in df.columns.get_level_values(lvl):
                     try:
-                        close_obj = df.xs('Close', axis=1, level=lvl)
+                        close_obj = df.xs("Close", axis=1, level=lvl)
                         if isinstance(close_obj, pd.Series):
                             close = close_obj.to_frame()
                         else:
@@ -50,7 +50,9 @@ class EmaCrossoverSignalStrategy(SignalStrategy):
                         continue
             # Fallback: if cannot find 'Close', reduce last level by first column
             reduced = df.copy()
-            reduced.columns = [str(c[0]) if isinstance(c, tuple) and len(c) > 0 else str(c) for c in df.columns]
+            reduced.columns = [
+                str(c[0]) if isinstance(c, tuple) and len(c) > 0 else str(c) for c in df.columns
+            ]
             return reduced
         # Single-level columns; assume already prices
         return df
@@ -77,9 +79,7 @@ class EmaCrossoverSignalStrategy(SignalStrategy):
         result = pd.DataFrame(0.0, index=[current_date], columns=close_prices.columns)
         if current_date in fast.index and current_date in slow.index:
             comp = fast.loc[current_date] > slow.loc[current_date]
-            signal_series = comp.reindex(
-                close_prices.columns, fill_value=False
-            )
+            signal_series = comp.reindex(close_prices.columns, fill_value=False)
             if bool(signal_series.any()):
                 selected_mask = signal_series.astype(bool)
                 selected = [c for c, v in selected_mask.items() if v]

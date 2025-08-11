@@ -7,7 +7,7 @@ in strategy resolution functionality.
 
 from unittest.mock import Mock, patch
 
-from src.portfolio_backtester.interfaces.strategy_resolver_interface import (
+from portfolio_backtester.interfaces.strategy_resolver_interface import (
     DictStrategySpecificationResolver,
     StringStrategySpecificationResolver,
     NullStrategySpecificationResolver,
@@ -63,11 +63,7 @@ class TestDictStrategySpecificationResolver:
 
     def test_resolve_to_name_priority_order(self):
         """Test that 'name' takes priority over 'strategy', which takes priority over 'type'."""
-        spec = {
-            "name": "name_strategy",
-            "strategy": "strategy_strategy", 
-            "type": "type_strategy"
-        }
+        spec = {"name": "name_strategy", "strategy": "strategy_strategy", "type": "type_strategy"}
         result = self.resolver.resolve_to_name(spec)
         assert result == "name_strategy"
 
@@ -192,28 +188,28 @@ class TestDefaultStrategyLookup:
     def setup_method(self):
         self.lookup = DefaultStrategyLookup()
 
-    @patch('src.portfolio_backtester.strategies.strategy_factory.StrategyFactory.create_strategy')
+    @patch("portfolio_backtester.strategies._core.strategy_factory.StrategyFactory.create_strategy")
     def test_lookup_strategy_found(self, mock_create_strategy):
         """Test successful strategy lookup."""
         mock_strategy_class = Mock()
         mock_create_strategy.return_value = mock_strategy_class
-        
+
         result = self.lookup.lookup_strategy("momentum_strategy")
         assert result == mock_strategy_class
 
-    @patch('src.portfolio_backtester.strategies.strategy_factory.StrategyFactory.create_strategy')
+    @patch("portfolio_backtester.strategies._core.strategy_factory.StrategyFactory.create_strategy")
     def test_lookup_strategy_not_found(self, mock_create_strategy):
         """Test strategy lookup when strategy not found."""
         mock_create_strategy.side_effect = ValueError
-        
+
         result = self.lookup.lookup_strategy("nonexistent_strategy")
         assert result is None
 
-    @patch('src.portfolio_backtester.strategies.strategy_factory.StrategyFactory.create_strategy')
+    @patch("portfolio_backtester.strategies._core.strategy_factory.StrategyFactory.create_strategy")
     def test_lookup_strategy_empty_registry(self, mock_create_strategy):
         """Test strategy lookup with empty strategy registry."""
         mock_create_strategy.side_effect = ValueError
-        
+
         result = self.lookup.lookup_strategy("any_strategy")
         assert result is None
 
@@ -229,10 +225,10 @@ class TestPolymorphicStrategyResolver:
         """Test resolving dictionary strategy specification."""
         mock_strategy = Mock()
         self.mock_strategy_lookup.lookup_strategy.return_value = mock_strategy
-        
+
         spec = {"name": "momentum_strategy"}
         result = self.resolver.resolve_strategy(spec)
-        
+
         assert result == mock_strategy
         self.mock_strategy_lookup.lookup_strategy.assert_called_once_with("momentum_strategy", None)
 
@@ -240,9 +236,9 @@ class TestPolymorphicStrategyResolver:
         """Test resolving string strategy specification."""
         mock_strategy = Mock()
         self.mock_strategy_lookup.lookup_strategy.return_value = mock_strategy
-        
+
         result = self.resolver.resolve_strategy("calmar_strategy")
-        
+
         assert result == mock_strategy
         self.mock_strategy_lookup.lookup_strategy.assert_called_once_with("calmar_strategy", None)
 
@@ -261,10 +257,12 @@ class TestPolymorphicStrategyResolver:
     def test_resolve_strategy_not_found_in_lookup(self):
         """Test resolving when strategy is not found in lookup."""
         self.mock_strategy_lookup.lookup_strategy.return_value = None
-        
+
         result = self.resolver.resolve_strategy("nonexistent_strategy")
         assert result is None
-        self.mock_strategy_lookup.lookup_strategy.assert_called_once_with("nonexistent_strategy", None)
+        self.mock_strategy_lookup.lookup_strategy.assert_called_once_with(
+            "nonexistent_strategy", None
+        )
 
     def test_resolve_strategy_uses_default_lookup_when_none_provided(self):
         """Test that resolver uses default lookup when none provided."""
@@ -295,16 +293,16 @@ class TestPolymorphicIntegration:
     def test_no_isinstance_usage_in_polymorphic_resolver(self):
         """Test that polymorphic resolver doesn't use isinstance internally."""
         resolver = create_strategy_resolver()
-        
+
         # Test with various input types that would have triggered isinstance checks
-        test_cases = [
+        test_cases: list[object] = [
             {"name": "test_strategy"},
             "string_strategy",
             None,
             123,
             [],
         ]
-        
+
         # All these should work without isinstance checks
         for test_case in test_cases:
             # Should not raise exceptions due to isinstance usage
@@ -312,15 +310,15 @@ class TestPolymorphicIntegration:
             # Result depends on whether strategy exists, but should not fail due to type checking
             assert result is None or result is not None  # Basic success test
 
-    @patch('src.portfolio_backtester.strategies.strategy_factory.StrategyFactory.create_strategy')
+    @patch("portfolio_backtester.strategies._core.strategy_factory.StrategyFactory.create_strategy")
     def test_polymorphic_resolver_equivalent_to_original_logic(self, mock_create_strategy):
         """Test that polymorphic resolver produces same results as original isinstance logic."""
         # Mock strategy registry
         mock_strategy = Mock()
         mock_create_strategy.return_value = mock_strategy
-        
+
         resolver = create_strategy_resolver()
-        
+
         # Test cases that mirror original isinstance logic
         test_cases = [
             # Dict with name
@@ -338,7 +336,7 @@ class TestPolymorphicIntegration:
             # None
             (None, None),
         ]
-        
+
         for spec, expected in test_cases:
             result = resolver.resolve_strategy(spec)
             assert result == expected

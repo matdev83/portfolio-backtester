@@ -96,7 +96,7 @@ class TestAtrBasedTakeProfit:
 
         # Set seed once for consistent data across all tickers
         np.random.seed(42)  # For reproducible tests
-        
+
         data = {}
         for ticker in tickers:
             # Generate realistic OHLC data with some volatility
@@ -320,15 +320,15 @@ class TestAtrBasedTakeProfit:
 
     def test_atr_caching(self):
         """Test that ATR calculations are cached correctly."""
-        from src.portfolio_backtester.risk_management.atr_service import OptimizedATRService
-        
+        from portfolio_backtester.risk_management.atr_service import OptimizedATRService
+
         # Create test data in the test method to avoid fixture issues
         np.random.seed(42)
         dates = pd.date_range("2023-01-01", periods=30, freq="D")
         tickers = ["AAPL", "MSFT", "GOOGL"]
         fields = ["Open", "High", "Low", "Close"]
         columns = pd.MultiIndex.from_product([tickers, fields], names=["Ticker", "Field"])
-        
+
         data = {}
         for ticker in tickers:
             base_price = {"AAPL": 150.0, "MSFT": 250.0, "GOOGL": 100.0}[ticker]
@@ -337,12 +337,12 @@ class TestAtrBasedTakeProfit:
             data[(ticker, "High")] = prices * (1 + np.abs(np.random.randn(len(dates))) * 0.01)
             data[(ticker, "Low")] = prices * (1 - np.abs(np.random.randn(len(dates))) * 0.01)
             data[(ticker, "Close")] = prices
-        
+
         historical_data = pd.DataFrame(data, index=dates, columns=columns)
-        
+
         current_date = pd.Timestamp("2023-01-20")
         atr_length = 14
-        
+
         # Create a local ATR service instance to avoid global singleton issues
         atr_service = OptimizedATRService(cache_size=100)
         initial_cache_size = atr_service.cache_info()["size"]
@@ -353,17 +353,17 @@ class TestAtrBasedTakeProfit:
         cache_size_after_first = atr_service.cache_info()["size"]
         assert cache_size_after_first == initial_cache_size + 1
         assert not result_1.empty
-        
+
         # Second calculation with same parameters (should hit cache)
         result_2 = atr_service.calculate_atr(historical_data, current_date, atr_length)
         cache_size_after_second = atr_service.cache_info()["size"]
-        
+
         # Results should be identical (cache hit)
         pd.testing.assert_series_equal(result_1, result_2)
-        
+
         # Cache should still have one entry (no additional entries)
         assert cache_size_after_second == initial_cache_size + 1
-        
+
         # Test cache invalidation with different data
         np.random.seed(123)  # Different seed for different data
         data_new = {}
@@ -374,13 +374,13 @@ class TestAtrBasedTakeProfit:
             data_new[(ticker, "High")] = prices * (1 + np.abs(np.random.randn(len(dates))) * 0.01)
             data_new[(ticker, "Low")] = prices * (1 - np.abs(np.random.randn(len(dates))) * 0.01)
             data_new[(ticker, "Close")] = prices
-        
+
         historical_data_new = pd.DataFrame(data_new, index=dates, columns=columns)
-        
+
         # Third calculation with different data (should create new cache entry)
         result_3 = atr_service.calculate_atr(historical_data_new, current_date, atr_length)
         cache_size_after_third = atr_service.cache_info()["size"]
-        
+
         # Should have two cache entries now
         assert cache_size_after_third == 2
         # Results should be different

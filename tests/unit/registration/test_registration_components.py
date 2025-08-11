@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import Mock
 
-from src.portfolio_backtester.registration import (
+from portfolio_backtester.registration import (
     RegistrationManager,
     RegistrationValidator,
     RegistryLister,

@@ -9,9 +9,9 @@ import pytest
 import pandas as pd
 from unittest.mock import Mock, patch
 
-from src.portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
-from src.portfolio_backtester.optimization.wfo_window import WFOWindow
-from src.portfolio_backtester.risk_management.stop_loss_handlers import AtrBasedStopLoss
+from portfolio_backtester.backtesting.window_evaluator import WindowEvaluator
+from portfolio_backtester.optimization.wfo_window import WFOWindow
+from portfolio_backtester.risk_management.stop_loss_handlers import AtrBasedStopLoss
 
 
 class TestWindowEvaluatorStopLossIntegration:
@@ -89,7 +89,7 @@ class TestWindowEvaluatorStopLossIntegration:
     ):
         """Test that DailyStopLossMonitor is properly initialized."""
         with patch(
-            "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+            "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
         ) as mock_monitor_class:
             mock_monitor_instance = Mock()
             mock_monitor_class.return_value = mock_monitor_instance
@@ -112,7 +112,7 @@ class TestWindowEvaluatorStopLossIntegration:
     ):
         """Test that stop loss check is called on every evaluation date."""
         with patch(
-            "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+            "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
         ) as mock_monitor_class:
             mock_monitor_instance = Mock()
             mock_monitor_class.return_value = mock_monitor_instance
@@ -144,14 +144,14 @@ class TestWindowEvaluatorStopLossIntegration:
         )
 
         with patch(
-            "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+            "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
         ) as mock_monitor_class:
             mock_monitor_instance = Mock()
             mock_monitor_class.return_value = mock_monitor_instance
             mock_monitor_instance.check_positions_for_stop_loss.return_value = liquidation_signals
 
             with patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.PositionTracker"
+                "portfolio_backtester.backtesting.window_evaluator.PositionTracker"
             ) as mock_tracker_class:
                 mock_tracker_instance = Mock()
                 mock_tracker_class.return_value = mock_tracker_instance
@@ -184,7 +184,7 @@ class TestWindowEvaluatorStopLossIntegration:
     ):
         """Test that evaluation continues when stop loss monitoring fails."""
         with patch(
-            "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+            "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
         ) as mock_monitor_class:
             mock_monitor_instance = Mock()
             mock_monitor_class.return_value = mock_monitor_instance
@@ -210,7 +210,7 @@ class TestWindowEvaluatorStopLossIntegration:
     ):
         """Test that correct parameters are passed to stop loss monitor."""
         with patch(
-            "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+            "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
         ) as mock_monitor_class:
             mock_monitor_instance = Mock()
             mock_monitor_class.return_value = mock_monitor_instance
@@ -251,15 +251,13 @@ class TestWindowEvaluatorStopLossIntegration:
         liquidation_signals = pd.DataFrame({"AAPL": [0.0]}, index=[pd.Timestamp("2023-01-15")])
 
         with patch(
-            "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+            "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
         ) as mock_monitor_class:
             mock_monitor_instance = Mock()
             mock_monitor_class.return_value = mock_monitor_instance
             mock_monitor_instance.check_positions_for_stop_loss.return_value = liquidation_signals
 
-            with patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.logger"
-            ) as mock_logger:
+            with patch("portfolio_backtester.backtesting.window_evaluator.logger") as mock_logger:
                 evaluator.evaluate_window(
                     window=test_window,
                     strategy=mock_strategy,
@@ -281,7 +279,7 @@ class TestWindowEvaluatorStopLossIntegration:
     ):
         """Test handling when no stop loss signals are generated."""
         with patch(
-            "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+            "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
         ) as mock_monitor_class:
             mock_monitor_instance = Mock()
             mock_monitor_class.return_value = mock_monitor_instance
@@ -290,7 +288,7 @@ class TestWindowEvaluatorStopLossIntegration:
             )  # Empty signals
 
             with patch(
-                "src.portfolio_backtester.backtesting.window_evaluator.PositionTracker"
+                "portfolio_backtester.backtesting.window_evaluator.PositionTracker"
             ) as mock_tracker_class:
                 mock_tracker_instance = Mock()
                 mock_tracker_class.return_value = mock_tracker_instance
@@ -324,7 +322,7 @@ class TestWindowEvaluatorStopLossIntegration:
         )
 
         with patch(
-            "src.portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
+            "portfolio_backtester.backtesting.window_evaluator.DailyStopLossMonitor"
         ) as mock_monitor_class:
             mock_monitor_instance = Mock()
             mock_monitor_class.return_value = mock_monitor_instance

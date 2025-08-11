@@ -1,0 +1,13 @@
+# Example scenario: Fixed-weight portfolio using built-in strategy
+name: fixed_weight_example
+strategy: FixedWeightPortfolioStrategy
+strategy_params:
+  price_column_asset: Close
+  price_column_benchmark: Close
+  timing_config:
+    mode: time_based
+    rebalance_frequency: ME  # month end
+
+# Note: Run via CLI by passing --scenario-filename to your runner, e.g.
+#   ./.venv/Scripts/python.exe -m src.portfolio_backtester.backtester \
+#     --mode backtest --scenario-filename examples/scenarios/portfolio/fixed_weight_example.yaml

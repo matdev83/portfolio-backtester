@@ -22,7 +22,7 @@ class EmaRoroSignalStrategy(EmaCrossoverSignalStrategy):
         )
 
     @classmethod
-    def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
+    def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         base = dict(EmaCrossoverSignalStrategy.tunable_parameters())
         base.update(
             {

@@ -53,18 +53,18 @@ optimize:
 
 class MockStrategy(BaseStrategy):
     @classmethod
-    def tunable_parameters(cls) -> set[str]:
+    def tunable_parameters(cls):
         return {
-            "mock_strategy_param1",
-            "num_holdings",
-            "existing_param",
-        }  # num_holdings is often a strategy param
+            "mock_strategy_param1": {"type": "int", "min": 1, "max": 5, "default": 1},
+            "num_holdings": {"type": "int", "min": 1, "max": 100, "default": 10},
+            "existing_param": {"type": "int", "min": 1, "max": 1000, "default": 100},
+        }
 
 
 class AnotherMockStrategy(BaseStrategy):
     @classmethod
-    def tunable_parameters(cls) -> set[str]:
-        return {"leverage"}  # leverage is often a strategy param
+    def tunable_parameters(cls):
+        return {"leverage": {"type": "float", "min": 0.5, "max": 2.0, "default": 1.0}}
 
 
 class TestConfigLoader(unittest.TestCase):
@@ -122,7 +122,7 @@ class TestConfigLoader(unittest.TestCase):
             mock_resolve_strategy.side_effect = mock_strategy_resolver
 
             # Mock os.walk to simulate subdirectory structure
-            walk_results = []
+            walk_results: list[tuple[str, list[str], list[str]]] = []
             if scenarios_map:
                 # Simulate finding files in subdirectories
                 for scenario_file in scenarios_map.keys():
@@ -159,7 +159,7 @@ class TestConfigLoader(unittest.TestCase):
         """Test FileNotFoundError when a config file is missing."""
         with patch("pathlib.Path.exists", return_value=False):
             with self.assertRaisesRegex(
-                config_loader.ConfigurationError, "Invalid parameters.yaml file"
+                config_loader.ConfigurationError, r"parameters.yaml validation failed"
             ):
                 config_loader.load_config()
 

@@ -40,7 +40,7 @@ class TestStrategyFactory:
         params = {"param1": "value1"}
         # Use a known strategy that is dynamically discovered
         strategy = StrategyFactory.create_strategy("SimpleMomentumPortfolioStrategy", params)
-        from portfolio_backtester.strategies.portfolio.simple_momentum_portfolio_strategy import (
+        from portfolio_backtester.strategies.builtins.portfolio.simple_momentum_portfolio_strategy import (
             SimpleMomentumPortfolioStrategy,
         )
 
