@@ -10,13 +10,14 @@ import logging
 import numpy as np
 import pandas as pd
 import os
-from typing import Any, Dict, List, Union, Optional
+from typing import Any, Dict, List, Union, Optional, cast
+
 try:
     # Prefer optional import; used only when parallel path is enabled
     from joblib import Parallel, delayed  # type: ignore
 except Exception:  # pragma: no cover - joblib may not be available in some envs
-    Parallel = None  # type: ignore[assignment]
-    delayed = None  # type: ignore[assignment]
+    Parallel = None
+    delayed = None
 
 from .results import EvaluationResult, OptimizationData
 from ..backtesting.results import WindowResult
@@ -33,12 +34,6 @@ from .performance_optimizer import (
 )
 
 # Enhanced WFO always enabled – no dual path
-WFO_ENHANCEMENT_AVAILABLE: bool = True
-
-# New performance optimization imports (module doesn't exist yet)
-PERFORMANCE_ABSTRACTION_AVAILABLE = False
-AbstractPerformanceOptimizer = type(None)
-AbstractTradeTracker = type(None)
 
 # Legacy ParallelOptimizer removed - now using integrated ParallelWFOProcessor
 
@@ -184,6 +179,7 @@ class BacktestEvaluator:
         if self.window_evaluator is None:
             self.window_evaluator = WindowEvaluator(backtester=backtester)
 
+        # The 'data.windows' attribute now contains WFOWindow objects directly.
         enhanced_windows = data.windows
         window_results: List[WindowResult] = []
 
@@ -198,6 +194,7 @@ class BacktestEvaluator:
 
         def _eval_single_window(win: WFOWindow) -> WindowResult:
             """Worker-safe single window evaluation."""
+            assert self.window_evaluator is not None
             try:
                 strategy = backtester._get_strategy(
                     scenario_config["strategy"], parameters, scenario_config
@@ -206,15 +203,18 @@ class BacktestEvaluator:
                 benchmark_ticker_local = (
                     universe_tickers_local[0] if universe_tickers_local else "SPY"
                 )
-                return self.window_evaluator.evaluate_window(
-                    window=win,
-                    strategy=strategy,
-                    daily_data=data.daily,
-                    full_monthly_data=data.monthly,
-                    full_rets_daily=data.returns,
-                    benchmark_data=data.daily,
-                    universe_tickers=universe_tickers_local,
-                    benchmark_ticker=benchmark_ticker_local,
+                return cast(
+                    WindowResult,
+                    self.window_evaluator.evaluate_window(
+                        window=win,
+                        strategy=strategy,
+                        daily_data=data.daily,
+                        full_monthly_data=data.monthly,
+                        full_rets_daily=data.returns,
+                        benchmark_data=data.daily,
+                        universe_tickers=universe_tickers_local,
+                        benchmark_ticker=benchmark_ticker_local,
+                    ),
                 )
             except Exception:
                 return WindowResult(
@@ -309,7 +309,9 @@ class BacktestEvaluator:
             aggregated_objective = float(metric_value)
 
         return EvaluationResult(
-            objective_value=aggregated_objective, metrics=metrics, window_results=window_results
+            objective_value=aggregated_objective,
+            metrics=metrics,
+            window_results=window_results,
         )
 
     def _calculate_metrics(self, returns: pd.Series, trades: List) -> Dict[str, float]:
@@ -382,7 +384,9 @@ class BacktestEvaluator:
         }
 
     def _aggregate_objective_values(
-        self, objective_values: List[Union[float, List[float]]], window_lengths: List[int]
+        self,
+        objective_values: List[Union[float, List[float]]],
+        window_lengths: List[int],
     ) -> Union[float, List[float]]:
         """Aggregate objective values across windows.
 

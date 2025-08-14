@@ -210,7 +210,10 @@ class MetaStrategyReporter:
         performance = self.trade_aggregator.calculate_weighted_performance()
         timeline = self.trade_aggregator.get_portfolio_timeline()
 
-        breakdown = {"overall_performance": performance, "timeline_available": not timeline.empty}
+        breakdown = {
+            "overall_performance": performance,
+            "timeline_available": not timeline.empty,
+        }
 
         if not timeline.empty:
             # Calculate additional performance metrics
@@ -237,7 +240,7 @@ class MetaStrategyReporter:
                             "flat_days": len(returns[returns == 0]),
                         },
                         "return_distribution": {
-                            f"percentile_{int(p*100)}": v for p, v in return_percentiles.items()
+                            f"percentile_{int(p * 100)}": v for p, v in return_percentiles.items()
                         },
                     }
                 )

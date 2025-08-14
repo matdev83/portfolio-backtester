@@ -6,7 +6,7 @@ enabling dependency inversion for backtester components.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, cast
+from typing import Optional
 
 
 class ITimeoutManager(ABC):
@@ -88,7 +88,7 @@ class ConcreteTimeoutManager(ITimeoutManager):
         Returns:
             True if timeout has been exceeded, False otherwise
         """
-        return cast(bool, self._timeout_manager.check_timeout())
+        return self._timeout_manager.check_timeout()
 
     def reset(self, new_start_time: Optional[float] = None) -> None:
         """

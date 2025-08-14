@@ -3,7 +3,10 @@ from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
 
-from ..parameter_generator import PopulationBasedParameterGenerator, validate_parameter_space
+from ..parameter_generator import (
+    PopulationBasedParameterGenerator,
+    validate_parameter_space,
+)
 from ..results import EvaluationResult, OptimizationResult
 
 logger = logging.getLogger(__name__)
@@ -31,7 +34,10 @@ class FixedGeneticParameterGenerator(PopulationBasedParameterGenerator):
         self, scenario_config: Dict[str, Any], optimization_config: Dict[str, Any]
     ) -> None:
         """Initialize the generator with configuration."""
-        self.parameter_space = scenario_config.get("parameter_space", {})
+        # Prefer scenario-level parameter_space; fallback to optimization_config
+        self.parameter_space = scenario_config.get(
+            "parameter_space", optimization_config.get("parameter_space", {})
+        )
         validate_parameter_space(self.parameter_space)
 
         ga_config = scenario_config.get("ga_settings", optimization_config.get("ga_settings", {}))

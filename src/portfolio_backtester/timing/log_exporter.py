@@ -117,9 +117,9 @@ class LogExporter:
             print("No log entries found")
             return
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"{title} (Last {len(entries)})")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         for i, entry in enumerate(entries, 1):
             print(f"\n{i}. [{entry.level}] {entry.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -131,7 +131,7 @@ class LogExporter:
             if entry.data and self.enable_detailed_logging:
                 print(f"   Data: {entry.data}")
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
 
     def format_entry_as_string(
         self, entry: TimingLogEntry, include_data: Optional[bool] = None

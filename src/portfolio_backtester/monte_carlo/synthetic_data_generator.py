@@ -132,7 +132,9 @@ class SyntheticDataGenerator:
             synthetic_ohlc,
             columns=["Open", "High", "Low", "Close"],
             index=pd.date_range(
-                start=ohlc_data.index[-1] + pd.Timedelta(days=1), periods=length, freq="D"
+                start=ohlc_data.index[-1] + pd.Timedelta(days=1),
+                periods=length,
+                freq="D",
             ),
         )
 

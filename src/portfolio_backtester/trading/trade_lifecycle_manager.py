@@ -19,20 +19,19 @@ class Trade:
 
     ticker: str
     entry_date: pd.Timestamp
-    exit_date: Optional[pd.Timestamp]
     entry_price: float
-    exit_price: Optional[float]
-    quantity: float  # Positive for long, negative for short
-    entry_value: float  # Absolute value of position
+    quantity: float
+    entry_value: float
     commission_entry: float
-    commission_exit: float
-    mfe: float = 0.0  # Maximum Favorable Excursion
-    mae: float = 0.0  # Maximum Adverse Excursion
+    exit_date: Optional[pd.Timestamp] = None
+    exit_price: Optional[float] = None
+    commission_exit: float = 0.0
+    mfe: float = 0.0
+    mae: float = 0.0
     duration_days: Optional[int] = None
     pnl_gross: Optional[float] = None
     pnl_net: Optional[float] = None
     is_winner: Optional[bool] = None
-    # Enhanced commission tracking
     detailed_commission_entry: Optional[Dict[str, Any]] = None
     detailed_commission_exit: Optional[Dict[str, Any]] = None
 
@@ -102,13 +101,10 @@ class TradeLifecycleManager:
         trade = Trade(
             ticker=ticker,
             entry_date=date,
-            exit_date=None,
             entry_price=price,
-            exit_price=None,
             quantity=quantity,
             entry_value=entry_value,
             commission_entry=commission,
-            commission_exit=0.0,
             detailed_commission_entry=detailed_commission_info,
         )
 
@@ -189,7 +185,10 @@ class TradeLifecycleManager:
                     trade.mae = pnl_per_share
 
     def close_all_positions(
-        self, date: pd.Timestamp, prices: pd.Series, commissions: Optional[Dict[str, float]] = None
+        self,
+        date: pd.Timestamp,
+        prices: pd.Series,
+        commissions: Optional[Dict[str, float]] = None,
     ) -> List[Trade]:
         """
         Close all open positions.

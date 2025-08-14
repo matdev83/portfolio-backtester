@@ -43,14 +43,24 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
                 "default": 0.1,
             },
             # Smoothing and leverage
-            "smoothing_lambda": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.5},
+            "smoothing_lambda": {
+                "type": "float",
+                "min": 0.0,
+                "max": 1.0,
+                "default": 0.5,
+            },
             "leverage": {"type": "float", "min": 1.0, "max": 2.0, "default": 1.0},
             # Trading toggles
             "trade_longs": {"type": "bool", "default": True},
             "trade_shorts": {"type": "bool", "default": False},
             # Risk filters
             "sma_filter_window": {"type": "int", "min": 0, "max": 252, "default": 20},
-            "derisk_days_under_sma": {"type": "int", "min": 1, "max": 63, "default": 10},
+            "derisk_days_under_sma": {
+                "type": "int",
+                "min": 1,
+                "max": 63,
+                "default": 10,
+            },
             "apply_trading_lag": {"type": "bool", "default": False},
         }
 
@@ -262,7 +272,9 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
                 current_benchmark_price_val = benchmark_price_series_for_sma.loc[current_date]
                 current_benchmark_sma_val = benchmark_sma_series.loc[current_date]
 
-                def to_scalar(val: Union[pd.Series, pd.DataFrame, float, int, Any]) -> float:
+                def to_scalar(
+                    val: Union[pd.Series, pd.DataFrame, float, int, Any],
+                ) -> float:
                     if isinstance(val, pd.Series):
                         if val.empty:
                             return np.nan
@@ -329,7 +341,8 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
 
     def _get_params(self) -> Dict[str, Any]:
         return cast(
-            Dict[str, Any], self.strategy_config.get("strategy_params", self.strategy_config)
+            Dict[str, Any],
+            self.strategy_config.get("strategy_params", self.strategy_config),
         )
 
 

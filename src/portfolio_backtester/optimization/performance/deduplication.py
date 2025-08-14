@@ -42,7 +42,7 @@ class BaseTrialDeduplicator(AbstractTrialDeduplicator, ABC):
 
         # Convert to JSON string and hash
         param_str = json.dumps(sorted_params, sort_keys=True, default=str)
-        return hashlib.md5(param_str.encode()).hexdigest()
+        return hashlib.md5(param_str.encode(), usedforsecurity=False).hexdigest()
 
     def is_duplicate(self, params: Dict[str, Any]) -> bool:
         """
@@ -141,7 +141,10 @@ class GenericTrialDeduplicator(BaseTrialDeduplicator):
         """
         base_stats = super().get_stats()
         base_stats.update(
-            {"duplicate_trials_detected": self.duplicate_count, "cache_hits": self.cache_hits}
+            {
+                "duplicate_trials_detected": self.duplicate_count,
+                "cache_hits": self.cache_hits,
+            }
         )
         return base_stats
 
@@ -161,4 +164,4 @@ def create_parameter_hash(parameters: Dict[str, Any]) -> str:
 
     # Convert to JSON string and hash
     param_str = json.dumps(sorted_params, sort_keys=True, default=str)
-    return hashlib.md5(param_str.encode()).hexdigest()
+    return hashlib.md5(param_str.encode(), usedforsecurity=False).hexdigest()

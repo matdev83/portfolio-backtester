@@ -23,7 +23,12 @@ class VolatilityTargetedFixedWeightPortfolioStrategy(BaseMomentumPortfolioStrate
     @classmethod
     def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         return {
-            "target_vol_annual": {"type": "float", "min": 0.05, "max": 0.5, "default": 0.2},
+            "target_vol_annual": {
+                "type": "float",
+                "min": 0.05,
+                "max": 0.5,
+                "default": 0.2,
+            },
             "vol_lookback_days": {"type": "int", "min": 21, "max": 252, "default": 63},
         }
 

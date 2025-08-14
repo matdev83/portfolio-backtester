@@ -60,14 +60,20 @@ class TimeBasedTiming(TimingController):
 
         # For non-trading days, roll back to the previous available trading day.
         rolled_dates = []
+        # Convert to DatetimeIndex if it's a list
+        if isinstance(available_dates, list):
+            available_dates_idx = pd.DatetimeIndex(available_dates)
+        else:
+            available_dates_idx = available_dates
+            
         for date in rebalance_dates:
-            if date in available_dates:
+            if date in available_dates_idx:
                 rolled_dates.append(date)
             else:
                 # Find the index for the insertion point to maintain order.
-                loc = available_dates.searchsorted(date, side="left")
+                loc = available_dates_idx.searchsorted(date, side="left")
                 if loc > 0:
-                    rolled_dates.append(available_dates[loc - 1])
+                    rolled_dates.append(available_dates_idx[loc - 1])
 
         # Ensure the dates are unique and sorted
         if rolled_dates:

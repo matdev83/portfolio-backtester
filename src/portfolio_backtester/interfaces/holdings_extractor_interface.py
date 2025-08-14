@@ -8,7 +8,10 @@ in SEC holdings extraction for better adherence to the Open/Closed Principle.
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional, cast
 import logging
-from .attribute_accessor_interface import IObjectFieldAccessor, create_object_field_accessor
+from .attribute_accessor_interface import (
+    IObjectFieldAccessor,
+    create_object_field_accessor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +86,10 @@ class FundReportHoldingsExtractor(IHoldingsExtractor):
         if not self.can_extract(obj):
             return []
 
-        return cast(List[Any], self._field_accessor.get_field_value(obj.portfolio, "holdings", []))
+        return cast(
+            List[Any],
+            self._field_accessor.get_field_value(obj.portfolio, "holdings", []),
+        )
 
     def can_extract(self, obj: Any) -> bool:
         """Check if object is a FundReport."""

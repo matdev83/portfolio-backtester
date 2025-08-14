@@ -131,7 +131,11 @@ class LogExporter:
 
     @classmethod
     def export(
-        cls, entries: List[TimingLogEntry], file_path: str, format_type: str = "json", **kwargs
+        cls,
+        entries: List[TimingLogEntry],
+        file_path: str,
+        format_type: str = "json",
+        **kwargs,
     ) -> None:
         """
         Export entries using specified format.

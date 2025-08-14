@@ -138,7 +138,11 @@ class TimingConfigValidator:
     def get_default_config(mode: str = "time_based") -> Dict[str, Any]:
         """Get default configuration for a timing mode."""
         if mode == "time_based":
-            return {"mode": "time_based", "rebalance_frequency": "M", "rebalance_offset": 0}
+            return {
+                "mode": "time_based",
+                "rebalance_frequency": "M",
+                "rebalance_offset": 0,
+            }
         elif mode == "signal_based":
             return {
                 "mode": "signal_based",

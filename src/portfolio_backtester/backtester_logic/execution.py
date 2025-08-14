@@ -28,7 +28,7 @@ def run_backtest_mode(self, scenario_config, monthly_data, daily_data, rets_full
                 )
         except KeyError:
             self.logger.warning(
-                f'Study \'{self.args.study_name}\' not found. Using default parameters for scenario \'{scenario_config["name"]}\'.'
+                f"Study '{self.args.study_name}' not found. Using default parameters for scenario '{scenario_config['name']}'."
             )
         except Exception as e:
             self.logger.error(f"Error loading Optuna study: {e}. Using default parameters.")
@@ -67,7 +67,7 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
         self.logger.warning(
             f"Optimization for {scenario_config['name']} was interrupted. Skipping full backtest with potentially incomplete optimal parameters."
         )
-        interrupted_name = f'{scenario_config["name"]} (Optimization Interrupted)'
+        interrupted_name = f"{scenario_config['name']} (Optimization Interrupted)"
         self.results[interrupted_name] = {
             "returns": pd.Series(dtype=float),
             "display_name": interrupted_name,
@@ -99,7 +99,13 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
         constraint_violations,
         constraints_config,
     ) = handle_constraints(
-        self, scenario_config, optimal_params, full_rets, monthly_data, daily_data, rets_full
+        self,
+        scenario_config,
+        optimal_params,
+        full_rets,
+        monthly_data,
+        daily_data,
+        rets_full,
     )
 
     self.results[optimized_name] = {
@@ -128,7 +134,9 @@ def run_optimize_mode(self, scenario_config, monthly_data, daily_data, rets_full
         if enable_during_optimization:
             # Full reporting during optimization (slower but immediate)
             try:
-                from ..backtester_logic.reporting_logic import generate_optimization_report
+                from ..backtester_logic.reporting_logic import (
+                    generate_optimization_report,
+                )
 
                 generate_optimization_report(
                     self,

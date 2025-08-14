@@ -222,12 +222,12 @@ def generate_randomized_wfo_windows(
             else 0
         )
         if enable_window_randomization:
-            train_win = base_train_window_m + int(rng.integers(
-                train_min_offset, train_max_offset, endpoint=True
-            ))
-            test_win = base_test_window_m + int(rng.integers(
-                test_min_offset, test_max_offset, endpoint=True
-            ))
+            train_win = base_train_window_m + int(
+                rng.integers(train_min_offset, train_max_offset, endpoint=True)
+            )
+            test_win = base_test_window_m + int(
+                rng.integers(test_min_offset, test_max_offset, endpoint=True)
+            )
         else:
             train_win = base_train_window_m
             test_win = base_test_window_m
@@ -417,7 +417,7 @@ def calculate_stability_metrics(metric_values_per_objective, metrics_to_optimize
 
 
 def _df_to_float32_array(
-    df: pd.DataFrame, *, field: str | None = None
+    df: pd.DataFrame, *, column_names: Optional[List[str]] = None
 ) -> tuple[np.ndarray, list[str]]:
     """Convert a (potentially Multi-Index) DataFrame to a contiguous
     ``float32`` NumPy ndarray suitable for Numba kernels.
@@ -426,9 +426,9 @@ def _df_to_float32_array(
     ----------
     df : pd.DataFrame
         Price or returns data. Index must be monotonic and unique.
-    field : str | None, default None
+    column_names : Optional[List[str]], default None
         If *df* has a Multi-Index with levels (Ticker, Field) supply the
-        desired *Field* (e.g. "Close") to extract.  When None the function
+        desired *Field* (e.g. ["Close"]) to extract.  When None the function
         assumes *df* already has one column per asset.
 
     Returns
@@ -442,4 +442,5 @@ def _df_to_float32_array(
 
     # Use polymorphic array converter to eliminate isinstance violations
     converter = create_array_converter()
-    return converter.convert_to_array(df, field)
+    matrix, tickers = converter.convert_to_array(df, column_names)
+    return matrix.astype(np.float32), tickers

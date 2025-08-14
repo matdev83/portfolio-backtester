@@ -73,7 +73,11 @@ def calculate_returns_fast(prices):
     """
     returns = np.full_like(prices, np.nan)
     for i in range(1, len(prices)):
-        if not np.isnan(prices[i - 1]) and prices[i - 1] > 0 and not np.isnan(prices[i]):
+        if (
+            not np.isnan(prices[i - 1])
+            and prices[i - 1] > 0
+            and not np.isnan(prices[i])
+        ):
             returns[i] = (prices[i] / prices[i - 1]) - 1.0
     return returns
 
@@ -107,10 +111,6 @@ def momentum_scores_fast_vectorized(prices_now, prices_then):
     result = np.full_like(prices_now, np.nan)
     result[valid_mask] = (prices_now[valid_mask] / prices_then[valid_mask]) - 1.0
     return result
-
-
-# Alias for backward compatibility
-momentum_scores_fast = momentum_scores_fast_vectorized
 
 
 @numba.jit(nopython=True, cache=True)
@@ -239,7 +239,6 @@ def create_jitted_rolling_fn(stat_func, func_name, annualization_factor=1.0):
 
 # Create commonly used rolling functions
 rolling_mean_fast = create_jitted_rolling_fn(np.mean, "rolling_mean_fast")
-rolling_volatility_fast = create_jitted_rolling_fn(np.std, "rolling_volatility_fast", np.sqrt(252))
 
 
 @numba.jit(nopython=True, cache=True)
@@ -278,7 +277,9 @@ def rolling_std_fast(data, window):
         if len(valid_data) >= window // 2 and len(valid_data) > 1:
             # Use ddof=1 to match pandas behavior (sample standard deviation)
             mean_val = np.mean(valid_data)
-            variance = np.sum((valid_data - mean_val) ** 2) / (len(valid_data) - 1)  # ddof=1
+            variance = np.sum((valid_data - mean_val) ** 2) / (
+                len(valid_data) - 1
+            )  # ddof=1
             result[i] = np.sqrt(variance)
         elif len(valid_data) == 1:
             # Single value cannot have sample standard deviation (ddof=1) - return NaN to match pandas
@@ -287,7 +288,7 @@ def rolling_std_fast(data, window):
     return result
 
 
-# Alias for backward compatibility
+# Backward compatibility alias expected by tests
 rolling_std_fixed = rolling_std_fast
 
 
@@ -342,7 +343,7 @@ def rolling_cumprod_fast(data, window):
     return result
 
 
-# Alias for backward compatibility
+# Backward compatibility alias expected by tests
 rolling_cumprod_fixed = rolling_cumprod_fast
 
 
@@ -499,7 +500,9 @@ def true_range_fast(high, low, close_prev):
     - Vectorized implementation for optimal performance
     - Handles all three True Range components simultaneously
     """
-    return np.maximum(high - low, np.maximum(np.abs(high - close_prev), np.abs(low - close_prev)))
+    return np.maximum(
+        high - low, np.maximum(np.abs(high - close_prev), np.abs(low - close_prev))
+    )
 
 
 @numba.jit(nopython=True, cache=True)
@@ -573,7 +576,9 @@ def atr_exponential_fast(high, low, close, window):
 
 
 @numba.jit(nopython=True, cache=True)
-def atr_fast_fixed(high: np.ndarray, low: np.ndarray, close: np.ndarray, window: int) -> np.ndarray:
+def atr_fast_fixed(
+    high: np.ndarray, low: np.ndarray, close: np.ndarray, window: int
+) -> np.ndarray:
     """
     Calculate Average True Range with comprehensive edge case handling.
 
@@ -613,7 +618,10 @@ def atr_fast_fixed(high: np.ndarray, low: np.ndarray, close: np.ndarray, window:
 
     for i in range(1, n):
         if not (
-            np.isnan(high[i]) or np.isnan(low[i]) or np.isnan(close[i]) or np.isnan(close[i - 1])
+            np.isnan(high[i])
+            or np.isnan(low[i])
+            or np.isnan(close[i])
+            or np.isnan(close[i - 1])
         ):
             # True Range = max(high-low, |high-close_prev|, |low-close_prev|)
             hl = high[i] - low[i]
@@ -682,7 +690,9 @@ def rolling_sharpe_fast(returns, window, annualization_factor=1.0):
         if len(valid_returns) >= window // 2 and len(valid_returns) > 1:
             mean_ret = np.mean(valid_returns)
             # Use ddof=1 for sample standard deviation to match pandas
-            variance = np.sum((valid_returns - mean_ret) ** 2) / (len(valid_returns) - 1)
+            variance = np.sum((valid_returns - mean_ret) ** 2) / (
+                len(valid_returns) - 1
+            )
             std_ret = np.sqrt(variance)
             if std_ret > 1e-10:
                 sharpe = (mean_ret / std_ret) * np.sqrt(annualization_factor)
@@ -692,10 +702,6 @@ def rolling_sharpe_fast(returns, window, annualization_factor=1.0):
         elif len(valid_returns) == 1:
             result[i] = 0.0
     return result
-
-
-# Alias for backward compatibility
-rolling_sharpe_fast_fixed = rolling_sharpe_fast
 
 
 @numba.jit(nopython=True, cache=True)
@@ -743,9 +749,9 @@ def rolling_sortino_fast(returns, window, target_return=0.0, annualization_facto
                 if len(downside_returns) > 1:
                     # Use ddof=1 for sample standard deviation to match pandas
                     mean_downside = np.mean(downside_returns)
-                    downside_variance = np.sum((downside_returns - mean_downside) ** 2) / (
-                        len(downside_returns) - 1
-                    )
+                    downside_variance = np.sum(
+                        (downside_returns - mean_downside) ** 2
+                    ) / (len(downside_returns) - 1)
                     downside_dev = np.sqrt(downside_variance)
                     if downside_dev > 1e-10:
                         sortino = ((mean_ret - target_return) / downside_dev) * np.sqrt(
@@ -761,10 +767,6 @@ def rolling_sortino_fast(returns, window, target_return=0.0, annualization_facto
                     # No downside returns - pandas returns NaN in this case
                     result[i] = np.nan
     return result
-
-
-# Alias for backward compatibility
-rolling_sortino_fast_fixed = rolling_sortino_fast
 
 
 @numba.jit(nopython=True, cache=True)
@@ -859,15 +861,19 @@ def rolling_correlation_fast(asset_returns, benchmark_returns, window):
             # Use ddof=1 for sample standard deviation to match pandas
             asset_mean = np.mean(valid_asset)
             bench_mean = np.mean(valid_bench)
-            asset_variance = np.sum((valid_asset - asset_mean) ** 2) / (len(valid_asset) - 1)
-            bench_variance = np.sum((valid_bench - bench_mean) ** 2) / (len(valid_bench) - 1)
+            asset_variance = np.sum((valid_asset - asset_mean) ** 2) / (
+                len(valid_asset) - 1
+            )
+            bench_variance = np.sum((valid_bench - bench_mean) ** 2) / (
+                len(valid_bench) - 1
+            )
             asset_std = np.sqrt(asset_variance)
             bench_std = np.sqrt(bench_variance)
 
             if asset_std > 1e-10 and bench_std > 1e-10:
-                covariance = np.sum((valid_asset - asset_mean) * (valid_bench - bench_mean)) / (
-                    len(valid_asset) - 1
-                )
+                covariance = np.sum(
+                    (valid_asset - asset_mean) * (valid_bench - bench_mean)
+                ) / (len(valid_asset) - 1)
                 result[i] = covariance / (asset_std * bench_std)
             else:
                 result[i] = 0.0
@@ -924,7 +930,12 @@ def rolling_beta_fast_portfolio(port_prices, mkt_prices, lookback_months):
         if (
             p_prev > 0
             and m_prev > 0
-            and not (np.isnan(p_prev) or np.isnan(p_cur) or np.isnan(m_prev) or np.isnan(m_cur))
+            and not (
+                np.isnan(p_prev)
+                or np.isnan(p_cur)
+                or np.isnan(m_prev)
+                or np.isnan(m_cur)
+            )
         ):
             port_rets[i - start_idx] = (p_cur / p_prev) - 1.0
             mkt_rets[i - start_idx] = (m_cur / m_prev) - 1.0
@@ -1323,7 +1334,9 @@ def simulate_garch_process_fast(
 
 
 @numba.jit(nopython=True, parallel=True, cache=True)
-def generate_ohlc_from_prices_fast(prices: np.ndarray, random_seed: int = 42) -> np.ndarray:
+def generate_ohlc_from_prices_fast(
+    prices: np.ndarray, random_seed: int = 42
+) -> np.ndarray:
     """
     Generate realistic OHLC data from closing price series.
 
@@ -1453,7 +1466,11 @@ def garch_simulation_fast(
 
     for t in range(1, length):
         # GARCH variance equation
-        variances[t] = omega + alpha * (returns[t - 1] - mean_return) ** 2 + beta * variances[t - 1]
+        variances[t] = (
+            omega
+            + alpha * (returns[t - 1] - mean_return) ** 2
+            + beta * variances[t - 1]
+        )
 
         # Ensure variance is positive
         variances[t] = max(variances[t], 1e-12)
@@ -1720,7 +1737,9 @@ def rolling_sharpe_batch(
             mean_ret = np.mean(window_returns)
             # Use ddof=1 for sample standard deviation to match pandas
             if len(window_returns) > 1:
-                variance = np.sum((window_returns - mean_ret) ** 2) / (len(window_returns) - 1)
+                variance = np.sum((window_returns - mean_ret) ** 2) / (
+                    len(window_returns) - 1
+                )
                 std_ret = np.sqrt(variance)
 
                 if std_ret > 1e-12:
@@ -1838,7 +1857,9 @@ def rolling_beta_batch(
             asset_mean = np.mean(asset_window)
             bench_mean = np.mean(bench_window)
 
-            covariance = np.mean((asset_window - asset_mean) * (bench_window - bench_mean))
+            covariance = np.mean(
+                (asset_window - asset_mean) * (bench_window - bench_mean)
+            )
             bench_variance = np.mean((bench_window - bench_mean) ** 2)
 
             if bench_variance > 1e-12:
@@ -1892,7 +1913,9 @@ def rolling_correlation_batch(
 
             asset_std = np.sqrt(np.mean((asset_window - asset_mean) ** 2))
             bench_std = np.sqrt(np.mean((bench_window - bench_mean) ** 2))
-            covariance = np.mean((asset_window - asset_mean) * (bench_window - bench_mean))
+            covariance = np.mean(
+                (asset_window - asset_mean) * (bench_window - bench_mean)
+            )
 
             if asset_std > 1e-12 and bench_std > 1e-12:
                 correlation = covariance / (asset_std * bench_std)
@@ -1902,7 +1925,9 @@ def rolling_correlation_batch(
 
 
 @numba.jit(nopython=True, parallel=True, cache=True)
-def rolling_downside_volatility_batch(returns_matrix: np.ndarray, window: int) -> np.ndarray:
+def rolling_downside_volatility_batch(
+    returns_matrix: np.ndarray, window: int
+) -> np.ndarray:
     """
     Batch rolling downside volatility calculation.
 
@@ -1987,7 +2012,11 @@ def vams_batch_fast(returns_matrix: np.ndarray, window: int) -> np.ndarray:
 
         # Calculate VAMS = momentum / volatility
         for t in range(len(momentum)):
-            if not np.isnan(momentum[t]) and not np.isnan(volatility[t]) and volatility[t] > 1e-9:
+            if (
+                not np.isnan(momentum[t])
+                and not np.isnan(volatility[t])
+                and volatility[t] > 1e-9
+            ):
                 result[t, asset_idx] = momentum[t] / volatility[t]
 
     return result
@@ -1998,7 +2027,9 @@ vams_batch_fixed = vams_batch_fast
 
 
 @numba.jit(nopython=True, parallel=True, cache=True)
-def dp_vams_batch_fast(returns_matrix: np.ndarray, window: int, alpha: float) -> np.ndarray:
+def dp_vams_batch_fast(
+    returns_matrix: np.ndarray, window: int, alpha: float
+) -> np.ndarray:
     """
     Batch DP-VAMS calculation for multiple assets.
 

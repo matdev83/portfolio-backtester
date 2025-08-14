@@ -34,7 +34,6 @@ class StrategyBacktester:
     Attributes:
         global_config: Global configuration dictionary
         data_source: Data source for fetching price data
-        strategy_map: Mapping of strategy names to strategy classes
         data_cache: Cache for data preprocessing
     """
 
@@ -50,8 +49,6 @@ class StrategyBacktester:
 
         # Initialize strategy registry (SOLID-compliant, supports aliases)
         self._registry = get_strategy_registry()
-        # Keep backward compatibility property
-        self.strategy_map: Dict[str, type] = self._registry.get_all_strategies()
         self.strategy: Optional[BaseStrategy] = None
 
         # Initialize data cache using DIP
@@ -68,6 +65,7 @@ class StrategyBacktester:
         rets_full: pd.DataFrame,
         start_date: Optional[pd.Timestamp] = None,
         end_date: Optional[pd.Timestamp] = None,
+        track_trades: bool = True,
     ) -> BacktestResult:
         """Execute a complete backtest for a strategy configuration.
 
@@ -94,7 +92,9 @@ class StrategyBacktester:
 
         # Get strategy instance
         strategy = self._get_strategy(
-            strategy_config["strategy"], strategy_config["strategy_params"], strategy_config
+            strategy_config["strategy"],
+            strategy_config["strategy_params"],
+            strategy_config,
         )
 
         # Determine universe
@@ -161,26 +161,19 @@ class StrategyBacktester:
             strategy,
         )
 
-        # Calculate portfolio returns with trade tracking
-        result = calculate_portfolio_returns(
+        # Calculate portfolio returns (optionally with trade tracking)
+        portfolio_returns, trade_tracker = calculate_portfolio_returns(
             sized_signals,
             strategy_config,
             daily_data,
             rets_daily,
             universe_tickers,
             self.global_config,
-            track_trades=True,
+            track_trades=track_trades,
             strategy=strategy,
         )
 
-        # Handle both old and new return formats
-        trade_tracker = None
-        if isinstance(result, tuple):
-            portfolio_returns, trade_tracker = result
-            trade_stats = trade_tracker.get_trade_statistics() if trade_tracker else None
-        else:
-            portfolio_returns = result
-            trade_stats = None
+        trade_stats = trade_tracker.get_trade_statistics() if trade_tracker else None
 
         if portfolio_returns is None or portfolio_returns.empty:
             logger.warning("No portfolio returns generated. Returning empty results.")
@@ -197,10 +190,13 @@ class StrategyBacktester:
 
         # Calculate performance metrics with trade statistics
         metrics = calculate_metrics(
-            portfolio_returns, benchmark_returns, benchmark_ticker, trade_stats=trade_stats
+            portfolio_returns,
+            benchmark_returns,
+            benchmark_ticker,
+            trade_stats=trade_stats,
         )
 
-        # Create trade history from trade tracker
+        # Create trade history from trade tracker when tracking is enabled
         if trade_tracker:
             completed_trades = trade_tracker.trade_lifecycle_manager.get_completed_trades()
             trade_history = pd.DataFrame([t.__dict__ for t in completed_trades])

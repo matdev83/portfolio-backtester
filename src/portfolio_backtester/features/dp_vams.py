@@ -13,7 +13,6 @@ class DPVAMS(Feature):
         super().__init__(lookback_months=lookback_months, alpha=alpha)
         self.lookback_months = lookback_months
         self.alpha = alpha
-        self.needs_close_prices_only = True
 
     @property
     def name(self) -> str:

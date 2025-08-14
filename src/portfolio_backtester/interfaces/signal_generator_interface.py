@@ -42,7 +42,10 @@ class ISignalGenerator(ABC):
 
     @abstractmethod
     def generate_signal_for_date(
-        self, data: Dict[str, Any], universe_tickers: List[str], current_date: pd.Timestamp
+        self,
+        data: Dict[str, Any],
+        universe_tickers: List[str],
+        current_date: pd.Timestamp,
     ) -> pd.DataFrame:
         """
         Generate signal for a single date with state management.
@@ -81,7 +84,7 @@ class SignalGeneratorFactory:
     signal generator implementations, promoting loose coupling.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._generators: Dict[str, Type[ISignalGenerator]] = {}
 
     def register_generator(self, name: str, generator_class: Type[ISignalGenerator]) -> None:
@@ -105,6 +108,3 @@ class SignalGeneratorFactory:
 
 # Global factory instance
 signal_generator_factory = SignalGeneratorFactory()
-
-# Alias for backwards compatibility
-SignalGeneratorProvider = ISignalGenerator

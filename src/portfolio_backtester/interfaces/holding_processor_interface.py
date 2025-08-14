@@ -10,7 +10,10 @@ from typing import Any, Optional, Tuple
 import pandas as pd
 import re
 import logging
-from .attribute_accessor_interface import IObjectFieldAccessor, create_object_field_accessor
+from .attribute_accessor_interface import (
+    IObjectFieldAccessor,
+    create_object_field_accessor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +63,11 @@ class IHoldingProcessor(ABC):
 class ModernEdgarHoldingProcessor(IHoldingProcessor):
     """Processor for modern EdgarTools format (InvestmentOrSecurity objects)."""
 
-    def __init__(self, cusip_to_ticker_func, field_accessor: Optional[IObjectFieldAccessor] = None):
+    def __init__(
+        self,
+        cusip_to_ticker_func,
+        field_accessor: Optional[IObjectFieldAccessor] = None,
+    ):
         """
         Initialize with CUSIP to ticker conversion function.
 

@@ -256,9 +256,9 @@ strategy_params:
         invalid_yaml = """
 strategy: DummyStrategyForTestingSignalStrategy
 name: test
+train_window_months: -1
 strategy_params:
     DummyStrategyForTestingSignalStrategy.open_long_prob: 0.1
-    DummyStrategyForTestingSignalStrategy.dummy_param_1: 0
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(invalid_yaml)
@@ -266,10 +266,7 @@ strategy_params:
         try:
             errors = validate_scenario_file(temp_file)
             self.assertGreater(len(errors), 0)
-            print(f"Errors: {errors}")  # Debug print
-            for e in errors:
-                print(f"Error message: {e.message}")  # Debug print
-            self.assertTrue(any("below min" in e.message for e in errors))
+            self.assertTrue(any("must be positive" in e.message for e in errors))
         finally:
             os.remove(temp_file)
 

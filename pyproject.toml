@@ -63,7 +63,8 @@ dev = [
     "types-seaborn",
     "scipy-stubs",
     "black",
-    "vulture"
+    "vulture",
+    "bandit"
 ]
 
 [project.urls]
@@ -71,7 +72,7 @@ dev = [
 "Bug Tracker" = "https://github.com/matdev83/portfolio-backtester/issues"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "tests"]
 
 [tool.mypy]
 # Global mypy configuration
@@ -197,3 +198,69 @@ ignore-missing-imports = [
     "yfinance.*",
     "pandas_datareader.*",
 ]
+
+[tool.bandit]
+exclude_dirs = [
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "*.egg-info",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    ".benchmarks",
+    ".cursor",
+    ".kiro",
+    ".numba_cache",
+    ".strategy_cache",
+    ".vscode",
+    ".workflows",
+    "data",
+    "tmp",
+    "prof"
+]
+
+# Skip specific test IDs that are not relevant for this project
+# B101: Use of assert (we use asserts for type checking and internal validation)
+# B110: Try, Except, Pass (we use these intentionally in many places for non-critical error handling)
+# B112: Try, Except, Continue (we use these intentionally in many places for non-critical error handling)
+# B311: Standard pseudo-random generators (we use random for non-security purposes like Monte Carlo simulations)
+# B403: Import of pickle (we use pickle for caching non-sensitive data)
+# B301: Use of pickle (we use pickle.load for our own cached data which is trusted)
+skips = [
+    "B101",
+    "B110",
+    "B112",
+    "B311",
+    "B403",
+    "B301"
+]
+
+# pytest configuration (runs coverage on every test run)
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--cov=src/portfolio_backtester",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=xml:coverage.xml",
+    "--cov-report=html:coverage_html",
+    "--cov-fail-under=65",
+]
+
+# coverage.py configuration (used by pytest-cov)
+[tool.coverage.run]
+branch = true
+source = ["src/portfolio_backtester"]
+omit = [
+    "tests/*",
+    "src/portfolio_backtester/numba_optimized*",
+    "src/portfolio_backtester/numba_kernels*",
+    "src/portfolio_backtester/**/__main__.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+precision = 2

@@ -116,11 +116,10 @@ def detailed_commission_slippage_kernel(
     out: np.ndarray = np.zeros(T, dtype=weights_current.dtype)
     out_detailed: np.ndarray = np.zeros((T, N), dtype=weights_current.dtype)
 
-    # first day turnover = abs(weights_current[0])
+    # first day turnover = 0.0 (no prior holdings)
     for i in range(T):
         day_cost = 0.0
         if i == 0:
-            # No transaction costs on the first day (no prior holdings).
             out[i] = 0.0
             continue
         for j in range(N):
@@ -158,7 +157,7 @@ def detailed_commission_slippage_kernel(
     return out, out_detailed
 
 
-@njit(cache=True, fastmath=False)
+@njit(cache=True, fastmath=True)  # Enable fastmath for better performance
 def trade_tracking_kernel(
     initial_portfolio_value: float,
     allocation_mode: int,  # 0 for reinvestment, 1 for fixed
@@ -169,7 +168,6 @@ def trade_tracking_kernel(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Vectorized trade tracking with dynamic capital allocation.
-
     Args:
         initial_portfolio_value (float): Starting value.
         allocation_mode (int): 0 for 'reinvestment', 1 for 'fixed'.
@@ -177,7 +175,6 @@ def trade_tracking_kernel(
         prices (np.ndarray): Daily close prices.
         price_mask (np.ndarray): Mask for valid prices.
         commissions (np.ndarray): Per-asset, per-day commission/slippage cost fraction.
-
     Returns:
         Tuple[np.ndarray, np.ndarray, np.ndarray]:
             - portfolio_values (np.ndarray): [T] daily total portfolio value.
@@ -197,53 +194,138 @@ def trade_tracking_kernel(
     for i in range(T):
         if i > 0:
             # --- Valuation Stage (Start of Day) ---
-            # Value of existing positions is based on previous day's shares and current day's prices
             last_positions = positions[i - 1]
             current_prices = prices[i]
             current_mask = price_mask[i]
 
-            market_value_of_holdings = 0.0
-            for j in range(N):
-                if current_mask[j]:
-                    market_value_of_holdings += last_positions[j] * current_prices[j]
-
-            # Current portfolio value = previous day's cash + market value of holdings
+            # VECTORIZED VALUATION
+            market_value_of_holdings = np.sum(last_positions * current_prices * current_mask)
             portfolio_values[i] = cash_values[i - 1] + market_value_of_holdings
 
             # Determine capital base for new trades based on allocation mode
             if allocation_mode == 0:  # Reinvestment
                 capital_base = portfolio_values[i]
-            # else: fixed capital_base remains initial_portfolio_value
 
         # --- Rebalancing Stage (End of Day) ---
         target_weights = weights[i]
+        current_prices = prices[i]
+        current_mask = price_mask[i]
 
-        # Calculate target dollar values for each asset
+        # VECTORIZED REBALANCING
         target_dollar_values = target_weights * capital_base
 
-        # Calculate target number of shares for each asset
-        target_positions = np.zeros(N, dtype=np.float64)
-        for j in range(N):
-            if price_mask[i, j] and prices[i, j] > 0:
-                target_positions[j] = target_dollar_values[j] / prices[i, j]
+        # Guard against division by zero
+        safe_prices = np.where(current_prices > 0, current_prices, 1.0)
+        target_positions = (target_dollar_values / safe_prices) * current_mask
 
         positions[i] = target_positions
 
-        # Calculate the market value of the new positions
-        new_market_value = 0.0
-        for j in range(N):
-            if price_mask[i, j]:
-                new_market_value += positions[i, j] * prices[i, j]
+        # VECTORIZED COST CALCULATION
+        new_market_value = np.sum(positions[i] * current_prices * current_mask)
+        total_commission_cost = np.sum(commissions[i] * capital_base * current_mask)
 
-        # Calculate total commission for the day by applying the cost fraction to the capital base
-        total_commission_cost = 0.0
-        for j in range(N):
-            total_commission_cost += commissions[i, j] * capital_base
-
-        # Update cash: start with capital base, subtract value of new positions and commissions
+        # Update cash
         cash_values[i] = capital_base - new_market_value - total_commission_cost
 
     return portfolio_values, cash_values, positions
+
+
+@njit(cache=True, fastmath=True)
+def trade_lifecycle_kernel(
+    positions: np.ndarray,
+    prices: np.ndarray,
+    dates: np.ndarray,
+    commissions: np.ndarray,
+    initial_capital: float,
+):
+    """
+    Numba-jitted kernel to identify and process the lifecycle of trades from
+    raw position, price, and commission data.
+    Args:
+        positions (np.ndarray): Array of asset positions (shares).
+        prices (np.ndarray): Array of asset prices.
+        dates (np.ndarray): Array of dates.
+        commissions (np.ndarray): Array of commissions.
+        initial_capital (float): The starting capital for the backtest.
+    Returns:
+        A structured NumPy array containing the details of each completed trade.
+    """
+    n_days, n_assets = positions.shape
+
+    # Pre-allocate a large array for trades. We will trim it later.
+    # The maximum number of trades is n_days * n_assets, but it's usually much less.
+    max_trades = n_days * n_assets
+    completed_trades = np.zeros(
+        max_trades,
+        dtype=[
+            ("ticker_idx", np.int64),
+            ("entry_date", np.int64),
+            ("exit_date", np.int64),
+            ("entry_price", np.float64),
+            ("exit_price", np.float64),
+            ("quantity", np.float64),
+            ("pnl", np.float64),
+            ("commission", np.float64),
+        ],
+    )
+    trade_count = 0
+
+    # Track open positions for each asset
+    open_positions = np.zeros(
+        n_assets,
+        dtype=[
+            ("is_open", np.bool_),
+            ("entry_date", np.int64),
+            ("entry_price", np.float64),
+            ("quantity", np.float64),
+            ("total_commission", np.float64),
+        ],
+    )
+
+    for i in range(1, n_days):  # Start from the second day
+        for j in range(n_assets):
+            current_pos = positions[i, j]
+            prev_pos = positions[i - 1, j]
+            price = prices[i, j]
+            date = dates[i]
+            commission = commissions[i, j]
+
+            # If there is a change in position, a trade has occurred
+            if abs(current_pos - prev_pos) > 1e-6:
+                trade_quantity = current_pos - prev_pos
+
+                # Close existing position if direction changes
+                if open_positions[j]["is_open"] and np.sign(trade_quantity) != np.sign(
+                    open_positions[j]["quantity"]
+                ):
+                    completed_trades[trade_count]["ticker_idx"] = j
+                    completed_trades[trade_count]["entry_date"] = open_positions[j]["entry_date"]
+                    completed_trades[trade_count]["exit_date"] = date
+                    completed_trades[trade_count]["entry_price"] = open_positions[j]["entry_price"]
+                    completed_trades[trade_count]["exit_price"] = price
+                    completed_trades[trade_count]["quantity"] = open_positions[j]["quantity"]
+                    completed_trades[trade_count]["pnl"] = (
+                        price - open_positions[j]["entry_price"]
+                    ) * open_positions[j]["quantity"]
+                    completed_trades[trade_count]["commission"] = (
+                        open_positions[j]["total_commission"] + commission
+                    )
+                    trade_count += 1
+                    open_positions[j]["is_open"] = False
+
+                # Open a new position
+                if not open_positions[j]["is_open"] and abs(trade_quantity) > 1e-6:
+                    open_positions[j]["is_open"] = True
+                    open_positions[j]["entry_date"] = date
+                    open_positions[j]["entry_price"] = price
+                    open_positions[j]["quantity"] = trade_quantity
+                    open_positions[j]["total_commission"] = commission
+                # Add to existing position
+                elif open_positions[j]["is_open"]:
+                    open_positions[j]["quantity"] += trade_quantity
+                    open_positions[j]["total_commission"] += commission
+
+    return completed_trades[:trade_count]
 
 
 @njit(cache=True, fastmath=False)
@@ -309,7 +391,6 @@ def _calculate_window_return_numba(prices: np.ndarray, signals: np.ndarray) -> n
                 and not np.isnan(prices[day, asset])
                 and prices[day - 1, asset] > 0
             ):
-
                 weight = signals[day - 1, asset]
                 asset_return = (prices[day, asset] - prices[day - 1, asset]) / prices[
                     day - 1, asset

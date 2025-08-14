@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -9,9 +10,20 @@ logger = logging.getLogger(__name__)
 
 
 def plot_performance_summary(
-    backtester, bench_rets_full: pd.Series, train_end_date: pd.Timestamp | None
+    backtester,
+    bench_rets_full: Optional[pd.Series] = None,
 ):
+    """
+    Main plotting facade that generates a comprehensive performance summary plot.
+
+    This function acts as a dispatcher to individual plotting components.
+    """
     logger = backtester.logger
+    if backtester.global_config["benchmark"] is None and bench_rets_full is None:
+        raise ValueError(
+            "Benchmark ticker must be provided in global config or benchmark_rets must be provided."
+        )
+
     plt.style.use("seaborn-v0_8-darkgrid")
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), gridspec_kw={"height_ratios": [3, 1]})
 
@@ -30,17 +42,19 @@ def plot_performance_summary(
         ath_values = cumulative_strategy_returns[ath_mask]
         ax1.scatter(ath_dates, ath_values, color="green", s=20, alpha=0.7, zorder=5)
 
-        cumulative_bench_returns: pd.Series = (1 + bench_rets_full).cumprod()
-    cumulative_bench_returns.plot(
-        ax=ax1, label=backtester.global_config["benchmark"], linestyle="--"
-    )
+        if bench_rets_full is not None:
+            cumulative_bench_returns: pd.Series = (1 + bench_rets_full).cumprod()
+            cumulative_bench_returns.plot(
+                ax=ax1, label=backtester.global_config["benchmark"], linestyle="--"
+            )
 
-    all_cumulative_returns_plotting.append(cumulative_bench_returns)
+    if bench_rets_full is not None:
+        all_cumulative_returns_plotting.append(cumulative_bench_returns)
 
-    bench_ath_mask = cumulative_bench_returns.expanding().max() == cumulative_bench_returns
-    bench_ath_dates = cumulative_bench_returns.index[bench_ath_mask]
-    bench_ath_values = cumulative_bench_returns[bench_ath_mask]
-    ax1.scatter(bench_ath_dates, bench_ath_values, color="green", s=20, alpha=0.7, zorder=5)
+        bench_ath_mask = cumulative_bench_returns.expanding().max() == cumulative_bench_returns
+        bench_ath_dates = cumulative_bench_returns.index[bench_ath_mask]
+        bench_ath_values = cumulative_bench_returns[bench_ath_mask]
+        ax1.scatter(bench_ath_dates, bench_ath_values, color="green", s=20, alpha=0.7, zorder=5)
 
     if all_cumulative_returns_plotting:
         combined_cumulative_returns = pd.concat(all_cumulative_returns_plotting)
@@ -64,12 +78,14 @@ def plot_performance_summary(
         drawdown = calculate_drawdown(result_data["returns"])
         drawdown.plot(ax=ax2, label=result_data["display_name"])
 
-    bench_drawdown = calculate_drawdown(bench_rets_full)
-    bench_drawdown.plot(ax=ax2, label=backtester.global_config["benchmark"], linestyle="--")
+    if bench_rets_full is not None:
+        bench_drawdown = calculate_drawdown(bench_rets_full)
+        bench_drawdown.plot(ax=ax2, label=backtester.global_config["benchmark"], linestyle="--")
 
     ax2.legend()
     ax2.grid(True, which="both", ls="-", alpha=0.5)
-    ax2.fill_between(bench_drawdown.index, 0, bench_drawdown, color="gray", alpha=0.2)
+    if bench_rets_full is not None:
+        ax2.fill_between(bench_drawdown.index, 0, bench_drawdown, color="gray", alpha=0.2)
 
     plt.tight_layout()
 
@@ -91,7 +107,6 @@ def plot_performance_summary(
 
     plt.savefig(filepath)
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"Performance plot saved to: {filepath}")
 
     # Display plot interactively if requested, but silence warnings when using non-interactive backends such as Agg.

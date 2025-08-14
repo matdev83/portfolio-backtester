@@ -71,7 +71,8 @@ class PositionTracker:
         self.consecutive_periods.clear()
 
         self._log_debug(
-            "Position tracking reset", {"action": "reset", "timestamp": pd.Timestamp.now()}
+            "Position tracking reset",
+            {"action": "reset", "timestamp": pd.Timestamp.now()},
         )
 
     def update_positions(
@@ -212,7 +213,12 @@ class PositionTracker:
         self.consecutive_periods.pop(asset, None)
 
         return [
-            {"asset": asset, "action": "exit", "holding_days": holding_days, "price": current_price}
+            {
+                "asset": asset,
+                "action": "exit",
+                "holding_days": holding_days,
+                "price": current_price,
+            }
         ]
 
     def get_position_holding_days(self, asset: str, current_date: pd.Timestamp) -> Optional[int]:

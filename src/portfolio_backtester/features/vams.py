@@ -12,7 +12,6 @@ class VAMS(Feature):
     def __init__(self, lookback_months: int):
         super().__init__(lookback_months=lookback_months)
         self.lookback_months = lookback_months
-        self.needs_close_prices_only = True
 
     @property
     def name(self) -> str:

@@ -37,7 +37,12 @@ class DetailedCommissionCalculator:
         self.slippage_bps = global_config.get("slippage_bps", 2.5)
 
     def calculate_commission(
-        self, asset: str, date: pd.Timestamp, quantity: float, price: float, trade_value: float
+        self,
+        asset: str,
+        date: pd.Timestamp,
+        quantity: float,
+        price: float,
+        trade_value: float,
     ) -> TradeCommissionInfo:
         """
         Calculate commission using detailed IBKR-style method.

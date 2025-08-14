@@ -104,7 +104,8 @@ class ConcreteDataSourceFactory(IDataSourceFactory):
                 )
             elif ds_name == "memory" or ds_name == "test":
                 return cast(
-                    IDataSource, MemoryDataSource(global_config.get("data_source_config", {}))
+                    IDataSource,
+                    MemoryDataSource(global_config.get("data_source_config", {})),
                 )
             else:
                 return cast(IDataSource, data_source_class())

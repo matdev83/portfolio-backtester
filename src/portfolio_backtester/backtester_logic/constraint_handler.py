@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class ConstraintHandler:
     """Handles constraint violations by adjusting parameters."""
 
-    def __init__(self, global_config: Dict):
+    def __init__(self, global_config: Dict) -> None:
         self.global_config = global_config
 
     def find_constraint_satisfying_params(

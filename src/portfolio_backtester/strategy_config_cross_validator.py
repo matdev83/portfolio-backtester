@@ -73,7 +73,9 @@ class StrategyConfigCrossValidator:
         self._import_all_strategy_modules()
 
         # Get all BaseStrategy subclasses (new core path)
-        from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base.base_strategy import (
+            BaseStrategy,
+        )
 
         all_strategies = self._collect_all_subclasses(BaseStrategy)
 
@@ -134,15 +136,26 @@ class StrategyConfigCrossValidator:
     def _is_concrete_strategy_class(self, cls) -> bool:
         """Check if a class is a concrete strategy (not abstract or base class)."""
         import inspect
-        from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
-        from portfolio_backtester.strategies._core.base.base.signal_strategy import SignalStrategy
+        from portfolio_backtester.strategies._core.base.base.base_strategy import (
+            BaseStrategy,
+        )
+        from portfolio_backtester.strategies._core.base.base.signal_strategy import (
+            SignalStrategy,
+        )
         from portfolio_backtester.strategies._core.base.base.portfolio_strategy import (
             PortfolioStrategy,
         )
-        from portfolio_backtester.strategies._core.base.base.meta_strategy import BaseMetaStrategy
+        from portfolio_backtester.strategies._core.base.base.meta_strategy import (
+            BaseMetaStrategy,
+        )
 
         # Known base classes that should not be considered concrete
-        base_classes = {BaseStrategy, SignalStrategy, PortfolioStrategy, BaseMetaStrategy}
+        base_classes = {
+            BaseStrategy,
+            SignalStrategy,
+            PortfolioStrategy,
+            BaseMetaStrategy,
+        }
 
         # Check if it has abstract methods
         has_abstract_methods = bool(getattr(cls, "__abstractmethods__", frozenset()))
@@ -312,7 +325,9 @@ class StrategyConfigCrossValidator:
         """Check if a strategy_class reference is valid."""
         # First, consult the SOLID registry – unit tests may mock it
         try:
-            from portfolio_backtester.strategies._core.registry import get_strategy_registry
+            from portfolio_backtester.strategies._core.registry import (
+                get_strategy_registry,
+            )
 
             registry = get_strategy_registry()
             registered = registry.get_all_strategies()
@@ -326,7 +341,9 @@ class StrategyConfigCrossValidator:
         self._import_all_strategy_modules()
 
         # Get all BaseStrategy subclasses
-        from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base.base_strategy import (
+            BaseStrategy,
+        )
 
         all_strategies = self._collect_all_subclasses(BaseStrategy)
 
@@ -360,7 +377,10 @@ class StrategyConfigCrossValidator:
         return False
 
     def _check_meta_strategy_allocations(
-        self, yaml_file: Path, config_data: Dict[str, Any], valid_strategy_names: Set[str]
+        self,
+        yaml_file: Path,
+        config_data: Dict[str, Any],
+        valid_strategy_names: Set[str],
     ) -> List[str]:
         """Check meta-strategy allocations for invalid strategy references."""
         errors: List[str] = []
@@ -381,7 +401,7 @@ class StrategyConfigCrossValidator:
                     errors.append(
                         f"Invalid strategy reference in meta-strategy allocation "
                         f"{yaml_file.relative_to(self.config_scenarios_dir)} "
-                        f"(allocation #{i+1}): strategy_id '{strategy_id}' does not exist"
+                        f"(allocation #{i + 1}): strategy_id '{strategy_id}' does not exist"
                     )
 
         return errors

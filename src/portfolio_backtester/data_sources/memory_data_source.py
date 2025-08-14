@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 class MemoryDataSource:
     """A data source that uses in-memory pandas DataFrames."""
 
-    def __init__(self, data_source_config: Dict[str, Any]):
+    def __init__(self, data_source_config: Dict[str, Any]) -> None:
         """
         Initializes the MemoryDataSource.
 

@@ -26,26 +26,33 @@ from portfolio_backtester.strategies._core.base.base.meta_strategy import BaseMe
 from portfolio_backtester.strategies._core.base.base.meta_reporting import (
     MetaStrategyReporter,
 )
-from portfolio_backtester.strategies._core.base.base.portfolio_value_tracker import (
-    PortfolioValueTracker,
-)
 from portfolio_backtester.strategies._core.base.base.trade_aggregator import (
     TradeAggregator,
 )
 from portfolio_backtester.strategies._core.base.base.trade_interceptor import (
     MetaStrategyTradeInterceptor,
 )
+from portfolio_backtester.trading.portfolio_value_tracker import PortfolioValueTracker
+from portfolio_backtester.backtesting.position_tracker import PositionTracker, Trade
+from portfolio_backtester.backtesting.results import WindowResult
+from portfolio_backtester.data_sources.hybrid_data_source import HybridDataSource
+from portfolio_backtester.feature_flags.flag_registry import FlagRegistry
+
+
+# Vulture false positive fixes
+from portfolio_backtester.backtester_logic import execution
+from portfolio_backtester.optimization import sequential_orchestrator
 
 # Registry/validator/factory imports
 from portfolio_backtester.strategies._core.registry.registry.solid_strategy_registry import (
     AutoDiscoveryStrategyRegistry,
-    FileSystemStrategyDiscoveryEngine,
     ConcreteStrategyValidator,
+    FileSystemStrategyDiscoveryEngine,
 )
-from portfolio_backtester.strategies._core.strategy_factory_impl import StrategyFactory
 from portfolio_backtester.strategies._core.registry.registry.strategy_validator import (
     StrategyValidator,
 )
+from portfolio_backtester.strategies._core.strategy_factory_impl import StrategyFactory
 
 # Built-in example meta strategy import
 from portfolio_backtester.strategies.builtins.meta.simple_meta_strategy import (
@@ -102,11 +109,8 @@ _use(
 # Infra helpers inside strategies
 _use(
     MetaStrategyReporter,
-    PortfolioValueTracker.get_cash_balance,
-    PortfolioValueTracker.get_positions,
-    PortfolioValueTracker.reset,
-    PortfolioValueTracker.export_value_history,
-    PortfolioValueTracker.get_summary_statistics,
+    PortfolioValueTracker.get_capital_timeline,
+    PortfolioValueTracker.get_portfolio_level_stats,
     TradeAggregator.get_trades_by_asset,
     TradeAggregator.get_trades_by_date_range,
     TradeAggregator.get_current_positions,
@@ -117,6 +121,22 @@ _use(
     TradeAggregator.get_total_return,
     TradeAggregator.get_summary_statistics,
     MetaStrategyTradeInterceptor.get_strategy_info,
+)
+
+
+# Vulture false positive fixes
+_use(
+    sequential_orchestrator.BacktesterFacade,
+    execution.run_optimize_mode,
+    PositionTracker.get_current_weights,
+    PositionTracker.get_daily_weights_df,
+    PositionTracker.get_trade_summary,
+    Trade.exit_weight,
+    WindowResult.avg_trade_duration,
+    WindowResult.max_trade_duration,
+    WindowResult.min_trade_duration,
+    HybridDataSource.get_failure_report,
+    FlagRegistry.get_all_flags,
 )
 
 

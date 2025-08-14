@@ -50,7 +50,6 @@ class ATRFeature(Feature):
                         and not low.isna().all()
                         and not close.isna().all()
                     ):
-
                         # Use optimized Numba calculation with proper type conversion
                         atr_values = atr_fast_fixed(
                             high.values.astype(np.float64),

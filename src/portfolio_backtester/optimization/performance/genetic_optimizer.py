@@ -8,7 +8,11 @@ genetic algorithm optimization while maintaining the abstract interface.
 import logging
 from typing import Dict, Any, Optional
 from .base_optimizer import BasePerformanceOptimizer
-from .interfaces import AbstractTradeTracker, AbstractTrialDeduplicator, AbstractParallelRunner
+from .interfaces import (
+    AbstractTradeTracker,
+    AbstractTrialDeduplicator,
+    AbstractParallelRunner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +99,41 @@ class GeneticPerformanceOptimizer(BasePerformanceOptimizer):
                 return None
 
         return self._parallel_runner
+
+    def _optimize_trade_tracking_impl(
+        self, weights: Any, prices: Any, costs: Any
+    ) -> Dict[str, Any]:
+        """Implementation of trade tracking optimization.
+
+        For genetic algorithms, we delegate to the trade tracker if available.
+        """
+        trade_tracker = self.get_trade_tracker()
+        if trade_tracker is not None:
+            return trade_tracker.track_trades_optimized(weights, prices, costs)
+        # Fallback to default behavior if no tracker available
+        return {}
+
+    def _deduplicate_parameters_impl(self, params: Dict[str, Any]) -> bool:
+        """Implementation of parameter deduplication.
+
+        For genetic algorithms, we delegate to the deduplicator if available.
+        """
+        deduplicator = self.get_deduplicator()
+        if deduplicator is not None:
+            return deduplicator.is_duplicate(params)
+        # Fallback to no deduplication if not available
+        return False
+
+    def _run_parallel_optimization_impl(self, config: Dict[str, Any]) -> Any:
+        """Implementation of parallel optimization.
+
+        For genetic algorithms, we delegate to the parallel runner if available.
+        """
+        parallel_runner = self.get_parallel_runner()
+        if parallel_runner is not None:
+            return parallel_runner.run(config)
+        # Fallback to sequential execution if no parallel runner available
+        raise NotImplementedError("Parallel optimization not implemented for genetic algorithms")
 
     def supports_optimizer(self, optimizer_type: str) -> bool:
         """Check if this performance optimizer supports the given optimizer type."""

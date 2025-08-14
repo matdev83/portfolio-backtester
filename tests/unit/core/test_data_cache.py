@@ -10,8 +10,6 @@ import pandas as pd
 import numpy as np
 from portfolio_backtester.data_cache import (
     DataPreprocessingCache,
-    get_global_cache,
-    clear_global_cache,
 )
 
 
@@ -143,10 +141,10 @@ class TestDataPreprocessingCache:
         """Test cache clearing functionality."""
         # Add data to cache
         self.cache.get_cached_returns(self.test_data, "clear_test")
-        window_data = self.test_data.loc["2015-01-01":"2015-12-31"]
-        self.cache.get_cached_window_returns(
-            window_data, pd.Timestamp("2015-01-01"), pd.Timestamp("2015-12-31")
-        )
+        window_start = pd.Timestamp("2015-01-01")
+        window_end = pd.Timestamp("2015-12-31")
+        window_data = self.test_data.loc[window_start:window_end]
+        self.cache.get_cached_window_returns(window_data, window_start, window_end)
 
         # Verify cache has data
         stats_before = self.cache.get_cache_stats()
@@ -160,35 +158,6 @@ class TestDataPreprocessingCache:
         assert stats_after["total_cached_items"] == 0
         assert stats_after["regular_cache_items"] == 0
         assert stats_after["window_cache_items"] == 0
-
-
-class TestGlobalCache:
-    """Test global cache functionality."""
-
-    def test_global_cache_singleton(self):
-        """Test that global cache is a singleton."""
-        cache1 = get_global_cache()
-        cache2 = get_global_cache()
-        assert cache1 is cache2
-
-    def test_global_cache_clear(self):
-        """Test global cache clearing."""
-        cache = get_global_cache()
-
-        # Add some data
-        test_data = pd.DataFrame({"A": [1, 2, 3]}, index=pd.date_range("2020-01-01", periods=3))
-        cache.get_cached_returns(test_data, "global_test")
-
-        # Verify data exists
-        stats_before = cache.get_cache_stats()
-        assert stats_before["regular_cache_items"] > 0
-
-        # Clear cache
-        clear_global_cache()
-
-        # Verify cache is empty
-        stats_after = cache.get_cache_stats()
-        assert stats_after["regular_cache_items"] == 0
 
 
 if __name__ == "__main__":

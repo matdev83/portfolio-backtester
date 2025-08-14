@@ -101,8 +101,10 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
     adv_cfg: Dict[str, Any] = self.global_config.get("advanced_reporting_config", {})
     if adv_cfg.get("enable_optimization_reports", True):
         for name, result in self.results.items():
+            logger.info("Processing optimization report for: %s", name)
             best_trial = result.get("best_trial_obj")
             if best_trial is None:
+                logger.info("  - No best_trial_obj found, skipping.")
                 continue
 
             _plot_stability_measures(self, name, best_trial, result["returns"])
@@ -114,15 +116,24 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
             # locate matching scenario config
             scenario_cfg = next((s for s in self.scenarios if s["name"] in name), None)
             if scenario_cfg is not None:
-                _plot_monte_carlo_robustness_analysis(
-                    self,
-                    name,
-                    scenario_cfg,
-                    opt_params,
-                    self.monthly_data,
-                    daily_data_for_display,
-                    self.rets_full,
-                )
+                logger.info("  - Found matching scenario config.")
+                # Stage 2 MC is disabled by default; enable only if CLI flag is set
+                if getattr(self.args, "enable_stage2_mc", False):
+                    _plot_monte_carlo_robustness_analysis(
+                        self,
+                        name,
+                        scenario_cfg,
+                        opt_params,
+                        self.monthly_data,
+                        daily_data_for_display,
+                        self.rets_full,
+                    )
+                else:
+                    logger.info(
+                        "  - Stage 2 MC is disabled. Use --enable-stage2-mc to generate robustness plots."
+                    )
+            else:
+                logger.info("  - No matching scenario config found.")
     else:
         logger.info("Advanced optimization reports disabled – skipping.")
 
@@ -130,6 +141,7 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
     # 2) Always show basic performance table & plots
     # ------------------------------------------------------------------
     try:
+        logger.info("--- Generating Basic Performance Table & Plots ---")
         period_returns = {n: d["returns"] for n, d in self.results.items()}
         benchmark_rets = _benchmark_returns(daily_data_for_display, self.global_config["benchmark"])
         trials_map = {n: d.get("num_trials_for_dsr", 1) for n, d in self.results.items()}
@@ -141,15 +153,19 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
         scenario_name = None
         if hasattr(self.args, "scenario_name") and self.args.scenario_name:
             scenario_name = self.args.scenario_name
+            logger.info("Scenario name from args: %s", scenario_name)
         elif self.scenarios and len(self.scenarios) > 0:
             # Use the first scenario's name
             scenario_name = self.scenarios[0].get("name", "unknown_scenario")
+            logger.info("Scenario name from scenarios[0]: %s", scenario_name)
         elif self.results:
             # Use the first result key, removing any "_Optimized" suffix
             first_result_name = next(iter(self.results.keys()))
             scenario_name = first_result_name.replace("_Optimized", "")
+            logger.info("Scenario name from results key: %s", scenario_name)
         else:
             scenario_name = "unknown_scenario"
+            logger.warning("Could not determine scenario name, defaulting to 'unknown_scenario'.")
 
         scenario_slug = (
             scenario_name.replace(" ", "_").replace("(", "").replace(")", "").replace('"', "")
@@ -168,7 +184,7 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
         )
         _generate_transaction_history_csv(self.results, report_dir)
 
-        _plot_performance_summary(self, benchmark_rets, None)
+        _plot_performance_summary(self, benchmark_rets)
         plt.tight_layout()
         plot_path = os.path.join(report_dir, "equity_curve.png")
         plt.savefig(plot_path)

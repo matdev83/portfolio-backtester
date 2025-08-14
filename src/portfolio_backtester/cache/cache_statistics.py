@@ -19,11 +19,11 @@ class CacheStatistics:
     methods for calculating performance metrics like hit rates.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize cache statistics counters."""
         self._stats = {"hits": 0, "misses": 0, "window_hits": 0, "window_misses": 0}
 
-    def record_hit(self, is_window: bool = False):
+    def record_hit(self, is_window: bool = False) -> None:
         """
         Record a cache hit.
 
@@ -35,7 +35,7 @@ class CacheStatistics:
         else:
             self._stats["hits"] += 1
 
-    def record_miss(self, is_window: bool = False):
+    def record_miss(self, is_window: bool = False) -> None:
         """
         Record a cache miss.
 
@@ -73,7 +73,7 @@ class CacheStatistics:
             **self._stats,
         }
 
-    def reset_statistics(self):
+    def reset_statistics(self) -> None:
         """Reset all statistics counters to zero."""
         self._stats = {"hits": 0, "misses": 0, "window_hits": 0, "window_misses": 0}
 
@@ -82,7 +82,7 @@ class CacheStatistics:
 
     def log_cache_operation(
         self, operation: str, cache_key: str, hit: bool, is_window: bool = False
-    ):
+    ) -> None:
         """
         Log a cache operation and record the statistics.
 

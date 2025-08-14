@@ -1,13 +1,15 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Dict
 
+from portfolio_backtester.backtester_logic.backtester_facade import Backtester
+
 if TYPE_CHECKING:
-    from portfolio_backtester.backtester_logic.backtester_facade import (
-        BacktesterFacade,
-    )
-    from portfolio_backtester.optimization.optimization_result import (
+    from portfolio_backtester.optimization.results import (
         OptimizationResult,
     )
+
+# Alias for backward compatibility
+BacktesterFacade = Backtester
 
 
 class OptimizationOrchestrator(ABC):

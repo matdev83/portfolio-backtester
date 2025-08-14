@@ -80,7 +80,11 @@ class TrialDeduplicator:
             Dictionary with deduplication stats
         """
         if not self.enable_deduplication:
-            return {"enabled": False, "unique_parameter_combinations": 0, "cached_values": 0}
+            return {
+                "enabled": False,
+                "unique_parameter_combinations": 0,
+                "cached_values": 0,
+            }
         return self.deduplicator.get_stats()
 
 
@@ -155,7 +159,10 @@ class DedupOptunaObjectiveAdapter:
         """
         base_stats = self.deduplicator.get_stats()
         base_stats.update(
-            {"duplicate_trials_detected": self.duplicate_count, "cache_hits": self.cache_hits}
+            {
+                "duplicate_trials_detected": self.duplicate_count,
+                "cache_hits": self.cache_hits,
+            }
         )
         return base_stats
 

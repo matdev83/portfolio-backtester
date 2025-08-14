@@ -113,7 +113,7 @@ class DefaultStrategyLookup(IStrategyLookup):
 class PolymorphicStrategyResolver:
     """Polymorphic strategy resolver that eliminates isinstance violations."""
 
-    def __init__(self, strategy_lookup: Optional[IStrategyLookup] = None):
+    def __init__(self, strategy_lookup: Optional[IStrategyLookup] = None) -> None:
         self._specification_factory = StrategySpecificationResolverFactory()
         self._strategy_lookup = strategy_lookup or DefaultStrategyLookup()
 
@@ -140,7 +140,9 @@ class PolymorphicStrategyResolver:
         return result
 
     def resolve_strategy(
-        self, specification: Union[str, Dict, Any], strategy_params: Optional[Dict[str, Any]] = None
+        self,
+        specification: Union[str, Dict, Any],
+        strategy_params: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """
         Resolve strategy specification to a strategy class.

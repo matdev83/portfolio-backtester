@@ -264,7 +264,9 @@ class OptimizationSpecConverterFactory:
     """Factory for creating appropriate optimization spec converters."""
 
     @staticmethod
-    def create_converter(optimization_method: str = "default") -> IOptimizationSpecConverter:
+    def create_converter(
+        optimization_method: str = "default",
+    ) -> IOptimizationSpecConverter:
         """
         Create appropriate converter based on optimization method.
 

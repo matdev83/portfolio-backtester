@@ -9,7 +9,7 @@ daily and traditional monthly evaluation modes.
 import pandas as pd
 from loguru import logger
 
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional, List, Tuple
 
 from ..interfaces.daily_risk_monitor_interface import (
     DefaultDailyRiskMonitorFactory,
@@ -60,7 +60,68 @@ class WindowEvaluator:
         self.backtester = backtester
         self.data_cache = data_cache or {}
         self.risk_monitor_factory = risk_monitor_factory or DefaultDailyRiskMonitorFactory()
+        # Pre-computed data for window evaluation
+        self._cached_universe_tickers: Optional[List[str]] = None
+        self._cached_eval_dates: Optional[pd.DatetimeIndex] = None
+        self._cached_daily_data_index: Optional[pd.Index] = None
+        self._cached_daily_columns_is_multiindex: Optional[bool] = None
         logger.debug("WindowEvaluator initialized")
+
+    def _prepare_window_evaluation(
+        self,
+        window: WFOWindow,
+        daily_data: pd.DataFrame,
+        universe_tickers: List[str],
+    ) -> Tuple[pd.DatetimeIndex, bool, List[str]]:
+        """Prepare invariant data for window evaluation.
+
+        This method extracts and caches data that remains constant across multiple
+        evaluations of the same window, reducing redundant work in hot paths.
+
+        Args:
+            window: The walk-forward window to evaluate
+            daily_data: Daily price data
+            universe_tickers: List of tickers in the universe
+
+        Returns:
+            Tuple containing:
+                - Evaluation dates within the window
+                - Whether daily_data.columns is a MultiIndex
+                - List of universe tickers
+        """
+        # Check if we can reuse cached data
+        if (
+            self._cached_daily_data_index is not None
+            and self._cached_universe_tickers is not None
+            and self._cached_daily_columns_is_multiindex is not None
+            and daily_data.index.equals(self._cached_daily_data_index)
+            and universe_tickers == self._cached_universe_tickers
+        ):
+            # Reuse cached evaluation dates
+            if self._cached_eval_dates is not None:
+                eval_dates = self._cached_eval_dates
+            else:
+                eval_dates = window.get_evaluation_dates(pd.DatetimeIndex(daily_data.index))
+                self._cached_eval_dates = eval_dates
+
+            return (
+                eval_dates,
+                self._cached_daily_columns_is_multiindex,
+                self._cached_universe_tickers,
+            )
+
+        # Compute and cache new data
+        self._cached_daily_data_index = daily_data.index
+        self._cached_universe_tickers = universe_tickers
+        self._cached_daily_columns_is_multiindex = isinstance(daily_data.columns, pd.MultiIndex)
+        eval_dates = window.get_evaluation_dates(pd.DatetimeIndex(daily_data.index))
+        self._cached_eval_dates = eval_dates
+
+        return (
+            eval_dates,
+            self._cached_daily_columns_is_multiindex,
+            self._cached_universe_tickers,
+        )
 
     def evaluate_window(
         self,
@@ -109,10 +170,13 @@ class WindowEvaluator:
         # Set up position tracker for risk monitoring if needed
         position_tracker = None
 
+        # Prepare window evaluation data once (hoisted out of inner loop)
+        eval_dates, is_multiindex, universe = self._prepare_window_evaluation(
+            window, daily_data, universe_tickers
+        )
+
         if stop_loss_monitor or take_profit_monitor:
             position_tracker = PositionTracker()
-            # Get evaluation dates within the window
-            eval_dates = window.get_evaluation_dates(pd.DatetimeIndex(daily_data.index))
             if len(eval_dates) > 0:
                 logger.debug(f"Daily risk monitoring will run on {len(eval_dates)} dates")
 
@@ -129,15 +193,18 @@ class WindowEvaluator:
         # Perform daily risk monitoring if needed
         if position_tracker and (stop_loss_monitor or take_profit_monitor) and len(eval_dates) > 0:
             try:
-                # Process each evaluation date for risk monitoring
-                for current_date in eval_dates:
-                    # Skip dates outside the test window
-                    if current_date < window.test_start or current_date > window.test_end:
-                        continue
+                # Pre-extract test window dates to avoid repeated checks
+                test_dates = eval_dates[
+                    (eval_dates >= window.test_start) & (eval_dates <= window.test_end)
+                ]
 
+                # Process each evaluation date for risk monitoring
+                for current_date in test_dates:
                     # Get current prices for risk evaluation
                     try:
-                        current_prices = self._get_current_prices(daily_data, current_date)
+                        current_prices = self._get_current_prices(
+                            daily_data, current_date, is_multiindex
+                        )
                     except Exception as e:
                         logger.error(f"Error getting current prices for {current_date.date()}: {e}")
                         continue
@@ -204,7 +271,10 @@ class WindowEvaluator:
         )
 
     def _get_current_prices(
-        self, daily_data: pd.DataFrame, current_date: pd.Timestamp
+        self,
+        daily_data: pd.DataFrame,
+        current_date: pd.Timestamp,
+        is_multiindex: Optional[bool] = None,
     ) -> pd.Series:
         """Extract current prices for all assets on a specific date."""
         try:
@@ -217,20 +287,25 @@ class WindowEvaluator:
                 current_date = closest_date
 
             # Extract close prices for all assets
-            if isinstance(daily_data.columns, pd.MultiIndex):
+            if is_multiindex is None:
+                is_multiindex = isinstance(daily_data.columns, pd.MultiIndex)
+
+            if is_multiindex:
                 # Handle MultiIndex columns (ticker, field)
                 current_prices = {}
                 for ticker in set(idx[0] for idx in daily_data.columns):
-                    if (
-                        "Close" in daily_data.loc[current_date, ticker].index
-                        or "close" in daily_data.loc[current_date, ticker].index
-                    ):
-                        field = (
-                            "Close"
-                            if "Close" in daily_data.loc[current_date, ticker].index
-                            else "close"
-                        )
-                        current_prices[ticker] = daily_data.loc[current_date, (ticker, field)]
+                    # Type-safe access to MultiIndex data
+                    try:
+                        # Try to get Close field first
+                        current_prices[ticker] = daily_data.loc[current_date, (ticker, "Close")]
+                    except (KeyError, ValueError):
+                        try:
+                            # Try lowercase 'close' if 'Close' doesn't exist
+                            current_prices[ticker] = daily_data.loc[current_date, (ticker, "close")]
+                        except (KeyError, ValueError):
+                            # Skip this ticker if neither field exists
+                            pass
+
                 return pd.Series(current_prices)
             else:
                 # Handle flat columns (assume it's price data directly)

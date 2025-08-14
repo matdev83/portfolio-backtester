@@ -99,7 +99,10 @@ class WindowProcessor:
         return window_returns
 
     def get_window_data_by_dates(
-        self, daily_data: pd.DataFrame, window_start: pd.Timestamp, window_end: pd.Timestamp
+        self,
+        daily_data: pd.DataFrame,
+        window_start: pd.Timestamp,
+        window_end: pd.Timestamp,
     ) -> Optional[pd.DataFrame]:
         """
         Get window data by date range and extract close prices.

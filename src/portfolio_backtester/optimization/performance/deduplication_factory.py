@@ -30,11 +30,23 @@ class DeduplicationFactory:
             config = {}
 
         enable_deduplication = config.get("enable_deduplication", True)
+        use_persistent_cache = config.get("use_persistent_cache", False)
+        cache_dir = config.get("cache_dir", None)
+        cache_file = config.get("cache_file", None)
 
-        if optimizer_type == "optuna":
-            return GenericTrialDeduplicator(enable_deduplication)
-        elif optimizer_type == "genetic":
-            return GenericTrialDeduplicator(enable_deduplication)
+        if use_persistent_cache:
+            try:
+                from .persistent_deduplication import PersistentTrialDeduplicator
+
+                return PersistentTrialDeduplicator(
+                    enable_deduplication=enable_deduplication,
+                    cache_dir=cache_dir,
+                    cache_file=cache_file,
+                    optimizer_type=optimizer_type,
+                )
+            except ImportError:
+                # Fall back to generic deduplicator if persistent implementation is not available
+                return GenericTrialDeduplicator(enable_deduplication)
         else:
-            # Default to generic deduplicator for unknown optimizer types
+            # Use standard in-memory deduplicator
             return GenericTrialDeduplicator(enable_deduplication)

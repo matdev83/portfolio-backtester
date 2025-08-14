@@ -14,7 +14,6 @@ class ValidationSeverity(Enum):
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
-    CRITICAL = "critical"
 
 
 class ValidationResult:
@@ -69,7 +68,9 @@ class IValidator(ABC):
     """
 
     @abstractmethod
-    def validate(self, value: Any, context: Optional[Dict[str, Any]] = None) -> ValidationResult:
+    def validate(
+        self, value: Any, context: Optional[Dict[str, Any]] = None
+    ) -> ValidationResult:
         """
         Validate a single value.
 
@@ -182,7 +183,9 @@ class ITradeValidator(ABC):
         pass
 
     @abstractmethod
-    def validate_trade_quantity(self, quantity: float, trade_side: str) -> ValidationResult:
+    def validate_trade_quantity(
+        self, quantity: float, trade_side: str
+    ) -> ValidationResult:
         """
         Validate trade quantity based on trade side.
 

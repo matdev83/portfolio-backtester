@@ -250,13 +250,13 @@ def validate_universe_exists(universe_name: str) -> bool:
     return file_path.exists() and file_path.is_file()
 
 
-def clear_universe_cache():
+def clear_universe_cache() -> None:
     """Clear the universe loading cache."""
     load_named_universe.cache_clear()
     logger.debug("Universe cache cleared")
 
 
-def get_universe_info(universe_name: str) -> dict:
+def get_universe_info(universe_name: str) -> dict[str, object]:
     """
     Get information about a named universe.
 

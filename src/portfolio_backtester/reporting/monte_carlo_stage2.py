@@ -8,11 +8,16 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+# Removed multiprocessing to ensure reliability across platforms
+# Stage 2 MC now runs sequentially to avoid pickling/serialization issues
+# and to provide deterministic progress and logs
+# from joblib import Parallel, delayed  # type: ignore
 from rich.progress import (
     BarColumn,
     Progress,
@@ -21,7 +26,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from ..interfaces.attribute_accessor_interface import IAttributeAccessor, create_attribute_accessor
+from ..interfaces.attribute_accessor_interface import IAttributeAccessor
 
 # NOTE: relative import still works because we are inside
 # `portfolio_backtester.reporting` – the same level as `monte_carlo`.
@@ -46,7 +51,12 @@ def _plot_original_series(ax, series: pd.Series | None) -> None:
         return
     cum: pd.Series = (1 + series).cumprod()
     ax.plot(
-        cum.index, cum.values, color="black", linewidth=3.0, label="Original Strategy", zorder=10
+        cum.index,
+        cum.values,
+        color="black",
+        linewidth=3.0,
+        label="Original Strategy",
+        zorder=10,
     )
 
 
@@ -92,68 +102,63 @@ def _plot_monte_carlo_robustness_analysis(
         simulation_results: dict[float, list[pd.Series]] = {}
         total_sims = len(replacement_percentages) * num_simulations_per_level
 
+        def _run_simulation_task(rep_pct: float, sim_seed: int) -> Optional[pd.Series]:
+            """Worker function for a single MC simulation, designed for joblib."""
+            try:
+                # Naive synthetic: bootstrap returns with noise
+                synthetic = rets_full.copy()
+                rng = np.random.default_rng(sim_seed)
+                assets_to_replace = rng.choice(
+                    universe, max(1, int(len(universe) * rep_pct)), replace=False
+                )
+                for ticker in assets_to_replace:
+                    if ticker in synthetic.columns:
+                        orig = synthetic[ticker].dropna()
+                        if len(orig) < 50:
+                            continue
+                        boot = rng.choice(orig.to_numpy(), size=len(orig))
+                        noise = rng.normal(0, orig.std() * rng.uniform(0.15, 0.25), len(orig))
+                        synthetic[ticker] = pd.Series(boot + noise, index=orig.index)
+
+                return cast(
+                    Optional[pd.Series],
+                    self.run_scenario(
+                        optimized_scenario,
+                        monthly_data,
+                        daily_data,
+                        synthetic,
+                        verbose=False,
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error(f"Stage 2 MC simulation failed (rep_pct={rep_pct}): {exc}")
+                return None
+
         with Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             TimeElapsedColumn(),
             TimeRemainingColumn(),
+            transient=True,
         ) as progress:
             task = progress.add_task("[cyan]Stage 2 Monte Carlo Stress Testing…", total=total_sims)
 
-            # Dependency injection for attribute access (DIP)
-            _attribute_accessor = attribute_accessor or create_attribute_accessor()
-            timeout_manager = _attribute_accessor.get_attribute(self, "timeout_manager", None)
-            timed_out = False
+            # Create a list of all simulation jobs to run
+            simulation_jobs = [
+                (rep_pct, sim + int(rep_pct * 1000))
+                for rep_pct in replacement_percentages
+                for sim in range(num_simulations_per_level)
+            ]
 
-            for rep_pct in replacement_percentages:
-                if timed_out:
-                    logger.warning("Stage 2 MC: Timeout detected, aborting further simulations.")
-                    break
-                level_results: list[pd.Series] = []
-                for sim in range(num_simulations_per_level):
-                    # Check for timeout before each simulation
-                    if timeout_manager is not None and timeout_manager.check_timeout():
-                        logger.warning(
-                            "Stage 2 MC: Timeout detected during simulation (rep_pct=%.3f, sim=%d). Aborting Stage 2 MC.",
-                            rep_pct,
-                            sim,
-                        )
-                        timed_out = True
-                        break
-                    try:
-                        # naive synthetic: bootstrap returns with noise
-                        synthetic = rets_full.copy()
-                        rng = np.random.default_rng(sim + int(rep_pct * 1000))
-                        assets_to_replace = rng.choice(
-                            universe, max(1, int(len(universe) * rep_pct)), replace=False
-                        )
-                        for ticker in assets_to_replace:
-                            if ticker in synthetic.columns:
-                                orig = synthetic[ticker].dropna()
-                                if len(orig) < 50:
-                                    continue
-                                boot = rng.choice(orig.to_numpy(), size=len(orig))
-                                noise = rng.normal(
-                                    0, orig.std() * rng.uniform(0.15, 0.25), len(orig)
-                                )
-                                synthetic[ticker] = pd.Series(boot + noise, index=orig.index)
+            logger.info(f"Running {total_sims} Stage 2 MC simulations sequentially...")
 
-                        sim_rets = self.run_scenario(
-                            optimized_scenario,
-                            monthly_data,
-                            daily_data,
-                            synthetic,
-                            verbose=False,
-                        )
-                        level_results.append(sim_rets)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.error("Stage 2 MC simulation failed: %s", exc)
-                    finally:
-                        progress.advance(task)
-
-                if level_results:
-                    simulation_results[rep_pct] = level_results
+            simulation_results = {rep_pct: [] for rep_pct in replacement_percentages}
+            for rep_pct, seed in simulation_jobs:
+                result = _run_simulation_task(rep_pct, seed)
+                progress.advance(task)
+                if result is not None:
+                    simulation_results[rep_pct].append(result)
 
         original_returns = self.run_scenario(
             optimized_scenario, monthly_data, daily_data, rets_full, verbose=False
@@ -231,7 +236,13 @@ def _create_monte_carlo_robustness_plot(
 
         # parameter summary in second subplot
         ax_params.axis("off")
-        key_params = ["lookback_months", "num_holdings", "atr_length", "atr_multiple", "leverage"]
+        key_params = [
+            "lookback_months",
+            "num_holdings",
+            "atr_length",
+            "atr_multiple",
+            "leverage",
+        ]
         summary = ", ".join(f"{p}={optimal_params[p]}" for p in key_params if p in optimal_params)
         ax_params.text(0.5, 0.5, summary, ha="center", va="center", fontsize=10, wrap=True)
 

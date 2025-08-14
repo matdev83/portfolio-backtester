@@ -27,7 +27,12 @@ def create_orchestrator(
         An instance of an OptimizationOrchestrator.
     """
     if optimizer_type in ["genetic", "particle_swarm", "differential_evolution"]:
-        population_evaluator = PopulationEvaluator(evaluator, n_jobs=kwargs.get("n_jobs", 1))
+        population_evaluator = PopulationEvaluator(
+            evaluator,
+            n_jobs=kwargs.get("n_jobs", 1),
+            joblib_batch_size=kwargs.get("joblib_batch_size"),
+            joblib_pre_dispatch=kwargs.get("joblib_pre_dispatch"),
+        )
         return PopulationOrchestrator(
             parameter_generator=parameter_generator,  # type: ignore
             population_evaluator=population_evaluator,

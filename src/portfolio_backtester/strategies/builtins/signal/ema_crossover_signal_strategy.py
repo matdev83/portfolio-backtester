@@ -25,9 +25,27 @@ class EmaCrossoverSignalStrategy(SignalStrategy):
     @classmethod
     def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         return {
-            "fast_ema_days": {"type": "int", "default": 20, "min": 10, "max": 200, "step": 5},
-            "slow_ema_days": {"type": "int", "default": 64, "min": 20, "max": 300, "step": 10},
-            "leverage": {"type": "float", "default": 1.0, "min": 1.0, "max": 1.0, "step": 0.1},
+            "fast_ema_days": {
+                "type": "int",
+                "default": 20,
+                "min": 10,
+                "max": 200,
+                "step": 5,
+            },
+            "slow_ema_days": {
+                "type": "int",
+                "default": 64,
+                "min": 20,
+                "max": 300,
+                "step": 10,
+            },
+            "leverage": {
+                "type": "float",
+                "default": 1.0,
+                "min": 1.0,
+                "max": 1.0,
+                "step": 0.1,
+            },
         }
 
     def get_non_universe_data_requirements(self) -> list[str]:

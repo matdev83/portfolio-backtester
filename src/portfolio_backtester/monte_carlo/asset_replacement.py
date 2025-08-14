@@ -201,7 +201,6 @@ class AssetReplacementManager:
 
         # Log the selection
         if logger.isEnabledFor(logging.INFO):
-
             logger.info(
                 f"Selected {len(selected_assets)} assets for replacement: {selected_assets}"
             )
@@ -353,7 +352,6 @@ class AssetReplacementManager:
 
                             except Exception as col_error:
                                 if logger.isEnabledFor(logging.WARNING):
-
                                     logger.warning(
                                         f"Failed to replace column {col} for {asset}: {col_error}"
                                     )
@@ -361,7 +359,6 @@ class AssetReplacementManager:
                                 continue
 
                 if logger.isEnabledFor(logging.INFO):
-
                     logger.info(
                         f"Replaced {len(period_data)} observations for {asset} with synthetic data"
                     )
@@ -423,7 +420,6 @@ class AssetReplacementManager:
 
         if run_id:
             if logger.isEnabledFor(logging.INFO):
-
                 logger.info(
                     f"Run {run_id}: Created Monte-Carlo dataset with {len(assets_to_replace)} synthetic assets"
                 )

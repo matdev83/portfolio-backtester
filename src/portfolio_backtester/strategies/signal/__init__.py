@@ -12,4 +12,8 @@ from .ema_signal_generator import EmaCrossoverSignalGenerator
 # Import the factory for external use
 from ...interfaces.signal_generator_interface import signal_generator_factory
 
-__all__ = ["UvxySignalGenerator", "EmaCrossoverSignalGenerator", "signal_generator_factory"]
+__all__ = [
+    "UvxySignalGenerator",
+    "EmaCrossoverSignalGenerator",
+    "signal_generator_factory",
+]

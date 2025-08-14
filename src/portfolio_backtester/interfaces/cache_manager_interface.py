@@ -35,7 +35,10 @@ class ICacheManager(ABC):
 
     @abstractmethod
     def get_window_returns_by_dates(
-        self, daily_data: pd.DataFrame, window_start: pd.Timestamp, window_end: pd.Timestamp
+        self,
+        daily_data: pd.DataFrame,
+        window_start: pd.Timestamp,
+        window_end: pd.Timestamp,
     ) -> Optional[pd.DataFrame]:
         """
         Get cached window returns by date range.
@@ -132,7 +135,10 @@ class ConcreteCacheManager(ICacheManager):
         return self._cache.get_cached_returns(data, identifier)
 
     def get_window_returns_by_dates(
-        self, daily_data: pd.DataFrame, window_start: pd.Timestamp, window_end: pd.Timestamp
+        self,
+        daily_data: pd.DataFrame,
+        window_start: pd.Timestamp,
+        window_end: pd.Timestamp,
     ) -> Optional[pd.DataFrame]:
         """
         Get cached window returns by date range.

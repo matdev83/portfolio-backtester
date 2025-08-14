@@ -144,7 +144,10 @@ class StateStatistics:
                 }
             )
 
-        return {"active_positions": active_summary, "historical_positions": historical_summary}
+        return {
+            "active_positions": active_summary,
+            "historical_positions": historical_summary,
+        }
 
     def get_asset_analysis(self) -> Dict[str, Any]:
         """
@@ -238,7 +241,10 @@ class StateStatistics:
         Returns:
             Dictionary with holding period analysis
         """
-        analysis: Dict[str, Dict[str, Any]] = {"active_positions": {}, "historical_positions": {}}
+        analysis: Dict[str, Dict[str, Any]] = {
+            "active_positions": {},
+            "historical_positions": {},
+        }
 
         # Analyze active positions
         if current_date and self.position_tracker.positions:

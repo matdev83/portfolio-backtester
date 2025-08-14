@@ -12,8 +12,6 @@ from unittest.mock import Mock
 
 from portfolio_backtester.interfaces.array_converter_interface import (
     DataFrameValidator,
-    NullDataFrameValidator,
-    DataFrameValidatorFactory,
     MultiIndexColumnProcessor,
     SimpleColumnProcessor,
     ColumnProcessorFactory,
@@ -33,15 +31,6 @@ class TestDataFrameValidator:
         df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
         assert self.validator.can_validate(df) is True
 
-    def test_can_validate_dataframe_like_object(self):
-        """Test that validator can handle DataFrame-like objects."""
-        mock_df = Mock()
-        mock_df.index = pd.Index([1, 2, 3])
-        mock_df.columns = pd.Index(["A", "B"])
-        mock_df.values = np.array([[1, 4], [2, 5], [3, 6]])
-        mock_df.sort_index = Mock()
-        assert self.validator.can_validate(mock_df) is True
-
     def test_cannot_validate_non_dataframe(self):
         """Test that validator cannot handle non-DataFrame objects."""
         assert self.validator.can_validate("not_a_dataframe") is False
@@ -58,45 +47,6 @@ class TestDataFrameValidator:
         """Test validating invalid input."""
         with pytest.raises(TypeError, match="Input must be a pandas DataFrame"):
             self.validator.validate("not_a_dataframe")
-
-
-class TestNullDataFrameValidator:
-    """Test null/fallback DataFrame validator."""
-
-    def setup_method(self):
-        self.validator = NullDataFrameValidator()
-
-    def test_can_validate_always_true(self):
-        """Test that validator always returns True (fallback)."""
-        assert self.validator.can_validate("anything") is True
-        assert self.validator.can_validate(None) is True
-        assert self.validator.can_validate(123) is True
-
-    def test_validate_always_raises(self):
-        """Test that validator always raises TypeError."""
-        with pytest.raises(TypeError, match="Input must be a pandas DataFrame"):
-            self.validator.validate("anything")
-
-        with pytest.raises(TypeError, match="Input must be a pandas DataFrame"):
-            self.validator.validate(None)
-
-
-class TestDataFrameValidatorFactory:
-    """Test DataFrame validator factory."""
-
-    def setup_method(self):
-        self.factory = DataFrameValidatorFactory()
-
-    def test_get_validator_for_dataframe(self):
-        """Test getting validator for DataFrame."""
-        df = pd.DataFrame({"A": [1, 2, 3]})
-        validator = self.factory.get_validator(df)
-        assert isinstance(validator, DataFrameValidator)
-
-    def test_get_validator_for_invalid_input(self):
-        """Test getting validator for invalid input."""
-        validator = self.factory.get_validator("not_a_dataframe")
-        assert isinstance(validator, NullDataFrameValidator)
 
 
 class TestMultiIndexColumnProcessor:
@@ -261,7 +211,7 @@ class TestPolymorphicArrayConverter:
             index=pd.date_range("2023-01-01", periods=2),
         )
 
-        matrix, tickers = self.converter.convert_to_array(df, field="Close")
+        matrix, tickers = self.converter.convert_to_array(df, column_names=["Close"])
 
         assert isinstance(matrix, np.ndarray)
         assert matrix.dtype == np.float32
@@ -276,15 +226,16 @@ class TestPolymorphicArrayConverter:
                 "A": [1.0, 3.0, 2.0],
                 "B": [4.0, 6.0, 5.0],
             },
-            index=pd.date_range("2023-01-01", periods=3)[::-1],
-        )  # Reverse order
+            index=pd.to_datetime(["2023-01-01", "2023-01-03", "2023-01-02"]),
+        )
 
         matrix, tickers = self.converter.convert_to_array(df)
 
         # Should be sorted by index
         assert matrix.shape == (3, 2)
-        np.testing.assert_array_almost_equal(matrix[0], [2.0, 5.0])  # Last row became first
-        np.testing.assert_array_almost_equal(matrix[2], [1.0, 4.0])  # First row became last
+        np.testing.assert_array_almost_equal(matrix[0], [1.0, 4.0])
+        np.testing.assert_array_almost_equal(matrix[1], [2.0, 5.0])
+        np.testing.assert_array_almost_equal(matrix[2], [3.0, 6.0])
 
     def test_convert_handles_nan_values(self):
         """Test that converter handles NaN values correctly."""
@@ -325,7 +276,7 @@ class TestPolymorphicArrayConverter:
         df = pd.DataFrame(np.random.randn(5, 4), columns=columns)
 
         with pytest.raises(KeyError, match="Field 'Open' not found in DataFrame columns"):
-            self.converter.convert_to_array(df, field="Open")
+            self.converter.convert_to_array(df, column_names=["Open"])
 
 
 class TestCreateArrayConverter:
@@ -361,7 +312,7 @@ class TestPolymorphicIntegration:
         # All these should work without isinstance checks
         for df in test_cases:
             if isinstance(df.columns, pd.MultiIndex):
-                matrix, tickers = converter.convert_to_array(df, field="Close")
+                matrix, tickers = converter.convert_to_array(df, column_names=["Close"])
             else:
                 matrix, tickers = converter.convert_to_array(df)
 
@@ -398,7 +349,7 @@ class TestPolymorphicIntegration:
             index=pd.date_range("2023-01-01", periods=2),
         )
 
-        matrix, tickers = converter.convert_to_array(df_multi, field="Close")
+        matrix, tickers = converter.convert_to_array(df_multi, column_names=["Close"])
 
         assert matrix.dtype == np.float32
         assert matrix.shape == (2, 2)
@@ -425,4 +376,4 @@ class TestPolymorphicIntegration:
 
         # Test field not found
         with pytest.raises(KeyError, match="Field 'Nonexistent' not found in DataFrame columns"):
-            converter.convert_to_array(df, field="Nonexistent")
+            converter.convert_to_array(df, column_names=["Nonexistent"])

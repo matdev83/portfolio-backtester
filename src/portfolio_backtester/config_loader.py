@@ -49,7 +49,13 @@ def get_ga_optimizer_parameter_defaults():
         "ga_advanced_crossover_type": {
             "default": None,
             "type": "categorical",
-            "values": [None, "simulated_binary", "multi_point", "uniform_variant", "arithmetic"],
+            "values": [
+                None,
+                "simulated_binary",
+                "multi_point",
+                "uniform_variant",
+                "arithmetic",
+            ],
             "help": "Advanced crossover operator for GA.",
         },
         "ga_sbx_distribution_index": {
@@ -270,7 +276,7 @@ def load_config():
         BACKTEST_SCENARIOS = []
         if SCENARIOS_DIR.exists() and SCENARIOS_DIR.is_dir():
             # Walk through all subdirectories to find YAML files
-            for root, dirs, files in os.walk(SCENARIOS_DIR):
+            for root, _, files in os.walk(SCENARIOS_DIR):
                 for scenario_file in files:
                     if scenario_file.endswith(".yaml"):
                         # Skip files with 'example' in the filename or path
@@ -453,7 +459,7 @@ def validate_config_files(force_refresh: bool = False) -> bool:
     print(f"\nValidating scenarios in {SCENARIOS_DIR}...")
     if SCENARIOS_DIR.exists() and SCENARIOS_DIR.is_dir():
         # Walk through all subdirectories to find YAML files
-        for root, dirs, files in os.walk(SCENARIOS_DIR):
+        for root, _, files in os.walk(SCENARIOS_DIR):
             for scenario_file in files:
                 if scenario_file.endswith(".yaml"):
                     # Skip files with 'example' in the filename or path
@@ -509,33 +515,6 @@ def safe_load_config() -> bool:
         return False
 
 
-def load_globals_only():
-    global GLOBAL_CONFIG, OPTIMIZER_PARAMETER_DEFAULTS
-    logger.info(f"Loading globals from: {PARAMETERS_FILE}")
-    is_valid, params_data, error_message = validate_yaml_file(PARAMETERS_FILE)
-    if not is_valid:
-        raise ConfigurationError("Invalid parameters.yaml")
-    assert params_data is not None
-    GLOBAL_CONFIG = params_data.get("GLOBAL_CONFIG", {})
-    if not GLOBAL_CONFIG:
-        raise ConfigurationError("Missing GLOBAL_CONFIG")
-    GLOBAL_CONFIG["monte_carlo_config"] = params_data.get("monte_carlo_config", {})
-    GLOBAL_CONFIG["wfo_robustness_config"] = params_data.get("wfo_robustness_config", {})
-    OPTIMIZER_PARAMETER_DEFAULTS = params_data.get("OPTIMIZER_PARAMETER_DEFAULTS", {})
-    if not OPTIMIZER_PARAMETER_DEFAULTS:
-        raise ConfigurationError("Missing OPTIMIZER_PARAMETER_DEFAULTS")
-    try:
-        ga_defaults = get_ga_optimizer_parameter_defaults()
-        for key, value in ga_defaults.items():
-            if key not in OPTIMIZER_PARAMETER_DEFAULTS:
-                OPTIMIZER_PARAMETER_DEFAULTS[key] = value
-            elif isinstance(OPTIMIZER_PARAMETER_DEFAULTS[key], dict) and isinstance(value, dict):
-                OPTIMIZER_PARAMETER_DEFAULTS[key].update(value)
-    except Exception as e:
-        logger.warning(f"Failed to load GA defaults: {e}")
-    logger.info("Globals loaded successfully")
-
-
 # Load configuration when the module is imported
 try:
     load_config()
@@ -551,11 +530,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Configuration loader and validator")
     parser.add_argument(
-        "--validate", action="store_true", help="Validate configuration files without loading"
+        "--validate",
+        action="store_true",
+        help="Validate configuration files without loading",
     )
     parser.add_argument("--show-config", action="store_true", help="Show loaded configuration")
     parser.add_argument(
-        "--force-refresh", action="store_true", help="Force refresh validation, ignoring cache"
+        "--force-refresh",
+        action="store_true",
+        help="Force refresh validation, ignoring cache",
     )
     parser.add_argument("--clear-cache", action="store_true", help="Clear validation cache")
     parser.add_argument("--cache-info", action="store_true", help="Show cache information")

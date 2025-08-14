@@ -87,7 +87,12 @@ class OptimizerReportGenerator:
                     "Average",
                     "Moderate Calmar ratio indicates reasonable drawdown-adjusted returns",
                 ),
-                (1.0, 2.0, "Good", "Strong Calmar ratio demonstrates effective drawdown control"),
+                (
+                    1.0,
+                    2.0,
+                    "Good",
+                    "Strong Calmar ratio demonstrates effective drawdown control",
+                ),
                 (
                     2.0,
                     3.0,
@@ -162,9 +167,19 @@ class OptimizerReportGenerator:
                     "High",
                     "Large drawdowns suggest significant risk and potential for substantial losses",
                 ),
-                (-0.3, -0.2, "Moderate", "Moderate drawdowns indicate manageable risk levels"),
+                (
+                    -0.3,
+                    -0.2,
+                    "Moderate",
+                    "Moderate drawdowns indicate manageable risk levels",
+                ),
                 (-0.2, -0.1, "Low", "Small drawdowns demonstrate good risk control"),
-                (-0.1, -0.05, "Very Low", "Minimal drawdowns indicate excellent risk management"),
+                (
+                    -0.1,
+                    -0.05,
+                    "Very Low",
+                    "Minimal drawdowns indicate excellent risk management",
+                ),
                 (
                     -0.05,
                     0.0,
@@ -184,7 +199,12 @@ class OptimizerReportGenerator:
                     "Very Low",
                     "Very low volatility may indicate conservative positioning or limited opportunities",
                 ),
-                (0.05, 0.1, "Low", "Low volatility suggests stable returns with moderate risk"),
+                (
+                    0.05,
+                    0.1,
+                    "Low",
+                    "Low volatility suggests stable returns with moderate risk",
+                ),
                 (
                     0.1,
                     0.15,
@@ -222,9 +242,24 @@ class OptimizerReportGenerator:
                     "Poor",
                     "Low win rate indicates frequent losses and potential strategy issues",
                 ),
-                (0.3, 0.4, "Below Average", "Below average win rate suggests room for improvement"),
-                (0.4, 0.5, "Average", "Average win rate indicates balanced performance"),
-                (0.5, 0.6, "Good", "Good win rate demonstrates consistent positive performance"),
+                (
+                    0.3,
+                    0.4,
+                    "Below Average",
+                    "Below average win rate suggests room for improvement",
+                ),
+                (
+                    0.4,
+                    0.5,
+                    "Average",
+                    "Average win rate indicates balanced performance",
+                ),
+                (
+                    0.5,
+                    0.6,
+                    "Good",
+                    "Good win rate demonstrates consistent positive performance",
+                ),
                 (
                     0.6,
                     0.7,
@@ -382,7 +417,10 @@ class OptimizerReportGenerator:
             return obj
 
     def move_plots_to_run_directory(
-        self, run_dir: Path, plots_source_dir: str = "plots", strategy_name: Optional[str] = None
+        self,
+        run_dir: Path,
+        plots_source_dir: str = "plots",
+        strategy_name: Optional[str] = None,
     ) -> Dict[str, str]:
         """Move generated plots from the plots directory to the run directory."""
         plots_dir = run_dir / "plots"
@@ -403,11 +441,9 @@ class OptimizerReportGenerator:
                     plot_type = self._categorize_plot(plot_file.name)
                     moved_plots[plot_type] = plot_file.name
                     if logger.isEnabledFor(logging.DEBUG):
-
                         logger.debug(f"Moved plot {plot_file.name} to {destination}")
                 except Exception as e:
                     if logger.isEnabledFor(logging.WARNING):
-
                         logger.warning(f"Failed to move plot {plot_file.name}: {e}")
 
         return moved_plots
@@ -589,7 +625,7 @@ class OptimizerReportGenerator:
             report_lines.append("**Most Influential Parameters:**")
             for i, (param, importance) in enumerate(sorted_params[:3]):
                 report_lines.append(
-                    f"{i+1}. **{param}**: {importance:.1%} influence on performance"
+                    f"{i + 1}. **{param}**: {importance:.1%} influence on performance"
                 )
 
             report_lines.append("")
@@ -821,7 +857,6 @@ class OptimizerReportGenerator:
             f.write(report_content)
 
         if logger.isEnabledFor(logging.DEBUG):
-
             logger.debug(f"Generated comprehensive optimization report: {report_file}")
         return str(report_file)
 

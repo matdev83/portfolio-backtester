@@ -13,7 +13,10 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from ...interfaces.signal_generator_interface import ISignalGenerator, signal_generator_factory
+from ...interfaces.signal_generator_interface import (
+    ISignalGenerator,
+    signal_generator_factory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,9 @@ class UvxySignalGenerator(ISignalGenerator):
     Implements ISignalGenerator interface for polymorphic signal generation.
     """
 
-    def __init__(self, config=None, rsi_threshold: float = 30.0, holding_period_days: int = 1):
+    def __init__(
+        self, config=None, rsi_threshold: float = 30.0, holding_period_days: int = 1
+    ) -> None:
         """
         Initialize signal generator.
 
@@ -91,7 +96,10 @@ class UvxySignalGenerator(ISignalGenerator):
         )
 
     def generate_signal_for_date(
-        self, data: Dict[str, Any], universe_tickers: List[str], current_date: pd.Timestamp
+        self,
+        data: Dict[str, Any],
+        universe_tickers: List[str],
+        current_date: pd.Timestamp,
     ) -> pd.DataFrame:
         """Interface-compliant method for generating signals for a single date."""
         current_rsi = data.get("current_rsi")
@@ -160,7 +168,10 @@ class UvxySignalGenerator(ISignalGenerator):
         return signals
 
     def _generate_signal_for_date_impl(
-        self, current_rsi: Optional[float], universe_tickers: List[str], current_date: pd.Timestamp
+        self,
+        current_rsi: Optional[float],
+        universe_tickers: List[str],
+        current_date: pd.Timestamp,
     ) -> pd.DataFrame:
         """
         Generate signal for a single date with state management.
@@ -238,7 +249,10 @@ class UvxySignalGenerator(ISignalGenerator):
     # Legacy methods removed - now using interface methods only
 
     def _create_empty_signals(
-        self, universe_tickers: List[str], start_date: pd.Timestamp, end_date: pd.Timestamp
+        self,
+        universe_tickers: List[str],
+        start_date: pd.Timestamp,
+        end_date: pd.Timestamp,
     ) -> pd.DataFrame:
         """Create empty signals DataFrame for a date range."""
         if start_date == end_date:

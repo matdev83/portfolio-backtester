@@ -367,7 +367,11 @@ class TimingLogger:
 
     # Delegate to LogExporter
     def export_logs(
-        self, file_path: str, strategy_name: Optional[str] = None, format: str = "json", **kwargs
+        self,
+        file_path: str,
+        strategy_name: Optional[str] = None,
+        format: str = "json",
+        **kwargs,
     ) -> None:
         """Export log entries to file - delegates to LogExporter."""
         entries = self.entry_manager.get_entries(strategy_name=strategy_name)
@@ -387,9 +391,9 @@ class TimingLogger:
             print("No log entries found")
             return
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"RECENT TIMING LOG ENTRIES (Last {len(entries)})")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         for i, entry in enumerate(entries, 1):
             print(f"\n{i}. [{entry.level}] {entry.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -401,7 +405,7 @@ class TimingLogger:
             if entry.data and self.enable_detailed_logging:
                 print(f"   Data: {entry.data}")
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
 
 
 # Global timing logger instance
@@ -430,7 +434,9 @@ def get_timing_logger(name: str = "global", **kwargs) -> TimingLogger:
 
 
 def configure_timing_logging(
-    enable_detailed_logging: bool = False, log_level: str = "INFO", log_file: Optional[str] = None
+    enable_detailed_logging: bool = False,
+    log_level: str = "INFO",
+    log_file: Optional[str] = None,
 ) -> None:
     """
     Configure global timing logging settings.
@@ -443,7 +449,9 @@ def configure_timing_logging(
     global _global_timing_logger
 
     _global_timing_logger = TimingLogger(
-        name="global", enable_detailed_logging=enable_detailed_logging, log_level=log_level
+        name="global",
+        enable_detailed_logging=enable_detailed_logging,
+        log_level=log_level,
     )
 
     if log_file:
@@ -459,7 +467,11 @@ def configure_timing_logging(
 
 # Convenience functions for common logging operations - delegate to global logger
 def log_signal_generation(
-    strategy_name: str, current_date: pd.Timestamp, should_generate: bool, reason: str, **kwargs
+    strategy_name: str,
+    current_date: pd.Timestamp,
+    should_generate: bool,
+    reason: str,
+    **kwargs,
 ) -> None:
     """Convenience function for logging signal generation."""
     logger = get_timing_logger()

@@ -319,7 +319,7 @@ def _validate_optimizers_section(
                     YamlError(
                         error_type=YamlErrorType.VALIDATION_ERROR,
                         message=(
-                            f"Optimizer '{opt_name}' – entry #{idx+1}: each item must be a mapping"
+                            f"Optimizer '{opt_name}' – entry #{idx + 1}: each item must be a mapping"
                         ),
                         file_path=file_path_str,
                     )
@@ -332,7 +332,7 @@ def _validate_optimizers_section(
                     YamlError(
                         error_type=YamlErrorType.VALIDATION_ERROR,
                         message=(
-                            f"Optimizer '{opt_name}' – entry #{idx+1}: missing required key 'parameter'"
+                            f"Optimizer '{opt_name}' – entry #{idx + 1}: missing required key 'parameter'"
                         ),
                         file_path=file_path_str,
                     )
@@ -834,7 +834,10 @@ def validate_scenario_semantics(
     # 4) Optimizers section validation
     errors.extend(
         _validate_optimizers_section(
-            scenario_data, strategy_tunable_params, optimizer_parameter_defaults, file_path_str
+            scenario_data,
+            strategy_tunable_params,
+            optimizer_parameter_defaults,
+            file_path_str,
         )
     )
 

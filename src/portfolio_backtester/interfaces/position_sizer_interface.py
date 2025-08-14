@@ -7,9 +7,3 @@ provides the expected import location for backwards compatibility.
 """
 
 # Import all the classes that were expected in this module
-from .position_sizer_provider_interface import (
-    IPositionSizerProvider,
-)
-
-# Alias for backwards compatibility
-PositionSizerProvider = IPositionSizerProvider

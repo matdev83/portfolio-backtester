@@ -20,7 +20,7 @@ class CacheManager:
     maintaining configurable size limits and performing cleanup when needed.
     """
 
-    def __init__(self, max_cache_size: int = 100):
+    def __init__(self, max_cache_size: int = 100) -> None:
         """
         Initialize the cache manager.
 

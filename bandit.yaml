@@ -1,0 +1,37 @@
+---
+# Bandit configuration file
+
+# Tests to skip - these are intentional design choices in this project
+skips:
+  - B101  # assert_used - We use asserts for type checking and internal validation
+  - B110  # try_except_pass - We use these intentionally for non-critical error handling
+  - B112  # try_except_continue - We use these intentionally for non-critical error handling
+  - B311  # blacklist - Standard pseudo-random generators (we use for Monte Carlo simulations)
+  - B403  # blacklist - Import of pickle (we use for caching non-sensitive data)
+  - B301  # blacklist - Use of pickle (we use for our own cached data which is trusted)
+
+# Exclude directories
+exclude_dirs:
+  - '.venv'
+  - 'venv'
+  - 'build'
+  - 'dist'
+  - '*.egg-info'
+  - '__pycache__'
+  - '.mypy_cache'
+  - '.ruff_cache'
+  - '.pytest_cache'
+  - '.benchmarks'
+  - '.cursor'
+  - '.kiro'
+  - '.numba_cache'
+  - '.strategy_cache'
+  - '.vscode'
+  - '.workflows'
+  - 'data'
+  - 'tmp'
+  - 'prof'
+
+# Severity and confidence levels
+severity: MEDIUM
+confidence: MEDIUM

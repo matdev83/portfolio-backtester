@@ -8,7 +8,9 @@ from ._core.base import (
     BaseMetaStrategy,
 )
 
-from ._core import strategy_factory as strategy_factory  # Re-export without legacy alias
+from ._core import (
+    strategy_factory as strategy_factory,
+)  # Re-export without legacy alias
 from ._core import registry as registry
 from ._core.base import base as base
 

@@ -215,7 +215,9 @@ class DateNormalizerFactory:
 _date_normalizer_factory = DateNormalizerFactory()
 
 
-def normalize_date_polymorphic(date_obj: Union[str, dt.date, pd.Timestamp]) -> pd.Timestamp:
+def normalize_date_polymorphic(
+    date_obj: Union[str, dt.date, pd.Timestamp],
+) -> pd.Timestamp:
     """Convenience function for polymorphic date normalization.
 
     This function replaces isinstance-based date normalization with polymorphic
@@ -233,7 +235,9 @@ def normalize_date_polymorphic(date_obj: Union[str, dt.date, pd.Timestamp]) -> p
     return _date_normalizer_factory.normalize_date(date_obj)
 
 
-def normalize_date_to_string_key_polymorphic(date_obj: Union[str, dt.date, pd.Timestamp]) -> str:
+def normalize_date_to_string_key_polymorphic(
+    date_obj: Union[str, dt.date, pd.Timestamp],
+) -> str:
     """Convenience function for polymorphic date-to-string normalization.
 
     Args:

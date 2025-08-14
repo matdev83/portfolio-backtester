@@ -101,7 +101,10 @@ class StandardEvaluationStrategy(IEvaluationStrategy):
 
             # Calculate standard metrics
             result = calculate_metrics(
-                returns, benchmark_returns, "SPY", name="Strategy"  # Default benchmark ticker name
+                returns,
+                benchmark_returns,
+                "SPY",
+                name="Strategy",  # Default benchmark ticker name
             )
 
             # Ensure we return Dict[str, float]

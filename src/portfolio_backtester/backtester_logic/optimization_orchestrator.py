@@ -6,13 +6,17 @@ operations including parameter space conversion, optimization setup, and result 
 """
 
 import logging
-from typing import Any, Dict, List, Tuple, Optional, cast
+import time
+from typing import Any, Dict, List, Tuple, Optional
 
 import numpy as np
 import pandas as pd
 
 from ..optimization.results import OptimizationData, OptimizationResult
-from ..interfaces.attribute_accessor_interface import IAttributeAccessor, create_attribute_accessor
+from ..interfaces.attribute_accessor_interface import (
+    IAttributeAccessor,
+    create_attribute_accessor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +37,7 @@ class OptimizationOrchestrator:
         evaluation_engine: Any,
         rng: np.random.Generator,
         attribute_accessor: Optional[IAttributeAccessor] = None,
-    ):
+    ) -> None:
         """
         Initialize OptimizationOrchestrator with dependencies.
 
@@ -71,6 +75,8 @@ class OptimizationOrchestrator:
         rets_full: pd.DataFrame,
         optimizer_args: Any,
     ) -> OptimizationResult:
+        # Start timing
+        start_time = time.time()
         """
         Run optimization mode using the new OptimizationOrchestrator architecture.
 
@@ -162,7 +168,10 @@ class OptimizationOrchestrator:
             daily_index_np = daily_close_df.index.values.astype("datetime64[ns]")
 
             optimization_data = OptimizationData(
-                monthly=monthly_data, daily=daily_data, returns=rets_full, windows=windows
+                monthly=monthly_data,
+                daily=daily_data,
+                returns=rets_full,
+                windows=windows,
             )
             # Attach prepared arrays for reuse across trials/windows (runtime cache)
             optimization_data.daily_np = daily_np  # type: ignore[attr-defined]
@@ -209,19 +218,65 @@ class OptimizationOrchestrator:
                 "fresh_study": self._attribute_accessor.get_attribute(
                     optimizer_args, "fresh_study", False
                 ),
+                # GA-specific knobs (used when optimizer_type is population-based)
+                "ga_settings": {
+                    "population_size": self._attribute_accessor.get_attribute(
+                        optimizer_args, "ga_population_size", 50
+                    ),
+                    "max_generations": self._attribute_accessor.get_attribute(
+                        optimizer_args, "ga_max_generations", 10
+                    ),
+                    "mutation_rate": self._attribute_accessor.get_attribute(
+                        optimizer_args, "ga_mutation_rate", 0.1
+                    ),
+                    "crossover_rate": self._attribute_accessor.get_attribute(
+                        optimizer_args, "ga_crossover_rate", 0.8
+                    ),
+                },
+                # Deduplication settings
+                "use_persistent_cache": self._attribute_accessor.get_attribute(
+                    optimizer_args, "use_persistent_cache", False
+                ),
+                "cache_dir": self._attribute_accessor.get_attribute(
+                    optimizer_args, "cache_dir", None
+                ),
+                "cache_file": self._attribute_accessor.get_attribute(
+                    optimizer_args, "cache_file", None
+                ),
             }
 
             # Create BacktestEvaluator
-            evaluator = BacktestEvaluator(
-                metrics_to_optimize=metrics_to_optimize, is_multi_objective=is_multi_objective
-            )
+            # For population-based optimizers, disable window-level parallelism to avoid
+            # nested oversubscription (population parallelism is handled separately).
+            if optimizer_type in [
+                "genetic",
+                "particle_swarm",
+                "differential_evolution",
+            ]:
+                evaluator = BacktestEvaluator(
+                    metrics_to_optimize=metrics_to_optimize,
+                    is_multi_objective=is_multi_objective,
+                    n_jobs=1,
+                    enable_parallel_optimization=False,
+                )
+            else:
+                evaluator = BacktestEvaluator(
+                    metrics_to_optimize=metrics_to_optimize,
+                    is_multi_objective=is_multi_objective,
+                )
 
             # Create OptimizationOrchestrator using the factory
             orchestrator = create_orchestrator(
                 optimizer_type=optimizer_type,
                 parameter_generator=parameter_generator,
                 evaluator=evaluator,
-                n_jobs=self._attribute_accessor.get_attribute(optimizer_args, "n_jobs", 1),
+                n_jobs=self._attribute_accessor.get_attribute(optimizer_args, "n_jobs", -1),
+                joblib_batch_size=self._attribute_accessor.get_attribute(
+                    optimizer_args, "joblib_batch_size", None
+                ),
+                joblib_pre_dispatch=self._attribute_accessor.get_attribute(
+                    optimizer_args, "joblib_pre_dispatch", None
+                ),
                 timeout=self._attribute_accessor.get_attribute(
                     optimizer_args, "optuna_timeout_sec", None
                 ),
@@ -234,20 +289,81 @@ class OptimizationOrchestrator:
                 scenario_config=scenario_config,
                 optimization_config=optimization_config,
                 data=optimization_data,
-                backtester=strategy_backtester,
+                backtester=strategy_backtester,  # type: ignore[arg-type]
             )
 
             # The rest of this function handles running a final backtest on the
             # best parameters and storing the results. For the purpose of the
             # equivalence test, we only need the OptimizationResult object itself.
             # The calling Backtester will handle the final backtest run.
-            return cast(OptimizationResult, optimization_result)
+
+            # Log execution time with additional information
+            execution_time = time.time() - start_time
+
+            # Calculate backtest period
+            start_date = daily_data.index.min().date() if not daily_data.empty else None
+            end_date = daily_data.index.max().date() if not daily_data.empty else None
+            total_days = (end_date - start_date).days if start_date and end_date else 0
+
+            # Get parameter combinations information
+            n_trials = optimization_result.n_evaluations
+            combinations_per_minute = (
+                (n_trials / (execution_time / 60)) if execution_time > 0 else 0
+            )
+
+            logger.info(
+                f"Optimization ({optimizer_type}) execution time: {execution_time:.2f} seconds ({execution_time/60:.2f} minutes) | "
+                f"Period: {start_date} to {end_date} ({total_days} days) | "
+                f"Parameter combinations tested: {n_trials} ({combinations_per_minute:.1f} combinations/minute)"
+            )
+
+            return optimization_result
 
         except (ValueError, TypeError) as e:
+            # Log execution time even on failure
+            execution_time = time.time() - start_time
             logger.error(f"Error during optimization setup: {e}")
+
+            # Calculate backtest period if possible
+            start_date = None
+            end_date = None
+            total_days = 0
+            if "daily_data" in locals() and not daily_data.empty:
+                start_date = daily_data.index.min().date()
+                end_date = daily_data.index.max().date()
+                total_days = (end_date - start_date).days
+
+            logger.info(
+                f"Failed optimization execution time: {execution_time:.2f} seconds ({execution_time/60:.2f} minutes)"
+                + (
+                    f" | Period: {start_date} to {end_date} ({total_days} days)"
+                    if start_date and end_date
+                    else ""
+                )
+            )
             raise
         except Exception as e:
+            # Log execution time even on failure
+            execution_time = time.time() - start_time
             logger.error(f"An unexpected error occurred during optimization: {e}")
+
+            # Calculate backtest period if possible
+            start_date = None
+            end_date = None
+            total_days = 0
+            if "daily_data" in locals() and not daily_data.empty:
+                start_date = daily_data.index.min().date()
+                end_date = daily_data.index.max().date()
+                total_days = (end_date - start_date).days
+
+            logger.info(
+                f"Failed optimization execution time: {execution_time:.2f} seconds ({execution_time/60:.2f} minutes)"
+                + (
+                    f" | Period: {start_date} to {end_date} ({total_days} days)"
+                    if start_date and end_date
+                    else ""
+                )
+            )
             raise
 
     def convert_optimization_specs_to_parameter_space(
@@ -313,7 +429,10 @@ class OptimizationOrchestrator:
                     raise KeyError(
                         f"Categorical parameter '{param_name}' must have 'choices' or 'values' defined."
                     )
-                parameter_space[param_name] = {"type": "categorical", "choices": choices}
+                parameter_space[param_name] = {
+                    "type": "categorical",
+                    "choices": choices,
+                }
             elif param_type == "multi-categorical":
                 choices = spec.get("choices") or spec.get("values")
                 if not choices:
@@ -323,7 +442,10 @@ class OptimizationOrchestrator:
                     raise KeyError(
                         f"Multi-categorical parameter '{param_name}' must have 'choices' or 'values' defined."
                     )
-                parameter_space[param_name] = {"type": "multi-categorical", "values": choices}
+                parameter_space[param_name] = {
+                    "type": "multi-categorical",
+                    "values": choices,
+                }
 
         # Handle modern format: strategy.params.param_name.optimization
         strategy_config_obj: Any = scenario_config.get("strategy", {})
@@ -349,183 +471,64 @@ class OptimizationOrchestrator:
                         if "range" in opt_config:
                             # Handle range-based optimization
                             range_values = opt_config["range"]
-                            if len(range_values) == 2:
-                                min_val, max_val = range_values
-                                step = opt_config.get("step", 1)
-                                exclude_values = opt_config.get("exclude", [])
+                            if not isinstance(range_values, list) or len(range_values) < 2:
+                                logger.error(
+                                    f"Invalid range for parameter '{param_name}': {range_values}"
+                                )
+                                continue
 
-                                # Determine parameter type
-                                if (
-                                    isinstance(min_val, int)
-                                    and isinstance(max_val, int)
-                                    and isinstance(step, int)
-                                ):
-                                    param_type = "int"
-                                else:
-                                    param_type = "float"
+                            # Determine parameter type from range values
+                            if all(isinstance(v, int) for v in range_values):
+                                param_type = "int"
+                            else:
+                                param_type = "float"
 
-                                # Generate the parameter space
-                                if exclude_values:
-                                    # If there are excluded values, generate choices instead of range
-                                    if param_type == "int":
-                                        choices = [
-                                            x
-                                            for x in range(min_val, max_val + 1, step)
-                                            if x not in exclude_values
-                                        ]
-                                    else:
-                                        # For float ranges with exclude, we need to be more careful
-                                        choices = []
-                                        current = min_val
-                                        while current <= max_val:
-                                            if current not in exclude_values:
-                                                choices.append(current)
-                                            current += step
-
-                                    parameter_space[param_name] = {
-                                        "type": "categorical",
-                                        "choices": choices,
-                                    }
-                                else:
-                                    # No excluded values, use range
-                                    parameter_space[param_name] = {
-                                        "type": param_type,
-                                        "low": min_val,
-                                        "high": max_val,
-                                        "step": step,
-                                    }
-                        elif "choices" in opt_config:
-                            # Handle categorical optimization
+                            # Create parameter space entry
                             parameter_space[param_name] = {
-                                "type": "categorical",
-                                "choices": opt_config["choices"],
+                                "type": param_type,
+                                "low": range_values[0],
+                                "high": range_values[1],
+                                "step": opt_config.get("step", None),
                             }
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Converted optimization specs to parameter space: {parameter_space}")
+                        elif "values" in opt_config:
+                            # Handle values-based optimization (categorical)
+                            values = opt_config["values"]
+                            if not isinstance(values, list):
+                                logger.error(
+                                    f"Invalid values for parameter '{param_name}': {values}"
+                                )
+                                continue
+
+                            # Determine if multi-categorical or categorical
+                            if opt_config.get("multi_select", False):
+                                parameter_space[param_name] = {
+                                    "type": "multi-categorical",
+                                    "values": values,
+                                }
+                            else:
+                                parameter_space[param_name] = {
+                                    "type": "categorical",
+                                    "choices": values,
+                                }
+
+                        # Handle exclude list (for both range and values)
+                        exclude = opt_config.get("exclude", [])
+                        if exclude:
+                            parameter_space[param_name]["exclude"] = exclude
 
         return parameter_space
 
-    def validate_optimization_config(
-        self, scenario_config: Dict[str, Any]
-    ) -> Tuple[bool, List[str]]:
-        """
-        Validate optimization configuration for a scenario.
-
-        Args:
-            scenario_config: Scenario configuration to validate
-
-        Returns:
-            Tuple of (is_valid, error_messages)
-        """
+    def validate_optimization_config(self, scenario_config: Dict[str, Any]) -> Tuple[bool, List[str]]:
+        """Validate optimization configuration."""
         errors = []
+        if not scenario_config.get("optimize"):
+            errors.append("Missing 'optimize' section in scenario configuration.")
+            return False, errors
 
-        # Check for optimization specifications
-        has_legacy_optimize = "optimize" in scenario_config and scenario_config["optimize"]
-        has_modern_optimize = False
-
-        strategy_config = scenario_config.get("strategy", {})
-        if isinstance(strategy_config, dict):
-            params_config = strategy_config.get("params", {})
-            if isinstance(params_config, dict):
-                for param_config in params_config.values():
-                    if isinstance(param_config, dict) and "optimization" in param_config:
-                        has_modern_optimize = True
-                        break
-
-        if not has_legacy_optimize and not has_modern_optimize:
-            errors.append("No optimization parameters found in scenario configuration")
-
-        # Validate parameter space can be created
-        try:
-            parameter_space = self.convert_optimization_specs_to_parameter_space(scenario_config)
-            if not parameter_space:
-                errors.append("Parameter space is empty after conversion")
-        except Exception as e:
-            errors.append(f"Error converting optimization specs: {e}")
-
-        # Check for required strategy parameters
-        if "strategy" not in scenario_config:
-            errors.append("Strategy specification is missing")
-
-        if "strategy_params" not in scenario_config:
-            errors.append("Strategy parameters are missing")
-
+        strategy_spec = scenario_config.get("strategy")
+        if isinstance(strategy_spec, dict):
+            if not strategy_spec.get("params"):
+                errors.append("Missing 'params' in strategy specification.")
+        
         return len(errors) == 0, errors
-
-    def _evaluate_constraints(
-        self, trial_params: Dict[str, Any], scenario_config: Dict[str, Any]
-    ) -> str:
-        """
-        Evaluate parameter constraints for optimization results.
-
-        Args:
-            trial_params: Dictionary of optimized parameters
-            scenario_config: Scenario configuration containing constraints
-
-        Returns:
-            String indicating constraint status: "passed", "violated", or "not_configured"
-        """
-        # Check if constraints are configured
-        constraints_config = scenario_config.get("constraints", {})
-        if not constraints_config:
-            return "not_configured"
-
-        # Evaluate parameter constraints
-        violations = []
-
-        # Check parameter bounds constraints
-        param_constraints = constraints_config.get("parameters", {})
-        for param_name, constraint in param_constraints.items():
-            if param_name in trial_params:
-                param_value = trial_params[param_name]
-
-                # Check minimum constraint
-                if "min" in constraint and param_value < constraint["min"]:
-                    violations.append(
-                        f"{param_name} ({param_value}) below minimum ({constraint['min']})"
-                    )
-
-                # Check maximum constraint
-                if "max" in constraint and param_value > constraint["max"]:
-                    violations.append(
-                        f"{param_name} ({param_value}) above maximum ({constraint['max']})"
-                    )
-
-                # Check allowed values constraint
-                if (
-                    "allowed_values" in constraint
-                    and param_value not in constraint["allowed_values"]
-                ):
-                    violations.append(
-                        f"{param_name} ({param_value}) not in allowed values ({constraint['allowed_values']})"
-                    )
-
-        # Check parameter relationship constraints
-        relationship_constraints = constraints_config.get("relationships", [])
-        for relationship in relationship_constraints:
-            constraint_type = relationship.get("type")
-
-            if constraint_type == "greater_than":
-                param1 = relationship.get("param1")
-                param2 = relationship.get("param2")
-                if param1 in trial_params and param2 in trial_params:
-                    if trial_params[param1] <= trial_params[param2]:
-                        violations.append(
-                            f"{param1} ({trial_params[param1]}) must be greater than {param2} ({trial_params[param2]})"
-                        )
-
-            elif constraint_type == "ratio_bounds":
-                param1 = relationship.get("param1")
-                param2 = relationship.get("param2")
-                min_ratio = relationship.get("min_ratio", 0)
-                max_ratio = relationship.get("max_ratio", float("inf"))
-
-                if param1 in trial_params and param2 in trial_params and trial_params[param2] != 0:
-                    ratio = trial_params[param1] / trial_params[param2]
-                    if ratio < min_ratio or ratio > max_ratio:
-                        violations.append(
-                            f"Ratio {param1}/{param2} ({ratio:.2f}) outside bounds [{min_ratio}, {max_ratio}]"
-                        )
-
-        return "violated" if violations else "passed"

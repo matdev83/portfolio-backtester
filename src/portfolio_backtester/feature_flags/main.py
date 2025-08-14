@@ -11,7 +11,10 @@ from contextlib import contextmanager
 
 from .flag_registry import FlagRegistry
 from .flag_context_managers import FlagContextManagers
-from ..interfaces.attribute_accessor_interface import IAttributeAccessor, create_attribute_accessor
+from ..interfaces.attribute_accessor_interface import (
+    IAttributeAccessor,
+    create_attribute_accessor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +49,8 @@ class FeatureFlags:
         """
         if FlagRegistry.is_valid_flag(flag_name):
             method = cast(
-                Callable[[], bool], cls._attribute_accessor.get_attribute(FlagRegistry, flag_name)
+                Callable[[], bool],
+                cls._attribute_accessor.get_attribute(FlagRegistry, flag_name),
             )
             return method()
 

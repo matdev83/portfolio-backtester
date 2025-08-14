@@ -154,7 +154,7 @@ class RegistryLister:
         """
         return self.filter_components(lambda comp: isinstance(comp, component_type))
 
-    def filter_by_metadata(self, **metadata_criteria) -> List[str]:
+    def filter_by_metadata(self, **metadata_criteria: Any) -> List[str]:
         """Filter components by metadata criteria.
 
         Args:

@@ -89,7 +89,8 @@ def validate_price_data_sufficiency(
 
 
 def normalize_price_series_to_dataframe(
-    price_series: Union[pd.Series, pd.DataFrame], target_columns: Optional[pd.Index] = None
+    price_series: Union[pd.Series, pd.DataFrame],
+    target_columns: Optional[pd.Index] = None,
 ) -> pd.DataFrame:
     """
     Normalize price data to DataFrame format with consistent structure.

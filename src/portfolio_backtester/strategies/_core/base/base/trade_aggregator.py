@@ -154,7 +154,11 @@ class TradeAggregator:
             tv = float(trade.trade_value)
             tc = float(trade.transaction_cost)
         except Exception as exc:
-            logger.error("Rejecting trade due to non-numeric monetary fields: %s (%s)", trade, exc)
+            logger.error(
+                "Rejecting trade due to non-numeric monetary fields: %s (%s)",
+                trade,
+                exc,
+            )
             raise
 
         # Validate trade value using validator interface

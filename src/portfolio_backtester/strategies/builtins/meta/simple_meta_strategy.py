@@ -9,8 +9,10 @@ class SimpleMetaStrategy(BaseMetaStrategy):
     """Simple meta strategy that allocates capital using fixed percentage weights."""
 
     def __init__(
-        self, strategy_params: Dict[str, Any], global_config: Dict[str, Any] | None = None
-    ):
+        self,
+        strategy_params: Dict[str, Any],
+        global_config: Dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(strategy_params, global_config=global_config or {})
         defaults = {"min_allocation": 0.05, "rebalance_threshold": 0.05}
         for key, value in defaults.items():

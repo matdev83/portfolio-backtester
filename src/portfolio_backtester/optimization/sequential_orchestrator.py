@@ -8,10 +8,10 @@ from .results import OptimizationResult
 if TYPE_CHECKING:
     from .evaluator import BacktestEvaluator
     from .parameter_generator import ParameterGenerator
-    from portfolio_backtester.backtesting.strategy_backtester import (
-        StrategyBacktester,
-    )
     from .results import OptimizationData
+    from portfolio_backtester.backtester_logic.backtester_facade import (
+        Backtester as BacktesterFacade,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class SequentialOrchestrator(OptimizationOrchestrator):
         scenario_config: Dict[str, Any],
         optimization_config: Dict[str, Any],
         data: "OptimizationData",
-        backtester: "StrategyBacktester",
+        backtester: "BacktesterFacade",  # Changed to match the interface
     ) -> "OptimizationResult":
         logger.info("Starting sequential optimization process")
 
@@ -59,8 +59,24 @@ class SequentialOrchestrator(OptimizationOrchestrator):
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(f"Evaluating parameters: {parameters}")
 
+                # Type cast to StrategyBacktester since the evaluator expects it
+                # This is safe because BacktesterFacade is a supertype of StrategyBacktester
+                # and we're only using methods that are available in StrategyBacktester
+                from portfolio_backtester.backtesting.strategy_backtester import (
+                    StrategyBacktester,
+                )
+
+                strategy_backtester = (
+                    backtester
+                    if isinstance(backtester, StrategyBacktester)
+                    else getattr(backtester, "strategy_backtester", backtester)
+                )
+
                 evaluation_result = self.evaluator.evaluate_parameters(
-                    parameters, scenario_config, data, backtester
+                    parameters,
+                    scenario_config,
+                    data,
+                    strategy_backtester,  # type: ignore[arg-type]
                 )
 
                 self.progress_tracker.update_progress(evaluation_result.objective_value)

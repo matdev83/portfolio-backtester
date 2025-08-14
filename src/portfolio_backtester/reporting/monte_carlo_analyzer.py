@@ -6,7 +6,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from ..optimization.results import OptimizationResult
-from ..interfaces.attribute_accessor_interface import IAttributeAccessor, create_attribute_accessor
+from ..interfaces.attribute_accessor_interface import (
+    IAttributeAccessor,
+    create_attribute_accessor,
+)
 
 from .parameter_analysis import _plot_parameter_impact_analysis
 
@@ -23,50 +26,48 @@ def plot_stability_measures(
     """
     Create a Monte Carlo-style visualization showing P&L curves from all optimization trials.
 
-    Args:
-        scenario_name: Name of the scenario
-        optimization_result: The result object from the optimization run
-        optimal_returns: Returns series from the final optimized strategy
+    Safe by design: if insufficient history or incompatible trial objects, it logs and skips without error.
     """
     logger = backtester.logger
 
     try:
-        optimization_history = optimization_result.optimization_history
+        optimization_history = getattr(optimization_result, "optimization_history", None)
         if not optimization_history or len(optimization_history) < 2:
-            logger.warning(
-                f"Only {len(optimization_history)} completed trials found. Need at least 2 for meaningful visualization."
+            logger.info(
+                "Skipping trial P&L visualization: insufficient optimization history (need >=2)."
             )
             return
 
         trial_returns_data = []
         for trial in optimization_history:
-            if "metrics" in trial and "trial_returns" in trial["metrics"]:
-                try:
-                    returns_dict = trial["metrics"]["trial_returns"]
-                    dates = pd.to_datetime(returns_dict["dates"])
-                    returns = pd.Series(returns_dict["returns"], index=dates)
+            # Expect dict-like entries created by our orchestrators; ignore raw FrozenTrial objects
+            if not isinstance(trial, dict):
+                continue
+            metrics = trial.get("metrics") or {}
+            returns_dict = metrics.get("trial_returns")
+            if not returns_dict:
+                continue
+            try:
+                dates = pd.to_datetime(returns_dict["dates"])  # expect list-like structure
+                returns = pd.Series(returns_dict["returns"], index=dates)
+            except Exception:
+                continue
 
-                    trial_value = trial["objective_value"]
+            trial_value = trial.get("objective_value")
+            if trial_value is None:
+                continue
 
-                    trial_returns_data.append(
-                        {
-                            "trial_number": trial["evaluation"],
-                            "returns": returns,
-                            "params": trial["parameters"],
-                            "value": trial_value,
-                        }
-                    )
-                except Exception as e:
-                    if logger.isEnabledFor(logging.DEBUG):
-                        logger.debug(
-                            f"Failed to extract returns for trial {trial['evaluation']}: {e}"
-                        )
-                    continue
+            trial_returns_data.append(
+                {
+                    "trial_number": trial.get("evaluation"),
+                    "returns": returns,
+                    "params": trial.get("parameters", {}),
+                    "value": float(trial_value),
+                }
+            )
 
         if len(trial_returns_data) < 2:
-            logger.warning(
-                f"Only {len(trial_returns_data)} trials have stored returns data. Cannot create visualization."
-            )
+            logger.info("Skipping trial P&L visualization: <2 trials with stored returns data.")
             return
 
         if logger.isEnabledFor(logging.DEBUG):
@@ -95,7 +96,7 @@ def plot_stability_measures(
                 zorder=1,
             )
 
-        if optimal_returns is not None and not optimal_returns.empty:
+        if isinstance(optimal_returns, pd.Series) and not optimal_returns.empty:
             optimal_cumulative: pd.Series = (1 + optimal_returns).cumprod()
             ax.plot(
                 optimal_cumulative.index,
@@ -149,7 +150,9 @@ def plot_stability_measures(
                     zorder=2,
                 )
         ax.set_title(
-            f"Optimization Trial P&L Curves: {scenario_name}", fontsize=16, fontweight="bold"
+            f"Optimization Trial P&L Curves: {scenario_name}",
+            fontsize=16,
+            fontweight="bold",
         )
         ax.set_xlabel("Date", fontsize=12)
         ax.set_ylabel("Cumulative Returns", fontsize=12)
@@ -205,7 +208,9 @@ Std Dev of Values: {np.std(trial_values):.3f}"""
 
     except Exception as e:
         logger.error(f"Error creating trial P&L visualization: {e}")
-        import traceback
+        try:
+            import traceback
 
-        if logger.isEnabledFor(logging.DEBUG):
             logger.debug(traceback.format_exc())
+        except Exception:
+            pass

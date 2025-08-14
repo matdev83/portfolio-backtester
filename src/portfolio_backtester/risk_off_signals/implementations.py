@@ -122,7 +122,10 @@ class DummyRiskOffSignalGenerator(IRiskOffSignalGenerator):
         # If no windows specified, use some default test windows
         if not windows_config:
             return [
-                (pd.Timestamp("2008-09-01"), pd.Timestamp("2009-03-31")),  # Financial crisis
+                (
+                    pd.Timestamp("2008-09-01"),
+                    pd.Timestamp("2009-03-31"),
+                ),  # Financial crisis
                 (pd.Timestamp("2020-02-15"), pd.Timestamp("2020-04-30")),  # COVID crash
             ]
 
@@ -182,16 +185,25 @@ class DummyRiskOffSignalGenerator(IRiskOffSignalGenerator):
         # Validate default_risk_state
         default_state = config.get("default_risk_state", "on")
         if default_state not in ["on", "off"]:
-            return (False, f"Invalid default_risk_state: {default_state}. Must be 'on' or 'off'")
+            return (
+                False,
+                f"Invalid default_risk_state: {default_state}. Must be 'on' or 'off'",
+            )
 
         # Validate risk_off_windows format
         windows = config.get("risk_off_windows", [])
         if not isinstance(windows, list):
-            return (False, "risk_off_windows must be a list of (start_date, end_date) tuples")
+            return (
+                False,
+                "risk_off_windows must be a list of (start_date, end_date) tuples",
+            )
 
         for i, window in enumerate(windows):
             if not isinstance(window, (list, tuple)) or len(window) != 2:
-                return (False, f"Window {i} must be a (start_date, end_date) tuple, got: {window}")
+                return (
+                    False,
+                    f"Window {i} must be a (start_date, end_date) tuple, got: {window}",
+                )
 
             try:
                 start_date = pd.Timestamp(window[0])

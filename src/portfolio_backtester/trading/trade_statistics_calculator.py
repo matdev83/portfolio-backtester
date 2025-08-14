@@ -19,7 +19,10 @@ class TradeStatisticsCalculator:
     """
 
     def calculate_statistics(
-        self, completed_trades: List[Trade], initial_portfolio_value: float, allocation_mode: str
+        self,
+        completed_trades: List[Trade],
+        initial_portfolio_value: float,
+        allocation_mode: str,
     ) -> Dict[str, Any]:
         """
         Calculate comprehensive trade statistics.
@@ -55,7 +58,11 @@ class TradeStatisticsCalculator:
         combined_stats = {}
 
         # Add directional statistics with prefixes
-        for direction, stats in [("all", all_stats), ("long", long_stats), ("short", short_stats)]:
+        for direction, stats in [
+            ("all", all_stats),
+            ("long", long_stats),
+            ("short", short_stats),
+        ]:
             for key, value in stats.items():
                 combined_stats[f"{direction}_{key}"] = value
 

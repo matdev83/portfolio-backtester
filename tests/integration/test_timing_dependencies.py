@@ -152,9 +152,9 @@ class TestTimingDependencyInversion:
         end_date = pd.Timestamp("2023-12-31")
         available_dates = pd.date_range(start_date, end_date, freq="B")  # Business days
 
-        dates = adaptive.get_rebalance_dates(start_date, end_date, available_dates.tolist(), None)
+        dates = adaptive.get_rebalance_dates(start_date, end_date, available_dates, None)
 
         # Should have generated some rebalance dates
         assert len(dates) > 0
-        assert isinstance(dates, list)
+        assert isinstance(dates, pd.DatetimeIndex)
         assert all(isinstance(date, pd.Timestamp) for date in dates)

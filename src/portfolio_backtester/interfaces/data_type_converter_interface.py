@@ -211,7 +211,7 @@ class ISeriesConverter(ABC):
 class SeriesConverter(ISeriesConverter):
     """Standard implementation of Series conversion."""
 
-    def __init__(self, converter: IDataTypeConverter):
+    def __init__(self, converter: IDataTypeConverter) -> None:
         """
         Initialize with data type converter.
 
@@ -278,9 +278,9 @@ class IArrayConverter(ABC):
 
 
 class ArrayConverter(IArrayConverter):
-    """Standard implementation of array conversion."""
+    """Standard implementation of Array conversion."""
 
-    def __init__(self, converter: IDataTypeConverter):
+    def __init__(self, converter: IDataTypeConverter) -> None:
         """
         Initialize with data type converter.
 
@@ -353,7 +353,7 @@ class IDataFrameConverter(ABC):
 class DataFrameConverter(IDataFrameConverter):
     """Standard implementation of DataFrame conversion."""
 
-    def __init__(self, converter: IDataTypeConverter):
+    def __init__(self, converter: IDataTypeConverter) -> None:
         """
         Initialize with data type converter.
 
@@ -434,14 +434,14 @@ class ISignalDataTypeProcessor(ABC):
 
 
 class SignalDataTypeProcessor(ISignalDataTypeProcessor):
-    """Standard implementation of signal data type processing."""
+    """Signal data type processor implementation."""
 
-    def __init__(self):
-        """Initialize processor with standard converter."""
-        self.converter = StandardDataTypeConverter()
-        self.dataframe_converter = DataFrameConverter(self.converter)
-        self.series_converter = SeriesConverter(self.converter)
-        self.array_converter = ArrayConverter(self.converter)
+    def __init__(self) -> None:
+        """Initialize with standard converters."""
+        converter = StandardDataTypeConverter()
+        self.series_converter = SeriesConverter(converter)
+        self.array_converter = ArrayConverter(converter)
+        self.dataframe_converter = DataFrameConverter(converter)
 
     def process_close_prices_extraction(
         self, extraction_result: Any, field_name: str = "Close"
@@ -513,4 +513,10 @@ class DataTypeConverterFactory:
         dataframe_converter = DataFrameConverter(converter)
         signal_processor = SignalDataTypeProcessor()
 
-        return converter, series_converter, array_converter, dataframe_converter, signal_processor
+        return (
+            converter,
+            series_converter,
+            array_converter,
+            dataframe_converter,
+            signal_processor,
+        )

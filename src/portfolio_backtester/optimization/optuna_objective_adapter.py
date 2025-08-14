@@ -78,7 +78,7 @@ class OptunaObjectiveAdapter:
                 metrics_to_optimize=metrics_to_optimize,
                 is_multi_objective=is_multi_objective,
                 n_jobs=self.n_jobs,
-                enable_parallel_optimization=(self.n_jobs and self.n_jobs > 1),
+                enable_parallel_optimization=(self.n_jobs and self.n_jobs > 1) is True,
             )
         backtester = local.backtester
         evaluator = local.evaluator

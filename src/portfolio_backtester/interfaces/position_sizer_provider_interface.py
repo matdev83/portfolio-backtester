@@ -144,7 +144,10 @@ class ConfigBasedPositionSizerProvider(IPositionSizerProvider):
         # Check if sizer exists
         if sizer_name not in SIZER_REGISTRY and sizer_name != "direct":
             valid_sizers = list(SIZER_REGISTRY.keys()) + ["direct"]
-            return (False, f"Invalid position sizer '{sizer_name}'. Valid options: {valid_sizers}")
+            return (
+                False,
+                f"Invalid position sizer '{sizer_name}'. Valid options: {valid_sizers}",
+            )
 
         # Validate sizer-specific parameters
         if sizer_name == "rolling_downside_volatility":
@@ -251,7 +254,9 @@ class PositionSizerProviderFactory:
             raise ValueError(f"Unknown provider type: {provider_type}")
 
     @staticmethod
-    def create_config_provider(strategy_config: Dict[str, Any]) -> ConfigBasedPositionSizerProvider:
+    def create_config_provider(
+        strategy_config: Dict[str, Any],
+    ) -> ConfigBasedPositionSizerProvider:
         """Create a configuration-based position sizer provider."""
         return ConfigBasedPositionSizerProvider(strategy_config)
 

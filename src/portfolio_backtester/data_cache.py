@@ -83,10 +83,6 @@ class DataPreprocessingCache:
         """
         return self._hasher.get_window_hash(data, window_start, window_end)
 
-    def _cleanup_cache_if_needed(self):
-        """Remove oldest entries if cache exceeds max size."""
-        self._cache_manager.cleanup_cache_if_needed()
-
     def get_cached_returns(self, data: pd.DataFrame, identifier: str = "default") -> pd.DataFrame:
         """
         Get cached return calculations or compute and cache them.
@@ -207,7 +203,10 @@ class DataPreprocessingCache:
         return window_returns
 
     def get_window_returns_by_dates(
-        self, daily_data: pd.DataFrame, window_start: pd.Timestamp, window_end: pd.Timestamp
+        self,
+        daily_data: pd.DataFrame,
+        window_start: pd.Timestamp,
+        window_end: pd.Timestamp,
     ) -> Optional[pd.DataFrame]:
         """
         Get cached window returns by date range.
@@ -242,29 +241,6 @@ class DataPreprocessingCache:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Data cache cleared")
-
-
-# Global cache instance
-_global_cache: Optional[DataPreprocessingCache] = None
-
-
-def get_global_cache() -> DataPreprocessingCache:
-    """Get the global data preprocessing cache instance.
-
-    Returns:
-        DataPreprocessingCache: The singleton cache instance
-    """
-    global _global_cache
-    if _global_cache is None:
-        _global_cache = DataPreprocessingCache()
-    return _global_cache
-
-
-def clear_global_cache():
-    """Clear the global data preprocessing cache."""
-    global _global_cache
-    if _global_cache is not None:
-        _global_cache.clear_cache()
 
 
 def get_cache_stats() -> Dict[str, Any]:

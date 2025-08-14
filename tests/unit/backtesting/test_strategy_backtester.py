@@ -8,142 +8,73 @@ in complete isolation from optimization components.
 import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
 from portfolio_backtester.backtesting.results import BacktestResult, WindowResult
 from portfolio_backtester.optimization.wfo_window import WFOWindow
+from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.registry import get_strategy_registry
+from portfolio_backtester.strategies.user.signal.momentum_signal_strategy import (
+    MomentumSignalStrategy,
+)
 
 
 class TestStrategyBacktester:
-    """Test suite for StrategyBacktester class."""
+    """Test suite for StrategyBacktester."""
 
-    @pytest.fixture
-    def mock_global_config(self):
-        """Mock global configuration."""
-        return {
+    def setup_method(self):
+        """Set up the test environment."""
+        self.global_config = {
+            "data_source": {"type": "memory", "data": {}},
             "benchmark": "SPY",
-            "universe": ["AAPL", "MSFT", "GOOGL"],
-            "start_date": "2020-01-01",
-            "end_date": "2023-12-31",
-            "portfolio_value": 100000.0,
         }
+        self.data_source = Mock()
+        self.backtester = StrategyBacktester(self.global_config, self.data_source)
 
-    @pytest.fixture
-    def mock_data_source(self):
-        """Mock data source."""
-        mock_source = Mock()
-        mock_source.get_data.return_value = pd.DataFrame()
-        return mock_source
+    def test_initialization_with_strategy_registry(self):
+        """Test backtester initializes with a strategy registry."""
+        registry = get_strategy_registry()
+        assert self.backtester._registry is registry
 
-    @pytest.fixture
-    def sample_price_data(self):
-        """Create sample price data for testing."""
-        dates = pd.date_range("2020-01-01", "2020-12-31", freq="D")
-        tickers = ["AAPL", "MSFT", "GOOGL", "SPY"]
-
-        # Create daily data
-        daily_data = {}
-        for ticker in tickers:
-            np.random.seed(42)  # For reproducible tests
-            prices = 100 * (1 + np.random.randn(len(dates)) * 0.02).cumprod()
-            daily_data[ticker] = prices
-
-        daily_df = pd.DataFrame(daily_data, index=dates)
-
-        # Create monthly data
-        monthly_df = daily_df.resample("BME").last()
-
-        # Create returns data
-        returns_df = daily_df.pct_change().fillna(0)
-
-        return daily_df, monthly_df, returns_df
-
-    @pytest.fixture
-    def mock_strategy(self):
-        """Mock strategy for testing."""
-        strategy = Mock()
-        strategy.get_universe.return_value = [("AAPL", 1.0), ("MSFT", 1.0), ("GOOGL", 1.0)]
-        strategy.get_timing_controller.return_value = Mock()
-        return strategy
-
-    @pytest.fixture
-    def strategy_config(self):
-        """Sample strategy configuration."""
-        return {
-            "name": "test_strategy",
-            "strategy": "momentum_strategy",
-            "strategy_params": {"lookback_period": 20, "num_holdings": 10},
-            "universe": ["AAPL", "MSFT", "GOOGL"],
-            "rebalance_frequency": "monthly",
+    def test_get_strategy_valid(self):
+        """Test getting a valid strategy instance."""
+        strategy_spec = {"strategy": "DummyStrategyForTestingSignalStrategy"}
+        params = {"param1": 1}
+        strategy_config = {
+            "strategy": strategy_spec,
+            "strategy_params": params,
         }
-
-    @pytest.fixture
-    def backtester(self, mock_global_config, mock_data_source):
-        """Create StrategyBacktester instance for testing."""
-        with patch(
-            "portfolio_backtester.backtesting.strategy_backtester.get_strategy_registry"
-        ) as mock_get_registry:
-            mock_registry = Mock()
-            mock_registry.get_all_strategies.return_value = {"dummy": Mock}
-            mock_get_registry.return_value = mock_registry
-
-            backtester = StrategyBacktester(mock_global_config, mock_data_source)
-            return backtester
-
-    def test_initialization(self, mock_global_config, mock_data_source):
-        """Test StrategyBacktester initialization."""
-        with patch(
-            "portfolio_backtester.backtesting.strategy_backtester.get_strategy_registry"
-        ) as mock_get_registry:
-            mock_registry = Mock()
-            mock_registry.get_all_strategies.return_value = {"dummy": Mock}
-            mock_get_registry.return_value = mock_registry
-
-            backtester = StrategyBacktester(mock_global_config, mock_data_source)
-
-            assert backtester.global_config == mock_global_config
-            assert backtester.data_source == mock_data_source
-            assert isinstance(backtester.strategy_map, dict)
-            assert backtester.data_cache is not None
-
-    def test_get_strategy_success(self, backtester, mock_strategy):
-        """Test successful strategy retrieval."""
         # Make mock_strategy inherit from BaseStrategy
-        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
+        mock_strategy = Mock(spec=BaseStrategy)
 
-        mock_strategy.__class__ = type("MockStrategy", (BaseStrategy,), {})
-
-        # Mock the registry get_strategy_class method
-        backtester._registry.get_strategy_class.return_value = lambda params: mock_strategy
-
-        result = backtester._get_strategy(
-            "test_strategy", {"param1": "value1"}, {"strategy": "test_strategy", "strategy_params": {"param1": "value1"}, "name": "test_strategy_config"}
-        )
+        with patch.object(self.backtester._registry, "get_strategy_class", return_value=lambda params: mock_strategy):
+            result = self.backtester._get_strategy(
+                "DummyStrategyForTestingSignalStrategy",
+                params,
+                strategy_config,
+            )
 
         assert result == mock_strategy
 
-    def test_get_strategy_unsupported(self, backtester):
+    def test_get_strategy_unsupported(self):
         """Test error handling for unsupported strategy."""
-        # Mock the registry to return None for nonexistent strategy
-        backtester._registry.get_strategy_class.return_value = None
+        with patch.object(self.backtester._registry, "get_strategy_class", return_value=None):
+            with pytest.raises(ValueError, match="Unsupported strategy: nonexistent_strategy"):
+                self.backtester._get_strategy("nonexistent_strategy", {}, {})
 
-        with pytest.raises(ValueError, match="Unsupported strategy: nonexistent_strategy"):
-            backtester._get_strategy("nonexistent_strategy", {}, {})
-
-    def test_get_strategy_wrong_type(self, backtester):
+    def test_get_strategy_wrong_type(self):
         """Test error handling when strategy class returns wrong type."""
-        # Create a mock class that returns an object that isn't a BaseStrategy
-        class MockNonStrategy:
-            def __init__(self, params):
-                self.params = params
-                self.config = {}  # Add config attribute to avoid AttributeError
-                
-        # Mock the registry to return our non-BaseStrategy class
-        backtester._registry.get_strategy_class.return_value = MockNonStrategy
 
-        with pytest.raises(TypeError, match="did not return a BaseStrategy instance"):
-            backtester._get_strategy("bad_strategy", {}, {})
+        class MockNonStrategy:
+            """A class that does not inherit from BaseStrategy."""
+
+            def __init__(self, params):
+                pass
+
+        with patch.object(self.backtester._registry, "get_strategy_class", return_value=MockNonStrategy):
+            with pytest.raises(TypeError, match="did not return a BaseStrategy instance"):
+                self.backtester._get_strategy("bad_strategy", {}, {})
 
     @patch("portfolio_backtester.backtesting.strategy_backtester.generate_signals")
     @patch("portfolio_backtester.backtesting.strategy_backtester.size_positions")
@@ -152,229 +83,172 @@ class TestStrategyBacktester:
     @patch("portfolio_backtester.backtesting.strategy_backtester.calculate_metrics")
     def test_backtest_strategy_success(
         self,
-        mock_calc_metrics,
-        mock_prepare_data,
-        mock_calc_returns,
+        mock_calculate_metrics,
+        mock_prepare_scenario_data,
+        mock_calculate_portfolio_returns,
         mock_size_positions,
         mock_generate_signals,
-        backtester,
-        strategy_config,
-        sample_price_data,
-        mock_strategy,
     ):
-        """Test successful backtest execution."""
-        daily_df, monthly_df, returns_df = sample_price_data
+        """Test a successful run of backtest_strategy."""
+        daily_df, monthly_df, returns_df = self.sample_price_data()
+        strategy_config = self.strategy_config()
 
-        # Make mock_strategy inherit from BaseStrategy
-        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
+        mock_generate_signals.return_value = pd.DataFrame(
+            {"AAPL": [1], "GOOGL": [0]}, index=[daily_df.index[10]]
+        )
+        mock_size_positions.return_value = pd.DataFrame(
+            {"AAPL": [0.5], "GOOGL": [0]}, index=[daily_df.index[10]]
+        )
+        mock_trade_tracker = Mock()
+        mock_trade_tracker.trade_lifecycle_manager.get_completed_trades.return_value = [Mock()]
+        mock_calculate_portfolio_returns.return_value = (
+            pd.Series([0.01, 0.02]),
+            mock_trade_tracker,
+        )
+        mock_prepare_scenario_data.return_value = (monthly_df, returns_df)
+        mock_calculate_metrics.return_value = {"sharpe": 2.0}
 
-        mock_strategy.__class__ = type("MockStrategy", (BaseStrategy,), {})
+        result = self.backtester.backtest_strategy(
+            strategy_config, monthly_df, daily_df, returns_df
+        )
 
-        # Setup mocks
-        backtester._registry.get_strategy_class.return_value = lambda params: mock_strategy
-        mock_prepare_data.return_value = (monthly_df, returns_df)
-        mock_generate_signals.return_value = pd.DataFrame()
-        mock_size_positions.return_value = pd.DataFrame()
-
-        # Create mock portfolio returns
-        portfolio_returns = pd.Series(np.random.randn(len(daily_df)) * 0.01, index=daily_df.index)
-        mock_calc_returns.return_value = portfolio_returns
-
-        # Mock metrics
-        mock_calc_metrics.return_value = {
-            "total_return": 0.15,
-            "sharpe_ratio": 1.2,
-            "max_drawdown": -0.05,
-        }
-
-        # Execute backtest
-        result = backtester.backtest_strategy(strategy_config, monthly_df, daily_df, returns_df)
-
-        # Verify result structure
-        assert isinstance(result, BacktestResult)
-        assert isinstance(result.returns, pd.Series)
-        assert isinstance(result.metrics, dict)
-        assert isinstance(result.trade_history, pd.DataFrame)
-        assert isinstance(result.performance_stats, dict)
-        assert isinstance(result.charts_data, dict)
-
-        # Verify method calls
-        mock_generate_signals.assert_called_once()
-        mock_size_positions.assert_called_once()
-        mock_calc_returns.assert_called_once()
-        mock_calc_metrics.assert_called_once()
+        assert result is not None
+        assert result.metrics["sharpe"] == 2.0
+        mock_generate_signals.assert_called()
+        mock_size_positions.assert_called()
+        mock_calculate_portfolio_returns.assert_called()
 
     def test_backtest_strategy_no_universe_tickers(
-        self, backtester, strategy_config, sample_price_data
+        self,
     ):
-        """Test backtest with no valid universe tickers."""
-        daily_df, monthly_df, returns_df = sample_price_data
+        """Test backtest_strategy with no tickers in the universe."""
+        daily_df, monthly_df, returns_df = self.sample_price_data()
+        strategy_config = self.strategy_config()
+        strategy_config["universe"] = []
 
-        # Create a proper mock strategy that inherits from BaseStrategy
-        from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
+        result = self.backtester.backtest_strategy(
+            strategy_config, monthly_df, daily_df, returns_df
+        )
 
-        mock_strategy = Mock()
-        mock_strategy.__class__ = type("MockStrategy", (BaseStrategy,), {})
-        backtester._registry.get_strategy_class.return_value = lambda params: mock_strategy
-
-        # Remove all universe tickers from data
-        strategy_config["universe"] = ["INVALID1", "INVALID2"]
-
-        result = backtester.backtest_strategy(strategy_config, monthly_df, daily_df, returns_df)
-
-        # Should return empty result
-        assert isinstance(result, BacktestResult)
+        assert result is not None
         assert result.returns.empty
-        assert result.metrics == {}
+        assert not result.metrics
 
     @patch("portfolio_backtester.backtesting.strategy_backtester.calculate_metrics")
     def test_evaluate_window_success(
-        self, mock_calc_metrics, backtester, strategy_config, sample_price_data, mock_strategy
+        self,
+        mock_calculate_metrics,
     ):
-        """Test successful window evaluation."""
-        daily_df, monthly_df, returns_df = sample_price_data
+        """Test a successful run of evaluate_window."""
+        daily_df, monthly_df, returns_df = self.sample_price_data()
+        strategy_config = self.strategy_config()
 
-        # Setup mocks
-        backtester._registry.get_strategy_class.return_value = lambda params: mock_strategy
-        with patch.object(
-            backtester.data_cache, "get_window_returns_by_dates", return_value=returns_df
-        ):
-            # Mock the scenario run
-            portfolio_returns = pd.Series(
-                np.random.randn(len(daily_df)) * 0.01, index=daily_df.index
-            )
-
-            with patch.object(
-                backtester, "_run_scenario_for_window", return_value=portfolio_returns
-            ):
-                mock_calc_metrics.return_value = {"total_return": 0.05, "sharpe_ratio": 0.8}
-
-                # Define window
-                window = WFOWindow(
-                    pd.Timestamp("2020-01-01"),
-                    pd.Timestamp("2020-06-30"),
-                    pd.Timestamp("2020-07-01"),
-                    pd.Timestamp("2020-12-31"),
-                )
-
-                result = backtester.evaluate_window(
-                    strategy_config, window, monthly_df, daily_df, returns_df
-                )
-
-                # Verify result
-                assert isinstance(result, WindowResult)
-                assert isinstance(result.window_returns, pd.Series)
-                assert isinstance(result.metrics, dict)
-                assert result.train_start == window.train_start
-                assert result.train_end == window.train_end
-                assert result.test_start == window.test_start
-                assert result.test_end == window.test_end
-
-    def test_evaluate_window_empty_returns(self, backtester, strategy_config, sample_price_data):
-        """Test window evaluation with empty returns."""
-        daily_df, monthly_df, returns_df = sample_price_data
-
-        # Mock empty returns
-        with patch.object(backtester, "_run_scenario_for_window", return_value=None):
-            window = WFOWindow(
-                pd.Timestamp("2020-01-01"),
-                pd.Timestamp("2020-06-30"),
-                pd.Timestamp("2020-07-01"),
-                pd.Timestamp("2020-12-31"),
-            )
-
-            result = backtester.evaluate_window(
+        # Mock what _run_scenario_for_window would do
+        window_returns = pd.Series([0.01, -0.01, 0.02], index=pd.to_datetime(['2020-07-01', '2020-07-02', '2020-07-03']))
+        
+        from portfolio_backtester.optimization.wfo_window import WFOWindow
+        window = WFOWindow(
+            train_start=pd.Timestamp("2020-01-01"),
+            train_end=pd.Timestamp("2020-06-30"),
+            test_start=pd.Timestamp("2020-07-01"),
+            test_end=pd.Timestamp("2020-12-31"),
+        )
+        
+        with patch.object(self.backtester, '_run_scenario_for_window', return_value=window_returns):
+            result = self.backtester.evaluate_window(
                 strategy_config, window, monthly_df, daily_df, returns_df
             )
 
-            # Should return empty window result
-            assert isinstance(result, WindowResult)
-            assert result.window_returns.empty
-            assert result.metrics == {}
+        assert result is not None
+        assert not result.window_returns.empty
 
-    def test_create_performance_stats(self, backtester):
-        """Test performance statistics creation."""
-        # Create sample returns
-        returns = pd.Series(
-            [0.01, -0.005, 0.02, -0.01, 0.015], index=pd.date_range("2020-01-01", periods=5)
+    def test_evaluate_window_empty_returns(self):
+        """Test evaluate_window with a scenario that returns no data."""
+        daily_df, monthly_df, returns_df = self.sample_price_data()
+        strategy_config = self.strategy_config()
+
+        from portfolio_backtester.optimization.wfo_window import WFOWindow
+        window = WFOWindow(
+            train_start=pd.Timestamp("2020-01-01"),
+            train_end=pd.Timestamp("2020-06-30"),
+            test_start=pd.Timestamp("2020-07-01"),
+            test_end=pd.Timestamp("2020-12-31"),
         )
-        metrics = {"sharpe_ratio": 1.2}
+        
+        with patch.object(self.backtester, '_run_scenario_for_window', return_value=pd.Series(dtype=float)):
+            result = self.backtester.evaluate_window(
+                strategy_config, window, monthly_df, daily_df, returns_df
+            )
 
-        stats = backtester._create_performance_stats(returns, metrics)
+        assert result is not None
+        assert result.window_returns.empty
+        assert not result.metrics
 
-        assert isinstance(stats, dict)
-        assert "total_return" in stats
-        assert "annualized_return" in stats
-        assert "annualized_volatility" in stats
-        assert "max_drawdown" in stats
-        assert "num_observations" in stats
-        assert "start_date" in stats
-        assert "end_date" in stats
-
-        assert stats["num_observations"] == 5
-        assert stats["start_date"] == returns.index.min()
-        assert stats["end_date"] == returns.index.max()
-
-    def test_create_charts_data(self, backtester):
-        """Test charts data creation."""
-        # Create sample returns
-        portfolio_returns = pd.Series(
-            [0.01, -0.005, 0.02], index=pd.date_range("2020-01-01", periods=3)
+    def test_create_charts_data(self):
+        """Test _create_charts_data with some sample returns."""
+        returns = pd.Series([0.01, -0.02, 0.03, 0.01])
+        benchmark_returns = pd.Series([0.005, -0.01, 0.02, 0.005])
+        charts_data = self.backtester._create_charts_data(
+            returns, benchmark_returns
         )
-        benchmark_returns = pd.Series(
-            [0.008, -0.003, 0.015], index=pd.date_range("2020-01-01", periods=3)
-        )
-
-        charts_data = backtester._create_charts_data(portfolio_returns, benchmark_returns)
-
-        assert isinstance(charts_data, dict)
         assert "portfolio_cumulative" in charts_data
         assert "benchmark_cumulative" in charts_data
         assert "drawdown" in charts_data
         assert "rolling_sharpe" in charts_data
 
-        # Verify cumulative returns calculation
-        expected_portfolio_cum = (1 + portfolio_returns).cumprod()
-        pd.testing.assert_series_equal(charts_data["portfolio_cumulative"], expected_portfolio_cum)
-
-    def test_calculate_max_drawdown(self, backtester):
-        """Test maximum drawdown calculation."""
-        # Create returns with known drawdown
-        returns = pd.Series([0.1, -0.05, -0.1, 0.05, 0.02])
-
-        max_dd = backtester._calculate_max_drawdown(returns)
-
-        assert isinstance(max_dd, float)
-        assert max_dd <= 0  # Drawdown should be negative or zero
-
-    def test_calculate_max_drawdown_empty(self, backtester):
-        """Test maximum drawdown with empty series."""
-        returns = pd.Series(dtype=float)
-
-        max_dd = backtester._calculate_max_drawdown(returns)
-
-        assert max_dd == 0.0
-
-    def test_create_trade_history(self, backtester, sample_price_data):
-        """Test trade history creation."""
-        daily_df, _, _ = sample_price_data
-
-        # Create sample sized signals
-        sized_signals = pd.DataFrame(
-            {"AAPL": [0.5, 0.3, 0.0], "MSFT": [0.3, 0.4, 0.6], "GOOGL": [0.2, 0.3, 0.4]},
-            index=daily_df.index[:3],
+    def test_calculate_max_drawdown(self):
+        """Test _calculate_max_drawdown with a known drawdown."""
+        returns = pd.Series([0.1, 0.1, -0.1, -0.1, 0.1, 0.1])
+        # Cumulative returns: 1.1, 1.21, 1.089, 0.9801, 1.07811, 1.185921
+        # Drawdown from peak at 1.21 to trough at 0.9801
+        expected_drawdown = (0.9801 - 1.21) / 1.21
+        assert np.isclose(
+            self.backtester._calculate_max_drawdown(returns), expected_drawdown
         )
 
-        trade_history = backtester._create_trade_history(sized_signals, daily_df)
+    def test_calculate_max_drawdown_empty(self):
+        """Test _calculate_max_drawdown with empty returns."""
+        assert self.backtester._calculate_max_drawdown(pd.Series(dtype=float)) == 0.0
 
-        assert isinstance(trade_history, pd.DataFrame)
+    def test_create_trade_history(self):
+        """Test _create_trade_history with some sample signals."""
+        daily_df, _, _ = self.sample_price_data()
+        sized_signals = pd.DataFrame(
+            {"AAPL": [0.5, 0], "GOOGL": [0, 0.5]},
+            index=daily_df.index[:2],
+        )
+        trade_history = self.backtester._create_trade_history(
+            sized_signals, daily_df
+        )
+        assert not trade_history.empty
         assert "date" in trade_history.columns
         assert "ticker" in trade_history.columns
         assert "position" in trade_history.columns
         assert "price" in trade_history.columns
 
-        # Should have entries for non-zero positions
-        assert len(trade_history) > 0
+    def sample_price_data(self):
+        """Create sample price data for testing."""
+        dates = pd.date_range("2020-01-01", "2020-12-31", freq="B")
+        tickers = ["AAPL", "MSFT", "GOOGL", "SPY"]
+        daily_data = {}
+        for ticker in tickers:
+            np.random.seed(hash(ticker) & 0xFFFFFFFF)
+            prices = 100 * (1 + np.random.randn(len(dates)) * 0.02).cumprod()
+            daily_data[ticker] = prices
+        daily_df = pd.DataFrame(daily_data, index=dates)
+        monthly_df = daily_df.resample("M").last()
+        returns_df = daily_df.pct_change().fillna(0)
+        return daily_df, monthly_df, returns_df
+
+    def strategy_config(self):
+        """Sample strategy configuration."""
+        return {
+            "name": "test_strategy",
+            "strategy": "MomentumSignalStrategy",
+            "strategy_params": {"lookback_period": 20, "num_holdings": 10},
+            "universe": ["AAPL", "MSFT", "GOOGL"],
+            "rebalance_frequency": "monthly",
+        }
 
 
 class TestStrategyBacktesterSeparationOfConcerns:

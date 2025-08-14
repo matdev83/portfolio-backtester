@@ -58,7 +58,7 @@ class NonDatetimeIndexValidator(IIndexValidator):
 class IndexValidatorFactory:
     """Factory for creating appropriate index validators."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._validators = [
             DatetimeIndexValidator(),
             NonDatetimeIndexValidator(),  # Fallback

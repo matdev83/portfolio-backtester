@@ -56,7 +56,7 @@ class SimplePriceExtractor(IPriceExtractor):
 class PriceExtractorFactory:
     """Factory for creating appropriate price extractors."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._extractors = [
             MultiIndexPriceExtractor(),
             SimplePriceExtractor(),  # Fallback
@@ -74,7 +74,7 @@ class PriceExtractorFactory:
 class PolymorphicPriceExtractor:
     """Polymorphic price extractor that eliminates isinstance violations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._factory = PriceExtractorFactory()
 
     def extract_close_price(self, df: pd.DataFrame, ticker: str) -> pd.Series:

@@ -19,7 +19,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 import logging
 
-from .config_validation import ValidationError, YamlFileHandler, ConfigValidator, ValidationReporter
+from .config_validation import (
+    ValidationError,
+    YamlFileHandler,
+    ConfigValidator,
+    ValidationReporter,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,9 @@ try:
 except Exception:  # pragma: no cover - optional dependency path
     OptunaOptimizer = None
 
-from ..optimization.genetic_optimizer import GeneticOptimizer
+from ..optimization.performance.genetic_optimizer import (
+    GeneticPerformanceOptimizer as GeneticOptimizer,
+)
 
 
 # Define a minimal runtime Protocol-like base to help mypy without importing heavy deps
@@ -41,15 +43,9 @@ def get_optimizer(
 ) -> _OptimizerProto:
     """Factory function to create optimizer instances."""
     if optimizer_type == "genetic":
-        return GeneticOptimizer(
-            scenario_config=scenario_config,
-            backtester_instance=backtester_instance,
-            global_config=global_config,
-            monthly_data=monthly_data,
-            daily_data=daily_data,
-            rets_full=rets_full,
-            random_state=random_state,
-        )
+        # GeneticOptimizer doesn't take these parameters in its constructor
+        # It's configured through its base class initialization
+        return GeneticOptimizer()  # type: ignore[return-value]
     elif optimizer_type == "optuna":
         if OptunaOptimizer is None:
             raise ImportError(

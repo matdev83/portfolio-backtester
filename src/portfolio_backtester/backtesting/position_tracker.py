@@ -174,7 +174,10 @@ class PositionTracker:
         return weight_series
 
     def _close_position(
-        self, position: Position, exit_date: pd.Timestamp, exit_price: Optional[float] = None
+        self,
+        position: Position,
+        exit_date: pd.Timestamp,
+        exit_price: Optional[float] = None,
     ) -> Trade:
         """Close a position and create a trade record.
 

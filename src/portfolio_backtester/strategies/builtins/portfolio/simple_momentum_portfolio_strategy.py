@@ -46,10 +46,20 @@ class SimpleMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
             "skip_months": {"type": "int", "min": 0, "max": 3, "default": 0},
             # Portfolio construction parameters
             "num_holdings": {"type": "int", "min": 1, "max": 20, "default": 10},
-            "top_decile_fraction": {"type": "float", "min": 0.1, "max": 0.5, "default": 0.2},
+            "top_decile_fraction": {
+                "type": "float",
+                "min": 0.1,
+                "max": 0.5,
+                "default": 0.2,
+            },
             # Risk management parameters
             "leverage": {"type": "float", "min": 0.5, "max": 2.0, "default": 1.0},
-            "smoothing_lambda": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.5},
+            "smoothing_lambda": {
+                "type": "float",
+                "min": 0.0,
+                "max": 1.0,
+                "default": 0.5,
+            },
         }
 
     def get_minimum_required_periods(self) -> int:

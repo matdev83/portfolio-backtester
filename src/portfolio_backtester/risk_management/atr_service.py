@@ -41,7 +41,10 @@ class OptimizedATRService:
         self._cache_lock = threading.RLock()
 
     def calculate_atr(
-        self, asset_ohlc_history: pd.DataFrame, current_date: pd.Timestamp, atr_length: int = 14
+        self,
+        asset_ohlc_history: pd.DataFrame,
+        current_date: pd.Timestamp,
+        atr_length: int = 14,
     ) -> pd.Series:
         """
         Calculate ATR for all assets using optimized Numba implementation.
@@ -210,7 +213,7 @@ class OptimizedATRService:
                     hash_data = ["insufficient_data".encode()]
 
             # Create combined hash
-            hasher = hashlib.md5()
+            hasher = hashlib.md5(usedforsecurity=False)
             for data_chunk in hash_data:
                 hasher.update(data_chunk)
 

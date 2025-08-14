@@ -164,7 +164,9 @@ class UnifiedCommissionCalculator:
         return self._portfolio_calculator.get_commission_summary(detailed_trade_info)
 
 
-def get_unified_commission_calculator(config: Dict[str, Any]) -> UnifiedCommissionCalculator:
+def get_unified_commission_calculator(
+    config: Dict[str, Any],
+) -> UnifiedCommissionCalculator:
     """
     Factory function to get the unified commission calculator.
 

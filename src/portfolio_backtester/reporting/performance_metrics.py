@@ -456,7 +456,10 @@ def calculate_metrics(
     common_index = pd.DatetimeIndex(active_rets.index).intersection(
         pd.DatetimeIndex(active_bench_rets.index)
     )
-    rets_aligned, bench_aligned = active_rets.loc[common_index], active_bench_rets.loc[common_index]
+    rets_aligned, bench_aligned = (
+        active_rets.loc[common_index],
+        active_bench_rets.loc[common_index],
+    )
     # Infer steps per year from a DatetimeIndex explicitly to satisfy type checker
     steps_per_year = _infer_steps_per_year(common_index)
 
@@ -474,37 +477,13 @@ def calculate_metrics(
     # Handle std() calculation safely
     try:
         bench_std_val = bench_aligned.std()
-        bench_std = (
-            float(bench_std_val)
-            if pd.notna(bench_std_val)
-            else (
-                lambda: (
-                    warnings.warn(
-                        "Precision loss occurred in moment calculation due to catastrophic cancellation. This occurs when the data are nearly identical. Results may be unreliable.",
-                        RuntimeWarning,
-                    ),
-                    0.0,
-                )[1]
-            )()
-        )
+        bench_std = float(bench_std_val) if pd.notna(bench_std_val) else 0.0
     except Exception:
         bench_std = 0.0
 
     try:
         rets_std_val = rets_aligned.std()
-        rets_std = (
-            float(rets_std_val)
-            if pd.notna(rets_std_val)
-            else (
-                lambda: (
-                    warnings.warn(
-                        "Precision loss occurred in moment calculation due to catastrophic cancellation. This occurs when the data are nearly identical. Results may be unreliable.",
-                        RuntimeWarning,
-                    ),
-                    0.0,
-                )[1]
-            )()
-        )
+        rets_std = float(rets_std_val) if pd.notna(rets_std_val) else 0.0
     except Exception:
         rets_std = 0.0
 
@@ -541,27 +520,14 @@ def calculate_metrics(
     # K-Ratio: slope of log equity curve scaled by its standard error
     if len(active_rets) >= 2:
         log_equity = np.log((1 + active_rets).cumprod())
-        # Ensure log_equity has variance before regression
-        log_equity_std = (
-            float(log_equity.std())
-            if not pd.isna(log_equity.std())
-            else (
-                lambda: (
-                    warnings.warn(
-                        "Precision loss occurred in moment calculation due to catastrophic cancellation. This occurs when the data are nearly identical. Results may be unreliable.",
-                        RuntimeWarning,
-                    ),
-                    0.0,
-                )[1]
-            )()
-        )
+        log_equity_std_val = log_equity.std()
+        log_equity_std = float(log_equity_std_val) if not pd.isna(log_equity_std_val) else 0.0
         if log_equity_std < EPSILON_FOR_DIVISION:
             k_ratio = np.nan
         else:
             idx = np.arange(len(log_equity))
             slope, intercept, r_value, p_value, std_err = linregress(idx, log_equity)
 
-            # Ensure std_err and slope are floats (not tuple or object)
             def safe_float(val):
                 try:
                     if isinstance(val, (tuple, list, np.ndarray)):

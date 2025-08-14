@@ -22,7 +22,10 @@ from ..interfaces.attribute_accessor_interface import (
     IClassAttributeAccessor,
     create_class_attribute_accessor,
 )
-from ..interfaces.time_based_timing_interface import ITimeBasedTiming, create_time_based_timing
+from ..interfaces.time_based_timing_interface import (
+    ITimeBasedTiming,
+    create_time_based_timing,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -56,7 +59,10 @@ class CustomTimingRegistry:
 
     @classmethod
     def register(
-        cls, name: str, controller_class: Type[TimingController], aliases: Optional[list] = None
+        cls,
+        name: str,
+        controller_class: Type[TimingController],
+        aliases: Optional[list] = None,
     ):
         """
         Register a custom timing controller class.
@@ -194,7 +200,7 @@ class TimingControllerFactory:
             # Create instance with custom parameters
             instance = controller_class(config, **controller_params)
             logger.info(f"Created custom timing controller: {controller_class_name}")
-            return instance  # type: ignore[no-any-return]
+            return instance
 
         except Exception as e:
             raise ValueError(
@@ -352,9 +358,9 @@ class AdaptiveTimingController(TimingController):
         self,
         start_date: pd.Timestamp,
         end_date: pd.Timestamp,
-        available_dates: List[pd.Timestamp],
+        available_dates: pd.DatetimeIndex,
         strategy: Any,
-    ) -> List[pd.Timestamp]:
+    ) -> pd.DatetimeIndex:
         """
         Get rebalance dates for adaptive timing.
 
@@ -365,18 +371,10 @@ class AdaptiveTimingController(TimingController):
         # Real implementation would analyze historical volatility
         self._time_based_timing.set_frequency(self.base_frequency)
 
-        # Convert available_dates to DatetimeIndex if it's a list
-        available_dates_index = (
-            pd.DatetimeIndex(available_dates)
-            if isinstance(available_dates, list)
-            else available_dates
-        )
-
         result = self._time_based_timing.get_rebalance_dates(
-            start_date, end_date, available_dates_index, strategy
+            start_date, end_date, available_dates, strategy
         )
-        # Convert result back to list to match return type
-        return result.to_list() if hasattr(result, "to_list") else list(result)
+        return result
 
 
 # Example of a momentum-based timing controller
@@ -430,22 +428,14 @@ class MomentumTimingController(TimingController):
         self,
         start_date: pd.Timestamp,
         end_date: pd.Timestamp,
-        available_dates: List[pd.Timestamp],
+        available_dates: pd.DatetimeIndex,
         strategy: Any,
-    ) -> List[pd.Timestamp]:
+    ) -> pd.DatetimeIndex:
         """Get weekly rebalance dates for momentum timing."""
         # Use dependency-injected time-based timing
         self._time_based_timing.set_frequency("W")
 
-        # Convert available_dates to DatetimeIndex if it's a list
-        available_dates_index = (
-            pd.DatetimeIndex(available_dates)
-            if isinstance(available_dates, list)
-            else available_dates
-        )
-
         result = self._time_based_timing.get_rebalance_dates(
-            start_date, end_date, available_dates_index, strategy
+            start_date, end_date, available_dates, strategy
         )
-        # Convert result back to list to match return type
-        return result.to_list() if hasattr(result, "to_list") else list(result)
+        return result

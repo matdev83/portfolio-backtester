@@ -1,0 +1,29 @@
+[bandit]
+# Exclude directories that don't contain source code or are generated
+exclude_dirs: .venv,venv,build,dist,*.egg-info,__pycache__,.mypy_cache,.ruff_cache,.pytest_cache,.benchmarks,.cursor,.kiro,.numba_cache,.strategy_cache,.vscode,.workflows,data,tmp,prof
+
+# Set the severity level to medium by default
+# (LOW, MEDIUM, HIGH)
+severity: MEDIUM
+
+# Set the confidence level to medium by default
+# (LOW, MEDIUM, HIGH)
+confidence: MEDIUM
+
+# Specify which test IDs to skip (if any)
+# skips: B101,B102
+
+# Specify which test IDs to include (if any, this overrides skips)
+# tests: B101,B102
+
+# Set the output format (txt, json, csv, html, xml, custom)
+# Can be overridden with command line options
+format: txt
+
+# Set the output file, if not specified, stdout is used
+# Can be overridden with command line options
+# output: bandit-report.txt
+
+# Set the number of lines of context to include around the finding
+# Can be overridden with command line options
+context_lines: 3

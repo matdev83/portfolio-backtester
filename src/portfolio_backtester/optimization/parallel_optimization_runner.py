@@ -30,13 +30,18 @@ from .optuna_objective_adapter import OptunaObjectiveAdapter
 from .results import OptimizationData, OptimizationDataContext, OptimizationResult
 from .study_context_manager import generate_context_hash, get_strategy_source_path
 from .utils import discrete_space_size
-from .trial_deduplication import create_deduplicating_objective, DedupOptunaObjectiveAdapter
+from .trial_deduplication import (
+    create_deduplicating_objective,
+    DedupOptunaObjectiveAdapter,
+)
 from ..strategies._core.registry import get_strategy_registry
 
 logger = logging.getLogger(__name__)
 
 
-def _reconstruct_optimization_data(context: OptimizationDataContext) -> OptimizationData:
+def _reconstruct_optimization_data(
+    context: OptimizationDataContext,
+) -> OptimizationData:
     """Reconstructs OptimizationData from memory-mapped files and metadata."""
     with open(context.metadata_path, "rb") as f:
         metadata = pickle.load(f)
@@ -198,7 +203,10 @@ def _optuna_worker(
     evaluation_mode = "daily" if is_intramonth else "monthly"
 
     logger.info(
-        "Worker %d starting %d trials with %s evaluation", os.getpid(), n_trials, evaluation_mode
+        "Worker %d starting %d trials with %s evaluation",
+        os.getpid(),
+        n_trials,
+        evaluation_mode,
     )
     try:
         study.optimize(
@@ -292,7 +300,9 @@ class ParallelOptimizationRunner:
     # ---------------------------------------------------------------------
     # Internal Methods
     # ---------------------------------------------------------------------
-    def _prepare_shared_data(self) -> tuple[OptimizationDataContext, tempfile.TemporaryDirectory]:
+    def _prepare_shared_data(
+        self,
+    ) -> tuple[OptimizationDataContext, tempfile.TemporaryDirectory]:
         """Deconstructs OptimizationData and saves components to mem-mappable files."""
         temp_dir = tempfile.TemporaryDirectory(prefix="portfolio_backtester_")
 

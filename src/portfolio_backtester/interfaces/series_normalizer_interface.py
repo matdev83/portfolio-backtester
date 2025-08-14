@@ -56,7 +56,7 @@ class DataFrameNormalizer(ISeriesNormalizer):
 class SeriesNormalizerFactory:
     """Factory for creating appropriate series normalizers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._normalizers = [SeriesNormalizer(), DataFrameNormalizer()]
 
     def get_normalizer(self, data: Any) -> ISeriesNormalizer:

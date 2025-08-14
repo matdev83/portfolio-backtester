@@ -218,7 +218,9 @@ class RiskOffSignalProviderFactory:
             raise ValueError(f"Unknown provider type: {provider_type}")
 
     @staticmethod
-    def create_config_provider(strategy_config: Dict[str, Any]) -> ConfigBasedRiskOffSignalProvider:
+    def create_config_provider(
+        strategy_config: Dict[str, Any],
+    ) -> ConfigBasedRiskOffSignalProvider:
         """Create a configuration-based risk-off signal provider."""
         return ConfigBasedRiskOffSignalProvider(strategy_config)
 

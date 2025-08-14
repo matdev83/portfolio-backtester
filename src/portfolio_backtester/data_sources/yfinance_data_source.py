@@ -2,7 +2,13 @@ import yfinance as yf
 import pandas as pd
 import os
 import time
-from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import (
+    Progress,
+    TextColumn,
+    BarColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 from rich.console import Console
 from pathlib import Path
 import logging
@@ -15,7 +21,7 @@ logger = logging.getLogger(__name__)
 class YFinanceDataSource(BaseDataSource):
     """Data source for fetching data from Yahoo Finance."""
 
-    def __init__(self, cache_expiry_hours=24):
+    def __init__(self, cache_expiry_hours: int = 24) -> None:
         self.cache_expiry_hours = cache_expiry_hours
         try:
             SCRIPT_DIR = Path(__file__).parent.resolve()

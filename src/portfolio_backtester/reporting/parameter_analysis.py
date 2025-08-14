@@ -79,7 +79,11 @@ def _plot_parameter_impact_analysis(
 
 
 def _create_parameter_heatmaps(
-    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+    self: "Backtester",
+    df: pd.DataFrame,
+    param_names: list[str],
+    scenario_name: str,
+    timestamp: str,
 ) -> None:
     logger = self.logger
     try:
@@ -160,7 +164,11 @@ def _create_parameter_heatmaps(
 
 
 def _create_parameter_sensitivity_analysis(
-    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+    self: "Backtester",
+    df: pd.DataFrame,
+    param_names: list[str],
+    scenario_name: str,
+    timestamp: str,
 ) -> None:
     logger = self.logger
     try:
@@ -186,7 +194,13 @@ def _create_parameter_sensitivity_analysis(
                 z = np.polyfit(x, y, 1)
                 ax.plot(sorted(x), np.poly1d(z)(sorted(x)), "r--", alpha=0.8)
                 correlation = x.corr(y)
-                ax.text(0.05, 0.95, f"corr={correlation:.3f}", transform=ax.transAxes, va="top")
+                ax.text(
+                    0.05,
+                    0.95,
+                    f"corr={correlation:.3f}",
+                    transform=ax.transAxes,
+                    va="top",
+                )
                 ax.set_title(f"Sensitivity: {param}")
             except Exception as exc:  # noqa: BLE001
                 logger.debug("Sensitivity plot failed for %s: %s", param, exc)
@@ -209,7 +223,11 @@ def _create_parameter_sensitivity_analysis(
 
 
 def _create_parameter_stability_analysis(
-    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+    self: "Backtester",
+    df: pd.DataFrame,
+    param_names: list[str],
+    scenario_name: str,
+    timestamp: str,
 ) -> None:
     logger = self.logger
     try:
@@ -219,7 +237,12 @@ def _create_parameter_stability_analysis(
         ax1 = plt.subplot(2, 2, (1, 2))
         for param in param_names[:6]:
             ax1.plot(
-                df["trial_number"], df[param], marker="o", markersize=3, alpha=0.7, label=param
+                df["trial_number"],
+                df[param],
+                marker="o",
+                markersize=3,
+                alpha=0.7,
+                label=param,
             )
         ax1.set_title("Parameter Evolution Over Trials")
         ax1.legend()
@@ -267,7 +290,11 @@ def _create_parameter_stability_analysis(
 
 
 def _create_parameter_correlation_analysis(
-    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+    self: "Backtester",
+    df: pd.DataFrame,
+    param_names: list[str],
+    scenario_name: str,
+    timestamp: str,
 ) -> None:
     logger = self.logger
     try:
@@ -292,7 +319,11 @@ def _create_parameter_correlation_analysis(
 
 
 def _create_parameter_importance_ranking(
-    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+    self: "Backtester",
+    df: pd.DataFrame,
+    param_names: list[str],
+    scenario_name: str,
+    timestamp: str,
 ) -> None:
     logger = self.logger
     try:
@@ -318,7 +349,11 @@ def _create_parameter_importance_ranking(
 
 
 def _create_parameter_robustness_analysis(
-    self: "Backtester", df: pd.DataFrame, param_names: list[str], scenario_name: str, timestamp: str
+    self: "Backtester",
+    df: pd.DataFrame,
+    param_names: list[str],
+    scenario_name: str,
+    timestamp: str,
 ) -> None:
     logger = self.logger
     try:

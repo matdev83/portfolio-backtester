@@ -14,7 +14,9 @@ This eliminates direct dependencies on concrete benefit estimation classes.
 from abc import ABC, abstractmethod
 from typing import Dict
 
-from ..optimization.performance.parallel_benefit_estimator import ParallelBenefitEstimator
+from ..optimization.performance.parallel_benefit_estimator import (
+    ParallelBenefitEstimator,
+)
 
 
 class IParallelBenefitEstimator(ABC):

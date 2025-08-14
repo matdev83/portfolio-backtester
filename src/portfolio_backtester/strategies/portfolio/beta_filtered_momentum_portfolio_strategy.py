@@ -74,11 +74,31 @@ class MomentumBetaFilteredPortfolioStrategy(MomentumUnfilteredAtrPortfolioStrate
         parent_params: Dict[str, Dict[str, Any]] = super().tunable_parameters()
         parent_params.update(
             {
-                "beta_lookback_days": {"type": "int", "min": 5, "max": 252, "default": 21},
-                "num_high_beta_to_exclude": {"type": "int", "min": 1, "max": 10, "default": 3},
+                "beta_lookback_days": {
+                    "type": "int",
+                    "min": 5,
+                    "max": 252,
+                    "default": 21,
+                },
+                "num_high_beta_to_exclude": {
+                    "type": "int",
+                    "min": 1,
+                    "max": 10,
+                    "default": 3,
+                },
                 "rsi_length": {"type": "int", "min": 2, "max": 20, "default": 3},
-                "rsi_overbought": {"type": "float", "min": 50, "max": 100, "default": 70},
-                "short_max_holding_days": {"type": "int", "min": 1, "max": 90, "default": 30},
+                "rsi_overbought": {
+                    "type": "float",
+                    "min": 50,
+                    "max": 100,
+                    "default": 70,
+                },
+                "short_max_holding_days": {
+                    "type": "int",
+                    "min": 1,
+                    "max": 90,
+                    "default": 30,
+                },
             }
         )
         return parent_params

@@ -62,7 +62,12 @@ class AllocationModeValidator(IAllocationModeValidator):
         Args:
             additional_modes: Optional additional valid modes beyond defaults
         """
-        self._base_modes = {"reinvestment", "compound", "fixed_fractional", "fixed_capital"}
+        self._base_modes = {
+            "reinvestment",
+            "compound",
+            "fixed_fractional",
+            "fixed_capital",
+        }
         self._additional_modes = additional_modes or set()
         self._valid_modes = self._base_modes | self._additional_modes
 

@@ -12,7 +12,7 @@ ensures consistent behavior across all optimization backends.
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Union, Optional
+from typing import Any, Dict, List, Optional
 import numpy as np
 
 from .results import EvaluationResult, OptimizationResult
@@ -442,10 +442,3 @@ def validate_optimization_config(optimization_config: Dict[str, Any]) -> bool:
             raise ParameterGeneratorError("max_evaluations must be a positive integer")
     # Configuration validated successfully
     return True
-
-
-# Type aliases for better documentation
-ParameterDict = Dict[str, Any]
-ObjectiveValue = Union[float, List[float]]
-OptimizationConfig = Dict[str, Any]
-ScenarioConfig = Dict[str, Any]

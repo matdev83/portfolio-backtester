@@ -40,15 +40,12 @@ class DummySignalStrategy(SignalStrategy):
         self.symbol = self.strategy_params.get("symbol", "SPY")
         self.open_long_prob = self.strategy_params.get("open_long_prob", 0.1)
         self.close_long_prob = self.strategy_params.get("close_long_prob", 0.01)
-        self.dummy_param_1 = self.strategy_params.get("dummy_param_1", 10)
-        self.dummy_param_2 = self.strategy_params.get("dummy_param_2", 20)
+
         # Seed the random number generator for reproducibility
         self.seed = self.strategy_params.get("seed", 42)
         self.rng = np.random.default_rng(self.seed)
         self.stop_loss_handler = self._initialize_stop_loss_handler()
         self.entry_prices = pd.Series(dtype=float)
-        self._last_date: Optional[pd.Timestamp] = None
-        self._is_long = False
 
     @classmethod
     def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
@@ -65,20 +62,6 @@ class DummySignalStrategy(SignalStrategy):
                 "min": 0.0,
                 "max": 1.0,
                 "default": 0.01,
-                "required": False,
-            },
-            "dummy_param_1": {
-                "type": "int",
-                "min": 1,
-                "max": 100,
-                "default": 10,
-                "required": False,
-            },
-            "dummy_param_2": {
-                "type": "int",
-                "min": 1,
-                "max": 100,
-                "default": 20,
                 "required": False,
             },
         }

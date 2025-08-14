@@ -140,14 +140,12 @@ def _load_kaggle_sp500_data() -> Optional[pd.DataFrame]:
     if KAGGLE_SP500_PATH.exists():
         try:
             if logger.isEnabledFor(logging.INFO):
-
                 logger.info(f"Loading Kaggle S&P 500 data from {KAGGLE_SP500_PATH}")
             df = pd.read_parquet(KAGGLE_SP500_PATH)
             # Ensure date column is datetime and sort
             df["date"] = pd.to_datetime(df["date"])
             df = df.sort_values(by=["date", "ticker"]).reset_index(drop=True)
             if logger.isEnabledFor(logging.DEBUG):
-
                 logger.debug(
                     f"Kaggle data 'ticker' column before CUSIP conversion:\n{df['ticker'].head()}"
                 )
@@ -160,12 +158,10 @@ def _load_kaggle_sp500_data() -> Optional[pd.DataFrame]:
             # Clean up any remaining non-alphanumeric characters from tickers (original or converted)
             df["ticker"] = df["ticker"].apply(lambda x: re.sub(r"[^a-zA-Z0-9]", "", str(x)))
             if logger.isEnabledFor(logging.DEBUG):
-
                 logger.debug(
                     f"Kaggle data 'ticker' column after CUSIP conversion:\n{df['ticker'].head()}"
                 )
             if logger.isEnabledFor(logging.INFO):
-
                 logger.info(
                     f"Loaded Kaggle data: {len(df)} rows from {df['date'].min():%Y-%m-%d} to {df['date'].max():%Y-%m-%d}"
                 )
@@ -177,23 +173,6 @@ def _load_kaggle_sp500_data() -> Optional[pd.DataFrame]:
     return None
 
 
-# Legacy URL patterns that *used* to serve dated files. They no longer work for live requests but
-# are still useful when querying the Internet Archive.
-URL_PATTERNS = [
-    GENERIC_SSGA_URL,  # must stay first so Wayback picks snapshots of the canonical path
-    # 2017-08 → 2023-??  (.xlsx with optional date suffix – removed from live site)
-    "https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-spy-{ymd}.xlsx",
-    # 2015-03 → 2017-07  (.xlsx – extra "us" in path)
-    "https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-us-spy-{ymd}.xlsx",
-    # 2011-03 → 2015-02  (.xls – legacy host)
-    "https://www.spdrs.com/library-content/public/documents/etfs/us/fund-data/daily-us-en-us-spy-{ymd}.xls",
-]
-# Example for IVV (iShares):
-# ISSUER_DAILY_URL = (
-#     "https://www.ishares.com/us/products/239726/"
-#     "ishares-core-s-p-500-etf/1467271812596.ajax?fileType=csv&dataType=fund"
-#     "&asOfDate={ymd}"
-# )
 ##############################################################################
 
 # --------------------------------------------------------------------------- #
@@ -209,16 +188,13 @@ def _load_cusip_mappings() -> None:
     script_dir = Path(__file__).parent
     mappings_path = script_dir.parent.parent.parent / "data" / "cusip_mappings.csv"
     if logger.isEnabledFor(logging.DEBUG):
-
         logger.debug(f"Attempting to load CUSIP mappings from: {mappings_path}")
     if mappings_path.exists():
         if logger.isEnabledFor(logging.DEBUG):
-
             logger.debug(f"CUSIP mappings file found at: {mappings_path}")
         try:
             df = pd.read_csv(mappings_path, dtype={"cusip": str})
             if logger.isEnabledFor(logging.DEBUG):
-
                 logger.debug(f"DataFrame head from cusip_mappings.csv:\n{df.head()}")
             initial_cache_size = len(_CUSIP_TICKER_CACHE)
             # Vectorized approach - filter valid rows and convert to dict
@@ -228,20 +204,16 @@ def _load_cusip_mappings() -> None:
             )
             _CUSIP_TICKER_CACHE.update(new_mappings)
             if logger.isEnabledFor(logging.INFO):
-
                 logger.info(
                     f"Loaded {len(_CUSIP_TICKER_CACHE) - initial_cache_size} new CUSIP mappings from {mappings_path}"
                 )
             if logger.isEnabledFor(logging.DEBUG):
-
                 logger.debug(f"Current _CUSIP_TICKER_CACHE content: {_CUSIP_TICKER_CACHE}")
         except Exception as e:
             if logger.isEnabledFor(logging.WARNING):
-
                 logger.warning(f"Failed to load CUSIP mappings from {mappings_path}: {e}")
     else:
         if logger.isEnabledFor(logging.INFO):
-
             logger.info(
                 f"CUSIP mappings file not found at {mappings_path}. Using hardcoded mappings only."
             )
@@ -271,11 +243,9 @@ def _fetch_sec_company_tickers() -> None:
         )
     except requests.RequestException as e:
         if logger.isEnabledFor(logging.WARNING):
-
             logger.warning(f"Failed to fetch SEC company tickers: {e}")
     except json.JSONDecodeError as e:
         if logger.isEnabledFor(logging.WARNING):
-
             logger.warning(f"Failed to parse SEC company tickers JSON: {e}")
 
 
@@ -288,7 +258,6 @@ def _cusip_to_ticker(cusip: str) -> str:
     it returns the original input as is.
     """
     if logger.isEnabledFor(logging.DEBUG):
-
         logger.debug(f"_cusip_to_ticker: Processing input: {cusip}")
 
     # Only attempt CUSIP lookup if it's a valid CUSIP format
@@ -297,7 +266,6 @@ def _cusip_to_ticker(cusip: str) -> str:
         if normalized_cusip in _CUSIP_TICKER_CACHE:
             resolved_ticker = _CUSIP_TICKER_CACHE[normalized_cusip]
             if logger.isEnabledFor(logging.DEBUG):
-
                 logger.debug(
                     f"_cusip_to_ticker: Found in cache: {normalized_cusip} -> {resolved_ticker}"
                 )
@@ -305,14 +273,12 @@ def _cusip_to_ticker(cusip: str) -> str:
         else:
             # Log as warning only if it looks like a CUSIP but is unmapped
             if logger.isEnabledFor(logging.WARNING):
-
                 logger.warning(
                     f"_cusip_to_ticker: Unmapped CUSIP (format matches): {normalized_cusip}. Consider adding to static mapping or enhancing dynamic lookup."
                 )
             return cusip  # Return original CUSIP if not found in cache
     else:
         if logger.isEnabledFor(logging.DEBUG):
-
             logger.debug(
                 f"_cusip_to_ticker: Input is not a valid CUSIP format or not a string, returning as-is: {cusip}"
             )
@@ -426,7 +392,6 @@ def _fetch_from_wayback(orig_url: str, date: pd.Timestamp) -> bytes | None:
     for attempt in range(5):  # 5 retries
         if INTERRUPTED:
             if logger.isEnabledFor(logging.WARNING):
-
                 logger.warning(f"Wayback fetch for {orig_url} interrupted during retry wait.")
             return None
         try:
@@ -483,13 +448,11 @@ def ssga_daily(date: Union[dt.date, pd.Timestamp]):
     # ------------------------------------------------------------------
     if cache_file.exists():
         if logger.isEnabledFor(logging.DEBUG):
-
             logger.debug(f"Using cached SSGA data for {date:%Y-%m-%d}")
         return pd.read_parquet(cache_file)
 
     if date < EARLIEST_SSGA_DATE:
         if logger.isEnabledFor(logging.DEBUG):
-
             logger.debug(
                 f"SSGA data unavailable before {EARLIEST_SSGA_DATE:%Y-%m-%d} for date {date:%Y-%m-%d}"
             )
@@ -510,7 +473,6 @@ def ssga_daily(date: Union[dt.date, pd.Timestamp]):
     result_df = _sanitize_ssga_weight_pct(result_df)
 
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"✓ SSGA {date:%Y-%m-%d} basket processed ({len(result_df)} rows)")
     result_df.to_parquet(cache_file)
     return result_df
@@ -617,7 +579,6 @@ def _filing_obj_with_retry(filing, max_retries: int = 5, initial_delay: float = 
     for attempt in range(max_retries):
         if INTERRUPTED:
             if logger.isEnabledFor(logging.WARNING):
-
                 logger.warning(
                     f"Filing object retrieval for {filing.accession_no} interrupted during retry wait."
                 )
@@ -627,7 +588,7 @@ def _filing_obj_with_retry(filing, max_retries: int = 5, initial_delay: float = 
         except HTTPStatusError as exc:
             wait = initial_delay * (2**attempt)
             logger.warning(
-                f"HTTP {exc.response.status_code} for {filing.accession_no} – waiting {wait:.1f}s before retry {attempt+1}/{max_retries}."
+                f"HTTP {exc.response.status_code} for {filing.accession_no} – waiting {wait:.1f}s before retry {attempt + 1}/{max_retries}."
             )
             # Interruptible sleep
             for _ in range(int(wait)):  # Sleep in 1-second intervals
@@ -672,7 +633,6 @@ def _process_sec_filing(
     date = _get_filing_date(filing)
     if date is None or not (start_date <= date <= end_date):
         if logger.isEnabledFor(logging.DEBUG):
-
             logger.debug(
                 f"Skipping filing {filing.accession_no}: Date {date} out of range or invalid."
             )
@@ -681,14 +641,12 @@ def _process_sec_filing(
     obj = _filing_obj_with_retry(filing)
     if obj is None:
         if logger.isEnabledFor(logging.WARNING):
-
             logger.warning(f"Could not retrieve object for filing {filing.accession_no}.")
         return None
 
     items = _extract_holdings_from_obj(obj, filing.accession_no)
     if not items:
         if logger.isEnabledFor(logging.DEBUG):
-
             logger.debug(f"No items found in filing {filing.accession_no}.")
         return None
 
@@ -714,7 +672,6 @@ def _load_sec_holdings_from_cache(cache_file: Path) -> pd.DataFrame | None:
         mod_time = dt.datetime.fromtimestamp(cache_file.stat().st_mtime)
         if (dt.datetime.now() - mod_time) < dt.timedelta(hours=6):
             if logger.isEnabledFor(logging.INFO):
-
                 logger.info(f"Loading SEC holdings from cache: {cache_file}")
             return pd.read_parquet(cache_file)
     return None
@@ -743,7 +700,6 @@ def sec_holdings(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
         return df
 
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"Downloading SEC N-PORT-P & N-Q filings for {CIK} from {start} to {end}...")
     if Company is None:
         raise RuntimeError("Edgar 'Company' API not available; install edgar or provide stubs.")
@@ -773,7 +729,6 @@ def sec_holdings(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     result_df = pd.concat(filing_frames, ignore_index=True)
     result_df.to_parquet(cache_file)
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"SEC holdings saved to cache: {cache_file}")
     return result_df
 
@@ -818,7 +773,6 @@ def build_history(
         # Skip SSGA download if date is within Kaggle data\'s frozen range
         if KAGGLE_SP500_START_DATE <= d <= KAGGLE_SP500_END_DATE:
             if logger.isEnabledFor(logging.DEBUG):
-
                 logger.debug(
                     f"Skipping SSGA download for {d:%Y-%m-%d} as it's covered by Kaggle data."
                 )
@@ -867,7 +821,6 @@ def build_history(
 
     hist = _forward_fill_history(hist, start, end)
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"Successfully built history with {len(hist)} rows.")
 
     if not ignore_cache:
@@ -887,10 +840,14 @@ def main():
 
     parser = argparse.ArgumentParser(description="Download SPY holdings history")
     parser.add_argument(
-        "--start", default="2004-01-01", help="YYYY-MM-DD (default 2004-01-01, earliest SEC N-Q)"
+        "--start",
+        default="2004-01-01",
+        help="YYYY-MM-DD (default 2004-01-01, earliest SEC N-Q)",
     )
     parser.add_argument(
-        "--end", default=str(pd.Timestamp.today().date()), help="YYYY-MM-DD (default today)"
+        "--end",
+        default=str(pd.Timestamp.today().date()),
+        help="YYYY-MM-DD (default today)",
     )
     parser.add_argument("--out", required=True, help="Output filename (.parquet or .csv)")
     parser.add_argument(
@@ -950,7 +907,6 @@ def main():
         else:
             hist.to_parquet(out_path, index=False)
         if logger.isEnabledFor(logging.INFO):
-
             logger.info(f"✓ Done. {len(hist):,} rows written to {out_path}")
     elif hist is not None and hist.empty:
         logger.info("No data to write (history is empty). Output file not created.")
@@ -974,7 +930,6 @@ def _load_history_from_cache(start: pd.Timestamp, end: pd.Timestamp) -> Optional
     cache_file = _history_cache_file(start, end)
     if cache_file.exists():
         if logger.isEnabledFor(logging.INFO):
-
             logger.info(f"Loading aggregated holdings history from cache: {cache_file}")
         try:
             df = pd.read_parquet(cache_file)
@@ -983,14 +938,12 @@ def _load_history_from_cache(start: pd.Timestamp, end: pd.Timestamp) -> Optional
                 return df
             else:
                 if logger.isEnabledFor(logging.WARNING):
-
                     logger.warning(
                         f"Cached data in {cache_file} does not cover the full range {start}-{end}. Ignoring cache."
                     )
                 return None  # Explicitly return None if cache does not cover range
         except Exception as exc:
             if logger.isEnabledFor(logging.WARNING):
-
                 logger.warning(
                     f"Failed to read cached parquet {cache_file}: {exc} – ignoring cache."
                 )
@@ -1005,7 +958,6 @@ def _save_history_to_cache(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timest
     df.to_parquet(tmp_file, index=False)
     tmp_file.replace(cache_file)
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"Aggregated holdings history saved to cache: {cache_file}")
 
 
@@ -1053,7 +1005,6 @@ def get_spy_holdings(
 
     df = _HISTORY_DF[_HISTORY_DF["date"] == target_ts]
     if logger.isEnabledFor(logging.DEBUG):
-
         logger.debug(f"Holdings query for exact date {target_ts}: {len(df)} rows found.")
 
     if df.empty and not exact:
@@ -1099,19 +1050,16 @@ def _ensure_history_loaded() -> None:
         bundled_path = repo_root / "data" / "spy_holdings_full.parquet"
         try:
             if logger.isEnabledFor(logging.INFO):
-
                 logger.info(f"Loading bundled holdings history from: {bundled_path}")
             _HISTORY_DF = pd.read_parquet(bundled_path)
             if _data_validator.is_empty_or_invalid(_HISTORY_DF):
                 if logger.isEnabledFor(logging.WARNING):
-
                     logger.warning(
                         f"Bundled parquet at {bundled_path} is invalid or empty. Attempting to load Kaggle data."
                     )
                 _HISTORY_DF = None  # Force rebuild if file is corrupt or empty
             else:
                 if logger.isEnabledFor(logging.INFO):
-
                     logger.info(
                         f"Loaded bundled history with shape: {_HISTORY_DF.shape}. Date range: {_HISTORY_DF['date'].min():%Y-%m-%d} to {_HISTORY_DF['date'].max():%Y-%m-%d}"
                     )
@@ -1133,7 +1081,6 @@ def _ensure_history_loaded() -> None:
                             drop=True
                         )
                         if logger.isEnabledFor(logging.INFO):
-
                             logger.info(
                                 f"Merged history with Kaggle data. New shape: {_HISTORY_DF.shape}. Date range: {_HISTORY_DF['date'].min():%Y-%m-%d} to {_HISTORY_DF['date'].max():%Y-%m-%d}"
                             )
@@ -1177,7 +1124,6 @@ def _ensure_history_loaded() -> None:
             current_date = pd.Timestamp.today().normalize()
             if incremental_start <= current_date:
                 if logger.isEnabledFor(logging.INFO):
-
                     logger.info(
                         f"Fetching incremental data from {incremental_start:%Y-%m-%d} to {current_date:%Y-%m-%d}."
                     )
@@ -1190,7 +1136,6 @@ def _ensure_history_loaded() -> None:
                         drop=True
                     )
                     if logger.isEnabledFor(logging.INFO):
-
                         logger.info(
                             f"Merged incremental data. New shape: {_HISTORY_DF.shape}. Date range: {_HISTORY_DF['date'].min():%Y-%m-%d} to {_HISTORY_DF['date'].max():%Y-%m-%d}"
                         )
@@ -1238,7 +1183,6 @@ def update_full_history(
             incremental_start = combined["date"].max() + pd.Timedelta(days=1)
             if incremental_start <= end_date:
                 if logger.isEnabledFor(logging.INFO):
-
                     logger.info(
                         f"Fetching incremental data from {incremental_start:%Y-%m-%d} to {end_date:%Y-%m-%d}."
                     )
@@ -1272,7 +1216,6 @@ def update_full_history(
             # we need to extend from the day after latest
             incremental_start = latest + pd.Timedelta(days=1)
             if logger.isEnabledFor(logging.INFO):
-
                 logger.info(
                     f"Updating history from {incremental_start.date()} to {end_date.date()} …"
                 )
@@ -1423,7 +1366,6 @@ def _forward_fill_history(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timesta
     )
 
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"Forward-filled history resulted in {len(filled_df)} rows.")
     return filled_df
 
@@ -1473,7 +1415,6 @@ def _get_top_weight_sp500_components_cached(
 
     target_ts = pd.Timestamp(date_key)
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(
             f"_get_top_weight_sp500_components_cached: target_ts={target_ts}, top_n={top_n}, exact={exact}"
         )
@@ -1485,7 +1426,6 @@ def _get_top_weight_sp500_components_cached(
         # If even the generic fallback failed we proceed – the history may
         # still load for earlier dates.
         if logger.isEnabledFor(logging.WARNING):
-
             logger.warning(
                 f"get_spy_holdings failed for {target_ts}, but proceeding to check _HISTORY_DF."
             )
@@ -1498,25 +1438,18 @@ def _get_top_weight_sp500_components_cached(
 
     hist = _HISTORY_DF
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"_HISTORY_DF shape: {hist.shape}")
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"_HISTORY_DF date range: {hist['date'].min()} to {hist['date'].max()}")
     if logger.isEnabledFor(logging.DEBUG):
-
         logger.debug(f"_HISTORY_DF head:\n{hist.head()}")
     if logger.isEnabledFor(logging.DEBUG):
-
         logger.debug(f"_HISTORY_DF tail:\n{hist.tail()}")
     if logger.isEnabledFor(logging.DEBUG):
-
         logger.debug(f"Unique dates in _HISTORY_DF: {hist['date'].unique()}")
     if logger.isEnabledFor(logging.DEBUG):
-
         logger.debug(f"Unique tickers in _HISTORY_DF: {hist['ticker'].unique()}")
     if logger.isEnabledFor(logging.DEBUG):
-
         logger.debug(f"Unique weight_pct values in _HISTORY_DF: {hist['weight_pct'].unique()}")
 
     mask_date = hist["date"] <= target_ts
@@ -1525,7 +1458,6 @@ def _get_top_weight_sp500_components_cached(
 
     mask_valid = mask_date & mask_weight & mask_ticker
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"mask_valid count: {mask_valid.sum()}")
 
     if not mask_valid.any():
@@ -1533,18 +1465,15 @@ def _get_top_weight_sp500_components_cached(
 
     latest_date = hist.loc[mask_valid, "date"].max()
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"latest_date found: {latest_date}")
     df_valid = hist[
         (hist["date"] == latest_date) & (hist["ticker"] != "-") & hist["weight_pct"].notna()
     ]  # noqa: E501
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"df_valid shape for latest_date: {df_valid.shape}")
 
     slice_df = df_valid.sort_values("weight_pct", ascending=False).head(top_n)
     if logger.isEnabledFor(logging.INFO):
-
         logger.info(f"slice_df shape: {slice_df.shape}")
     return list(zip(slice_df["ticker"].tolist(), slice_df["weight_pct"].tolist()))
 

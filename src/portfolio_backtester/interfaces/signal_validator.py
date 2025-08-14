@@ -16,7 +16,10 @@ class ISignalValidator(ABC):
 
     @abstractmethod
     def validate_signal_strategy_logic(
-        self, scenario_data: Dict[str, Any], strategy_class: Any, file_path_str: Optional[str]
+        self,
+        scenario_data: Dict[str, Any],
+        strategy_class: Any,
+        file_path_str: Optional[str],
     ) -> List[Any]:
         """Validate signal strategy specific configuration."""
         pass
@@ -33,7 +36,10 @@ class DefaultSignalValidator(ISignalValidator):
     """Default implementation of signal validator."""
 
     def validate_signal_strategy_logic(
-        self, scenario_data: Dict[str, Any], strategy_class: Any, file_path_str: Optional[str]
+        self,
+        scenario_data: Dict[str, Any],
+        strategy_class: Any,
+        file_path_str: Optional[str],
     ) -> List[Any]:
         """Validate signal strategy specific configuration."""
         # YamlError and YamlErrorType imported at module level

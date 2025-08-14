@@ -38,7 +38,9 @@ class OptimizerImportError(ParameterGeneratorError):
 
 
 def create_parameter_generator(
-    optimizer_type: str, random_state: Optional[np.random.Generator] = None, **kwargs: Any
+    optimizer_type: str,
+    random_state: Optional[np.random.Generator] = None,
+    **kwargs: Any,
 ) -> "ParameterGenerator":
     """Factory function to create parameter generators.
 

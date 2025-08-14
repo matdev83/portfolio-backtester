@@ -10,7 +10,9 @@ from typing import Optional, Dict, Any
 import pandas as pd
 import numpy as np
 
-from portfolio_backtester.strategies._core.base.base.signal_strategy import SignalStrategy
+from portfolio_backtester.strategies._core.base.base.signal_strategy import (
+    SignalStrategy,
+)
 
 
 class DummyStrategyForTestingSignalStrategy(SignalStrategy):
@@ -20,8 +22,7 @@ class DummyStrategyForTestingSignalStrategy(SignalStrategy):
         super().__init__(strategy_config)
         self.open_long_prob = self.strategy_params.get("open_long_prob", 0.1)
         self.close_long_prob = self.strategy_params.get("close_long_prob", 0.01)
-        self.dummy_param_1 = self.strategy_params.get("dummy_param_1", 10)
-        self.dummy_param_2 = self.strategy_params.get("dummy_param_2", 20)
+
         self.symbol = self.strategy_params.get("symbol", "SPY")
 
         # Seed the random number generator for reproducibility
@@ -43,20 +44,6 @@ class DummyStrategyForTestingSignalStrategy(SignalStrategy):
                 "min": 0.0,
                 "max": 1.0,
                 "default": 0.01,
-                "required": False,
-            },
-            "dummy_param_1": {
-                "type": "int",
-                "min": 1,
-                "max": 100,
-                "default": 10,
-                "required": False,
-            },
-            "dummy_param_2": {
-                "type": "int",
-                "min": 1,
-                "max": 100,
-                "default": 20,
                 "required": False,
             },
         }

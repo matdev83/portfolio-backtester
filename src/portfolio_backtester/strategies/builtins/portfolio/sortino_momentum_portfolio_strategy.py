@@ -23,7 +23,9 @@ class SortinoMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
             params_dict_to_update.setdefault(k, v)
 
         # Import SortinoRatio directly from features (alpha: legacy shim removed)
-        from portfolio_backtester.features.sortino_ratio import SortinoRatio as _SortinoRatio
+        from portfolio_backtester.features.sortino_ratio import (
+            SortinoRatio as _SortinoRatio,
+        )
 
         self.sortino_feature = _SortinoRatio(
             rolling_window=params_dict_to_update["rolling_window"],
@@ -39,8 +41,18 @@ class SortinoMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
             "sma_filter_window": {"type": "int", "min": 0, "max": 200, "default": 0},
             "apply_trading_lag": {"type": "bool", "default": False},
             "lookback_months": {"type": "int", "min": 1, "max": 36, "default": 12},
-            "top_decile_fraction": {"type": "float", "min": 0.05, "max": 0.5, "default": 0.5},
-            "smoothing_lambda": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.5},
+            "top_decile_fraction": {
+                "type": "float",
+                "min": 0.05,
+                "max": 0.5,
+                "default": 0.5,
+            },
+            "smoothing_lambda": {
+                "type": "float",
+                "min": 0.0,
+                "max": 1.0,
+                "default": 0.5,
+            },
             "leverage": {"type": "float", "min": 1.0, "max": 3.0, "default": 1.0},
             "trade_longs": {"type": "bool", "default": True},
             "trade_shorts": {"type": "bool", "default": False},

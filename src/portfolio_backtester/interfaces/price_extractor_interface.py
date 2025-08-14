@@ -62,7 +62,7 @@ class ScalarExtractor(IPriceExtractor):
 class PriceExtractorFactory:
     """Factory to create a price extractor."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Order is important, ScalarExtractor should be last as a catch-all.
         self._extractors = [DataFrameExtractor(), SeriesExtractor(), ScalarExtractor()]
 

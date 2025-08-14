@@ -41,7 +41,7 @@ class YamlValidator:
     Comprehensive YAML validator with detailed error reporting and suggestions.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.errors: List[YamlError] = []
 
     def validate_file(
@@ -182,7 +182,7 @@ class YamlValidator:
 
             for i in range(start_line, end_line):
                 prefix = ">>> " if i == line_num - 1 else "    "
-                context_lines.append(f"{prefix}{i+1:3d}: {lines[i]}")
+                context_lines.append(f"{prefix}{i + 1:3d}: {lines[i]}")
 
             context = "\n".join(context_lines)
 
@@ -369,7 +369,9 @@ class YamlValidator:
         return "\n".join(formatted_lines)
 
 
-def validate_yaml_file(file_path: Union[str, Path]) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+def validate_yaml_file(
+    file_path: Union[str, Path],
+) -> Tuple[bool, Optional[Dict[str, Any]], str]:
     """
     Convenience function to validate a YAML file and get formatted error output.
 

@@ -129,7 +129,7 @@ class TimingConfigSchema:
                         field="mode",
                         value=mode,
                         message=str(e),
-                        suggestion=f'Use one of: {", ".join(cls.VALID_MODES)}',
+                        suggestion=f"Use one of: {', '.join(cls.VALID_MODES)}",
                     )
                 )
 
@@ -149,7 +149,7 @@ class TimingConfigSchema:
                     field="mode",
                     value=None,
                     message="Missing required field: mode",
-                    suggestion=f'Add mode field with one of: {", ".join(cls.VALID_MODES)}',
+                    suggestion=f"Add mode field with one of: {', '.join(cls.VALID_MODES)}",
                 )
             )
         else:
@@ -160,7 +160,7 @@ class TimingConfigSchema:
                         field="mode",
                         value=mode,
                         message=f"Invalid timing mode: {mode}",
-                        suggestion=f'Use one of: {", ".join(cls.VALID_MODES)}',
+                        suggestion=f"Use one of: {', '.join(cls.VALID_MODES)}",
                     )
                 )
 
@@ -194,7 +194,7 @@ class TimingConfigSchema:
                         field="log_level",
                         value=log_level,
                         message=f"Invalid log level: {log_level}",
-                        suggestion=f'Use one of: {", ".join(valid_levels)}',
+                        suggestion=f"Use one of: {', '.join(valid_levels)}",
                     )
                 )
 

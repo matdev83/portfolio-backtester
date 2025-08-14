@@ -6,7 +6,7 @@ including scenario running and backtest mode orchestration.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
 
@@ -32,7 +32,7 @@ class BacktestRunner:
         data_cache: Any,
         strategy_manager: Any,
         timeout_checker=None,
-    ):
+    ) -> None:
         """
         Initialize BacktestRunner with dependencies.
 
@@ -147,7 +147,7 @@ class BacktestRunner:
         )
 
         # Calculate portfolio returns (no trade tracking for optimization)
-        result = calculate_portfolio_returns(
+        portfolio_rets_net, _ = calculate_portfolio_returns(
             sized_signals,
             scenario_config,
             price_data_daily_ohlc,
@@ -157,12 +157,6 @@ class BacktestRunner:
             track_trades=False,
             strategy=strategy,
         )
-
-        # Handle both old and new return formats
-        if isinstance(result, tuple):
-            portfolio_rets_net, _ = result
-        else:
-            portfolio_rets_net = result
 
         if verbose:
             if logger.isEnabledFor(logging.DEBUG):
@@ -215,7 +209,8 @@ class BacktestRunner:
                 import optuna
 
                 study = optuna.load_study(
-                    study_name=study_name, storage=self._get_default_optuna_storage_url()
+                    study_name=study_name,
+                    storage=self._get_default_optuna_storage_url(),
                 )
                 optimal_params = scenario_config["strategy_params"].copy()
                 optimal_params.update(study.best_params)
@@ -240,7 +235,7 @@ class BacktestRunner:
         dummy_data_source = DummyDataSource()
         strategy_backtester = StrategyBacktester(self.global_config, dummy_data_source)
         backtest_result = strategy_backtester.backtest_strategy(
-            scenario_config, monthly_data, daily_data, rets_full
+            scenario_config, monthly_data, daily_data, rets_full, track_trades=False
         )
 
         train_end_date = pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
@@ -259,105 +254,3 @@ class BacktestRunner:
             logger.debug(f"Backtest completed for scenario: {scenario_config['name']}")
 
         return result
-
-    def run_multiple_scenarios(
-        self,
-        scenarios: List[Dict[str, Any]],
-        monthly_data: pd.DataFrame,
-        daily_data: pd.DataFrame,
-        rets_full: pd.DataFrame,
-        study_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Run multiple backtest scenarios.
-
-        Args:
-            scenarios: List of scenario configurations
-            monthly_data: Monthly price data
-            daily_data: Daily OHLC data
-            rets_full: Full period returns data
-            study_name: Optional Optuna study name to load best parameters from
-
-        Returns:
-            Dictionary mapping scenario names to results
-        """
-        results = {}
-
-        for scenario_config in scenarios:
-            if self.timeout_checker():
-                logger.warning("Timeout reached during scenario execution. Stopping.")
-                break
-
-            try:
-                scenario_result = self.run_backtest_mode(
-                    scenario_config, monthly_data, daily_data, rets_full, study_name
-                )
-                results[scenario_config["name"]] = scenario_result
-
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Completed scenario: {scenario_config['name']}")
-
-            except Exception as e:
-                logger.error(f"Error running scenario {scenario_config['name']}: {e}")
-                # Continue with other scenarios
-                continue
-
-        return results
-
-    def validate_scenario_data(
-        self, scenario_config: Dict[str, Any], monthly_data: pd.DataFrame, daily_data: pd.DataFrame
-    ) -> bool:
-        """
-        Validate that scenario has sufficient data for backtesting.
-
-        Args:
-            scenario_config: Scenario configuration
-            monthly_data: Monthly price data
-            daily_data: Daily OHLC data
-
-        Returns:
-            True if scenario has sufficient data, False otherwise
-        """
-        try:
-            # Check if we have the required universe tickers
-            universe_tickers = scenario_config.get("universe", [])
-            if not universe_tickers:
-                strategy = self.strategy_manager.get_strategy(
-                    scenario_config["strategy"], scenario_config["strategy_params"]
-                )
-                universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
-
-            # Check data availability
-            available_tickers = set(
-                daily_data.columns.get_level_values(0)
-                if isinstance(daily_data.columns, pd.MultiIndex)
-                else daily_data.columns
-            )
-            missing_tickers = set(universe_tickers) - available_tickers
-
-            if missing_tickers:
-                logger.warning(
-                    f"Missing tickers for scenario {scenario_config['name']}: {missing_tickers}"
-                )
-
-            # Require at least 50% of tickers to be available
-            availability_ratio = (len(universe_tickers) - len(missing_tickers)) / len(
-                universe_tickers
-            )
-            if availability_ratio < 0.5:
-                logger.error(
-                    f"Insufficient data for scenario {scenario_config['name']}: only {availability_ratio:.1%} of tickers available"
-                )
-                return False
-
-            # Check for minimum data length
-            if len(daily_data) < 252:  # Less than 1 year of data
-                logger.warning(
-                    f"Limited data for scenario {scenario_config['name']}: only {len(daily_data)} days available"
-                )
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Error validating scenario data for {scenario_config['name']}: {e}")
-            return False

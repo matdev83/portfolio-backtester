@@ -8,7 +8,11 @@ Optuna optimization engine while maintaining the abstract interface.
 import logging
 from typing import Dict, Any, Optional
 from .base_optimizer import BasePerformanceOptimizer
-from .interfaces import AbstractTradeTracker, AbstractTrialDeduplicator, AbstractParallelRunner
+from .interfaces import (
+    AbstractTradeTracker,
+    AbstractTrialDeduplicator,
+    AbstractParallelRunner,
+)
 
 logger = logging.getLogger(__name__)
 

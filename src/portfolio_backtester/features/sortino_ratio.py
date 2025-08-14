@@ -9,11 +9,10 @@ from ..numba_optimized import sortino_fast_fixed
 class SortinoRatio(Feature):
     """Computes the Sortino ratio."""
 
-    def __init__(self, rolling_window: int, target_return: float = 0.0):
+    def __init__(self, rolling_window: int, target_return: float = 0.0) -> None:
         super().__init__(rolling_window=rolling_window, target_return=target_return)
         self.rolling_window = rolling_window
         self.target_return = target_return
-        self.needs_close_prices_only = True
 
     @property
     def name(self) -> str:
@@ -35,7 +34,10 @@ class SortinoRatio(Feature):
         # Use optimized batch calculation with proper ddof=1 handling
         returns_np = rets.to_numpy(dtype=np.float64)
         sortino_mat = sortino_fast_fixed(
-            returns_np, self.rolling_window, self.target_return, annualization_factor=12.0
+            returns_np,
+            self.rolling_window,
+            self.target_return,
+            annualization_factor=12.0,
         )
         sortino_df = pd.DataFrame(sortino_mat, index=rets.index, columns=rets.columns)
 

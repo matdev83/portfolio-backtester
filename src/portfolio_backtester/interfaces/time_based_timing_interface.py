@@ -10,6 +10,7 @@ from typing import Dict, Any, TYPE_CHECKING
 import pandas as pd
 
 from .timing_base_interface import ITimingBase
+from .timing_state_interface import ITimingState
 
 if TYPE_CHECKING:
     from ..strategies._core.base.base_strategy import BaseStrategy
@@ -103,23 +104,33 @@ class _TimeBasedTimingAdapter(ITimeBasedTiming):
         strategy_context: "BaseStrategy",
     ) -> pd.DatetimeIndex:
         """Return dates when the strategy should generate signals."""
-        return self._time_based_timing.get_rebalance_dates(  # type: ignore[no-any-return]
+        result = self._time_based_timing.get_rebalance_dates(
             start_date, end_date, available_dates, strategy_context
         )
+        # Ensure we return a DatetimeIndex
+        if not isinstance(result, pd.DatetimeIndex):
+            return pd.DatetimeIndex(result)
+        return result
 
     def should_generate_signal(
         self, current_date: pd.Timestamp, strategy_context: "BaseStrategy"
     ) -> bool:
         """Determine if a signal should be generated on the current date."""
-        return self._time_based_timing.should_generate_signal(current_date, strategy_context)  # type: ignore[no-any-return]
+        return self._time_based_timing.should_generate_signal(  # type: ignore[no-any-return]
+            current_date, strategy_context
+        )
 
     def reset_state(self) -> None:
         """Reset timing state for new backtest run."""
         self._time_based_timing.reset_state()
 
-    def get_timing_state(self):
+    def get_timing_state(self) -> ITimingState:
         """Get the current timing state."""
-        return self._time_based_timing.get_timing_state()
+        result = self._time_based_timing.get_timing_state()
+        # Ensure we return an ITimingState
+        if not isinstance(result, ITimingState):
+            raise TypeError(f"Expected ITimingState, got {type(result)}")
+        return result
 
     def update_signal_state(self, date: pd.Timestamp, weights: pd.Series) -> None:
         """Update timing state after signal generation."""
@@ -134,15 +145,27 @@ class _TimeBasedTimingAdapter(ITimeBasedTiming):
     @property
     def config(self) -> Dict[str, Any]:
         """Get timing controller configuration."""
-        return self._time_based_timing.config  # type: ignore[no-any-return]
+        result = self._time_based_timing.config
+        # Ensure we return a dict
+        if not isinstance(result, dict):
+            return dict(result)
+        return result
 
     def get_frequency(self) -> str:
         """Get the rebalance frequency."""
-        return self._time_based_timing.frequency  # type: ignore[no-any-return]
+        result = self._time_based_timing.frequency
+        # Ensure we return a string
+        if not isinstance(result, str):
+            return str(result)
+        return result
 
     def get_offset(self) -> int:
         """Get the rebalance offset in days."""
-        return self._time_based_timing.offset  # type: ignore[no-any-return]
+        result = self._time_based_timing.offset
+        # Ensure we return an int
+        if not isinstance(result, int):
+            return int(result)
+        return result
 
     def set_frequency(self, frequency: str) -> None:
         """Set the rebalance frequency."""

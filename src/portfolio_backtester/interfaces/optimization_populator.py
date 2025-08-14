@@ -129,7 +129,7 @@ class ModernOptimizationPopulator(OptimizationPopulator):
 class CompositeOptimizationPopulator(OptimizationPopulator):
     """Combines legacy and modern optimization populators."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._populators = [
             LegacyOptimizationPopulator(),
             ModernOptimizationPopulator(),
@@ -157,7 +157,7 @@ class CompositeOptimizationPopulator(OptimizationPopulator):
 class OptimizationPopulatorFactory:
     """Factory for creating appropriate optimization populators."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._default_populator = CompositeOptimizationPopulator()
 
     def get_populator(self, config_data: Any) -> OptimizationPopulator:

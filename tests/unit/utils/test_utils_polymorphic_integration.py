@@ -83,7 +83,11 @@ class TestResolveStrategyPolymorphic:
         mock_enumerate.return_value = {"name_strategy": mock_strategy}
 
         # 'name' should take priority over 'strategy' and 'type'
-        spec = {"name": "name_strategy", "strategy": "strategy_strategy", "type": "type_strategy"}
+        spec = {
+            "name": "name_strategy",
+            "strategy": "strategy_strategy",
+            "type": "type_strategy",
+        }
         result = _resolve_strategy(spec)
         assert result == mock_strategy
 
@@ -153,7 +157,10 @@ class TestDfToFloat32ArrayPolymorphic:
 
     def test_convert_multiindex_dataframe(self):
         """Test converting MultiIndex DataFrame to float32 array."""
-        arrays = [["AAPL", "AAPL", "GOOGL", "GOOGL"], ["Close", "Volume", "Close", "Volume"]]
+        arrays = [
+            ["AAPL", "AAPL", "GOOGL", "GOOGL"],
+            ["Close", "Volume", "Close", "Volume"],
+        ]
         columns = pd.MultiIndex.from_arrays(arrays, names=["Ticker", "Field"])
         df = pd.DataFrame(
             [[100.0, 1000, 1500.0, 2000], [101.0, 1100, 1510.0, 2100]],
@@ -161,7 +168,7 @@ class TestDfToFloat32ArrayPolymorphic:
             index=pd.date_range("2023-01-01", periods=2),
         )
 
-        matrix, tickers = _df_to_float32_array(df, field="Close")
+        matrix, tickers = _df_to_float32_array(df, column_names=["Close"])
 
         assert isinstance(matrix, np.ndarray)
         assert matrix.dtype == np.float32
@@ -176,15 +183,16 @@ class TestDfToFloat32ArrayPolymorphic:
                 "A": [1.0, 3.0, 2.0],
                 "B": [4.0, 6.0, 5.0],
             },
-            index=pd.date_range("2023-01-01", periods=3)[::-1],
-        )  # Reverse order
+            index=pd.to_datetime(["2023-01-01", "2023-01-03", "2023-01-02"]),
+        )
 
         matrix, tickers = _df_to_float32_array(df)
 
         # Should be sorted by index
         assert matrix.shape == (3, 2)
-        # After sorting, the last row (with reverse indexing) becomes first
-        np.testing.assert_array_almost_equal(matrix[0], [2.0, 5.0])
+        np.testing.assert_array_almost_equal(matrix[0], [1.0, 4.0])
+        np.testing.assert_array_almost_equal(matrix[1], [2.0, 5.0])
+        np.testing.assert_array_almost_equal(matrix[2], [3.0, 6.0])
 
     def test_convert_with_nan_values(self):
         """Test converting DataFrame with NaN values."""
@@ -226,7 +234,7 @@ class TestDfToFloat32ArrayPolymorphic:
         df = pd.DataFrame(np.random.randn(3, 4), columns=columns)
 
         with pytest.raises(KeyError, match="Field 'Open' not found in DataFrame columns"):
-            _df_to_float32_array(df, field="Open")
+            _df_to_float32_array(df, column_names=["Open"])
 
     def test_convert_no_isinstance_usage(self):
         """Test that function doesn't use isinstance checks internally."""
@@ -251,7 +259,7 @@ class TestDfToFloat32ArrayPolymorphic:
         # All these should work without isinstance checks
         for test_df in test_cases:
             if hasattr(test_df.columns, "nlevels") and test_df.columns.nlevels > 1:
-                matrix, tickers = _df_to_float32_array(test_df, field="Close")
+                matrix, tickers = _df_to_float32_array(test_df, column_names=["Close"])
             else:
                 matrix, tickers = _df_to_float32_array(test_df)
 
@@ -316,7 +324,10 @@ class TestPolymorphicEquivalence:
         assert np.allclose(matrix, df_simple.astype(np.float32).values)
 
         # Test case 2: MultiIndex DataFrame
-        arrays = [["AAPL", "AAPL", "GOOGL", "GOOGL"], ["Close", "Volume", "Close", "Volume"]]
+        arrays = [
+            ["AAPL", "AAPL", "GOOGL", "GOOGL"],
+            ["Close", "Volume", "Close", "Volume"],
+        ]
         columns = pd.MultiIndex.from_arrays(arrays, names=["Ticker", "Field"])
         df_multi = pd.DataFrame(
             [[100.0, 1000, 1500.0, 2000], [101.0, 1100, 1510.0, 2100]],
@@ -324,10 +335,12 @@ class TestPolymorphicEquivalence:
             index=pd.date_range("2023-01-01", periods=2),
         )
 
-        matrix, tickers = _df_to_float32_array(df_multi, field="Close")
+        matrix, tickers = _df_to_float32_array(df_multi, column_names=["Close"])
 
         # Expected behavior
-        expected_values = df_multi.xs("Close", level="Field", axis=1).astype(np.float32)
+        expected_values = df_multi.xs("Close", level="Field", axis=1).astype(
+            np.float32
+        )
         assert matrix.dtype == np.float32
         assert matrix.shape == (2, 2)
         assert tickers == ["AAPL", "GOOGL"]

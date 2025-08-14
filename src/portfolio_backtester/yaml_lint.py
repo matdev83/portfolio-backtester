@@ -45,7 +45,7 @@ def lint_files(file_paths: List[str], verbose: bool = False) -> bool:
     return all_valid
 
 
-def main():
+def main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
         description="YAML Linter - Validate YAML files with detailed error reporting",
@@ -71,7 +71,10 @@ Examples:
     )
 
     parser.add_argument(
-        "--quiet", "-q", action="store_true", help="Only show errors, suppress success messages"
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Only show errors, suppress success messages",
     )
 
     args = parser.parse_args()

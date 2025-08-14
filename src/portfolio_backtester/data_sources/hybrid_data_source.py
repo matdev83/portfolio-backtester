@@ -490,7 +490,11 @@ class HybridDataSource(BaseDataSource):
                         filtered_df = pd.concat(filtered_data_frames, axis=1)
                         return filtered_df, successful_tickers, failed_tickers
                     else:
-                        return normalized_df.iloc[:0], successful_tickers, failed_tickers
+                        return (
+                            normalized_df.iloc[:0],
+                            successful_tickers,
+                            failed_tickers,
+                        )
 
                 except Exception as e:
                     logger.warning(
@@ -505,7 +509,11 @@ class HybridDataSource(BaseDataSource):
                         cols_to_keep = [
                             col for col in normalized_df.columns if col in successful_tickers
                         ]
-                    return normalized_df[cols_to_keep], successful_tickers, failed_tickers
+                    return (
+                        normalized_df[cols_to_keep],
+                        successful_tickers,
+                        failed_tickers,
+                    )
             else:
                 # No successful tickers, return empty DataFrame with same structure
                 return normalized_df.iloc[:0], successful_tickers, failed_tickers
@@ -570,7 +578,6 @@ class HybridDataSource(BaseDataSource):
             TimeElapsedColumn(),
             console=Console(),
         ) as progress:
-
             # Step 1: Try primary source
             primary_task = progress.add_task(
                 f"[green]Fetching from {primary_source}...", total=len(tickers_to_fetch)
@@ -589,7 +596,8 @@ class HybridDataSource(BaseDataSource):
             # Step 2: Try fallback source for failed tickers
             if primary_failed:
                 fallback_task = progress.add_task(
-                    f"[yellow]Fallback to {fallback_source}...", total=len(primary_failed)
+                    f"[yellow]Fallback to {fallback_source}...",
+                    total=len(primary_failed),
                 )
 
                 fallback_data, fallback_successful, fallback_failed = self._fetch_from_source(
@@ -604,7 +612,8 @@ class HybridDataSource(BaseDataSource):
 
                 # Update primary task to show total progress
                 progress.update(
-                    primary_task, completed=len(primary_successful) + len(fallback_successful)
+                    primary_task,
+                    completed=len(primary_successful) + len(fallback_successful),
                 )
 
         # Combine all data

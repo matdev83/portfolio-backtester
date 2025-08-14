@@ -61,7 +61,7 @@ class ConfigValidationCache:
             logger.warning(f"Failed to load cache file {self.cache_file}: {e}")
             return {}
 
-    def _save_cache(self):
+    def _save_cache(self) -> None:
         """Save cache data to file."""
         try:
             self.cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -82,7 +82,9 @@ class ConfigValidationCache:
                 count += 1
         return count
 
-    def _get_file_info_recursive(self, directory: Path, pattern: str = "*.yaml") -> List[Dict]:
+    def _get_file_info_recursive(
+        self, directory: Path, pattern: str = "*.yaml"
+    ) -> List[Dict[str, Any]]:
         """Get file information (path and mtime) recursively."""
         files_info: List[Dict[str, Any]] = []
         if not directory.exists():
@@ -106,7 +108,11 @@ class ConfigValidationCache:
 
     def _get_current_state(self) -> Dict[str, Any]:
         """Get current state of all monitored directories and files."""
-        state: Dict[str, Any] = {"timestamp": time.time(), "file_counts": {}, "files": {}}
+        state: Dict[str, Any] = {
+            "timestamp": time.time(),
+            "file_counts": {},
+            "files": {},
+        }
 
         # Count files in each directory
         state["file_counts"]["scenarios"] = self._count_files_recursive(
@@ -143,7 +149,7 @@ class ConfigValidationCache:
         return state
 
     def _compare_file_counts(
-        self, cached_state: Dict, current_state: Dict
+        self, cached_state: Dict[str, Any], current_state: Dict[str, Any]
     ) -> Tuple[bool, List[str]]:
         """Compare file counts between cached and current state."""
         reasons = []
@@ -158,7 +164,7 @@ class ConfigValidationCache:
         return len(reasons) == 0, reasons
 
     def _compare_file_timestamps(
-        self, cached_state: Dict, current_state: Dict
+        self, cached_state: Dict[str, Any], current_state: Dict[str, Any]
     ) -> Tuple[bool, List[str]]:
         """Compare file timestamps between cached and current state."""
         reasons = []
@@ -252,7 +258,7 @@ class ConfigValidationCache:
         result: Optional[Dict] = self.cache_data[cache_key].get("result")
         return result
 
-    def store_result(self, result: Dict, cache_key: str = "validation"):
+    def store_result(self, result: Dict[str, Any], cache_key: str = "validation") -> None:
         """
         Store validation result in cache.
 
@@ -269,7 +275,7 @@ class ConfigValidationCache:
         total_files = sum(current_state["file_counts"].values())
         logger.info(f"Cached validation results for {total_files} files")
 
-    def clear_cache(self, cache_key: Optional[str] = None):
+    def clear_cache(self, cache_key: Optional[str] = None) -> None:
         """
         Clear cache data.
 
@@ -285,7 +291,7 @@ class ConfigValidationCache:
 
         self._save_cache()
 
-    def get_cache_info(self) -> Dict:
+    def get_cache_info(self) -> Dict[str, Any]:
         """Get information about current cache state."""
         info = {
             "cache_file": str(self.cache_file),

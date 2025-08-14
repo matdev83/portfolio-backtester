@@ -231,7 +231,9 @@ class FileSystemStrategyDiscoveryEngine(IStrategyDiscoveryEngine):
                             logger.debug(f"Skipped module {module_info.name}: {e}")
 
         # Get all subclasses from imported modules
-        from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base.base_strategy import (
+            BaseStrategy,
+        )
 
         all_subclasses = self._get_all_subclasses(BaseStrategy)
 
@@ -266,17 +268,32 @@ class ConcreteStrategyValidator(IStrategyValidator):
     def __init__(self):
         """Initialize validator with base strategy types."""
         # Import base strategy types
-        from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
-        from portfolio_backtester.strategies._core.base.signal_strategy import SignalStrategy
-        from portfolio_backtester.strategies._core.base.portfolio_strategy import PortfolioStrategy
-        from portfolio_backtester.strategies._core.base.meta_strategy import BaseMetaStrategy
+        from portfolio_backtester.strategies._core.base.base.base_strategy import (
+            BaseStrategy,
+        )
+        from portfolio_backtester.strategies._core.base.signal_strategy import (
+            SignalStrategy,
+        )
+        from portfolio_backtester.strategies._core.base.portfolio_strategy import (
+            PortfolioStrategy,
+        )
+        from portfolio_backtester.strategies._core.base.meta_strategy import (
+            BaseMetaStrategy,
+        )
 
-        self._base_types = {BaseStrategy, SignalStrategy, PortfolioStrategy, BaseMetaStrategy}
+        self._base_types = {
+            BaseStrategy,
+            SignalStrategy,
+            PortfolioStrategy,
+            BaseMetaStrategy,
+        }
 
     def is_valid_strategy(self, strategy_class: Type[Any]) -> bool:
         """Check if a class is a valid concrete strategy."""
         import inspect
-        from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base.base_strategy import (
+            BaseStrategy,
+        )
 
         return (
             inspect.isclass(strategy_class)
@@ -289,7 +306,9 @@ class ConcreteStrategyValidator(IStrategyValidator):
     def get_validation_errors(self, strategy_class: Type[Any]) -> List[str]:
         """Get detailed validation errors."""
         import inspect
-        from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
+        from portfolio_backtester.strategies._core.base.base.base_strategy import (
+            BaseStrategy,
+        )
 
         errors = []
 

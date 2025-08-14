@@ -31,7 +31,12 @@ class TradeDirectionViolationError(ValueError):
     """Raised when a strategy violates its trade direction constraints."""
 
     def __init__(
-        self, strategy_class, trade_longs, trade_shorts, violation_details, violated_signals=None
+        self,
+        strategy_class,
+        trade_longs,
+        trade_shorts,
+        violation_details,
+        violated_signals=None,
     ):
         self.strategy_class = strategy_class
         self.trade_longs = trade_longs
@@ -151,9 +156,13 @@ class BaseStrategy(ABC):
         """Initialize provider interfaces - required for strategy functionality."""
         # Import here to avoid circular imports
         from .....interfaces.universe_provider_interface import UniverseProviderFactory
-        from .....interfaces.position_sizer_provider_interface import PositionSizerProviderFactory
+        from .....interfaces.position_sizer_provider_interface import (
+            PositionSizerProviderFactory,
+        )
         from .....interfaces.stop_loss_provider_interface import StopLossProviderFactory
-        from .....interfaces.take_profit_provider_interface import TakeProfitProviderFactory
+        from .....interfaces.take_profit_provider_interface import (
+            TakeProfitProviderFactory,
+        )
 
         try:
             # Initialize universe provider - REQUIRED
@@ -709,7 +718,13 @@ class BaseStrategy(ABC):
     @staticmethod
     @njit
     def run_logic(
-        signals, w_prev, num_holdings, top_decile_fraction, trade_shorts, leverage, smoothing_lambda
+        signals,
+        w_prev,
+        num_holdings,
+        top_decile_fraction,
+        trade_shorts,
+        leverage,
+        smoothing_lambda,
     ):
         if num_holdings is not None and num_holdings > 0:
             nh = int(num_holdings)
@@ -750,7 +765,10 @@ class BaseStrategy(ABC):
     # _calculate_derisk_flags might still be useful if strategies reimplement SMA logic.
     # It will need access to benchmark_historical_data passed to generate_signals.
     def _calculate_benchmark_sma(
-        self, benchmark_historical_data: pd.DataFrame, window: int, price_column: str = "Close"
+        self,
+        benchmark_historical_data: pd.DataFrame,
+        window: int,
+        price_column: str = "Close",
     ) -> pd.Series:
         """Calculates SMA for the benchmark."""
         if benchmark_historical_data.empty:

@@ -91,7 +91,7 @@ class ValidationReporter:
         return [e for e in errors if e.severity == severity]
 
     @staticmethod
-    def get_error_summary(errors: List[ValidationError]) -> dict:
+    def get_error_summary(errors: List[ValidationError]) -> dict[str, int]:
         """
         Get a summary of errors grouped by severity.
 

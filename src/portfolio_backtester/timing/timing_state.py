@@ -7,7 +7,12 @@ import pandas as pd
 from typing import Dict, Optional, Set, Any, List
 from dataclasses import dataclass, field
 
-from .state_management import PositionTracker, StateStatistics, StateSerializer, PositionInfo
+from .state_management import (
+    PositionTracker,
+    StateStatistics,
+    StateSerializer,
+    PositionInfo,
+)
 
 
 @dataclass

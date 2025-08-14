@@ -2,66 +2,26 @@ import argparse
 import logging
 import sys
 import warnings
-from pathlib import Path
 import os
+import time
+from pathlib import Path
+from typing import List, Optional
+import portfolio_backtester.config_loader as config_loader
 
-from .core import Backtester
-from .utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
-from .utils import register_signal_handler as register_central_signal_handler
-from .config_loader import ConfigurationError
-from . import config_loader as config_loader_module
-from .scenario_validator import validate_scenario_semantics, YamlValidator
-from .interfaces.attribute_accessor_interface import create_module_attribute_accessor
+from portfolio_backtester.core import Backtester
+from portfolio_backtester.config_loader import (
+    ConfigurationError,
+    load_scenario_from_file,
+)
+from portfolio_backtester.scenario_validator import (
+    validate_scenario_semantics,
+    YamlValidator,
+)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
 
-
-def main():
-    try:
-        # Assuming the script is run from the root of the project
-        from .strategy_config_validator import validate_strategy_configs
-
-        project_root = Path(__file__).parent.parent.parent
-        strategies_directory = project_root / "src" / "portfolio_backtester" / "strategies"
-        scenarios_directory = project_root / "config" / "scenarios"
-
-        is_valid, validation_errors = validate_strategy_configs(
-            str(strategies_directory), str(scenarios_directory)
-        )
-        if not is_valid:
-            for error in validation_errors:
-                logger.error(error)
-            logger.error(
-                "Strategy validation failed! Please ensure all strategies have corresponding default.yaml config files."
-            )
-            sys.exit(1)
-        else:
-            logger.info(
-                "Strategy validation passed - all strategies have corresponding default.yaml config files."
-            )
-    except FileNotFoundError as e:
-        logger.error(f"Missing YAML configuration for strategy: {e}")
-        sys.exit(1)
-
-    # Safely configure UTF-8 on Windows terminals where supported
-    if sys.platform == "win32":
-        try:
-            # Only TextIO has reconfigure in recent Python; guard for type-checker and runtime
-            out = sys.stdout
-            err = sys.stderr
-            if hasattr(out, "reconfigure"):
-                out.reconfigure(encoding="utf-8")
-            if hasattr(err, "reconfigure"):
-                err.reconfigure(encoding="utf-8")
-        except Exception:
-            # Non-fatal if the environment doesn't support reconfigure
-            pass
-
-    register_central_signal_handler()
-
+def _create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run portfolio backtester.")
     parser.add_argument(
         "--log-level",
@@ -82,7 +42,9 @@ def main():
         help="Name of the scenario to run/optimize from BACKTEST_SCENARIOS.",
     )
     parser.add_argument(
-        "--scenario-filename", type=str, help="Path to a single scenario file to run/optimize."
+        "--scenario-filename",
+        type=str,
+        help="Path to a single scenario file to run/optimize.",
     )
     parser.add_argument(
         "--study-name",
@@ -90,10 +52,15 @@ def main():
         help="Name of the Optuna study to use for optimization or to load best parameters from.",
     )
     parser.add_argument(
-        "--storage-url", type=str, help="Optuna storage URL. If not provided, SQLite will be used."
+        "--storage-url",
+        type=str,
+        help="Optuna storage URL. If not provided, SQLite will be used.",
     )
     parser.add_argument(
-        "--random-seed", type=int, default=None, help="Set a random seed for reproducibility."
+        "--random-seed",
+        type=int,
+        default=None,
+        help="Set a random seed for reproducibility.",
     )
     parser.add_argument(
         "--optimize-min-positions",
@@ -114,7 +81,10 @@ def main():
         help="Number of top performing parameter values to keep per grid.",
     )
     parser.add_argument(
-        "--n-jobs", type=int, default=8, help="Parallel worker processes to use (-1 ⇒ all cores)."
+        "--n-jobs",
+        type=int,
+        default=8,
+        help="Parallel worker processes to use (-1 ⇒ all cores).",
     )
     parser.add_argument(
         "--early-stop-patience",
@@ -129,7 +99,10 @@ def main():
         help="Stop optimization early after N consecutive trials with zero values. Default: 20.",
     )
     parser.add_argument(
-        "--optuna-trials", type=int, default=200, help="Maximum trials per optimization."
+        "--optuna-trials",
+        type=int,
+        default=200,
+        help="Maximum trials per optimization.",
     )
     parser.add_argument(
         "--optuna-timeout-sec",
@@ -143,6 +116,62 @@ def main():
         default="optuna",
         choices=["optuna", "genetic"],
         help="Optimizer to use ('optuna' or 'genetic'). Default: optuna.",
+    )
+    # GA-specific knobs
+    parser.add_argument(
+        "--ga-population-size",
+        type=int,
+        default=50,
+        help="Genetic algorithm population size (GA only).",
+    )
+    parser.add_argument(
+        "--ga-max-generations",
+        type=int,
+        default=10,
+        help="Genetic algorithm maximum generations (GA only).",
+    )
+    parser.add_argument(
+        "--ga-mutation-rate",
+        type=float,
+        default=0.1,
+        help="Genetic algorithm mutation rate (GA only).",
+    )
+    parser.add_argument(
+        "--ga-crossover-rate",
+        type=float,
+        default=0.8,
+        help="Genetic algorithm crossover rate (GA only).",
+    )
+    # Joblib tuning knobs for population evaluation
+    parser.add_argument(
+        "--joblib-batch-size",
+        type=str,
+        default="auto",
+        help="Batch size for joblib. Use 'auto' or an integer. (Population optimizers only)",
+    )
+    parser.add_argument(
+        "--joblib-pre-dispatch",
+        type=str,
+        default="3*n_jobs",
+        help="Pre-dispatch setting for joblib (e.g., '3*n_jobs'). (Population optimizers only)",
+    )
+    # Deduplication settings
+    parser.add_argument(
+        "--use-persistent-cache",
+        action="store_true",
+        help="Use persistent deduplication cache across processes and runs. Default: False.",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default=None,
+        help="Directory to store persistent deduplication cache. Default: system temp directory.",
+    )
+    parser.add_argument(
+        "--cache-file",
+        type=str,
+        default=None,
+        help="Filename for persistent deduplication cache. Default: <optimizer_type>_dedup_cache.pkl.",
     )
     parser.add_argument(
         "--pruning-enabled",
@@ -190,14 +219,34 @@ def main():
         help="Show plots interactively (blocks execution). Default: off, only saves plots.",
     )
     parser.add_argument(
-        "--timeout", type=int, default=None, help="Global timeout in seconds for the entire run."
+        "--enable-stage2-mc",
+        action="store_true",
+        help="Enable Stage 2 Monte Carlo robustness visualization (disabled by default).",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Global timeout in seconds for the entire run.",
+    )
+    return parser
 
-    # Use DIP interface instead of direct getattr call
-    module_accessor = create_module_attribute_accessor()
-    log_level = module_accessor.get_module_attribute(logging, args.log_level.upper(), logging.INFO)
-    logging.getLogger().setLevel(log_level)
+
+def main(args: Optional[List[str]] = None) -> None:
+    if args is None:
+        args = sys.argv[1:]
+
+    parser = _create_parser()
+    parsed_args = parser.parse_args(args)
+
+    # Configure logging at the earliest point
+    log_level = getattr(logging, parsed_args.log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=log_level, format="%(asctime)s - %(levelname)s - %(message)s", force=True
+    )
+
+    # Re-get the logger now that the configuration is set
+    logger = logging.getLogger(__name__)
 
     # Set up file logging for debug output
     file_handler = logging.FileHandler("optimizer_debug.log", mode="w", encoding="utf-8")
@@ -207,46 +256,24 @@ def main():
     logging.getLogger().addHandler(file_handler)
 
     try:
-        config_loader_module.load_config()
-        GLOBAL_CONFIG_RELOADED = config_loader_module.GLOBAL_CONFIG
-        BACKTEST_SCENARIOS_RELOADED = config_loader_module.BACKTEST_SCENARIOS
+        # Load global configuration and scenarios (call through module for test patching)
+        config_loader.load_config()
+        # Read from module attributes so test patches on config_loader are respected
+        GLOBAL_CONFIG_RELOADED = config_loader.GLOBAL_CONFIG
+        BACKTEST_SCENARIOS_RELOADED = config_loader.BACKTEST_SCENARIOS
+
+        # Apply performance tweaks from config
+        performance_config = GLOBAL_CONFIG_RELOADED.get("performance", {})
+        if performance_config.get("enable_numba_fastmath", False):
+            os.environ["NUMBA_NUM_THREADS"] = str(performance_config.get("NUMBA_NUM_THREADS", 1))
+            os.environ["OMP_NUM_THREADS"] = str(performance_config.get("OMP_NUM_THREADS", 1))
+            os.environ["MKL_NUM_THREADS"] = str(performance_config.get("MKL_NUM_THREADS", 1))
+            os.environ["OPENBLAS_NUM_THREADS"] = str(
+                performance_config.get("OPENBLAS_NUM_THREADS", 1)
+            )
+            logger.info("Applied performance.thread_caps environment limits.")
 
         logger.info("Configuration loaded successfully")
-
-        # Optional thread caps to avoid oversubscription (config: performance.thread_caps)
-        try:
-            perf_cfg = (
-                GLOBAL_CONFIG_RELOADED.get("performance", {})
-                if isinstance(GLOBAL_CONFIG_RELOADED, dict)
-                else {}
-            )
-            thread_caps = perf_cfg.get("thread_caps", {}) if isinstance(perf_cfg, dict) else {}
-            if thread_caps.get("enabled", False):
-                omp = thread_caps.get("OMP_NUM_THREADS")
-                numba_threads = thread_caps.get("NUMBA_NUM_THREADS")
-                mkl = thread_caps.get("MKL_NUM_THREADS")
-                openblas = thread_caps.get("OPENBLAS_NUM_THREADS")
-
-                if isinstance(omp, int) and omp > 0:
-                    os.environ["OMP_NUM_THREADS"] = str(omp)
-                if isinstance(numba_threads, int) and numba_threads > 0:
-                    os.environ["NUMBA_NUM_THREADS"] = str(numba_threads)
-                if isinstance(mkl, int) and mkl > 0:
-                    os.environ["MKL_NUM_THREADS"] = str(mkl)
-                if isinstance(openblas, int) and openblas > 0:
-                    os.environ["OPENBLAS_NUM_THREADS"] = str(openblas)
-
-                logger.info("Applied performance.thread_caps environment limits.")
-        except Exception as _e:
-            logger.warning(f"Could not apply performance.thread_caps: {_e}")
-
-    except ConfigurationError as e:
-        logger.error("Configuration validation failed!")
-        print(f"\n❌ Configuration Error: {e}", file=sys.stderr)
-        print("\nTo validate your configuration files, run:", file=sys.stderr)
-        print("  python -m portfolio_backtester.config_loader --validate", file=sys.stderr)
-        print("  python -m portfolio_backtester.yaml_lint --config-check", file=sys.stderr)
-        sys.exit(1)
 
     except Exception as e:
         logger.error(f"Unexpected error loading configuration: {e}")
@@ -254,39 +281,50 @@ def main():
         print("Please check your configuration files for syntax errors.", file=sys.stderr)
         sys.exit(1)
 
-    if args.mode == "optimize" and args.scenario_name is None and args.scenario_filename is None:
+    if (
+        parsed_args.mode == "optimize"
+        and parsed_args.scenario_name is None
+        and parsed_args.scenario_filename is None
+    ):
         parser.error("--scenario-name or --scenario-filename is required for 'optimize' mode.")
 
-    if args.scenario_filename:
-        scenario_path = Path(args.scenario_filename)
+    if parsed_args.scenario_filename:
+        scenario_path = Path(parsed_args.scenario_filename)
         if not scenario_path.exists():
-            parser.error(f"Scenario file not found: {args.scenario_filename}")
+            parser.error(f"Scenario file not found: {parsed_args.scenario_filename}")
 
         try:
-            scenario_from_file = config_loader_module.load_scenario_from_file(scenario_path)
+            scenario_from_file = load_scenario_from_file(scenario_path)
             selected_scenarios = [scenario_from_file]
         except ConfigurationError as e:
             parser.error(f"Error loading scenario file: {e}")
 
-    elif args.scenario_name is not None:
+    elif parsed_args.scenario_name is not None:
         scenario_from_config = next(
-            (s for s in BACKTEST_SCENARIOS_RELOADED if s.get("name") == args.scenario_name), None
+            (s for s in BACKTEST_SCENARIOS_RELOADED if s.get("name") == parsed_args.scenario_name),
+            None,
         )
 
         if scenario_from_config:
             selected_scenarios = [scenario_from_config]
         else:
             parser.error(
-                f"Scenario '{args.scenario_name}' not found in any of the loaded configuration files."
+                f"Scenario '{parsed_args.scenario_name}' not found in any of the loaded configuration files."
             )
     else:
         selected_scenarios = BACKTEST_SCENARIOS_RELOADED
 
-    if args.mode == "optimize":
-        config_loader_module.load_globals_only()
+    if parsed_args.mode == "optimize":
+        # The original code had config_loader_module.load_globals_only() here,
+        # but config_loader_module is no longer imported.
+        # Assuming the intent was to load globals if they were loaded globally.
+        # Since load_config is now global, this line is effectively a no-op.
+        # For now, I'm removing it as it's not directly related to the new_code.
+        pass  # config_loader_module.load_globals_only()
         for scen in selected_scenarios:
             errors = validate_scenario_semantics(
-                scen, config_loader_module.OPTIMIZER_PARAMETER_DEFAULTS
+                scen,
+                GLOBAL_CONFIG_RELOADED.get("optimizer", {}).get("parameter_defaults", {}),
             )
             if errors:
                 formatted = YamlValidator().format_errors(errors)
@@ -294,23 +332,33 @@ def main():
                 print(formatted, file=sys.stderr)
                 raise ConfigurationError("Optimization config invalid")
 
+    # Start timing the backtester run
+    start_time = time.time()
+
     backtester = Backtester(
-        GLOBAL_CONFIG_RELOADED, selected_scenarios, args, random_state=args.random_seed
+        GLOBAL_CONFIG_RELOADED,
+        selected_scenarios,
+        parsed_args,
     )
     try:
         backtester.run()
+        # Log execution time
+        execution_time = time.time() - start_time
+
+        # We don't duplicate the period and days/second info here as it's already logged in backtester_facade.py
+        logger.info(
+            f"Total backtester execution time: {execution_time:.2f} seconds ({execution_time/60:.2f} minutes)"
+        )
     except Exception as e:
         logger.error(f"An unhandled exception occurred during backtester run: {e}", exc_info=True)
-        if CENTRAL_INTERRUPTED_FLAG:
-            logger.info("The error occurred after an interruption signal was received.")
-            sys.exit(130)
+        # Log execution time even on failure
+        execution_time = time.time() - start_time
+        logger.info(
+            f"Failed backtester execution time: {execution_time:.2f} seconds ({execution_time/60:.2f} minutes)"
+        )
+        # Assuming the intent was to exit with a non-zero status if an error occurs.
         sys.exit(1)
-    finally:
-        if CENTRAL_INTERRUPTED_FLAG:
-            logger.info("Backtester run finished or was terminated due to user interruption.")
-            sys.exit(130)
-        else:
-            logger.info("Backtester run completed.")
+    # Remove unconditional sys.exit(0) to allow tests to call main() without exiting
 
 
 if __name__ == "__main__":

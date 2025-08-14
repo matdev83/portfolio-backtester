@@ -6,7 +6,7 @@ evaluation operations including fast evaluation, walk-forward analysis, and para
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union, cast, Protocol
+from typing import Any, Dict, Optional, Union, cast, Protocol
 
 import numpy as np
 import pandas as pd
@@ -39,7 +39,7 @@ class EvaluationEngine:
         strategy_manager: Any,
         attribute_accessor: Optional[IAttributeAccessor] = None,
         module_accessor: Optional[IModuleAttributeAccessor] = None,
-    ):
+    ) -> None:
         """
         Initialize EvaluationEngine with configuration and dependencies.
 
@@ -64,118 +64,6 @@ class EvaluationEngine:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("EvaluationEngine initialized")
-
-    def get_monte_carlo_trial_threshold(self, optimization_mode: str) -> int:
-        """
-        Get threshold for Monte Carlo trials based on optimization mode.
-
-        Args:
-            optimization_mode: Optimization mode ('fast', 'balanced', 'comprehensive')
-
-        Returns:
-            Threshold value for Monte Carlo trials
-        """
-        thresholds = {"fast": 20, "balanced": 10, "comprehensive": 5}
-        return thresholds.get(optimization_mode, 10)
-
-    def evaluate_single_window(
-        self,
-        window_config: Dict[str, Any],
-        scenario_config: Dict[str, Any],
-        shared_data: Dict[str, Any],
-        run_scenario_func,
-    ) -> Tuple[List[float], pd.Series]:
-        """
-        Evaluate a single walk-forward window.
-
-        Args:
-            window_config: Configuration for the window (indices, dates)
-            scenario_config: Scenario configuration
-            shared_data: Shared data including monthly/daily data, metrics
-            run_scenario_func: Function to run scenario evaluation
-
-        Returns:
-            Tuple of (metrics_list, window_returns)
-        """
-        from ..reporting.performance_metrics import calculate_metrics
-
-        window_idx = window_config["window_idx"]
-        tr_start = window_config["tr_start"]
-        tr_end = window_config["tr_end"]
-        te_start = window_config["te_start"]
-        te_end = window_config["te_end"]
-
-        monthly_data = shared_data["monthly_data"]
-        daily_data = shared_data["daily_data"]
-        shared_data["rets_full"]
-        trial_synthetic_data = shared_data.get("trial_synthetic_data")
-        replacement_info = shared_data.get("replacement_info")
-        mc_adaptive_enabled = shared_data.get("mc_adaptive_enabled", False)
-        metrics_to_optimize = shared_data["metrics_to_optimize"]
-        global_config = shared_data["global_config"]
-
-        try:
-            m_slice = monthly_data.loc[tr_start:tr_end]
-            d_slice = daily_data.loc[tr_start:te_end]
-
-            current_daily_data_ohlc = d_slice
-
-            if (
-                mc_adaptive_enabled
-                and trial_synthetic_data is not None
-                and replacement_info is not None
-            ):
-                current_daily_data_ohlc = d_slice.copy()
-
-                for asset in replacement_info.selected_assets:
-                    if asset in trial_synthetic_data:
-                        synthetic_ohlc_for_asset = trial_synthetic_data[asset]
-
-                        window_synthetic_ohlc = synthetic_ohlc_for_asset.loc[te_start:te_end]
-
-                        if not window_synthetic_ohlc.empty:
-                            if isinstance(current_daily_data_ohlc.columns, pd.MultiIndex):
-                                for field in window_synthetic_ohlc.columns:
-                                    if (asset, field) in current_daily_data_ohlc.columns:
-                                        current_daily_data_ohlc.loc[
-                                            window_synthetic_ohlc.index, (asset, field)
-                                        ] = window_synthetic_ohlc[field]
-                            else:
-                                for field in window_synthetic_ohlc.columns:
-                                    col_name = f"{asset}_{field}"
-                                    if col_name in current_daily_data_ohlc.columns:
-                                        current_daily_data_ohlc.loc[
-                                            window_synthetic_ohlc.index, col_name
-                                        ] = window_synthetic_ohlc[field]
-                                    elif (
-                                        field == "Close"
-                                        and asset in current_daily_data_ohlc.columns
-                                    ):
-                                        current_daily_data_ohlc.loc[
-                                            window_synthetic_ohlc.index, asset
-                                        ] = window_synthetic_ohlc[field]
-
-            window_returns = run_scenario_func(
-                scenario_config, m_slice, current_daily_data_ohlc, rets_daily=None, verbose=False
-            )
-
-            if window_returns is None or window_returns.empty:
-                return [np.nan] * len(metrics_to_optimize), pd.Series(dtype=float)
-
-            test_rets = window_returns.loc[te_start:te_end]
-            if test_rets.empty:
-                return [np.nan] * len(metrics_to_optimize), pd.Series(dtype=float)
-
-            bench_ser = d_slice[global_config["benchmark"]].loc[te_start:te_end]
-            bench_period_rets = bench_ser.pct_change(fill_method=None).fillna(0)
-            metrics = calculate_metrics(test_rets, bench_period_rets, global_config["benchmark"])
-            current_metrics = [metrics.get(m, np.nan) for m in metrics_to_optimize]
-
-            return current_metrics, window_returns
-
-        except Exception as e:
-            logger.error(f"Error evaluating window {window_idx}: {e}")
-            return [np.nan] * len(metrics_to_optimize), pd.Series(dtype=float)
 
     def evaluate_walk_forward_fast(
         self,
@@ -222,7 +110,8 @@ class EvaluationEngine:
         # Create new architecture components
         strategy_backtester = StrategyBacktester(self.global_config, self.data_source)
         evaluator = BacktestEvaluator(
-            metrics_to_optimize=metrics_to_optimize, is_multi_objective=is_multi_objective
+            metrics_to_optimize=metrics_to_optimize,
+            is_multi_objective=is_multi_objective,
         )
 
         # Create optimization data
@@ -290,12 +179,16 @@ class EvaluationEngine:
             # Create new architecture components
             strategy_backtester = StrategyBacktester(self.global_config, self.data_source)
             evaluator = BacktestEvaluator(
-                metrics_to_optimize=metrics_to_optimize, is_multi_objective=is_multi_objective
+                metrics_to_optimize=metrics_to_optimize,
+                is_multi_objective=is_multi_objective,
             )
 
             # Create optimization data
             optimization_data = OptimizationData(
-                monthly=monthly_data, daily=daily_data, returns=rets_full, windows=windows
+                monthly=monthly_data,
+                daily=daily_data,
+                returns=rets_full,
+                windows=windows,
             )
 
             # Extract parameters from trial
@@ -419,12 +312,16 @@ class EvaluationEngine:
             # Create new architecture components
             strategy_backtester = StrategyBacktester(self.global_config, self.data_source)
             evaluator = BacktestEvaluator(
-                metrics_to_optimize=metrics_to_optimize, is_multi_objective=is_multi_objective
+                metrics_to_optimize=metrics_to_optimize,
+                is_multi_objective=is_multi_objective,
             )
 
             # Create optimization data
             optimization_data = OptimizationData(
-                monthly=monthly_data, daily=daily_data, returns=rets_full, windows=windows
+                monthly=monthly_data,
+                daily=daily_data,
+                returns=rets_full,
+                windows=windows,
             )
 
             # Extract parameters from trial

@@ -14,7 +14,8 @@ from .base_strategy import BaseStrategy
 from .trade_record import TradeRecord, TradeSide
 from .trade_aggregator import TradeAggregator
 from .trade_interceptor import MetaStrategyTradeInterceptor
-from .portfolio_value_tracker import PortfolioValueTracker
+
+# Removed duplicate PortfolioValueTracker import to avoid dual-paths; meta strategies rely on TradeAggregator
 from .meta_reporting import MetaStrategyReporter
 
 
@@ -101,7 +102,9 @@ class BaseMetaStrategy(BaseStrategy, ABC):
             )
 
     def __init__(
-        self, strategy_params: Dict[str, Any], global_config: Optional[Dict[str, Any]] = None
+        self,
+        strategy_params: Dict[str, Any],
+        global_config: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(strategy_params)
 
@@ -134,8 +137,7 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         # Trade interceptors for sub-strategies
         self._trade_interceptors: Dict[str, MetaStrategyTradeInterceptor] = {}
 
-        # Portfolio value tracking and reporting
-        self._portfolio_tracker = PortfolioValueTracker(self.initial_capital)
+        # Portfolio reporting uses TradeAggregator directly (single path)
         self._reporter = MetaStrategyReporter(self._trade_aggregator)
 
         # Initialize capital tracking for each sub-strategy
@@ -183,7 +185,9 @@ class BaseMetaStrategy(BaseStrategy, ABC):
                     f"Allocation weight {allocation.weight} below minimum {min_allocation}"
                 )
 
-    def get_sub_strategies(self) -> Dict[str, Union[BaseStrategy, MetaStrategyTradeInterceptor]]:
+    def get_sub_strategies(
+        self,
+    ) -> Dict[str, Union[BaseStrategy, MetaStrategyTradeInterceptor]]:
         """Return instantiated sub-strategies with trade interceptors, using cache to avoid recreation."""
         strategies: Dict[str, Union[BaseStrategy, MetaStrategyTradeInterceptor]] = {}
 
@@ -254,8 +258,7 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         # Track the trade in our aggregator
         self._trade_aggregator.track_sub_strategy_trade(trade)
 
-        # Update portfolio tracker
-        self._portfolio_tracker.update_from_trade(trade)
+        # Aggregator maintains internal state; compute current portfolio value
 
         # Update available capital based on current portfolio value from aggregator
         # This ensures that the meta strategy's available capital reflects P&L from closed trades
@@ -442,7 +445,9 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         return self._trade_aggregator.get_strategy_attribution()
 
     def calculate_returns(
-        self, start_date: Optional[pd.Timestamp] = None, end_date: Optional[pd.Timestamp] = None
+        self,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
     ) -> pd.Series:
         """
         Calculate returns based on aggregated trade history.
@@ -468,7 +473,9 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         return portfolio_timeline["returns"].dropna()
 
     def calculate_cumulative_returns(
-        self, start_date: Optional[pd.Timestamp] = None, end_date: Optional[pd.Timestamp] = None
+        self,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
     ) -> pd.Series:
         """
         Calculate cumulative returns based on aggregated trade history.
@@ -494,7 +501,9 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         return portfolio_timeline["cumulative_return"]
 
     def calculate_drawdown(
-        self, start_date: Optional[pd.Timestamp] = None, end_date: Optional[pd.Timestamp] = None
+        self,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
     ) -> pd.Series:
         """
         Calculate drawdown based on aggregated trade history.
@@ -527,7 +536,9 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         return drawdown
 
     def calculate_max_drawdown(
-        self, start_date: Optional[pd.Timestamp] = None, end_date: Optional[pd.Timestamp] = None
+        self,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
     ) -> float:
         """
         Calculate maximum drawdown based on aggregated trade history.
@@ -615,7 +626,9 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         return float((mean_return - risk_free_rate) / downside_std)
 
     def calculate_calmar_ratio(
-        self, start_date: Optional[pd.Timestamp] = None, end_date: Optional[pd.Timestamp] = None
+        self,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
     ) -> float:
         """
         Calculate Calmar ratio based on aggregated trade history.
@@ -678,9 +691,9 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         """Get the meta strategy reporter instance."""
         return self._reporter
 
-    def get_portfolio_tracker(self) -> PortfolioValueTracker:
-        """Get the portfolio value tracker instance."""
-        return self._portfolio_tracker
+    def get_portfolio_tracker(self):
+        """Deprecated accessor; Meta strategies use TradeAggregator data directly."""
+        return None
 
     def generate_meta_strategy_report(self) -> Dict[str, Any]:
         """
@@ -713,20 +726,17 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         """
         return self._reporter.generate_trade_summary_for_framework()
 
-    def calculate_portfolio_value_with_market_data(
-        self, date: pd.Timestamp, market_data: pd.DataFrame
-    ) -> float:
+    def calculate_portfolio_value_with_market_data(self, date: pd.Timestamp) -> float:
         """
         Calculate portfolio value using current market prices.
 
         Args:
             date: Date to calculate value for
-            market_data: Market data with current prices
 
         Returns:
             Portfolio value using market prices
         """
-        return self._portfolio_tracker.calculate_portfolio_value(date, market_data)
+        return self._trade_aggregator.calculate_portfolio_value(date)
 
     def update_available_capital(self, sub_strategy_returns: Dict[str, float]) -> None:
         """
@@ -880,7 +890,8 @@ class BaseMetaStrategy(BaseStrategy, ABC):
 
             except Exception as e:
                 logger.error(
-                    f"Error generating signals for sub-strategy {strategy_id}: {e}", exc_info=True
+                    f"Error generating signals for sub-strategy {strategy_id}: {e}",
+                    exc_info=True,
                 )
                 # Continue with other strategies
                 continue

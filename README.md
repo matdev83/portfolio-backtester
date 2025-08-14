@@ -825,6 +825,29 @@ To run the line profiler and gather performance data, use the following command:
 
 The profiling results will be saved to a timestamped file in the system's temporary directory.
 
+## Security
+
+The project includes static security analysis using Bandit. To run security checks:
+
+```bash
+# Using the virtual environment
+.venv\Scripts\activate
+python -m bandit -r src -c bandit.yaml
+
+# Or using the provided script
+python scripts/run_bandit.py
+```
+
+Bandit is configured to ignore certain security issues that are intentional design choices in this project:
+- B101 (assert_used) - We use asserts for type checking and internal validation
+- B110 (try_except_pass) - We use these intentionally for non-critical error handling
+- B112 (try_except_continue) - We use these intentionally for non-critical error handling
+- B311 (blacklist) - Standard pseudo-random generators (we use for Monte Carlo simulations)
+- B403 (blacklist) - Import of pickle (we use for caching non-sensitive data)
+- B301 (blacklist) - Use of pickle (we use for our own cached data which is trusted)
+
+The configuration focuses on identifying high-severity issues like the use of weak cryptographic hash functions.
+
 ## Contributing
 
 Contributions are welcome! If you'd like to help improve the Portfolio Backtester, please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get started.

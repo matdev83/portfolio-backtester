@@ -36,7 +36,8 @@ def _resolve_method(config: Dict[str, Any], current_date: Optional[pd.Timestamp]
         exact = config.get("exact", False)
         try:
             tickers = get_top_weight_sp500_components(date=current_date, n=n_holdings, exact=exact)
-            logger.info(f"Loaded {len(tickers)} tickers using method '{method_name}'")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Loaded {len(tickers)} tickers using method '{method_name}'")
             return tickers
         except Exception as e:
             raise ValueError(f"Failed to get universe using method '{method_name}': {e}")
@@ -50,7 +51,8 @@ def _resolve_fixed(config: Dict[str, Any]) -> List[str]:
     if not tickers:
         raise ValueError("universe_config.tickers cannot be empty")
     normalized = [_normalize_ticker(t) for t in tickers]
-    logger.info(f"Loaded {len(normalized)} tickers from fixed list")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"Loaded {len(normalized)} tickers from fixed list")
     return normalized
 
 
@@ -72,16 +74,18 @@ def _resolve_named(config: Dict[str, Any]) -> List[str]:
     try:
         if universe_name:
             tickers: List[str] = load_named_universe(universe_name)
-            logger.info(f"Loaded named universe '{universe_name}' with {len(tickers)} tickers")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Loaded named universe '{universe_name}' with {len(tickers)} tickers")
             return tickers
         if not isinstance(universe_names, list):
             raise ValueError("universe_names must be a list")
         if not universe_names:
             raise ValueError("universe_names cannot be empty")
         tickers = load_multiple_named_universes(universe_names)
-        logger.info(
-            f"Loaded {len(universe_names)} named universes with {len(tickers)} unique tickers"
-        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"Loaded {len(universe_names)} named universes with {len(tickers)} unique tickers"
+            )
         return tickers
     except UniverseLoaderError as e:
         raise ValueError(f"Failed to load named universe: {e}")

@@ -49,6 +49,8 @@ class PortfolioValueTracker:
         self.daily_margin_usage: pd.Series = pd.Series(dtype=float)
         self.daily_portfolio_value: pd.Series = pd.Series(dtype=float)
         self.daily_cash_balance: pd.Series = pd.Series(dtype=float)
+        self.positions = pd.DataFrame()  # Add positions attribute
+        self.daily_metrics: list = []
 
         # Dependency injection for allocation mode validation (DIP)
         self._allocation_validator = allocation_validator or create_allocation_mode_validator()
@@ -63,19 +65,28 @@ class PortfolioValueTracker:
                 f"PortfolioValueTracker initialized with allocation_mode='{allocation_mode}'"
             )
 
-    def set_portfolio_values_from_series(self, portfolio_values: pd.Series) -> None:
+    def set_state_from_kernel(
+        self, portfolio_values: pd.Series, positions: pd.DataFrame, prices: pd.DataFrame
+    ) -> None:
         """
-        Directly sets the daily portfolio value series from a vectorized calculation.
-
+        Directly sets the daily state from the output of a vectorized kernel.
         Args:
-            portfolio_values (pd.Series): A Series where the index is the date
-                                          and values are the total portfolio value.
+            portfolio_values (pd.Series): Daily total portfolio values.
+            positions (pd.DataFrame): Daily asset positions in shares.
+            prices (pd.DataFrame): Daily asset prices.
         """
         self.daily_portfolio_value = portfolio_values
+        self.positions = positions
+
         if not portfolio_values.empty:
             self.current_portfolio_value = portfolio_values.iloc[-1]
             if self.initial_portfolio_value == 0 and len(portfolio_values) > 0:
                 self.initial_portfolio_value = portfolio_values.iloc[0]
+
+        # Recalculate daily metrics from the kernel output
+        position_values = (positions * prices).sum(axis=1)
+        self.daily_cash_balance = portfolio_values - position_values
+        self.daily_margin_usage = (position_values / portfolio_values).fillna(0.0)
 
     def update_portfolio_value(self, trade_pnl: float) -> None:
         """
@@ -135,8 +146,9 @@ class PortfolioValueTracker:
             else 0.0
         )
 
-        # Track daily portfolio value
-        self.daily_portfolio_value[date] = self.current_portfolio_value
+        # Preserve vectorized portfolio value timeline if already set for this date
+        if self.daily_portfolio_value.empty or date not in self.daily_portfolio_value.index:
+            self.daily_portfolio_value[date] = self.current_portfolio_value
 
         # Calculate cash balance (portfolio value minus position values)
         current_position_value = sum(

@@ -47,6 +47,20 @@ def _format_metric_value(metric_name: str, value):
     return f"{value:.4f}"
 
 
+def _safe_metric(series: pd.Series, metric_name: str) -> float:
+    try:
+        if isinstance(series, pd.Series) and metric_name in series.index:
+            val = series.loc[metric_name]
+            # Some metrics can be Series/array-like; fall back to float when possible
+            try:
+                return float(val)
+            except Exception:
+                return pd.NA  # type: ignore[return-value]
+        return pd.NA  # type: ignore[return-value]
+    except Exception:
+        return pd.NA  # type: ignore[return-value]
+
+
 def _add_metrics_rows(
     table: Table,
     bench_metrics: pd.Series,
@@ -60,10 +74,15 @@ def _add_metrics_rows(
         row_values = [metric_name]
         for strategy_name_key in period_returns.keys():
             display_name = backtester.results[strategy_name_key]["display_name"]
-            value = all_period_metrics[display_name].loc[metric_name]
-            row_values.append(_format_metric_value(metric_name, value))
-        bench_value = bench_metrics.loc[metric_name]
-        row_values.append(_format_metric_value(metric_name, bench_value))
+            strategy_metrics = all_period_metrics.get(display_name, pd.Series(dtype=float))
+            value = _safe_metric(strategy_metrics, metric_name)
+            row_values.append(
+                _format_metric_value(metric_name, value) if value is not pd.NA else "N/A"
+            )
+        bench_value = _safe_metric(bench_metrics, metric_name)
+        row_values.append(
+            _format_metric_value(metric_name, bench_value) if bench_value is not pd.NA else "N/A"
+        )
         table.add_row(*row_values)
 
 
@@ -171,21 +190,27 @@ def generate_performance_table(
     all_period_metrics = _collect_metrics(
         backtester, period_returns, bench_period_rets, num_trials_map
     )
+    # De-duplicate display names while preserving order
+    seen = set()
+    ordered_names = []
     for name in period_returns.keys():
         display_name = backtester.results[name]["display_name"]
+        if display_name not in seen:
+            seen.add(display_name)
+            ordered_names.append((name, display_name))
+    for _, display_name in ordered_names:
         table.add_column(display_name, style="magenta")
     table.add_column(backtester.global_config["benchmark"], style="green")
     bench_metrics = all_period_metrics[backtester.global_config["benchmark"]]
-    _add_metrics_rows(table, bench_metrics, period_returns, backtester, all_period_metrics)
+    _add_metrics_rows(table, bench_metrics, dict(ordered_names), backtester, all_period_metrics)
     console.print(table)
-    for name, rets in period_returns.items():
-        display_name = backtester.results[name]["display_name"]
+    for name, display_name in ordered_names:
         if hasattr(backtester, "results") and name in backtester.results:
             trade_stats = backtester.results[name].get("trade_stats")
             if trade_stats:
                 generate_trade_statistics_table(console, display_name, trade_stats)
     _save_metrics_csv(all_period_metrics, report_dir)
-    _print_params_tables(backtester, console, period_returns, report_dir)
+    _print_params_tables(backtester, console, dict(ordered_names), report_dir)
 
 
 def generate_trade_statistics_table(console: Console, strategy_name: str, trade_stats: dict):
@@ -200,7 +225,9 @@ def generate_trade_statistics_table(console: Console, strategy_name: str, trade_
 
     # Create trade statistics table
     trade_table = Table(
-        title=f"Trade Statistics - {strategy_name}", show_header=True, header_style="bold magenta"
+        title=f"Trade Statistics - {strategy_name}",
+        show_header=True,
+        header_style="bold magenta",
     )
 
     trade_table.add_column("Metric", style="cyan", no_wrap=True)
@@ -371,16 +398,21 @@ def generate_enhanced_performance_table(
             row_values = [metric_name]
             for strategy_name_key in period_returns.keys():
                 display_name = backtester.results[strategy_name_key]["display_name"]
-                value = all_period_metrics[display_name].loc[metric_name]
-                if metric_name in percentage_metrics:
+                strategy_metrics = all_period_metrics.get(display_name, pd.Series(dtype=float))
+                value = _safe_metric(strategy_metrics, metric_name)
+                if value is pd.NA:
+                    row_values.append("N/A")
+                elif metric_name in percentage_metrics:
                     row_values.append(f"{value:.2%}")
                 elif metric_name in high_precision_metrics:
                     row_values.append(f"{value:.6f}")
                 else:
                     row_values.append(f"{value:.4f}")
 
-            bench_value = bench_metrics.loc[metric_name]
-            if metric_name in percentage_metrics:
+            bench_value = _safe_metric(bench_metrics, metric_name)
+            if bench_value is pd.NA:
+                row_values.append("N/A")
+            elif metric_name in percentage_metrics:
                 row_values.append(f"{bench_value:.2%}")
             elif metric_name in high_precision_metrics:
                 row_values.append(f"{bench_value:.6f}")
@@ -480,6 +512,28 @@ def generate_transaction_history_csv(backtest_results: dict, report_dir: str):
             continue
 
         trade_history = result_data["trade_history"]
+
+        # Validate required columns; if missing, skip gracefully to avoid breaking reports
+        required_columns = {
+            "ticker",
+            "quantity",
+            "entry_date",
+            "exit_date",
+            "entry_price",
+            "exit_price",
+            "commission_entry",
+            "commission_exit",
+            "pnl_net",
+        }
+        missing_required = [c for c in required_columns if c not in trade_history.columns]
+        if missing_required:
+            logger.info(
+                "Skipping transaction CSV for %s: missing columns %s",
+                name,
+                ", ".join(missing_required),
+            )
+            continue
+
         transactions = []
 
         # Process each trade to create entry and exit transactions

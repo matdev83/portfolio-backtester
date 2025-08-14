@@ -18,12 +18,18 @@ from typing import Dict, Any, List, Tuple, Optional, Callable
 import time
 
 from .optimization.performance.window_manager import WindowManager
-from .interfaces.parallel_executor_interface import IParallelExecutor, create_parallel_executor
+from .interfaces.parallel_executor_interface import (
+    IParallelExecutor,
+    create_parallel_executor,
+)
 from .interfaces.parallel_benefit_estimator_interface import (
     IParallelBenefitEstimator,
     create_parallel_benefit_estimator,
 )
-from .interfaces.math_operations_interface import IMathOperations, create_math_operations
+from .interfaces.math_operations_interface import (
+    IMathOperations,
+    create_math_operations,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +85,8 @@ class ParallelWFOProcessor:
         else:
             # Create using interface factory for backward compatibility
             self._parallel_executor = create_parallel_executor(
-                max_workers=self._window_manager.max_workers, process_timeout=process_timeout
+                max_workers=self._window_manager.max_workers,
+                process_timeout=process_timeout,
             )
 
         # Use dependency injection for benefit estimator (DIP)
@@ -88,7 +95,8 @@ class ParallelWFOProcessor:
         else:
             # Create using interface factory for backward compatibility
             self._benefit_estimator = create_parallel_benefit_estimator(
-                max_workers=self._window_manager.max_workers, math_operations=self._math_operations
+                max_workers=self._window_manager.max_workers,
+                math_operations=self._math_operations,
             )
 
         # Maintain backward compatibility for max_workers attribute

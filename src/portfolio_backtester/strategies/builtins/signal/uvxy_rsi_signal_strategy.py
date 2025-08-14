@@ -25,7 +25,12 @@ class UvxyRsiSignalStrategy(SignalStrategy):
     def tunable_parameters(_cls) -> Dict[str, Dict[str, object]]:  # used by tests
         return {
             "rsi_period": {"type": "int", "default": 2, "min": 2, "max": 10},
-            "rsi_threshold": {"type": "float", "default": 30.0, "min": 1.0, "max": 99.0},
+            "rsi_threshold": {
+                "type": "float",
+                "default": 30.0,
+                "min": 1.0,
+                "max": 99.0,
+            },
         }
 
     def get_non_universe_data_requirements(self) -> list[str]:  # used by tests

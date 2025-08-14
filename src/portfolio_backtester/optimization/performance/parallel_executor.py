@@ -8,7 +8,12 @@ to distribute WFO windows across multiple CPU cores for optimal performance.
 import pandas as pd
 import logging
 from typing import Dict, Any, List, Tuple, Optional, Callable
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed, TimeoutError
+from concurrent.futures import (
+    ProcessPoolExecutor,
+    ThreadPoolExecutor,
+    as_completed,
+    TimeoutError,
+)
 import time
 import os
 
@@ -27,7 +32,10 @@ class ParallelExecutor:
     """
 
     def __init__(
-        self, max_workers: int, process_timeout: int = 300, use_threads_in_multiprocess: bool = True
+        self,
+        max_workers: int,
+        process_timeout: int = 300,
+        use_threads_in_multiprocess: bool = True,
     ):
         """
         Initialize the parallel executor.
@@ -107,11 +115,17 @@ class ParallelExecutor:
                         logger.error(
                             f"Window {window_idx} timed out after {self.process_timeout} seconds"
                         )
-                        window_results[window_idx] = (float("nan"), pd.Series(dtype=float))
+                        window_results[window_idx] = (
+                            float("nan"),
+                            pd.Series(dtype=float),
+                        )
                     except Exception as e:
                         logger.error(f"Window {window_idx} failed: {e}")
                         # Use fallback result for failed windows
-                        window_results[window_idx] = (float("nan"), pd.Series(dtype=float))
+                        window_results[window_idx] = (
+                            float("nan"),
+                            pd.Series(dtype=float),
+                        )
 
                 results = [r for r in window_results if r is not None]
 

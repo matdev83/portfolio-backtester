@@ -27,7 +27,9 @@ from typing import List, Dict, Optional, Any
 import logging
 from pathlib import Path
 
-from portfolio_backtester.monte_carlo.synthetic_data_generator import SyntheticDataGenerator
+from portfolio_backtester.monte_carlo.synthetic_data_generator import (
+    SyntheticDataGenerator,
+)
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -56,7 +58,6 @@ class SyntheticDataVisualInspector:
         self.generator = SyntheticDataGenerator(config)
 
         # Set up plotting parameters
-        self.figsize = (15, 10)
         self.dpi = 100
 
     def generate_comparison_report(
@@ -142,19 +143,22 @@ class SyntheticDataVisualInspector:
                     np.random.seed(original_seed + i)
 
                 synthetic_df = self.generator.generate_synthetic_prices(
-                    historical_data, length, f"{asset_name}_path_{i+1}"
+                    historical_data, length, f"{asset_name}_path_{i + 1}"
                 )
 
                 synthetic_paths.append(synthetic_df)
 
             except Exception as e:
-                logger.warning(f"Failed to generate synthetic path {i+1} for {asset_name}: {e}")
+                logger.warning(f"Failed to generate synthetic path {i + 1} for {asset_name}: {e}")
                 continue
 
         return synthetic_paths
 
     def _analyze_ticker_data(
-        self, historical_data: pd.DataFrame, synthetic_data: List[pd.DataFrame], ticker: str
+        self,
+        historical_data: pd.DataFrame,
+        synthetic_data: List[pd.DataFrame],
+        ticker: str,
     ) -> Dict:
         """
         Perform comprehensive statistical analysis.
@@ -256,7 +260,9 @@ class SyntheticDataVisualInspector:
                 ad_stat, ad_crit, ad_sig = stats.anderson_ksamp([historical_returns, synth_returns])
                 path_tests["anderson_darling"] = {
                     "statistic": np.float64(ad_stat),
-                    "critical_values": ad_crit.tolist() if hasattr(ad_crit, "tolist") else list(ad_crit),  # type: ignore[dict-item]
+                    "critical_values": (
+                        ad_crit.tolist() if hasattr(ad_crit, "tolist") else list(ad_crit)
+                    ),  # type: ignore[dict-item]
                     "significance_level": np.float64(ad_sig),
                 }
             except Exception:
@@ -278,7 +284,7 @@ class SyntheticDataVisualInspector:
                 "pvalue": np.float64(lev_pvalue),
             }
 
-            tests[f"path_{i+1}"] = path_tests
+            tests[f"path_{i + 1}"] = path_tests
 
         return tests
 
@@ -333,7 +339,7 @@ class SyntheticDataVisualInspector:
                 garch_analysis["synthetic"].append(synth_garch)
 
             except Exception as e:
-                logger.warning(f"Failed GARCH analysis for synthetic path {i+1}: {e}")
+                logger.warning(f"Failed GARCH analysis for synthetic path {i + 1}: {e}")
                 continue
 
         return garch_analysis
@@ -398,7 +404,7 @@ class SyntheticDataVisualInspector:
             ax1.plot(
                 synth_returns.index,
                 synth_returns,
-                label=f"Synthetic {i+1}",
+                label=f"Synthetic {i + 1}",
                 alpha=0.6,
                 linewidth=0.8,
             )
@@ -411,7 +417,13 @@ class SyntheticDataVisualInspector:
         ax2 = fig.add_subplot(gs[0, 2:])
         ax2.hist(hist_returns, bins=50, alpha=0.7, label="Historical", density=True)
         for i, synth_returns in enumerate(synth_returns_list[:3]):
-            ax2.hist(synth_returns, bins=50, alpha=0.5, label=f"Synthetic {i+1}", density=True)
+            ax2.hist(
+                synth_returns,
+                bins=50,
+                alpha=0.5,
+                label=f"Synthetic {i + 1}",
+                density=True,
+            )
         ax2.set_title(f"{ticker} - Return Distribution Comparison")
         ax2.set_xlabel("Returns")
         ax2.set_ylabel("Density")
@@ -420,14 +432,20 @@ class SyntheticDataVisualInspector:
 
         # 3. Q-Q plot
         ax3 = fig.add_subplot(gs[1, 0])
-        stats.probplot(np.asarray(hist_returns, dtype=np.float64), dist="norm", plot=ax3)  # type: ignore[call-overload]
+        stats.probplot(
+            np.asarray(hist_returns, dtype=np.float64), dist="norm", plot=ax3
+        )  # type: ignore[call-overload]
         ax3.set_title(f"{ticker} - Historical Q-Q Plot")
         ax3.grid(True, alpha=0.3)
 
         # 4. Synthetic Q-Q plot (first path)
         ax4 = fig.add_subplot(gs[1, 1])
         if synth_returns_list:
-            stats.probplot(np.asarray(synth_returns_list[0], dtype=np.float64), dist="norm", plot=ax4)  # type: ignore[call-overload]
+            stats.probplot(
+                np.asarray(synth_returns_list[0], dtype=np.float64),
+                dist="norm",
+                plot=ax4,
+            )  # type: ignore[call-overload]
         ax4.set_title(f"{ticker} - Synthetic Q-Q Plot")
         ax4.grid(True, alpha=0.3)
 
@@ -437,7 +455,7 @@ class SyntheticDataVisualInspector:
         ax5.plot(hist_vol.index, hist_vol, label="Historical", linewidth=2)
         for i, synth_returns in enumerate(synth_returns_list[:3]):
             synth_vol = synth_returns.rolling(window=20).std()
-            ax5.plot(synth_vol.index, synth_vol, label=f"Synthetic {i+1}", alpha=0.7)
+            ax5.plot(synth_vol.index, synth_vol, label=f"Synthetic {i + 1}", alpha=0.7)
         ax5.set_title(f"{ticker} - 20-Day Rolling Volatility")
         ax5.set_ylabel("Volatility")
         ax5.legend()
@@ -468,7 +486,7 @@ class SyntheticDataVisualInspector:
         for i, synth_returns in enumerate(synth_returns_list[:5]):  # Show first 5 paths
             synth_stats = self._calculate_statistics(synth_returns)
             stats_data.append(
-                [f"Synthetic {i+1}"]
+                [f"Synthetic {i + 1}"]
                 + [
                     f"{v:.4f}" if isinstance(v, (int, float)) else str(v)
                     for v in [
@@ -495,7 +513,9 @@ class SyntheticDataVisualInspector:
             table[(0, i)].set_text_props(weight="bold", color="white")
 
         plt.suptitle(
-            f"{ticker} - Comprehensive Synthetic Data Analysis", fontsize=16, fontweight="bold"
+            f"{ticker} - Comprehensive Synthetic Data Analysis",
+            fontsize=16,
+            fontweight="bold",
         )
         plt.tight_layout()
 
@@ -532,7 +552,11 @@ class SyntheticDataVisualInspector:
         axes[0, 0].hist(hist_returns, bins=50, alpha=0.7, label="Historical", density=True)
         for i, synth_returns in enumerate(synth_returns_list[:3]):
             axes[0, 0].hist(
-                synth_returns, bins=50, alpha=0.5, label=f"Synthetic {i+1}", density=True
+                synth_returns,
+                bins=50,
+                alpha=0.5,
+                label=f"Synthetic {i + 1}",
+                density=True,
             )
         axes[0, 0].set_title("Return Distribution Comparison")
         axes[0, 0].set_xlabel("Returns")
@@ -543,7 +567,7 @@ class SyntheticDataVisualInspector:
         # 2. Box plots
         box_data = [hist_returns] + synth_returns_list[:5]
         box_labels = ["Historical"] + [
-            f"Synthetic {i+1}" for i in range(min(5, len(synth_returns_list)))
+            f"Synthetic {i + 1}" for i in range(min(5, len(synth_returns_list)))
         ]
         axes[0, 1].boxplot(box_data, labels=box_labels)
         axes[0, 1].set_title("Return Distribution Box Plots")
@@ -562,7 +586,11 @@ class SyntheticDataVisualInspector:
         for i, synth_returns in enumerate(synth_returns_list[:2]):
             left_tail = synth_returns[synth_returns < synth_returns.quantile(0.05)]
             axes[0, 2].hist(
-                left_tail, bins=20, alpha=0.5, label=f"Synthetic {i+1} Left Tail", density=True
+                left_tail,
+                bins=20,
+                alpha=0.5,
+                label=f"Synthetic {i + 1} Left Tail",
+                density=True,
             )
         axes[0, 2].set_title("Left Tail Comparison (Bottom 5%)")
         axes[0, 2].set_xlabel("Returns")
@@ -578,7 +606,7 @@ class SyntheticDataVisualInspector:
         for i, synth_returns in enumerate(synth_returns_list[:3]):
             synth_sorted = np.sort(synth_returns)
             synth_cdf = np.arange(1, len(synth_sorted) + 1) / len(synth_sorted)
-            axes[1, 0].plot(synth_sorted, synth_cdf, label=f"Synthetic {i+1}", alpha=0.7)
+            axes[1, 0].plot(synth_sorted, synth_cdf, label=f"Synthetic {i + 1}", alpha=0.7)
 
         axes[1, 0].set_title("Cumulative Distribution Comparison")
         axes[1, 0].set_xlabel("Returns")
@@ -591,7 +619,7 @@ class SyntheticDataVisualInspector:
         axes[1, 1].plot(hist_var.index, hist_var, label="Historical", linewidth=2)
         for i, synth_returns in enumerate(synth_returns_list[:3]):
             synth_var = synth_returns.rolling(window=20).var()
-            axes[1, 1].plot(synth_var.index, synth_var, label=f"Synthetic {i+1}", alpha=0.7)
+            axes[1, 1].plot(synth_var.index, synth_var, label=f"Synthetic {i + 1}", alpha=0.7)
         axes[1, 1].set_title("20-Day Rolling Variance")
         axes[1, 1].set_ylabel("Variance")
         axes[1, 1].legend()
@@ -605,7 +633,7 @@ class SyntheticDataVisualInspector:
         for i, synth_returns in enumerate(synth_returns_list):
             synth_stats = self._calculate_statistics(synth_returns)
             metrics_data.append(
-                [f"Synthetic {i+1}", synth_stats["skewness"], synth_stats["kurtosis"]]
+                [f"Synthetic {i + 1}", synth_stats["skewness"], synth_stats["kurtosis"]]
             )
 
         metrics_df = pd.DataFrame(metrics_data, columns=["Data", "Skewness", "Kurtosis"])
@@ -614,10 +642,18 @@ class SyntheticDataVisualInspector:
         width = 0.35
 
         axes[1, 2].bar(
-            x_pos - width / 2, metrics_df["Skewness"], width, label="Skewness", alpha=0.8
+            x_pos - width / 2,
+            metrics_df["Skewness"],
+            width,
+            label="Skewness",
+            alpha=0.8,
         )
         axes[1, 2].bar(
-            x_pos + width / 2, metrics_df["Kurtosis"], width, label="Kurtosis", alpha=0.8
+            x_pos + width / 2,
+            metrics_df["Kurtosis"],
+            width,
+            label="Kurtosis",
+            alpha=0.8,
         )
 
         axes[1, 2].set_title("Skewness and Kurtosis Comparison")
@@ -671,7 +707,11 @@ class SyntheticDataVisualInspector:
         for i, synth_returns in enumerate(synth_returns_list[:3]):
             synth_autocorr = [synth_returns.autocorr(lag=j) for j in range(1, max_lags + 1)]
             axes[0, 0].plot(
-                range(1, max_lags + 1), synth_autocorr, "o-", label=f"Synthetic {i+1}", alpha=0.7
+                range(1, max_lags + 1),
+                synth_autocorr,
+                "o-",
+                label=f"Synthetic {i + 1}",
+                alpha=0.7,
             )
 
         axes[0, 0].set_title("Returns Autocorrelation")
@@ -684,13 +724,21 @@ class SyntheticDataVisualInspector:
         # 2. Squared returns autocorrelation (volatility clustering)
         hist_sq_autocorr = [(hist_returns**2).autocorr(lag=i) for i in range(1, max_lags + 1)]
         axes[0, 1].plot(
-            range(1, max_lags + 1), hist_sq_autocorr, "o-", label="Historical", linewidth=2
+            range(1, max_lags + 1),
+            hist_sq_autocorr,
+            "o-",
+            label="Historical",
+            linewidth=2,
         )
 
         for i, synth_returns in enumerate(synth_returns_list[:3]):
             synth_sq_autocorr = [(synth_returns**2).autocorr(lag=j) for j in range(1, max_lags + 1)]
             axes[0, 1].plot(
-                range(1, max_lags + 1), synth_sq_autocorr, "o-", label=f"Synthetic {i+1}", alpha=0.7
+                range(1, max_lags + 1),
+                synth_sq_autocorr,
+                "o-",
+                label=f"Synthetic {i + 1}",
+                alpha=0.7,
             )
 
         axes[0, 1].set_title("Squared Returns Autocorrelation (Volatility Clustering)")
@@ -703,7 +751,11 @@ class SyntheticDataVisualInspector:
         # 3. Absolute returns autocorrelation
         hist_abs_autocorr = [hist_returns.abs().autocorr(lag=i) for i in range(1, max_lags + 1)]
         axes[1, 0].plot(
-            range(1, max_lags + 1), hist_abs_autocorr, "o-", label="Historical", linewidth=2
+            range(1, max_lags + 1),
+            hist_abs_autocorr,
+            "o-",
+            label="Historical",
+            linewidth=2,
         )
 
         for i, synth_returns in enumerate(synth_returns_list[:3]):
@@ -714,7 +766,7 @@ class SyntheticDataVisualInspector:
                 range(1, max_lags + 1),
                 synth_abs_autocorr,
                 "o-",
-                label=f"Synthetic {i+1}",
+                label=f"Synthetic {i + 1}",
                 alpha=0.7,
             )
 
@@ -739,7 +791,7 @@ class SyntheticDataVisualInspector:
         for i, synth_returns in enumerate(synth_returns_list):
             autocorr_data.append(
                 [
-                    f"Synthetic {i+1}",
+                    f"Synthetic {i + 1}",
                     synth_returns.autocorr(lag=1),
                     (synth_returns**2).autocorr(lag=1),
                     synth_returns.abs().autocorr(lag=1),
@@ -747,7 +799,8 @@ class SyntheticDataVisualInspector:
             )
 
         autocorr_df = pd.DataFrame(
-            autocorr_data, columns=["Data", "Returns", "Squared Returns", "Absolute Returns"]
+            autocorr_data,
+            columns=["Data", "Returns", "Squared Returns", "Absolute Returns"],
         )
 
         x_pos = np.arange(len(autocorr_df))
@@ -755,7 +808,11 @@ class SyntheticDataVisualInspector:
 
         axes[1, 1].bar(x_pos - width, autocorr_df["Returns"], width, label="Returns", alpha=0.8)
         axes[1, 1].bar(
-            x_pos, autocorr_df["Squared Returns"], width, label="Squared Returns", alpha=0.8
+            x_pos,
+            autocorr_df["Squared Returns"],
+            width,
+            label="Squared Returns",
+            alpha=0.8,
         )
         axes[1, 1].bar(
             x_pos + width,
@@ -808,10 +865,15 @@ class SyntheticDataVisualInspector:
 
         # 1. Price paths comparison
         axes[0, 0].plot(
-            historical_data.index, historical_data["Close"], label="Historical", linewidth=2
+            historical_data.index,
+            historical_data["Close"],
+            label="Historical",
+            linewidth=2,
         )
         for i, synth_df in enumerate(synthetic_data[:5]):  # Show first 5 paths
-            axes[0, 0].plot(synth_df.index, synth_df["Close"], label=f"Synthetic {i+1}", alpha=0.7)
+            axes[0, 0].plot(
+                synth_df.index, synth_df["Close"], label=f"Synthetic {i + 1}", alpha=0.7
+            )
         axes[0, 0].set_title("Price Paths Comparison")
         axes[0, 0].set_ylabel("Price")
         axes[0, 0].legend()
@@ -822,7 +884,7 @@ class SyntheticDataVisualInspector:
         axes[0, 1].plot(historical_data.index, hist_normalized, label="Historical", linewidth=2)
         for i, synth_df in enumerate(synthetic_data[:5]):
             synth_normalized = synth_df["Close"] / synth_df["Close"].iloc[0]
-            axes[0, 1].plot(synth_df.index, synth_normalized, label=f"Synthetic {i+1}", alpha=0.7)
+            axes[0, 1].plot(synth_df.index, synth_normalized, label=f"Synthetic {i + 1}", alpha=0.7)
         axes[0, 1].set_title("Normalized Price Paths (Base = 1)")
         axes[0, 1].set_ylabel("Normalized Price")
         axes[0, 1].legend()
@@ -836,7 +898,7 @@ class SyntheticDataVisualInspector:
         for i, synth_df in enumerate(synthetic_data[:3]):
             synth_cummax = synth_df["Close"].cummax()
             synth_drawdown = (synth_df["Close"] - synth_cummax) / synth_cummax
-            axes[1, 0].plot(synth_df.index, synth_drawdown, label=f"Synthetic {i+1}", alpha=0.7)
+            axes[1, 0].plot(synth_df.index, synth_drawdown, label=f"Synthetic {i + 1}", alpha=0.7)
 
         axes[1, 0].set_title("Drawdown Comparison")
         axes[1, 0].set_ylabel("Drawdown")
@@ -849,7 +911,11 @@ class SyntheticDataVisualInspector:
         hist_final = historical_data["Close"].iloc[-1]
 
         axes[1, 1].hist(
-            final_prices, bins=20, alpha=0.7, density=True, label="Synthetic Final Prices"
+            final_prices,
+            bins=20,
+            alpha=0.7,
+            density=True,
+            label="Synthetic Final Prices",
         )
         axes[1, 1].axvline(
             hist_final,
@@ -871,7 +937,9 @@ class SyntheticDataVisualInspector:
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
             plt.savefig(
-                output_path / f"{ticker}_price_path_analysis.png", dpi=self.dpi, bbox_inches="tight"
+                output_path / f"{ticker}_price_path_analysis.png",
+                dpi=self.dpi,
+                bbox_inches="tight",
             )
 
         plt.show()

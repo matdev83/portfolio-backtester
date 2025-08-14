@@ -75,7 +75,8 @@ class FlagRegistry:
     def use_optimization_orchestrator(cls) -> bool:
         """Check if optimization orchestrator should be used."""
         return FlagStore.get_flag(
-            "use_optimization_orchestrator", cls.get_flag_default("use_optimization_orchestrator")
+            "use_optimization_orchestrator",
+            cls.get_flag_default("use_optimization_orchestrator"),
         )
 
     # Parameter generator flags
@@ -98,14 +99,16 @@ class FlagRegistry:
     def enable_backward_compatibility(cls) -> bool:
         """Check if backward compatibility layer is enabled."""
         return FlagStore.get_flag(
-            "enable_backward_compatibility", cls.get_flag_default("enable_backward_compatibility")
+            "enable_backward_compatibility",
+            cls.get_flag_default("enable_backward_compatibility"),
         )
 
     @classmethod
     def enable_deprecation_warnings(cls) -> bool:
         """Check if deprecation warnings should be shown."""
         return FlagStore.get_flag(
-            "enable_deprecation_warnings", cls.get_flag_default("enable_deprecation_warnings")
+            "enable_deprecation_warnings",
+            cls.get_flag_default("enable_deprecation_warnings"),
         )
 
     @classmethod

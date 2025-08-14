@@ -214,7 +214,10 @@ class ConfigBasedUniverseProvider(IUniverseProvider, IUniverseWeightProvider):
 
         valid_types = ["method", "fixed", "named", "single_symbol"]
         if universe_type not in valid_types:
-            return (False, f"Invalid universe type '{universe_type}'. Valid types: {valid_types}")
+            return (
+                False,
+                f"Invalid universe type '{universe_type}'. Valid types: {valid_types}",
+            )
 
         # Type-specific validation
         if universe_type == "fixed":
@@ -236,7 +239,10 @@ class ConfigBasedUniverseProvider(IUniverseProvider, IUniverseWeightProvider):
                 "ticker"
             )
             if not ticker:
-                return (False, "Single symbol universe type requires 'ticker' parameter")
+                return (
+                    False,
+                    "Single symbol universe type requires 'ticker' parameter",
+                )
 
         return (True, "")
 
@@ -328,7 +334,9 @@ class UniverseProviderFactory:
             raise ValueError(f"Unknown provider type: {provider_type}")
 
     @staticmethod
-    def create_config_provider(strategy_config: Dict[str, Any]) -> ConfigBasedUniverseProvider:
+    def create_config_provider(
+        strategy_config: Dict[str, Any],
+    ) -> ConfigBasedUniverseProvider:
         """Create a configuration-based universe provider."""
         return ConfigBasedUniverseProvider(strategy_config)
 

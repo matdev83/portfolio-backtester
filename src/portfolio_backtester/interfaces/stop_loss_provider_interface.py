@@ -96,14 +96,22 @@ class ConfigBasedStopLossProvider(IStopLossProvider):
 
     def get_stop_loss_handler(self) -> "BaseStopLoss":
         """Get stop loss handler instance using configuration."""
-        from ..risk_management.stop_loss_handlers import BaseStopLoss, NoStopLoss, AtrBasedStopLoss
+        from ..risk_management.stop_loss_handlers import (
+            BaseStopLoss,
+            NoStopLoss,
+            AtrBasedStopLoss,
+        )
 
         sl_type_name = self.stop_loss_config.get("type", "NoStopLoss")
 
         handler_class: type[BaseStopLoss] = NoStopLoss
         if sl_type_name == "AtrBasedStopLoss":
             handler_class = AtrBasedStopLoss
-        elif sl_type_name in ["PercentageStopLoss", "TrailingStopLoss", "TimeBasedStopLoss"]:
+        elif sl_type_name in [
+            "PercentageStopLoss",
+            "TrailingStopLoss",
+            "TimeBasedStopLoss",
+        ]:
             raise NotImplementedError(f"Stop loss type '{sl_type_name}' not yet implemented")
         elif sl_type_name != "NoStopLoss":
             # Try to get from registry if we implement one later
@@ -132,7 +140,10 @@ class ConfigBasedStopLossProvider(IStopLossProvider):
         ]
 
         if sl_type not in valid_types:
-            return (False, f"Invalid stop loss type '{sl_type}'. Valid types: {valid_types}")
+            return (
+                False,
+                f"Invalid stop loss type '{sl_type}'. Valid types: {valid_types}",
+            )
 
         # Type-specific validation
         if sl_type == "AtrBasedStopLoss":
@@ -140,7 +151,10 @@ class ConfigBasedStopLossProvider(IStopLossProvider):
             atr_multiple = config.get("atr_multiple", 2.5)
 
             if not isinstance(atr_length, int) or atr_length < 1:
-                return (False, "AtrBasedStopLoss requires positive integer 'atr_length'")
+                return (
+                    False,
+                    "AtrBasedStopLoss requires positive integer 'atr_length'",
+                )
 
             if not isinstance(atr_multiple, (int, float)) or atr_multiple <= 0:
                 return (False, "AtrBasedStopLoss requires positive 'atr_multiple'")
@@ -148,10 +162,16 @@ class ConfigBasedStopLossProvider(IStopLossProvider):
         elif sl_type == "PercentageStopLoss":
             stop_percentage = config.get("stop_percentage")
             if stop_percentage is None:
-                return (False, "PercentageStopLoss requires 'stop_percentage' parameter")
+                return (
+                    False,
+                    "PercentageStopLoss requires 'stop_percentage' parameter",
+                )
 
             if not isinstance(stop_percentage, (int, float)) or not (0 < stop_percentage < 1):
-                return (False, "PercentageStopLoss 'stop_percentage' must be between 0 and 1")
+                return (
+                    False,
+                    "PercentageStopLoss 'stop_percentage' must be between 0 and 1",
+                )
 
         elif sl_type == "TrailingStopLoss":
             trail_percentage = config.get("trail_percentage")
@@ -159,15 +179,24 @@ class ConfigBasedStopLossProvider(IStopLossProvider):
                 return (False, "TrailingStopLoss requires 'trail_percentage' parameter")
 
             if not isinstance(trail_percentage, (int, float)) or not (0 < trail_percentage < 1):
-                return (False, "TrailingStopLoss 'trail_percentage' must be between 0 and 1")
+                return (
+                    False,
+                    "TrailingStopLoss 'trail_percentage' must be between 0 and 1",
+                )
 
         elif sl_type == "TimeBasedStopLoss":
             max_holding_days = config.get("max_holding_days")
             if max_holding_days is None:
-                return (False, "TimeBasedStopLoss requires 'max_holding_days' parameter")
+                return (
+                    False,
+                    "TimeBasedStopLoss requires 'max_holding_days' parameter",
+                )
 
             if not isinstance(max_holding_days, int) or max_holding_days < 1:
-                return (False, "TimeBasedStopLoss 'max_holding_days' must be positive integer")
+                return (
+                    False,
+                    "TimeBasedStopLoss 'max_holding_days' must be positive integer",
+                )
 
         return (True, "")
 
@@ -216,12 +245,20 @@ class FixedStopLossProvider(IStopLossProvider):
 
     def get_stop_loss_handler(self) -> "BaseStopLoss":
         """Get the configured stop loss handler instance."""
-        from ..risk_management.stop_loss_handlers import BaseStopLoss, NoStopLoss, AtrBasedStopLoss
+        from ..risk_management.stop_loss_handlers import (
+            BaseStopLoss,
+            NoStopLoss,
+            AtrBasedStopLoss,
+        )
 
         handler_class: type[BaseStopLoss] = NoStopLoss
         if self.stop_loss_type == "AtrBasedStopLoss":
             handler_class = AtrBasedStopLoss
-        elif self.stop_loss_type in ["PercentageStopLoss", "TrailingStopLoss", "TimeBasedStopLoss"]:
+        elif self.stop_loss_type in [
+            "PercentageStopLoss",
+            "TrailingStopLoss",
+            "TimeBasedStopLoss",
+        ]:
             raise NotImplementedError(f"Stop loss type '{self.stop_loss_type}' not yet implemented")
         elif self.stop_loss_type != "NoStopLoss":
             raise ValueError(f"Unknown stop loss type: {self.stop_loss_type}")
@@ -277,7 +314,9 @@ class StopLossProviderFactory:
             raise ValueError(f"Unknown provider type: {provider_type}")
 
     @staticmethod
-    def create_config_provider(strategy_config: Dict[str, Any]) -> ConfigBasedStopLossProvider:
+    def create_config_provider(
+        strategy_config: Dict[str, Any],
+    ) -> ConfigBasedStopLossProvider:
         """Create a configuration-based stop loss provider."""
         return ConfigBasedStopLossProvider(strategy_config)
 

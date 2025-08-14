@@ -83,5 +83,19 @@ class PopulationOrchestrator(OptimizationOrchestrator):
 
                 pbar.update(1)
 
+        # Optional dedup telemetry if available
+        try:
+            dedup_stats = self.population_evaluator.get_dedup_stats()
+            if dedup_stats:
+                logger.info(
+                    "GA dedup stats: unique=%s cached_values=%s duplicates=%s cache_hits=%s",
+                    dedup_stats.get("unique_parameter_combinations"),
+                    dedup_stats.get("cached_values"),
+                    dedup_stats.get("duplicate_trials_detected"),
+                    dedup_stats.get("cache_hits"),
+                )
+        except Exception:
+            pass
+
         logger.info("Population-based optimization finished.")
         return self.parameter_generator.get_best_result()

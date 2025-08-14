@@ -16,7 +16,10 @@ class IAllocationValidator(ABC):
 
     @abstractmethod
     def validate_meta_strategy_logic(
-        self, scenario_data: Dict[str, Any], strategy_class: Any, file_path_str: Optional[str]
+        self,
+        scenario_data: Dict[str, Any],
+        strategy_class: Any,
+        file_path_str: Optional[str],
     ) -> List[Any]:
         """Validate meta strategy specific configuration."""
         pass
@@ -31,7 +34,10 @@ class DefaultAllocationValidator(IAllocationValidator):
     """Default implementation of allocation validator."""
 
     def validate_meta_strategy_logic(
-        self, scenario_data: Dict[str, Any], strategy_class: Any, file_path_str: Optional[str]
+        self,
+        scenario_data: Dict[str, Any],
+        strategy_class: Any,
+        file_path_str: Optional[str],
     ) -> List[Any]:
         """Validate meta strategy specific configuration."""
         # YamlError and YamlErrorType imported at module level

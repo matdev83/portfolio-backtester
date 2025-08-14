@@ -10,6 +10,7 @@ from ..numba_kernels import (
     position_and_pnl_kernel,
     detailed_commission_slippage_kernel,
     trade_tracking_kernel,
+    trade_lifecycle_kernel,
 )
 
 
@@ -99,9 +100,7 @@ def calculate_portfolio_returns(
         )
 
         # Use single optimized kernel implementation
-        gross_arr, _, _ = position_and_pnl_kernel(w, r, m)
-
-        daily_portfolio_returns_gross = pd.Series(gross_arr, index=price_index)
+        _, _, _ = position_and_pnl_kernel(w, r, m)
 
         # Compute detailed IBKR-style commission+slippage in ndarray path
         # Build close price matrix aligned to valid_cols and price_index
@@ -156,9 +155,17 @@ def calculate_portfolio_returns(
             price_mask=price_mask_arr,
         )
 
+        # transaction_costs: per-day total fraction of portfolio value
+        # per_asset_transaction_costs: per-day, per-asset fraction matrix
         transaction_costs = pd.Series(tc_frac, index=price_index, dtype=float)
-        transaction_costs_detailed = pd.DataFrame(
+        per_asset_transaction_costs = pd.DataFrame(
             tc_frac_detailed, index=price_index, columns=valid_cols
+        )
+
+        gross_returns_series = (weights_for_returns * aligned_rets_daily).sum(axis=1)
+
+        returns_net_of_costs = pd.Series(
+            gross_returns_series - transaction_costs, index=price_index
         )
 
     else:
@@ -168,21 +175,6 @@ def calculate_portfolio_returns(
             "The legacy Pandas-based portfolio simulation has been removed. "
             "Please enable 'ndarray_simulation' in the feature flags."
         )
-
-    # Net = gross - per-day transaction costs (already portfolio-value normalized)
-    # Ensure transaction_costs is a Series aligned to daily_portfolio_returns_gross index
-    # Defensive: ensure tc_series is defined and aligned; prefer provided Series
-    tc_series = (
-        transaction_costs.reindex(daily_portfolio_returns_gross.index).fillna(0.0)
-        if isinstance(transaction_costs, pd.Series)
-        else pd.Series(data=0.0, index=daily_portfolio_returns_gross.index, dtype=float)
-    )
-    # Ensure both operands are Series[float] aligned to the same index
-    daily_portfolio_returns_gross = pd.Series(
-        daily_portfolio_returns_gross, index=daily_portfolio_returns_gross.index, dtype=float
-    )
-    tc_series = pd.Series(tc_series, index=tc_series.index, dtype=float)
-    portfolio_rets_net = (daily_portfolio_returns_gross - tc_series).fillna(0.0).astype(float)
 
     # Initialize trade tracker if requested
     trade_tracker = None
@@ -194,18 +186,38 @@ def calculate_portfolio_returns(
 
         trade_tracker = TradeTracker(initial_portfolio_value, allocation_mode)
 
-        # Use unified commission calculator for trade tracking too
-        tx_cost_model = get_unified_commission_calculator(global_config)
-        _track_trades_with_dynamic_capital(
-            trade_tracker,
-            weights_daily,
-            price_data_daily_ohlc,
-            tx_cost_model,
-            global_config,
-            transaction_costs_detailed,
+        # PREPARE DATA FOR TRADE TRACKING (NUMPY FAST PATH)
+        # Align all dataframes to a common index and columns
+        valid_cols = list(weights_daily.columns.intersection(close_prices_df.columns))
+        common_index = weights_daily.index.intersection(close_prices_df.index)
+
+        weights_arr = (
+            weights_daily.reindex(index=common_index, columns=valid_cols).fillna(0.0).to_numpy()
+        )
+        prices_arr = (
+            close_prices_df.reindex(index=common_index, columns=valid_cols).fillna(0.0).to_numpy()
+        )
+        commissions_arr = (
+            per_asset_transaction_costs.reindex(index=common_index, columns=valid_cols)
+            .fillna(0.0)
+            .to_numpy()
         )
 
-    return portfolio_rets_net, trade_tracker
+        _track_trades_and_populate(
+            trade_tracker=trade_tracker,
+            weights_arr=weights_arr,
+            prices_arr=prices_arr,
+            commissions_arr=commissions_arr,
+            dates=common_index.to_numpy(),
+            tickers=np.array(valid_cols),
+        )
+
+        # If trade tracking was used, the portfolio value series is the source of truth for returns
+        pv_series = trade_tracker.portfolio_value_tracker.daily_portfolio_value
+        if isinstance(pv_series, pd.Series) and not pv_series.empty:
+            returns_net_of_costs = pv_series.pct_change(fill_method=None).fillna(0.0).astype(float)
+
+    return returns_net_of_costs, trade_tracker
 
 
 def _calculate_meta_strategy_portfolio_returns(
@@ -441,64 +453,32 @@ def _create_meta_strategy_trade_tracker(strategy, global_config, scenario_config
     return trade_tracker
 
 
-def _track_trades(
-    trade_tracker,
-    weights_daily,
-    price_data_daily_ohlc,
-    tx_cost_model,
-    global_config,
-    scenario_config=None,
+def _track_trades_and_populate(
+    trade_tracker: TradeTracker,
+    weights_arr: np.ndarray,
+    prices_arr: np.ndarray,
+    commissions_arr: np.ndarray,
+    dates: np.ndarray,
+    tickers: np.ndarray,
 ):
-    """Track trades using the trade tracker."""
-    # Use optimized dynamic-capital implementation (single-path)
-    _track_trades_with_dynamic_capital(
-        trade_tracker, weights_daily, price_data_daily_ohlc, tx_cost_model, global_config
-    )
-
-
-def _track_trades_with_dynamic_capital(
-    trade_tracker,
-    weights_daily,
-    price_data_daily_ohlc,
-    tx_cost_model,
-    global_config,
-    transaction_costs_detailed=None,
-):
-    """Enhanced trade tracking with dynamic capital updates for compounding."""
-    # Extract close prices
-    if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
-        close_prices = price_data_daily_ohlc.xs("Close", level="Field", axis=1)
-    else:
-        close_prices = price_data_daily_ohlc
-
-    # Align all dataframes to a common index and columns
-    valid_cols = weights_daily.columns.intersection(close_prices.columns)
-    common_index = weights_daily.index.intersection(close_prices.index)
-
-    weights_arr = (
-        weights_daily.reindex(index=common_index, columns=valid_cols).fillna(0.0).to_numpy()
-    )
-    prices_arr = close_prices.reindex(index=common_index, columns=valid_cols).fillna(0.0).to_numpy()
-
-    if transaction_costs_detailed is not None:
-        commissions_arr = (
-            transaction_costs_detailed.reindex(index=common_index, columns=valid_cols)
-            .fillna(0.0)
-            .to_numpy()
-        )
-    else:
-        commissions_arr = np.zeros_like(weights_arr)
-
+    """
+    Orchestrates the trade tracking process by calling the high-performance
+    Numba kernel and then populating the TradeTracker object with the results.
+    Args:
+        trade_tracker: The TradeTracker object to populate.
+        weights_arr: NumPy array of asset weights.
+        prices_arr: NumPy array of asset prices.
+        commissions_arr: NumPy array of commissions.
+        dates: NumPy array of dates for the backtest period.
+        tickers: NumPy array of ticker symbols.
+    """
     price_mask = prices_arr > 0
-
-    # Get initial value and allocation mode
-    initial_portfolio_value = trade_tracker.initial_portfolio_value
     allocation_mode_map = {"reinvestment": 0, "fixed": 1}
     allocation_mode = allocation_mode_map.get(trade_tracker.allocation_mode, 0)
 
-    # Call the Numba kernel
+    # Call the Numba kernel to get portfolio values and positions
     portfolio_values, _, positions = trade_tracking_kernel(
-        initial_portfolio_value=initial_portfolio_value,
+        initial_portfolio_value=trade_tracker.initial_portfolio_value,
         allocation_mode=allocation_mode,
         weights=weights_arr,
         prices=prices_arr,
@@ -506,23 +486,30 @@ def _track_trades_with_dynamic_capital(
         commissions=commissions_arr,
     )
 
-    # Convert results back to DataFrames/Series
-    portfolio_values_series = pd.Series(portfolio_values, index=common_index)
-    positions_df = pd.DataFrame(positions, index=common_index, columns=valid_cols)
-
-    # Populate the trade tracker with the results from the kernel
-    trade_tracker.populate_from_vectorized(
-        portfolio_values=portfolio_values_series,
-        positions=positions_df,
-        prices=close_prices.reindex(index=common_index, columns=valid_cols),
-        commissions=pd.DataFrame(commissions_arr, index=common_index, columns=valid_cols),
+    # Call the new kernel to get completed trade data
+    completed_trades_arr = trade_lifecycle_kernel(
+        positions=positions,
+        prices=prices_arr,
+        dates=dates,
+        commissions=commissions_arr,
+        initial_capital=trade_tracker.initial_portfolio_value,
     )
 
+    # Convert kernel output to DataFrames for the TradeTracker
+    portfolio_values_series = pd.Series(portfolio_values, index=pd.to_datetime(dates))
+    positions_df = pd.DataFrame(positions, index=pd.to_datetime(dates), columns=tickers)
+    prices_df = pd.DataFrame(prices_arr, index=pd.to_datetime(dates), columns=tickers)
 
-def _calculate_position_weights(current_positions, prices, base_portfolio_value):
-    weights = pd.Series(0.0, index=list(prices.index))
-    for asset, quantity in current_positions.items():
-        if abs(quantity) > 1e-6 and asset in prices:
-            position_value = quantity * prices[asset]
-            weights[asset] = position_value / base_portfolio_value
-    return weights
+    # Populate the trade tracker with the results from the kernels
+    trade_tracker.populate_from_kernel_results(
+        portfolio_values=portfolio_values_series,
+        positions=positions_df,
+        completed_trades=completed_trades_arr,
+        tickers=tickers,
+        prices=prices_df,
+    )
+
+    logger.info(
+        "[TradeTracking] completed_trades=%d",
+        len(trade_tracker.trade_lifecycle_manager.get_completed_trades()),
+    )

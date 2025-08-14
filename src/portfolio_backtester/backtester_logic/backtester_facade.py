@@ -45,15 +45,16 @@ class Backtester:
         global_config: Dict[str, Any],
         scenarios: List[Dict[str, Any]],
         args: argparse.Namespace,
+        backtest_runner=None,
         random_state: Optional[int] = None,
     ) -> None:
         """
         Initialize Backtester with configuration and scenarios.
-
         Args:
             global_config: Global configuration dictionary
             scenarios: List of scenario configurations
             args: Command line arguments namespace
+            backtest_runner: Optional BacktestRunner instance
             random_state: Optional random seed for reproducibility
         """
         # Store original interface parameters
@@ -110,7 +111,7 @@ class Backtester:
         def timeout_checker():
             return self.has_timed_out
 
-        self.backtest_runner = BacktestRunner(
+        self.backtest_runner = backtest_runner or BacktestRunner(
             global_config=self.global_config,
             data_cache=self.data_cache,
             strategy_manager=self.strategy_manager,
@@ -145,12 +146,6 @@ class Backtester:
             # Non-fatal if resolver cannot be created here; will be created on demand elsewhere
             pass
 
-        # Initialize Monte Carlo components if enabled
-        self.asset_replacement_manager: Any = None
-        self.synthetic_data_generator: Any = None
-        if self.global_config.get("enable_synthetic_data", False):
-            self._initialize_monte_carlo_components()
-
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Backtester initialized with all specialized components")
 
@@ -158,23 +153,6 @@ class Backtester:
     def has_timed_out(self):
         """Check if the operation has timed out."""
         return self.timeout_manager.check_timeout()
-
-    def _initialize_monte_carlo_components(self) -> None:
-        """Initialize Monte Carlo components for synthetic data generation."""
-        try:
-            from ..monte_carlo.asset_replacement import AssetReplacementManager
-
-            self.asset_replacement_manager = AssetReplacementManager(self.global_config)
-            self.synthetic_data_generator = self.asset_replacement_manager.synthetic_generator
-
-            if self.logger.isEnabledFor(logging.DEBUG):
-                self.logger.debug("Monte Carlo components initialized successfully")
-
-        except ImportError as e:
-            if self.logger.isEnabledFor(logging.WARNING):
-                self.logger.warning(f"Monte Carlo components not available: {e}")
-            self.asset_replacement_manager = None
-            self.synthetic_data_generator = None
 
     def _select_scenarios_to_run(self) -> List[Dict[str, Any]]:
         """Select scenarios based on CLI args; returns empty list if named scenario missing."""
@@ -215,7 +193,11 @@ class Backtester:
             Portfolio returns as pandas Series, or None if scenario fails
         """
         result: Optional[pd.Series] = self.backtest_runner.run_scenario(
-            scenario_config, price_data_monthly_closes, price_data_daily_ohlc, rets_daily, verbose
+            scenario_config,
+            price_data_monthly_closes,
+            price_data_daily_ohlc,
+            rets_daily,
+            verbose,
         )
         return result
 
@@ -249,6 +231,9 @@ class Backtester:
 
     def run(self) -> None:
         """Main entry to run a backtest or optimization for the selected scenario(s)."""
+        # Start timing
+        start_time = time.time()
+
         # Early exit on timeout
         if self.has_timed_out:
             logger.warning("Timeout reached before starting the backtest run.")
@@ -296,14 +281,26 @@ class Backtester:
                 if isinstance(self.rets_full, pd.DataFrame)
                 else pd.DataFrame(self.rets_full)
             )
-            self._run_optimize_mode(scenario, self.monthly_data, self.daily_data_ohlc, rets_df)
+            self._run_optimize_mode(
+                self.optimization_orchestrator,
+                scenario,
+                self.monthly_data,
+                self.daily_data_ohlc,
+                rets_df,
+            )
         else:
             rets_df = (
                 self.rets_full
                 if isinstance(self.rets_full, pd.DataFrame)
                 else pd.DataFrame(self.rets_full)
             )
-            self._run_backtest_mode(scenario, self.monthly_data, self.daily_data_ohlc, rets_df)
+            self._run_backtest_mode(
+                self,
+                scenario,
+                self.monthly_data,
+                self.daily_data_ohlc,
+                rets_df,
+            )
 
         # Final reporting
         if CENTRAL_INTERRUPTED_FLAG:
@@ -329,8 +326,29 @@ class Backtester:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug("Optimization mode completed. Reports generated.")
 
+        # Log execution time
+        execution_time = time.time() - start_time
+        mode = getattr(self.args, "mode", "backtest")
+
+        # Calculate backtest period and days per second
+        if self.daily_data_ohlc is not None and not self.daily_data_ohlc.empty:
+            start_date = self.daily_data_ohlc.index.min().date()
+            end_date = self.daily_data_ohlc.index.max().date()
+            total_days = (end_date - start_date).days
+            days_per_second = total_days / max(execution_time, 0.001)  # Avoid division by zero
+
+            logger.info(
+                f"Backtester {mode} mode execution time: {execution_time:.2f} seconds ({execution_time/60:.2f} minutes) | "
+                f"Period: {start_date} to {end_date} ({total_days} days) | {days_per_second:.1f} days/second"
+            )
+        else:
+            logger.info(
+                f"Backtester {mode} mode execution time: {execution_time:.2f} seconds ({execution_time/60:.2f} minutes)"
+            )
+
     def _run_backtest_mode(
         self,
+        backtester,
         scenario_config: Dict[str, Any],
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
@@ -338,20 +356,21 @@ class Backtester:
     ) -> None:
         """Run backtest mode - delegates to BacktestRunner."""
         study_name = getattr(self.args, "study_name", None)
-        result = self.backtest_runner.run_backtest_mode(
+        result = backtester.backtest_runner.run_backtest_mode(
             scenario_config, monthly_data, daily_data, rets_full, study_name
         )
         self.results[scenario_config["name"]] = result
 
     def _run_optimize_mode(
         self,
+        optimization_orchestrator,
         scenario_config: Dict[str, Any],
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
     ) -> None:
         """Run optimization mode - delegates to OptimizationOrchestrator."""
-        optimization_result = self.optimization_orchestrator.run_optimization(
+        optimization_result = optimization_orchestrator.run_optimization(
             scenario_config, monthly_data, daily_data, rets_full, self.args
         )
 

@@ -2,7 +2,10 @@ import pandas as pd
 from typing import Optional
 from ..reporting.optimizer_report_generator import create_optimization_report
 from ..reporting.performance_metrics import calculate_metrics
-from ..interfaces.attribute_accessor_interface import IAttributeAccessor, create_attribute_accessor
+from ..interfaces.attribute_accessor_interface import (
+    IAttributeAccessor,
+    create_attribute_accessor,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -108,7 +111,12 @@ def _build_additional_info(
 
 
 def generate_optimization_report(
-    backtester, scenario_config, optimal_params, full_rets, best_trial_obj, actual_num_trials
+    backtester,
+    scenario_config,
+    optimal_params,
+    full_rets,
+    best_trial_obj,
+    actual_num_trials,
 ):
     """Generate comprehensive optimization report with performance analysis."""
     strategy_name = scenario_config["name"]
@@ -141,7 +149,10 @@ def generate_optimization_report(
         "optimal_parameters": optimal_params,
         "performance_metrics": performance_metrics,
         "optimization_metadata": _build_optimization_metadata(
-            backtester, actual_num_trials, defer_expensive_plots, defer_parameter_analysis
+            backtester,
+            actual_num_trials,
+            defer_expensive_plots,
+            defer_parameter_analysis,
         ),
     }
 

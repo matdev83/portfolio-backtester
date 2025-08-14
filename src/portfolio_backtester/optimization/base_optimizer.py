@@ -21,7 +21,7 @@ class BaseOptimizer(abc.ABC):
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
         random_state: Optional[int] = None,
-    ):
+    ) -> None:
         """Initialize the optimizer.
 
         Args:

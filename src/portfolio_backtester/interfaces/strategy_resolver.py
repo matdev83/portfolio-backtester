@@ -5,7 +5,10 @@ This module provides interfaces for resolving strategy specifications
 without using isinstance checks.
 """
 
-from .strategy_resolver_interface import PolymorphicStrategyResolver, create_strategy_resolver
+from .strategy_resolver_interface import (
+    PolymorphicStrategyResolver,
+    create_strategy_resolver,
+)
 
 
 class StrategyResolverFactory:

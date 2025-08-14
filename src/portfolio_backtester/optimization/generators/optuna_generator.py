@@ -13,7 +13,10 @@ from typing import Any, Dict, List, Optional, Union
 import warnings
 import numpy as np
 
-from ...interfaces.attribute_accessor_interface import IAttributeAccessor, create_attribute_accessor
+from ...interfaces.attribute_accessor_interface import (
+    IAttributeAccessor,
+    create_attribute_accessor,
+)
 
 import optuna
 from optuna.samplers import TPESampler
@@ -478,7 +481,6 @@ class OptunaParameterGenerator(ParameterGenerator):
         self.current_evaluation += 1
 
         try:
-
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     f"Reporting result for evaluation {self.current_evaluation}: "

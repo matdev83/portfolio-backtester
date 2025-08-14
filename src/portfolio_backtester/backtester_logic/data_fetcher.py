@@ -21,7 +21,7 @@ class DataFetcher:
     scattered throughout the Backtester class, following the Single Responsibility Principle.
     """
 
-    def __init__(self, global_config: Dict[str, Any], data_source: Any):
+    def __init__(self, global_config: Dict[str, Any], data_source: Any) -> None:
         """
         Initialize DataFetcher with configuration and data source.
 
@@ -314,7 +314,7 @@ class DataFetcher:
                     first_idx = qualifying_dates.index[0]
                     available_count = int(qualifying_dates.iloc[0])
                     logger.info(
-                        f"Using optimal start date {first_idx} where {available_count}/{len(available_tickers)} tickers ({available_count/len(available_tickers)*100:.1f}%) have data available"
+                        f"Using optimal start date {first_idx} where {available_count}/{len(available_tickers)} tickers ({available_count / len(available_tickers) * 100:.1f}%) have data available"
                     )
                     # Convert to pandas Timestamp safely, then to string
                     ts = pd.to_datetime(first_idx)

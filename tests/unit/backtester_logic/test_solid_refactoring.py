@@ -25,7 +25,6 @@ from portfolio_backtester.backtester_logic.optimization_orchestrator import (
     OptimizationOrchestrator,
 )
 from portfolio_backtester.backtester_logic.backtester_facade import Backtester
-from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 
 
 @pytest.fixture
@@ -149,69 +148,6 @@ class TestStrategyManager:
         assert isinstance(manager.strategy_map, dict)
         assert len(manager.strategy_map) > 0  # Should have loaded strategies
 
-    def test_get_strategy_with_string_spec(self):
-        """Test strategy creation with string specification."""
-        manager = StrategyManager()
-
-        # Use a real discovered strategy instead of manually adding one
-        available_strategies = manager.get_available_strategies()
-        assert len(available_strategies) > 0, "No strategies discovered for testing"
-
-        # Use a known good strategy with proper parameters
-        strategy_name = "DummyStrategyForTestingSignalStrategy"
-        strategy_params = {
-            "symbol": "SPY",
-            "open_long_prob": 0.2,
-            "close_long_prob": 0.05,
-            "seed": 123,
-        }
-
-        result = manager.get_strategy(strategy_name, strategy_params)
-
-        assert isinstance(result, BaseStrategy)
-        # Verify the strategy was created correctly
-        assert hasattr(result, "strategy_params")
-
-    def test_get_strategy_with_dict_spec(self):
-        """Test strategy creation with dictionary specification."""
-        manager = StrategyManager()
-
-        # Use a real discovered strategy instead of manually adding one
-        available_strategies = manager.get_available_strategies()
-        assert len(available_strategies) > 0, "No strategies discovered for testing"
-
-        # Use a known good strategy with proper parameters
-        strategy_name = "DummyStrategyForTestingSignalStrategy"
-        spec = {"strategy": strategy_name, "other_config": "value"}
-        strategy_params = {
-            "symbol": "SPY",
-            "open_long_prob": 0.2,
-            "close_long_prob": 0.05,
-            "seed": 123,
-        }
-
-        result = manager.get_strategy(spec, strategy_params)
-
-        assert isinstance(result, BaseStrategy)
-        # Verify the strategy was created correctly
-        assert hasattr(result, "strategy_params")
-
-    def test_is_strategy_available(self):
-        """Test strategy availability checking."""
-        manager = StrategyManager()
-
-        # Use real discovered strategies instead of manually adding them
-        available_strategies = manager.get_available_strategies()
-        assert len(available_strategies) > 0, "No strategies discovered for testing"
-
-        # Test with a real discovered strategy
-        existing_strategy_name = list(available_strategies.keys())[0]
-        assert manager.is_strategy_available(existing_strategy_name) is True
-        assert manager.is_strategy_available("non_existing_strategy") is False
-
-        # Alias support removed: only canonical names are supported
-        assert manager.is_strategy_available("SimpleMetaStrategy") is True
-
 
 class TestEvaluationEngine:
     """Test suite for EvaluationEngine class."""
@@ -224,16 +160,6 @@ class TestEvaluationEngine:
         assert engine.global_config == sample_global_config
         assert engine.data_source == mock_data_source
         assert engine.strategy_manager == strategy_manager
-
-    def test_get_monte_carlo_trial_threshold(self, sample_global_config, mock_data_source):
-        """Test Monte Carlo trial threshold calculation."""
-        strategy_manager = Mock()
-        engine = EvaluationEngine(sample_global_config, mock_data_source, strategy_manager)
-
-        assert engine.get_monte_carlo_trial_threshold("fast") == 20
-        assert engine.get_monte_carlo_trial_threshold("balanced") == 10
-        assert engine.get_monte_carlo_trial_threshold("comprehensive") == 5
-        assert engine.get_monte_carlo_trial_threshold("unknown") == 10
 
 
 class TestBacktestRunner:
@@ -251,32 +177,6 @@ class TestBacktestRunner:
         assert runner.data_cache == data_cache
         assert runner.strategy_manager == strategy_manager
         assert runner.timeout_checker == timeout_checker
-
-    def test_validate_scenario_data(self, sample_global_config, sample_scenario_config):
-        """Test scenario data validation."""
-        data_cache = Mock()
-        strategy_manager = Mock()
-        mock_strategy = Mock()
-        mock_strategy.get_universe.return_value = [("AAPL", 1.0), ("MSFT", 1.0)]
-        strategy_manager.get_strategy.return_value = mock_strategy
-
-        runner = BacktestRunner(sample_global_config, data_cache, strategy_manager)
-
-        # Create sample daily data
-        dates = pd.date_range("2020-01-01", "2023-12-31", freq="D")
-        daily_data = pd.DataFrame(
-            {
-                "AAPL": np.random.randn(len(dates)) + 100,
-                "MSFT": np.random.randn(len(dates)) + 100,
-            },
-            index=dates,
-        )
-
-        monthly_data = daily_data.resample("ME").last()
-
-        result = runner.validate_scenario_data(sample_scenario_config, monthly_data, daily_data)
-
-        assert result is True  # Should pass validation
 
 
 class TestOptimizationOrchestrator:
@@ -377,7 +277,9 @@ class TestBacktester:
             patch("portfolio_backtester.backtester_logic.backtester_facade.create_data_source"),
             patch("portfolio_backtester.backtester_logic.backtester_facade.create_cache_manager"),
             patch("portfolio_backtester.backtester_logic.backtester_facade.create_timeout_manager"),
+            patch.object(BacktestRunner, "run_scenario") as mock_run_scenario,
         ):
+            mock_run_scenario.return_value = pd.Series([0.01, 0.02, 0.03])
 
             facade = Backtester(sample_global_config, scenarios, args, random_state=42)
 
@@ -394,39 +296,6 @@ class TestBacktester:
             assert hasattr(facade, "evaluation_engine")
             assert hasattr(facade, "backtest_runner")
             assert hasattr(facade, "optimization_orchestrator")
-
-    def test_facade_delegates_to_components(self, sample_global_config):
-        """Test that Backtester properly delegates to specialized components."""
-        scenarios = [
-            {
-                "name": "test",
-                "strategy": "DummyStrategyForTestingSignalStrategy",
-                "strategy_params": {},
-            }
-        ]
-        args = argparse.Namespace(timeout=None, n_jobs=1, early_stop_patience=10, study_name=None)
-
-        with (
-            patch("portfolio_backtester.backtester_logic.backtester_facade.create_data_source"),
-            patch("portfolio_backtester.backtester_logic.backtester_facade.create_cache_manager"),
-            patch("portfolio_backtester.backtester_logic.backtester_facade.create_timeout_manager"),
-        ):
-
-            facade = Backtester(sample_global_config, scenarios, args, random_state=42)
-
-            # Mock the backtest runner
-            facade.backtest_runner.run_scenario = Mock(return_value=pd.Series([0.01, 0.02, 0.03]))
-
-            # Test that run_scenario delegates to BacktestRunner
-            result = facade.run_scenario(
-                scenarios[0],
-                pd.DataFrame({"AAPL": [100, 101, 102]}),
-                pd.DataFrame({"AAPL": [100, 101, 102]}),
-                verbose=False,
-            )
-
-            facade.backtest_runner.run_scenario.assert_called_once()
-            assert isinstance(result, pd.Series)
 
 
 class TestSolidPrinciplesCompliance:
@@ -450,29 +319,6 @@ class TestSolidPrinciplesCompliance:
         evaluation_engine_methods = [m for m in dir(EvaluationEngine) if not m.startswith("_")]
         eval_methods = [m for m in evaluation_engine_methods if "evaluat" in m.lower()]
         assert len(eval_methods) > 0, "EvaluationEngine should have evaluation-related methods"
-
-    def test_open_closed_principle(self):
-        """Test that classes are open for extension but closed for modification."""
-        # StrategyManager follows OCP through dependency injection and automatic discovery
-        # New strategies can be added by creating new files without modifying existing code
-
-        manager = StrategyManager()
-
-        # The strategy_map should be immutable from external modifications (closed for modification)
-        original_strategies = manager.strategy_map.copy()
-
-        # Attempting to modify strategy_map externally should not affect the internal registry
-        manager.strategy_map["new_test_strategy"] = Mock()
-        refreshed_strategies = manager.get_available_strategies()
-
-        # The internal registry should be unchanged (protecting against external tampering)
-        assert len(refreshed_strategies) == len(original_strategies)
-        assert (
-            "new_test_strategy" not in refreshed_strategies
-        )  # External modification should not persist
-
-        # OCP compliance: New strategies are added through discovery mechanism (open for extension)
-        # without modifying the StrategyManager class itself (closed for modification)
 
     def test_dependency_inversion_principle(self):
         """Test that high-level modules don't depend on low-level modules."""

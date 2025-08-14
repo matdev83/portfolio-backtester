@@ -10,7 +10,10 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from ...interfaces.signal_generator_interface import ISignalGenerator, signal_generator_factory
+from ...interfaces.signal_generator_interface import (
+    ISignalGenerator,
+    signal_generator_factory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,11 @@ class EmaCrossoverSignalGenerator(ISignalGenerator):
     """
 
     def __init__(
-        self, config=None, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9
+        self,
+        config=None,
+        fast_period: int = 12,
+        slow_period: int = 26,
+        signal_period: int = 9,
     ):
         """
         Initialize EMA crossover signal generator.
@@ -118,7 +125,10 @@ class EmaCrossoverSignalGenerator(ISignalGenerator):
         return signals_df
 
     def generate_signal_for_date(
-        self, data: Dict[str, Any], universe_tickers: List[str], current_date: pd.Timestamp
+        self,
+        data: Dict[str, Any],
+        universe_tickers: List[str],
+        current_date: pd.Timestamp,
     ) -> pd.DataFrame:
         """
         Generate signal for a single date with state management.
@@ -219,7 +229,10 @@ class EmaCrossoverSignalGenerator(ISignalGenerator):
             return 0.0
 
     def _create_empty_signals(
-        self, universe_tickers: List[str], start_date: pd.Timestamp, end_date: pd.Timestamp
+        self,
+        universe_tickers: List[str],
+        start_date: pd.Timestamp,
+        end_date: pd.Timestamp,
     ) -> pd.DataFrame:
         """Create empty signals DataFrame for a date range."""
         if start_date == end_date:

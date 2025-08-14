@@ -71,7 +71,7 @@ class DefaultValueConverter(IValueConverter):
 class ValueConverterFactory:
     """Factory class for selecting appropriate value converter."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._converters = [
             BytesValueConverter(),
             DefaultValueConverter(),  # Must be last as it handles all types

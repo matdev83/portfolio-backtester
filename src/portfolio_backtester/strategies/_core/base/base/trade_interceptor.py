@@ -66,7 +66,8 @@ class MetaStrategyTradeInterceptor:
         else:
             # Try different possible keys in the global config (which is now always a dict)
             default_cost = global_config.get(
-                "default_transaction_cost_bps", global_config.get("transaction_costs_bps", 0.0)
+                "default_transaction_cost_bps",
+                global_config.get("transaction_costs_bps", 0.0),
             )
             self.transaction_cost_bps = float(default_cost) if default_cost is not None else 0.0
 
@@ -137,7 +138,10 @@ class MetaStrategyTradeInterceptor:
             return None
 
     def _process_signals(
-        self, signals: pd.DataFrame, current_date: pd.Timestamp, all_historical_data: pd.DataFrame
+        self,
+        signals: pd.DataFrame,
+        current_date: pd.Timestamp,
+        all_historical_data: pd.DataFrame,
     ) -> None:
         """
         Process signals and generate trade records for changes.
@@ -217,7 +221,10 @@ class MetaStrategyTradeInterceptor:
 
             # Create trade record
             trade = self._create_trade_record(
-                asset=asset_str, signal_change=change, price=price, current_date=current_date
+                asset=asset_str,
+                signal_change=change,
+                price=price,
+                current_date=current_date,
             )
 
             if trade is not None:

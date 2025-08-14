@@ -140,7 +140,10 @@ class ConfigBasedTakeProfitProvider(ITakeProfitProvider):
         ]
 
         if tp_type not in valid_types:
-            return (False, f"Invalid take profit type '{tp_type}'. Valid types: {valid_types}")
+            return (
+                False,
+                f"Invalid take profit type '{tp_type}'. Valid types: {valid_types}",
+            )
 
         # Type-specific validation
         if tp_type == "AtrBasedTakeProfit":
@@ -148,7 +151,10 @@ class ConfigBasedTakeProfitProvider(ITakeProfitProvider):
             atr_multiple = config.get("atr_multiple", 2.0)
 
             if not isinstance(atr_length, int) or atr_length < 1:
-                return (False, "AtrBasedTakeProfit requires positive integer 'atr_length'")
+                return (
+                    False,
+                    "AtrBasedTakeProfit requires positive integer 'atr_length'",
+                )
 
             if not isinstance(atr_multiple, (int, float)) or atr_multiple <= 0:
                 return (False, "AtrBasedTakeProfit requires positive 'atr_multiple'")
@@ -156,26 +162,44 @@ class ConfigBasedTakeProfitProvider(ITakeProfitProvider):
         elif tp_type == "PercentageTakeProfit":
             profit_percentage = config.get("profit_percentage")
             if profit_percentage is None:
-                return (False, "PercentageTakeProfit requires 'profit_percentage' parameter")
+                return (
+                    False,
+                    "PercentageTakeProfit requires 'profit_percentage' parameter",
+                )
 
             if not isinstance(profit_percentage, (int, float)) or profit_percentage <= 0:
-                return (False, "PercentageTakeProfit 'profit_percentage' must be positive")
+                return (
+                    False,
+                    "PercentageTakeProfit 'profit_percentage' must be positive",
+                )
 
         elif tp_type == "TrailingTakeProfit":
             trail_percentage = config.get("trail_percentage")
             if trail_percentage is None:
-                return (False, "TrailingTakeProfit requires 'trail_percentage' parameter")
+                return (
+                    False,
+                    "TrailingTakeProfit requires 'trail_percentage' parameter",
+                )
 
             if not isinstance(trail_percentage, (int, float)) or not (0 < trail_percentage < 1):
-                return (False, "TrailingTakeProfit 'trail_percentage' must be between 0 and 1")
+                return (
+                    False,
+                    "TrailingTakeProfit 'trail_percentage' must be between 0 and 1",
+                )
 
         elif tp_type == "TimeBasedTakeProfit":
             max_holding_days = config.get("max_holding_days")
             if max_holding_days is None:
-                return (False, "TimeBasedTakeProfit requires 'max_holding_days' parameter")
+                return (
+                    False,
+                    "TimeBasedTakeProfit requires 'max_holding_days' parameter",
+                )
 
             if not isinstance(max_holding_days, int) or max_holding_days < 1:
-                return (False, "TimeBasedTakeProfit 'max_holding_days' must be positive integer")
+                return (
+                    False,
+                    "TimeBasedTakeProfit 'max_holding_days' must be positive integer",
+                )
 
         return (True, "")
 
@@ -295,7 +319,9 @@ class TakeProfitProviderFactory:
             raise ValueError(f"Unknown provider type: {provider_type}")
 
     @staticmethod
-    def create_config_provider(strategy_config: Dict[str, Any]) -> ConfigBasedTakeProfitProvider:
+    def create_config_provider(
+        strategy_config: Dict[str, Any],
+    ) -> ConfigBasedTakeProfitProvider:
         """Create a configuration-based take profit provider."""
         return ConfigBasedTakeProfitProvider(strategy_config)
 

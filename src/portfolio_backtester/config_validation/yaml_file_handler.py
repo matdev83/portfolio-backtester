@@ -18,7 +18,9 @@ class YamlFileHandler:
     """Handles YAML file operations for configuration validation using the existing advanced validator."""
 
     @staticmethod
-    def load_yaml_file(file_path: Union[str, Path]) -> tuple[Dict[str, Any], List[ValidationError]]:
+    def load_yaml_file(
+        file_path: Union[str, Path],
+    ) -> tuple[Dict[str, Any], List[ValidationError]]:
         """Load and parse a YAML file using the advanced validator.
 
         Args:

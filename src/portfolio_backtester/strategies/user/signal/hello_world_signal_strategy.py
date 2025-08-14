@@ -24,7 +24,15 @@ class HelloWorldSignalStrategy(SignalStrategy):
     @classmethod
     def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         # Keep intentionally tiny for quick runs
-        return {"leverage": {"type": "float", "default": 1.0, "min": 0.5, "max": 2.0, "step": 0.5}}
+        return {
+            "leverage": {
+                "type": "float",
+                "default": 1.0,
+                "min": 0.5,
+                "max": 2.0,
+                "step": 0.5,
+            }
+        }
 
     def get_non_universe_data_requirements(self) -> list[str]:
         return []

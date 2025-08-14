@@ -253,7 +253,14 @@ def _calculate_basic_trade_stats_vectorized(
     # Calculate average trade cost
     avg_trade_cost = float(total_costs / max(total_trades, 1.0))
 
-    return total_trades, total_turnover, total_costs, max_margin, mean_margin, avg_trade_cost
+    return (
+        total_trades,
+        total_turnover,
+        total_costs,
+        max_margin,
+        mean_margin,
+        avg_trade_cost,
+    )
 
 
 class VectorizedTradeTracker(AbstractTradeTracker):
@@ -314,16 +321,21 @@ class VectorizedTradeTracker(AbstractTradeTracker):
         )
 
         # Calculate basic trade statistics
-        total_trades, total_turnover, total_costs, max_margin, mean_margin, avg_trade_cost = (
-            _calculate_basic_trade_stats_vectorized(
-                weights_array,
-                prices_array,
-                position_values,
-                position_changes,
-                trade_costs,
-                margin_usage,
-                self.portfolio_value,
-            )
+        (
+            total_trades,
+            total_turnover,
+            total_costs,
+            max_margin,
+            mean_margin,
+            avg_trade_cost,
+        ) = _calculate_basic_trade_stats_vectorized(
+            weights_array,
+            prices_array,
+            position_values,
+            position_changes,
+            trade_costs,
+            margin_usage,
+            self.portfolio_value,
         )
 
         # Convert to dictionary format

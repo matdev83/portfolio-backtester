@@ -59,7 +59,12 @@ class DefaultUniversalConfigValidator(IUniversalConfigValidator):
         # Validate position_sizer
         position_sizer = scenario_data.get("position_sizer")
         if position_sizer is not None:
-            valid_sizers = {"equal_weight", "volatility_weighted", "market_cap_weighted", "custom"}
+            valid_sizers = {
+                "equal_weight",
+                "volatility_weighted",
+                "market_cap_weighted",
+                "custom",
+            }
             if position_sizer not in valid_sizers:
                 errors.append(
                     YamlError(
@@ -105,7 +110,12 @@ class DefaultUniversalConfigValidator(IUniversalConfigValidator):
                             "AnnualizedReturn",
                         }
                         # Metrics that should typically be minimized
-                        minimize_metrics = {"MaxDrawdown", "Volatility", "Downside", "UlcerIndex"}
+                        minimize_metrics = {
+                            "MaxDrawdown",
+                            "Volatility",
+                            "Downside",
+                            "UlcerIndex",
+                        }
 
                         if metric in maximize_metrics and direction == "minimize":
                             errors.append(

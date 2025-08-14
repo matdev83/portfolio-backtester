@@ -45,33 +45,23 @@ def default_candidate_weights(
     elif n_long > 0 and len(top_assets) > 0:
         if not trade_shorts:
             positive_assets = [
-                a for a in top_assets if pd.notna(scores.at[a]) and float(scores.at[a]) > 0
+                a for a in top_assets if pd.notna(scores.get(a)) and float(scores.get(a, 0.0)) > 0
             ]
-            if len(positive_assets) > 0:
+            if positive_assets:
                 cand[positive_assets] = 1.0 / len(positive_assets)
-            else:
-                # If all scores are zero or NaN, assign equal weights to top N assets
-                fallback_assets = [a for a in top_assets if pd.notna(scores.at[a])]
-                if len(fallback_assets) > 0:
-                    cand[fallback_assets] = 1.0 / len(fallback_assets)
-                else:
-                    cand[top_assets] = 1.0 / len(top_assets)
         else:
+            # Handle long/short case
             nonzero_assets = [
-                a for a in top_assets if pd.notna(scores.at[a]) and float(scores.at[a]) != 0
+                a for a in top_assets if pd.notna(scores.get(a)) and float(scores.get(a, 0.0)) != 0
             ]
-            if len(nonzero_assets) > 0:
+            if nonzero_assets:
                 cand[nonzero_assets] = 1.0 / len(nonzero_assets)
-            else:
-                fallback_assets = [a for a in top_assets if pd.notna(scores.at[a])]
-                if len(fallback_assets) > 0:
-                    cand[fallback_assets] = 1.0 / len(fallback_assets)
-                else:
-                    cand[top_assets] = 1.0 / len(top_assets)
+
     # Final fallback: if n_long == 1 and all weights are zero, assign 1.0 to the asset with the highest score
     if n_long == 1 and cand.sum() == 0 and len(scores) > 0:
-        cand[scores.index[0]] = 1.0
-    # For long/short, extend here as needed
+        highest_score_asset = scores.idxmax()
+        cand[highest_score_asset] = 1.0
+
     return cand
 
 

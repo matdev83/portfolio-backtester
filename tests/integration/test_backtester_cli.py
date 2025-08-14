@@ -1,7 +1,6 @@
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -117,7 +116,7 @@ def test_simple_backtest_cli_execution(cleanup_files):
 
     # --- Assert ---
     # 1. Check for successful execution
-    assert result.returncode == 0, f"CLI process failed with exit code {result.returncode}.\\nSTDERR:\\n{result.stderr}"
+    assert result.returncode == 0, f"CLI process failed with exit code {result.returncode}.\nSTDERR:\n{result.stderr}"
 
     # 2. Find the output artifacts
     artifact_dir = find_latest_artifact_dir(scenario_name)

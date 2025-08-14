@@ -43,7 +43,7 @@ class TimeBasedValidator(ModeValidator):
                     field="rebalance_frequency",
                     value=frequency,
                     message=f"Invalid rebalance frequency: {frequency}",
-                    suggestion=f'Use one of: {", ".join(self.VALID_TIME_FREQUENCIES)}',
+                    suggestion=f"Use one of: {', '.join(self.VALID_TIME_FREQUENCIES)}",
                 )
             )
 
@@ -105,7 +105,7 @@ class SignalBasedValidator(ModeValidator):
                     field="scan_frequency",
                     value=scan_freq,
                     message=f"Invalid scan frequency: {scan_freq}",
-                    suggestion=f'Use one of: {", ".join(self.VALID_SCAN_FREQUENCIES)}',
+                    suggestion=f"Use one of: {', '.join(self.VALID_SCAN_FREQUENCIES)}",
                 )
             )
 

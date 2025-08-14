@@ -64,7 +64,9 @@ class IMathOperations(ABC):
 
     @abstractmethod
     def max_from_iterable(
-        self, iterable: List[Union[int, float]], default: Optional[Union[int, float]] = None
+        self,
+        iterable: List[Union[int, float]],
+        default: Optional[Union[int, float]] = None,
     ) -> Union[int, float]:
         """
         Return the maximum value from an iterable.
@@ -83,7 +85,9 @@ class IMathOperations(ABC):
 
     @abstractmethod
     def min_from_iterable(
-        self, iterable: List[Union[int, float]], default: Optional[Union[int, float]] = None
+        self,
+        iterable: List[Union[int, float]],
+        default: Optional[Union[int, float]] = None,
     ) -> Union[int, float]:
         """
         Return the minimum value from an iterable.
@@ -162,7 +166,9 @@ class StandardMathOperations(IMathOperations):
         return min(args)
 
     def max_from_iterable(
-        self, iterable: List[Union[int, float]], default: Optional[Union[int, float]] = None
+        self,
+        iterable: List[Union[int, float]],
+        default: Optional[Union[int, float]] = None,
     ) -> Union[int, float]:
         """Return the maximum value from an iterable."""
         if not iterable:
@@ -172,7 +178,9 @@ class StandardMathOperations(IMathOperations):
         return max(iterable)
 
     def min_from_iterable(
-        self, iterable: List[Union[int, float]], default: Optional[Union[int, float]] = None
+        self,
+        iterable: List[Union[int, float]],
+        default: Optional[Union[int, float]] = None,
     ) -> Union[int, float]:
         """Return the minimum value from an iterable."""
         if not iterable:

@@ -12,7 +12,6 @@ class CalmarRatio(Feature):
     def __init__(self, rolling_window: int):
         super().__init__(rolling_window=rolling_window)
         self.rolling_window = rolling_window
-        self.needs_close_prices_only = True
 
     @property
     def name(self) -> str:

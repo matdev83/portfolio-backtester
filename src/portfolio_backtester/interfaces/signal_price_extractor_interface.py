@@ -370,7 +370,10 @@ class IClosePriceProcessor(ABC):
 
     @abstractmethod
     def create_signals_dataframe(
-        self, tickers: List[str], start_date: pd.Timestamp, end_date: Optional[pd.Timestamp] = None
+        self,
+        tickers: List[str],
+        start_date: pd.Timestamp,
+        end_date: Optional[pd.Timestamp] = None,
     ) -> pd.DataFrame:
         """
         Create empty signals DataFrame for specified tickers and date range.
@@ -421,7 +424,10 @@ class ClosePriceProcessor(IClosePriceProcessor):
         return close_values
 
     def create_signals_dataframe(
-        self, tickers: List[str], start_date: pd.Timestamp, end_date: Optional[pd.Timestamp] = None
+        self,
+        tickers: List[str],
+        start_date: pd.Timestamp,
+        end_date: Optional[pd.Timestamp] = None,
     ) -> pd.DataFrame:
         """Create empty signals DataFrame."""
         if end_date is None or start_date == end_date:
