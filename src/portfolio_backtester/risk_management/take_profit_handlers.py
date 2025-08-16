@@ -121,26 +121,43 @@ class AtrBasedTakeProfit(BaseTakeProfit):
     ) -> pd.Series:
         # Fast ATR calculation using optimized service
         atr_values_for_date = calculate_atr_fast(asset_ohlc_history, current_date, self.atr_length)
-        take_profit_levels = pd.Series(np.nan, index=current_weights.index)
+
+        # Align all series to a common index
+        idx = current_weights.index.union(entry_prices.index)
+        if isinstance(atr_values_for_date, pd.Series):
+            idx = idx.union(atr_values_for_date.index)
+
+        cw = current_weights.reindex(idx)
+        ep = entry_prices.reindex(idx)
+        atr = (
+            atr_values_for_date.reindex(idx)
+            if isinstance(atr_values_for_date, pd.Series)
+            else pd.Series(atr_values_for_date, index=idx)
+        )
+        
+        # For assets with positions and valid entry prices but missing ATR,
+        # use a fallback ATR value based on entry price volatility assumption
+        fallback_mask = (cw != 0) & (~pd.isna(ep)) & pd.isna(atr)
+        if fallback_mask.any():
+            # Default to 2% of entry price as fallback ATR
+            fallback_atr = ep * 0.02
+            atr[fallback_mask] = fallback_atr[fallback_mask]
+
+        take_profit_levels = pd.Series(np.nan, index=cw.index)
 
         # Only consider assets with open positions and valid entry prices
-        open_mask = (
-            (current_weights != 0) & (~pd.isna(entry_prices)) & (~pd.isna(atr_values_for_date))
-        )
-        long_mask = open_mask & (current_weights > 0)
-        short_mask = open_mask & (current_weights < 0)
+        # After fallback ATR calculation, any asset with position and valid entry price should have ATR
+        open_mask = (cw != 0) & (~pd.isna(ep))
+        long_mask = open_mask & (cw > 0)
+        short_mask = open_mask & (cw < 0)
 
         # Vectorized take profit level calculation (opposite logic from stop loss)
         # For long positions: take profit when price goes UP by ATR multiple
-        take_profit_levels[long_mask] = entry_prices[long_mask] + (
-            atr_values_for_date[long_mask] * self.atr_multiple
-        )
+        take_profit_levels[long_mask] = ep[long_mask] + (atr[long_mask] * self.atr_multiple)
         # For short positions: take profit when price goes DOWN by ATR multiple
-        take_profit_levels[short_mask] = entry_prices[short_mask] - (
-            atr_values_for_date[short_mask] * self.atr_multiple
-        )
+        take_profit_levels[short_mask] = ep[short_mask] - (atr[short_mask] * self.atr_multiple)
 
-        return take_profit_levels
+        return take_profit_levels.reindex(current_weights.index)
 
     def apply_take_profit(
         self,
