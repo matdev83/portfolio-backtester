@@ -13,6 +13,7 @@ from .interfaces import (
     AbstractTrialDeduplicator,
     AbstractParallelRunner,
 )
+from ..population_diversity import PopulationDiversityManager
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,11 @@ class GeneticTrialDeduplicator(AbstractTrialDeduplicator):
         self._chromosome_cache_hits = 0
         self._population_diversity_maintained = True
 
+        # Integration with population diversity manager
+        self._diversity_manager = PopulationDiversityManager(
+            similarity_threshold=0.95, min_diversity_ratio=0.7, enforce_diversity=True
+        )
+
     def is_duplicate(self, params: Dict[str, Any]) -> bool:
         """
         Check if chromosome parameters are duplicate.
@@ -164,7 +170,13 @@ class GeneticTrialDeduplicator(AbstractTrialDeduplicator):
         For genetic algorithms, we may want to be more lenient with duplicates
         to maintain population diversity, but still cache evaluations.
         """
-        return self._base_deduplicator.is_duplicate(params)
+        # Using standard deduplication interface for exact parameter matches
+        is_exact_duplicate = self._base_deduplicator.is_duplicate(params)
+
+        # Additional check for similar (but not identical) parameters could be added here
+        # by utilizing the diversity manager's similarity metrics
+
+        return is_exact_duplicate
 
     def add_trial(self, params: Dict[str, Any], result: Optional[float] = None) -> None:
         """Add a trial to the deduplication cache."""
@@ -187,12 +199,19 @@ class GeneticTrialDeduplicator(AbstractTrialDeduplicator):
     def get_stats(self) -> Dict[str, Any]:
         """Get deduplication statistics including genetic algorithm-specific metrics."""
         base_stats = self._base_deduplicator.get_stats()
+        diversity_stats = self._diversity_manager.get_stats()
+
         base_stats.update(
             {
                 "chromosome_cache_hits": self._chromosome_cache_hits,
                 "population_diversity_maintained": self._population_diversity_maintained,
             }
         )
+
+        # Add diversity metrics with prefix to avoid key collisions
+        for key, value in diversity_stats.items():
+            base_stats[f"diversity_{key}"] = value
+
         return base_stats
 
     def maintain_population_diversity(self, population_size: int) -> bool:
@@ -209,10 +228,15 @@ class GeneticTrialDeduplicator(AbstractTrialDeduplicator):
         diversity_ratio = unique_chromosomes / max(population_size, 1)
 
         # Consider diversity maintained if we have at least 50% unique chromosomes
-        self._population_diversity_maintained = diversity_ratio >= 0.5
+        self._population_diversity_maintained = (
+            diversity_ratio >= self._diversity_manager.min_diversity_ratio
+        )
 
         if not self._population_diversity_maintained:
-            logger.warning(f"Population diversity low: {diversity_ratio:.2%} unique chromosomes")
+            logger.warning(
+                f"Population diversity low: {diversity_ratio:.2%} unique chromosomes, "
+                f"target: {self._diversity_manager.min_diversity_ratio:.2%}"
+            )
 
         return self._population_diversity_maintained
 

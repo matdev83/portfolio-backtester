@@ -142,6 +142,25 @@ def _create_parser() -> argparse.ArgumentParser:
         default=0.8,
         help="Genetic algorithm crossover rate (GA only).",
     )
+    # Population diversity settings
+    parser.add_argument(
+        "--ga-similarity-threshold",
+        type=float,
+        default=0.95,
+        help="Similarity threshold for population diversity (0.0-1.0, GA only).",
+    )
+    parser.add_argument(
+        "--ga-min-diversity-ratio",
+        type=float,
+        default=0.7,
+        help="Minimum ratio of unique individuals in population (0.0-1.0, GA only).",
+    )
+    parser.add_argument(
+        "--ga-enforce-diversity",
+        action="store_true",
+        default=True,
+        help="Actively enforce population diversity to avoid similar individuals (GA only).",
+    )
     # Joblib tuning knobs for population evaluation
     parser.add_argument(
         "--joblib-batch-size",
@@ -154,6 +173,30 @@ def _create_parser() -> argparse.ArgumentParser:
         type=str,
         default="3*n_jobs",
         help="Pre-dispatch setting for joblib (e.g., '3*n_jobs'). (Population optimizers only)",
+    )
+    parser.add_argument(
+        "--enable-adaptive-batch-sizing",
+        action="store_true",
+        default=True,
+        help="Dynamically adjust batch sizes based on parameter space and population diversity",
+    )
+    parser.add_argument(
+        "--enable-hybrid-parallelism",
+        action="store_true",
+        default=True,
+        help="Use hybrid parallelism with process-level parallelism for population and thread-level for windows",
+    )
+    parser.add_argument(
+        "--enable-incremental-evaluation",
+        action="store_true",
+        default=True,
+        help="Enable incremental window evaluation to avoid redundant calculations when parameters change minimally",
+    )
+    parser.add_argument(
+        "--enable-gpu-acceleration",
+        action="store_true",
+        default=True,
+        help="Enable GPU acceleration for fitness evaluation when CuPy is available (auto-fallback to CPU)",
     )
     # Deduplication settings
     parser.add_argument(

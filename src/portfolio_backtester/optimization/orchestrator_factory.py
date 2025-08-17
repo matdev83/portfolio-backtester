@@ -32,6 +32,10 @@ def create_orchestrator(
             n_jobs=kwargs.get("n_jobs", 1),
             joblib_batch_size=kwargs.get("joblib_batch_size"),
             joblib_pre_dispatch=kwargs.get("joblib_pre_dispatch"),
+            enable_adaptive_batch_sizing=kwargs.get("enable_adaptive_batch_sizing", True),
+            enable_hybrid_parallelism=kwargs.get("enable_hybrid_parallelism", True),
+            enable_incremental_evaluation=kwargs.get("enable_incremental_evaluation", True),
+            enable_gpu_acceleration=kwargs.get("enable_gpu_acceleration", True),
         )
         return PopulationOrchestrator(
             parameter_generator=parameter_generator,  # type: ignore

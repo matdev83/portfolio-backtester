@@ -59,3 +59,5 @@ class TestMonteCarloStage2:
         self.backtester.logger.info.assert_called_with(
             "Stage 2 MC: Stage 2 stress testing is disabled for faster optimization. Skipping robustness analysis."
         )
+
+

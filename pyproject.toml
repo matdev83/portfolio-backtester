@@ -64,7 +64,8 @@ dev = [
     "scipy-stubs",
     "black",
     "vulture",
-    "bandit"
+    "bandit",
+    "hypothesis"
 ]
 
 [project.urls]
@@ -248,6 +249,15 @@ addopts = [
     "--cov-report=html:coverage_html",
     "--cov-fail-under=65",
 ]
+
+# Hypothesis configuration (property-based testing)
+[tool.hypothesis]
+# Use a generous deadline to reduce CI flakiness; TOML has no null so avoid None here
+deadline = 2000
+# Keep a reasonable number of examples for speed while still catching edge cases
+max_examples = 100
+# Avoid derandomizing globally to keep discovery power; CI can set HYPOTHESIS_SEED for reproducibility
+derandomize = false
 
 # coverage.py configuration (used by pytest-cov)
 [tool.coverage.run]

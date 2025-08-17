@@ -39,3 +39,5 @@ class TestParameterAnalysis:
         self.backtester.logger.warning.assert_called_with(
             "Need ≥10 completed trials for meaningful parameter analysis."
         )
+
+

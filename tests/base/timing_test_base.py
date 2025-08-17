@@ -31,7 +31,7 @@ class BaseTimingTest(unittest.TestCase):
         # Default timing test configuration
         self.default_start_date = "2020-01-01"
         self.default_end_date = "2023-12-31"
-        self.default_frequency = "M"
+        self.default_frequency = "ME"
         self.default_assets = ["AAPL", "MSFT", "GOOGL"]
 
         # Generate test market data

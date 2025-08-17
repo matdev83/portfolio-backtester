@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
+from hypothesis import settings
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -30,6 +31,14 @@ from tests.fixtures.optimized_data_generator import OptimizedDataGenerator
 
 def pytest_configure(config):
     """Configure pytest with custom markers and settings."""
+    # Hypothesis profiles: choose via HYPOTHESIS_PROFILE (defaults to 'dev')
+    try:
+        settings.register_profile("dev", settings(max_examples=100, deadline=2000))
+        settings.register_profile("ci", settings(max_examples=300, deadline=4000))
+        settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "dev"))
+    except Exception:
+        # If profiles are already registered by a rerun, ignore
+        pass
     # Register custom markers
     config.addinivalue_line("markers", "unit: marks tests as unit tests (fast, isolated)")
     config.addinivalue_line(

@@ -24,6 +24,7 @@ from ..backtesting.results import WindowResult
 from ..backtesting.strategy_backtester import StrategyBacktester
 from ..parallel_wfo import ParallelWFOProcessor, create_parallel_wfo_processor
 from ..optimization.wfo_window import WFOWindow
+from .incremental_evaluation import IncrementalEvaluationManager
 
 # WFO enhancement imports
 from ..backtesting.window_evaluator import WindowEvaluator
@@ -77,6 +78,7 @@ class BacktestEvaluator:
         n_jobs: int = 1,
         enable_memory_optimization: bool = True,
         enable_parallel_optimization: bool = True,
+        enable_incremental_evaluation: bool = False,
     ):
         """Initialize the BacktestEvaluator.
 
@@ -99,6 +101,15 @@ class BacktestEvaluator:
         self.n_jobs = n_jobs if n_jobs and n_jobs > 0 else (os.cpu_count() or 1)
         self.enable_memory_optimization = enable_memory_optimization
         self.enable_parallel_optimization = enable_parallel_optimization
+        self.enable_incremental_evaluation = enable_incremental_evaluation
+
+        # Initialize incremental evaluation manager if enabled
+        self.incremental_manager = None
+        self._dependencies_registered = False  # Track whether dependencies are registered
+        if self.enable_incremental_evaluation:
+            self.incremental_manager = IncrementalEvaluationManager(
+                enable_caching=True, cache_ttl=3  # Keep results for 3 generations
+            )
 
         # WFO enhancement attributes
         self.evaluation_frequency: Optional[str] = None  # Will be determined per scenario
@@ -157,6 +168,7 @@ class BacktestEvaluator:
         scenario_config: Dict[str, Any],
         data: OptimizationData,
         backtester: "StrategyBacktester",
+        previous_parameters: Optional[Dict[str, Any]] = None,
     ) -> EvaluationResult:
         """
         Evaluate a given set of parameters by running a backtest.
@@ -228,6 +240,20 @@ class BacktestEvaluator:
                     final_weights={},
                 )
 
+        # Register window dependencies if using incremental evaluation
+        if self.enable_incremental_evaluation and self.incremental_manager:
+            # Register parameter dependencies if not already registered
+            if not hasattr(self, "_dependencies_registered") or not self._dependencies_registered:
+                # Basic dependencies - most parameters affect all calculations
+                dependencies = {}
+                for param in parameters.keys():
+                    # Default assumption: all parameters affect all components
+                    dependencies[param] = ["*"]
+
+                # Register the dependencies
+                self.incremental_manager.register_parameter_dependencies(dependencies)
+                self._dependencies_registered = True
+
         # Parallelize across windows when enabled and beneficial
         can_parallelize = (
             self.enable_parallel_optimization
@@ -243,21 +269,71 @@ class BacktestEvaluator:
             )
         else:
             for idx, enhanced_window in enumerate(enhanced_windows, start=1):
-                logger.info(
-                    "[Trial Progress] Window %d/%d %s–%s evaluation started",
-                    idx,
-                    len(enhanced_windows),
-                    enhanced_window.test_start.date(),
-                    enhanced_window.test_end.date(),
-                )
-                result = _eval_single_window(enhanced_window)
-                logger.info(
-                    "[Trial Progress] Window %d/%d finished: Sharpe=%s",
-                    idx,
-                    len(enhanced_windows),
-                    _lookup_metric(result.metrics, "Sharpe", float("nan")),
-                )
-                window_results.append(result)
+                # Check if we can skip evaluation using incremental evaluation
+                can_skip = False
+                if (
+                    self.enable_incremental_evaluation
+                    and self.incremental_manager
+                    and previous_parameters
+                ):
+                    window_id = idx - 1  # 0-based ID for caching
+                    component_id = "default"  # Default component ID
+
+                    # Check if we can skip this window
+                    can_skip = not self.incremental_manager.should_evaluate_window(
+                        window_id=window_id,
+                        component_id=component_id,
+                        old_params=previous_parameters,
+                        new_params=parameters,
+                    )
+
+                    # If we can skip, retrieve cached result
+                    if can_skip:
+                        cached_result = self.incremental_manager.get_cached_result(
+                            window_id=window_id,
+                            component_id=component_id,
+                        )
+                        if cached_result:
+                            logger.info(
+                                "[Trial Progress] Window %d/%d using cached result (parameters unchanged)",
+                                idx,
+                                len(enhanced_windows),
+                            )
+                            window_results.append(cached_result)
+                            continue
+                        else:
+                            can_skip = False  # Reset flag if cache miss
+
+                # If we can't skip, evaluate the window
+                if not can_skip:
+                    logger.info(
+                        "[Trial Progress] Window %d/%d %s–%s evaluation started",
+                        idx,
+                        len(enhanced_windows),
+                        enhanced_window.test_start.date(),
+                        enhanced_window.test_end.date(),
+                    )
+                    result = _eval_single_window(enhanced_window)
+
+                    # Cache the result for potential future reuse
+                    if self.enable_incremental_evaluation and self.incremental_manager:
+                        self.incremental_manager.cache_window_result(
+                            window_id=idx - 1,  # 0-based ID for caching
+                            component_id="default",
+                            result=result,
+                        )
+
+                    logger.info(
+                        "[Trial Progress] Window %d/%d finished: Sharpe=%s",
+                        idx,
+                        len(enhanced_windows),
+                        _lookup_metric(result.metrics, "Sharpe", float("nan")),
+                    )
+                    window_results.append(result)
+
+        # Notify incremental manager of new generation if enabled
+        if self.enable_incremental_evaluation and self.incremental_manager:
+            self.incremental_manager.new_generation()
 
         # Aggregate results
         return self._aggregate_window_results(window_results, parameters)

@@ -232,6 +232,18 @@ class OptimizationOrchestrator:
                     "crossover_rate": self._attribute_accessor.get_attribute(
                         optimizer_args, "ga_crossover_rate", 0.8
                     ),
+                    # Population diversity settings
+                    "diversity_settings": {
+                        "similarity_threshold": self._attribute_accessor.get_attribute(
+                            optimizer_args, "ga_similarity_threshold", 0.95
+                        ),
+                        "min_diversity_ratio": self._attribute_accessor.get_attribute(
+                            optimizer_args, "ga_min_diversity_ratio", 0.7
+                        ),
+                        "enforce_diversity": self._attribute_accessor.get_attribute(
+                            optimizer_args, "ga_enforce_diversity", True
+                        ),
+                    },
                 },
                 # Deduplication settings
                 "use_persistent_cache": self._attribute_accessor.get_attribute(
@@ -282,6 +294,18 @@ class OptimizationOrchestrator:
                 ),
                 early_stop_patience=self._attribute_accessor.get_attribute(
                     optimizer_args, "early_stop_patience", 10
+                ),
+                enable_adaptive_batch_sizing=self._attribute_accessor.get_attribute(
+                    optimizer_args, "enable_adaptive_batch_sizing", True
+                ),
+                enable_hybrid_parallelism=self._attribute_accessor.get_attribute(
+                    optimizer_args, "enable_hybrid_parallelism", True
+                ),
+                enable_incremental_evaluation=self._attribute_accessor.get_attribute(
+                    optimizer_args, "enable_incremental_evaluation", True
+                ),
+                enable_gpu_acceleration=self._attribute_accessor.get_attribute(
+                    optimizer_args, "enable_gpu_acceleration", True
                 ),
             )
 
@@ -519,7 +543,9 @@ class OptimizationOrchestrator:
 
         return parameter_space
 
-    def validate_optimization_config(self, scenario_config: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    def validate_optimization_config(
+        self, scenario_config: Dict[str, Any]
+    ) -> Tuple[bool, List[str]]:
         """Validate optimization configuration."""
         errors = []
         if not scenario_config.get("optimize"):
@@ -530,5 +556,5 @@ class OptimizationOrchestrator:
         if isinstance(strategy_spec, dict):
             if not strategy_spec.get("params"):
                 errors.append("Missing 'params' in strategy specification.")
-        
+
         return len(errors) == 0, errors

@@ -34,7 +34,7 @@ def weight_dataframes(draw, min_rows=5, max_rows=30, min_assets=2, max_assets=10
     n_assets = draw(st.integers(min_value=min_assets, max_value=max_assets))
     
     # Generate dates with various frequencies for more diverse testing
-    freq = draw(st.sampled_from(["B", "D", "W", "M"]))
+    freq = draw(st.sampled_from(["B", "D", "W", "ME"]))
     start_year = draw(st.integers(min_value=2000, max_value=2020))
     start_month = draw(st.integers(min_value=1, max_value=12))
     start_day = draw(st.integers(min_value=1, max_value=28))  # Avoid month end issues
@@ -127,7 +127,7 @@ def test_rebalance_period_boundaries(weights, frequency):
     assume(len(weights) > 1)
     
     # Special handling for "M" -> "ME" conversion
-    freq = "ME" if frequency == "M" else frequency
+    freq = "ME" if frequency == "M" else ("QE" if frequency == "Q" else ("YE" if frequency == "Y" else frequency))
     
     rebalanced = rebalance(weights, frequency)
     
@@ -258,7 +258,7 @@ def test_rebalance_forward_fills(weights, frequency):
     rebalanced = rebalance(weights, frequency)
     
     # Special handling for "M" -> "ME" conversion
-    freq = "ME" if frequency == "M" else frequency
+    freq = "ME" if frequency == "M" else ("QE" if frequency == "Q" else ("YE" if frequency == "Y" else frequency))
     
     # Check that there's at most one weight vector per period
     if freq != "D":

@@ -45,3 +45,5 @@ class TestMonteCarloAnalyzer:
         self.backtester.logger.info.assert_called_with(
             "Skipping trial P&L visualization: insufficient optimization history (need >=2)."
         )
+
+

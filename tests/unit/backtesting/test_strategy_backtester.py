@@ -236,7 +236,7 @@ class TestStrategyBacktester:
             prices = 100 * (1 + np.random.randn(len(dates)) * 0.02).cumprod()
             daily_data[ticker] = prices
         daily_df = pd.DataFrame(daily_data, index=dates)
-        monthly_df = daily_df.resample("M").last()
+        monthly_df = daily_df.resample("ME").last()
         returns_df = daily_df.pct_change().fillna(0)
         return daily_df, monthly_df, returns_df
 

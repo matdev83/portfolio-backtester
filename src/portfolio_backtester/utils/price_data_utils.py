@@ -7,7 +7,6 @@ This module provides common utilities to eliminate code duplication across strat
 import pandas as pd
 import numpy as np
 from typing import Union, Optional
-
 from ..interfaces.price_extractor_interface import PriceExtractorFactory
 from ..interfaces.series_normalizer_interface import SeriesNormalizerFactory
 
@@ -56,6 +55,7 @@ def extract_current_prices(
     temp_prices = extractor.extract(temp, universe_tickers)
 
     # Reindex to match universe tickers and fill missing values
+    # With 'future.no_silent_downcasting' set to True, we don't need to worry about the warning
     return temp_prices.reindex(universe_tickers).fillna(fill_value)
 
 

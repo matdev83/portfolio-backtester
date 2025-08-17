@@ -21,6 +21,7 @@ _data: Optional["OptimizationData"] = None
 _backtester: Optional["StrategyBacktester"] = None
 _evaluator: Optional["BacktestEvaluator"] = None
 _worker_id: Optional[int] = None
+_previous_params: Optional[Dict[str, Any]] = None  # Previous params for incremental evaluation
 
 
 def _init_worker_logging() -> None:
@@ -61,6 +62,7 @@ def evaluate_with_context(
     data: "OptimizationData",
     backtester: "StrategyBacktester",
     evaluator: "BacktestEvaluator",
+    previous_parameters: Optional[Dict[str, Any]] = None,
 ) -> "EvaluationResult":
     """Top-level function for joblib: lazily init context and evaluate params."""
     ensure_initialized(scenario_config, data, backtester, evaluator)
@@ -72,8 +74,14 @@ def evaluate_with_context(
         and _scenario_config is not None
     )
 
+    # Store previous parameters for incremental evaluation
+    global _previous_params
+    _previous_params = previous_parameters
+
     # Delegate to shared evaluator with worker-local heavy objects
-    return _evaluator.evaluate_parameters(params, _scenario_config, _data, _backtester)
+    return _evaluator.evaluate_parameters(
+        params, _scenario_config, _data, _backtester, previous_parameters=_previous_params
+    )
 
 
 def evaluate_with_context_memmap(
@@ -82,6 +90,7 @@ def evaluate_with_context_memmap(
     data_context: "OptimizationDataContext",
     backtester: "StrategyBacktester",
     evaluator: "BacktestEvaluator",
+    previous_parameters: Optional[Dict[str, Any]] = None,
 ) -> "EvaluationResult":
     """Initialize context from memory-mapped data and evaluate params."""
     global _initialized, _scenario_config, _data, _backtester, _evaluator
@@ -113,11 +122,19 @@ def evaluate_with_context_memmap(
         and _scenario_config is not None
     )
 
+    # Store previous parameters for incremental evaluation
+    global _previous_params
+    _previous_params = previous_parameters
+
     # Delegate to shared evaluator with worker-local heavy objects
-    return _evaluator.evaluate_parameters(params, _scenario_config, _data, _backtester)
+    return _evaluator.evaluate_parameters(
+        params, _scenario_config, _data, _backtester, previous_parameters=_previous_params
+    )
 
 
-def evaluate_params_only(params: Dict[str, Any]) -> "EvaluationResult":
+def evaluate_params_only(
+    params: Dict[str, Any], previous_parameters: Optional[Dict[str, Any]] = None
+) -> "EvaluationResult":
     """Evaluate parameters using the already initialized worker context.
 
     This function should only be called after the worker has been initialized
@@ -131,11 +148,20 @@ def evaluate_params_only(params: Dict[str, Any]) -> "EvaluationResult":
         and _scenario_config is not None
     )
 
+    # Update previous parameters if provided
+    global _previous_params
+    if previous_parameters is not None:
+        _previous_params = previous_parameters
+
     # Use worker-local objects that were already initialized
-    return _evaluator.evaluate_parameters(params, _scenario_config, _data, _backtester)
+    return _evaluator.evaluate_parameters(
+        params, _scenario_config, _data, _backtester, previous_parameters=_previous_params
+    )
 
 
-def batch_evaluate_params_only(params_list: List[Dict[str, Any]]) -> List["EvaluationResult"]:
+def batch_evaluate_params_only(
+    params_list: List[Dict[str, Any]], previous_parameters: Optional[Dict[str, Any]] = None
+) -> List["EvaluationResult"]:
     """Evaluate multiple parameter sets using the already initialized worker context.
 
     This function should only be called after the worker has been initialized
@@ -149,10 +175,19 @@ def batch_evaluate_params_only(params_list: List[Dict[str, Any]]) -> List["Evalu
         and _scenario_config is not None
     )
 
+    # Initialize previous parameters if provided
+    global _previous_params
+    if previous_parameters is not None:
+        _previous_params = previous_parameters
+
     # Process multiple parameter sets in a batch within the same worker
     results = []
     for params in params_list:
-        result = _evaluator.evaluate_parameters(params, _scenario_config, _data, _backtester)
+        result = _evaluator.evaluate_parameters(
+            params, _scenario_config, _data, _backtester, previous_parameters=_previous_params
+        )
+        # Update previous parameters for next evaluation
+        _previous_params = params
         results.append(result)
 
     return results
@@ -170,10 +205,11 @@ def get_worker_id() -> Optional[int]:
 
 def reset_context() -> None:
     """Reset worker-local context (useful for tests)."""
-    global _initialized, _scenario_config, _data, _backtester, _evaluator, _worker_id
+    global _initialized, _scenario_config, _data, _backtester, _evaluator, _worker_id, _previous_params
     _initialized = False
     _scenario_config = None
     _data = None
     _backtester = None
     _evaluator = None
     _worker_id = None
+    _previous_params = None

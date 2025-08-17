@@ -9,13 +9,13 @@ from portfolio_backtester.optimization.evaluator import BacktestEvaluator
 
 
 # A simple function that can be pickled
-def simple_evaluation_function(params, *args):
+def simple_evaluation_function(params, *args, **kwargs):
     return EvaluationResult(
         objective_value=params["param1"], metrics={}, window_results=[]
     )
 
 
-def error_evaluation_function(params, *args):
+def error_evaluation_function(params, *args, **kwargs):
     if params["param1"] == 5:
         raise ValueError("Test error")
     return EvaluationResult(

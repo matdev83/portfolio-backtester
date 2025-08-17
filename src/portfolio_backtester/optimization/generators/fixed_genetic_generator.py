@@ -8,6 +8,7 @@ from ..parameter_generator import (
     validate_parameter_space,
 )
 from ..results import EvaluationResult, OptimizationResult
+from ..population_diversity import PopulationDiversityManager
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,13 @@ class FixedGeneticParameterGenerator(PopulationBasedParameterGenerator):
         self.best_individual: Optional[Dict[str, Any]] = None
         self.best_fitness: float = -1e9
 
+        # Population diversity management
+        self.diversity_manager = PopulationDiversityManager(
+            similarity_threshold=0.95,  # 95% similarity threshold
+            min_diversity_ratio=0.7,  # At least 70% unique individuals
+            enforce_diversity=True,  # Actively enforce diversity
+        )
+
     def initialize(
         self, scenario_config: Dict[str, Any], optimization_config: Dict[str, Any]
     ) -> None:
@@ -40,17 +48,54 @@ class FixedGeneticParameterGenerator(PopulationBasedParameterGenerator):
         )
         validate_parameter_space(self.parameter_space)
 
+        # Configure diversity manager with parameter space
+        if hasattr(self, "diversity_manager") and hasattr(self.diversity_manager, "set_parameter_space"):
+            self.diversity_manager.set_parameter_space(self.parameter_space)
+
         ga_config = scenario_config.get("ga_settings", optimization_config.get("ga_settings", {}))
         self.population_size = ga_config.get("population_size", 50)
         self.max_generations = ga_config.get("max_generations", 10)
         self.mutation_rate = ga_config.get("mutation_rate", 0.1)
         self.crossover_rate = ga_config.get("crossover_rate", 0.8)
 
+        # Diversity configuration
+        diversity_config = ga_config.get("diversity_settings", {})
+        self.diversity_manager.similarity_threshold = diversity_config.get(
+            "similarity_threshold", 0.95
+        )
+        self.diversity_manager.min_diversity_ratio = diversity_config.get(
+            "min_diversity_ratio", 0.7
+        )
+        self.diversity_manager.enforce_diversity = diversity_config.get("enforce_diversity", True)
+
         self.population = self._create_initial_population()
 
     def _create_initial_population(self) -> List[Dict[str, Any]]:
-        """Create the initial population."""
-        return [self._create_individual() for _ in range(self.population_size)]
+        """Create the initial population with diversity enforced."""
+        # Generate initial candidates (more than needed to ensure diversity)
+        candidates = [self._create_individual() for _ in range(self.population_size * 2)]
+
+        # Create initial population with diversity check
+        diverse_population: List[Dict[str, Any]] = []
+        for candidate in candidates:
+            # Only add if not too similar to existing individuals
+            if not self.diversity_manager.is_too_similar(candidate, diverse_population):
+                diverse_population.append(candidate)
+                if len(diverse_population) >= self.population_size:
+                    break
+
+        # If we couldn't get enough diverse individuals, fill with random ones
+        while len(diverse_population) < self.population_size:
+            diverse_population.append(self._create_individual())
+
+        # Log diversity metrics for initial population
+        metrics = self.diversity_manager.analyze_population_diversity(diverse_population)
+        logger.debug(
+            f"Initial population diversity: {metrics['diversity_ratio']:.4f}, "
+            f"avg similarity: {metrics['average_similarity']:.4f}"
+        )
+
+        return diverse_population
 
     def _create_individual(self) -> Dict[str, Any]:
         """Create a single random individual."""
@@ -91,7 +136,25 @@ class FixedGeneticParameterGenerator(PopulationBasedParameterGenerator):
                 else:
                     fitness_values.append(-1e9)  # Penalize invalid results
 
-        self.population = self._evolve_population(population, fitness_values)
+        # Log diversity metrics before evolution
+        pre_metrics = self.diversity_manager.analyze_population_diversity(population)
+        logger.debug(
+            f"Generation {self.generation_count} pre-evolution diversity: "
+            f"{pre_metrics['diversity_ratio']:.4f}, unique: {pre_metrics['unique_count']}"
+        )
+
+        # Evolve population
+        evolved_population = self._evolve_population(population, fitness_values)
+
+        # Apply diversity preservation after evolution if needed
+        self.population = self.diversity_manager.diversify_population(evolved_population, self.rng)
+
+        # Log diversity metrics after diversification
+        post_metrics = self.diversity_manager.analyze_population_diversity(self.population)
+        logger.debug(
+            f"Generation {self.generation_count} post-diversity: "
+            f"{post_metrics['diversity_ratio']:.4f}, unique: {post_metrics['unique_count']}"
+        )
 
         self.generation_count += 1
         if self.generation_count >= self.max_generations:

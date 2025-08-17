@@ -105,7 +105,7 @@ class TestEnhancedWindowGeneration:
         ]
 
         # Test data - need at least 84 months for window generation
-        monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="M")
+        monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="ME")
         scenario_config = {
             "strategy_class": "SeasonalSignalStrategy",
             "name": "test_strategy",
@@ -148,7 +148,7 @@ class TestEnhancedWindowGeneration:
         ]
 
         # Test data
-        monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="M")
+        monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="ME")
         scenario_config = {
             "strategy_class": "SimpleMomentumPortfolioStrategy",
             "rebalance_frequency": "M",
@@ -184,7 +184,7 @@ class TestEnhancedWindowGeneration:
         ]
 
         # Test data
-        monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="M")
+        monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="ME")
         scenario_config = {"strategy_class": "SimpleMomentumPortfolioStrategy"}
         global_config: dict = {}
         rng = np.random.default_rng(42)
@@ -216,7 +216,7 @@ class TestEnhancedWindowGeneration:
         mock_generate_base.return_value = base_windows
 
         # Test data
-        monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="M")
+        monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="ME")
         scenario_config = {"strategy_class": "SimpleMomentumPortfolioStrategy"}
         global_config: dict = {}
         rng = np.random.default_rng(42)
@@ -311,7 +311,7 @@ class TestEnhancedWindowGeneration:
         mock_generate_base.return_value = original_windows
 
         # Test data
-        monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="M")
+        monthly_data_index = pd.date_range("2017-01-01", "2025-12-31", freq="ME")
         scenario_config = {"strategy_class": "SimpleMomentumPortfolioStrategy"}
         global_config: dict = {}
         rng = np.random.default_rng(42)

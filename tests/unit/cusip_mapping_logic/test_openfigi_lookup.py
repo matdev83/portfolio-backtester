@@ -48,3 +48,5 @@ class TestOpenFigiLookup:
         mock_post.side_effect = requests.exceptions.RequestException
         result = _query_openfigi_api("test_api_key", "test_url", [])
         assert result is None
+
+

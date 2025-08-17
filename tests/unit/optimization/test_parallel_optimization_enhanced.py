@@ -55,7 +55,7 @@ class TestParallelOptimizationEnhanced:
             },
             index=dates,
         )
-        monthly_prices = prices.resample("M").last()
+        monthly_prices = prices.resample("ME").last()
 
         # Create sample returns data
         returns = prices.pct_change().fillna(0)
