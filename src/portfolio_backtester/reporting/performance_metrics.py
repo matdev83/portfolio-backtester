@@ -77,10 +77,55 @@ def _safe_moment(func, series: pd.Series) -> float:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         try:
+            # Use compensated summation-based implementations for higher precision
+            # where appropriate (skew/kurtosis). Fall back to the provided func
+            # for other statistical functions.
+            if func is skew:
+                return float(_compensated_skew(series))
+            if func is kurtosis:
+                return float(_compensated_kurtosis(series))
+
             val = func(series)
             return float(val) if val is not None else 0.0
         except Exception:
             return 0.0
+
+
+def _compensated_skew(series: pd.Series) -> float:
+    """Compute skew using compensated summation (math.fsum) for improved accuracy."""
+    import math
+
+    x = [float(v) for v in series]
+    n = len(x)
+    if n == 0:
+        return 0.0
+    mean = math.fsum(x) / n
+    # central moments using compensated sums
+    m2 = math.fsum((xi - mean) ** 2 for xi in x) / n
+    if m2 <= 0.0:
+        return 0.0
+    m3 = math.fsum((xi - mean) ** 3 for xi in x)
+    # Normalize using float operations to avoid Any return type for mypy
+    denom = (m2**1.5) * n
+    if denom == 0.0:
+        return 0.0
+    return float(m3 / denom)
+
+
+def _compensated_kurtosis(series: pd.Series) -> float:
+    """Compute excess kurtosis using compensated summation (math.fsum)."""
+    import math
+
+    x = [float(v) for v in series]
+    n = len(x)
+    if n == 0:
+        return 0.0
+    mean = math.fsum(x) / n
+    m2 = math.fsum((xi - mean) ** 2 for xi in x) / n
+    if m2 <= 0.0:
+        return 0.0
+    m4 = math.fsum((xi - mean) ** 4 for xi in x) / n
+    return m4 / (m2**2) - 3.0
 
 
 def _default_zero_activity_metrics(is_all_zero_returns: bool) -> dict:

@@ -45,34 +45,69 @@ class MomentumStrategy(SignalStrategy):
         if all_historical_data is None or all_historical_data.empty:
             return pd.DataFrame()
             
-        context = kwargs.get('context', {})
+        # Tests sometimes pass a context dict as the second positional argument
+        # (legacy calling convention). Support both styles: if the benchmark
+        # argument is a dict, treat it as context and clear the benchmark arg.
+        if isinstance(benchmark_historical_data, dict):
+            context = benchmark_historical_data
+            benchmark_historical_data = None
+        else:
+            context = kwargs.get('context', {})
         if not current_date and 'current_date' in context:
             current_date = context['current_date']
         
         # Extract closing prices
         close_prices = self._extract_close_prices(all_historical_data)
-        
-        # Ensure we have enough history
-        if current_date and len(close_prices) > self.lookback_period:
-            lookback_date = current_date - pd.DateOffset(days=self.lookback_period * 30)  # Approximate 30 days per month
-            historical_data = close_prices[close_prices.index <= current_date]
-            
-            if len(historical_data) > self.lookback_period and lookback_date in historical_data.index:
-                # Calculate momentum as price change
-                current_prices = historical_data.loc[current_date]
-                past_prices = historical_data.loc[lookback_date]
-                
-                # Momentum = current / past - 1
-                momentum = (current_prices / past_prices) - 1.0
-                
-                # Apply normalization
-                normalized_scores = self._normalize_scores(momentum)
-                
-                # Select top assets
-                weights = self._select_top_assets(normalized_scores)
-                
-                # Create a DataFrame with the weights
-                return pd.DataFrame([weights], index=[current_date])
+
+        # If current_date not present, try to get from context (handled above)
+        if current_date is None:
+            return pd.DataFrame()
+
+        # If current_date not exactly in index, find the nearest previous available date
+        idx_pos = close_prices.index.get_indexer([current_date], method="ffill")[0]
+        if idx_pos == -1:
+            return pd.DataFrame()
+
+        # Need at least lookback_period + 1 observations to compute momentum
+        if idx_pos < self.lookback_period:
+            # Return explicit zeros (float) instead of NaNs for consistency
+            return pd.DataFrame([pd.Series(0.0, index=close_prices.columns)], index=[current_date])
+
+        # Use iloc positions to pick current and past prices for robustness
+        current_prices = close_prices.iloc[idx_pos]
+        past_prices = close_prices.iloc[idx_pos - self.lookback_period]
+
+        # Ensure numeric dtype and handle missing values
+        try:
+            current_prices = current_prices.astype(float)
+            past_prices = past_prices.astype(float)
+        except Exception:
+            # If conversion fails, return empty frame
+            return pd.DataFrame(index=[current_date], columns=close_prices.columns)
+
+        # Avoid division by zero or NaNs
+        mask = (past_prices == 0) | current_prices.isna() | past_prices.isna()
+        if mask.all():
+            return pd.DataFrame(index=[current_date], columns=close_prices.columns)
+
+        # Momentum = current / past - 1
+        with np.errstate(divide="ignore", invalid="ignore"):
+            momentum = (current_prices / past_prices) - 1.0
+
+        # Replace any infinite or NaN values with 0.0
+        momentum = momentum.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+        # Apply normalization
+        normalized_scores = self._normalize_scores(momentum)
+
+        # Select top assets
+        weights = self._select_top_assets(normalized_scores)
+
+        # Ensure weights covers all tickers and are floats
+        weights = weights.reindex(close_prices.columns, fill_value=0.0).astype(float)
+
+        # Create a DataFrame with the weights
+        return pd.DataFrame([weights.values], index=[current_date], columns=weights.index)
         
         # Default empty response
         return pd.DataFrame(index=[current_date] if current_date else [], columns=close_prices.columns)
@@ -106,7 +141,7 @@ class MomentumStrategy(SignalStrategy):
             if n > 1:
                 return 2 * ((ranks - 1) / (n - 1)) - 1
             else:
-                return pd.Series(0, index=scores.index)
+                return pd.Series(0.0, index=scores.index)
                 
         elif self.normalization == "minmax":
             # MinMax normalization: scale to [-1, 1] range
@@ -116,7 +151,7 @@ class MomentumStrategy(SignalStrategy):
             if max_val > min_val:
                 return 2 * ((scores - min_val) / (max_val - min_val)) - 1
             else:
-                return pd.Series(0, index=scores.index)
+                return pd.Series(0.0, index=scores.index)
                 
         elif self.normalization == "zscore":
             # Z-score normalization
@@ -126,7 +161,7 @@ class MomentumStrategy(SignalStrategy):
             if std > 0:
                 return (scores - mean) / std
             else:
-                return pd.Series(0, index=scores.index)
+                return pd.Series(0.0, index=scores.index)
                 
         else:
             # No normalization
@@ -140,8 +175,8 @@ class MomentumStrategy(SignalStrategy):
         # Sort scores from highest to lowest
         sorted_scores = scores.sort_values(ascending=False)
         
-        # Initialize weights
-        weights = pd.Series(0, index=scores.index)
+        # Initialize weights (float to avoid dtype warnings when assigning non-integers)
+        weights = pd.Series(0.0, index=scores.index)
         
         # Assign equal weights to top assets
         top_assets = sorted_scores.head(self.top_n).index
@@ -176,34 +211,42 @@ class MeanReversionStrategy(SignalStrategy):
         if all_historical_data is None or all_historical_data.empty:
             return pd.DataFrame()
             
-        context = kwargs.get('context', {})
+        if isinstance(benchmark_historical_data, dict):
+            context = benchmark_historical_data
+            benchmark_historical_data = None
+        else:
+            context = kwargs.get('context', {})
         if not current_date and 'current_date' in context:
             current_date = context['current_date']
         
+        # Reuse momentum logic but invert sign for mean reversion
         # Extract closing prices
         close_prices = self._extract_close_prices(all_historical_data)
-        
-        # Ensure we have enough history
-        if current_date and len(close_prices) > self.lookback_period:
-            lookback_date = current_date - pd.DateOffset(days=self.lookback_period * 30)  # Approximate 30 days per month
-            historical_data = close_prices[close_prices.index <= current_date]
-            
-            if len(historical_data) > self.lookback_period and lookback_date in historical_data.index:
-                # Calculate mean reversion as negative of price change
-                current_prices = historical_data.loc[current_date]
-                past_prices = historical_data.loc[lookback_date]
-                
-                # Mean reversion = negative of momentum
-                mean_reversion = -((current_prices / past_prices) - 1.0)
-                
-                # Apply normalization
-                normalized_scores = self._normalize_scores(mean_reversion)
-                
-                # Select top assets
-                weights = self._select_top_assets(normalized_scores)
-                
-                # Create a DataFrame with the weights
-                return pd.DataFrame([weights], index=[current_date])
+        if current_date is None:
+            return pd.DataFrame()
+
+        idx_pos = close_prices.index.get_indexer([current_date], method="ffill")[0]
+        if idx_pos == -1 or idx_pos < self.lookback_period:
+            # Return explicit zeros (float) instead of NaNs for consistency
+            return pd.DataFrame([pd.Series(0.0, index=close_prices.columns)], index=[current_date])
+
+        current_prices = close_prices.iloc[idx_pos]
+        past_prices = close_prices.iloc[idx_pos - self.lookback_period]
+
+        try:
+            current_prices = current_prices.astype(float)
+            past_prices = past_prices.astype(float)
+        except Exception:
+            return pd.DataFrame(index=[current_date], columns=close_prices.columns)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            mean_reversion = -((current_prices / past_prices) - 1.0)
+
+        mean_reversion = mean_reversion.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        normalized_scores = self._normalize_scores(mean_reversion)
+        weights = self._select_top_assets(normalized_scores)
+        weights = weights.reindex(close_prices.columns, fill_value=0.0).astype(float)
+        return pd.DataFrame([weights.values], index=[current_date], columns=weights.index)
         
         # Default empty response
         return pd.DataFrame(index=[current_date] if current_date else [], columns=close_prices.columns)
@@ -297,7 +340,6 @@ def strategy_configs(draw):
 
 @given(ohlc_data_frames(), strategy_configs())
 @settings(deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
-@pytest.mark.skip(reason="Signal strategy tests failing due to underlying issues in the strategy implementation")
 def test_signal_strategy_signal_generation(ohlc_data_assets, config):
     """
     Test that signal-based strategies generate valid signals.
@@ -362,7 +404,6 @@ def test_signal_strategy_signal_generation(ohlc_data_assets, config):
 
 @given(ohlc_data_frames())
 @settings(deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
-@pytest.mark.skip(reason="Signal strategy tests failing due to underlying issues in the strategy implementation")
 def test_signal_strategy_normalization_methods(ohlc_data_assets):
     """
     Test that different normalization methods produce expected results.
@@ -411,11 +452,12 @@ def test_signal_strategy_normalization_methods(ohlc_data_assets):
     
     # Rank: values should be in range [-1, 1] with constant step size
     non_zero_rank = signals_rank.iloc[-1][signals_rank.iloc[-1] != 0]
-    if len(non_zero_rank) >= 2:
+    if non_zero_rank.nunique() >= 2:
         rank_values = sorted(non_zero_rank.unique())
-        rank_diffs = np.diff(rank_values)
-        assert np.allclose(rank_diffs, rank_diffs[0], rtol=1e-10), \
-            "Rank normalization should have constant step sizes"
+        if len(rank_values) >= 2:
+            rank_diffs = np.diff(rank_values)
+            assert np.allclose(rank_diffs, rank_diffs[0], rtol=1e-10), \
+                "Rank normalization should have constant step sizes"
     
     # MinMax: values should be in range [-1, 1] with min = -1 and max = 1 (if both directions present)
     non_zero_minmax = signals_minmax.iloc[-1][signals_minmax.iloc[-1] != 0]
@@ -435,7 +477,6 @@ def test_signal_strategy_normalization_methods(ohlc_data_assets):
 
 @given(ohlc_data_frames(), st.integers(min_value=2, max_value=15))  # Reduced max lookback
 @settings(deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
-@pytest.mark.skip(reason="Signal strategy tests failing due to underlying issues in the strategy implementation")
 def test_signal_strategy_lookback_periods(ohlc_data_assets, lookback):
     """
     Test that strategies respect their lookback period settings.
@@ -487,7 +528,6 @@ def test_signal_strategy_lookback_periods(ohlc_data_assets, lookback):
 
 @given(ohlc_data_frames())
 @settings(deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
-@pytest.mark.skip(reason="Signal strategy tests failing due to underlying issues in the strategy implementation")
 def test_momentum_vs_mean_reversion(ohlc_data_assets):
     """
     Test that momentum and mean reversion strategies produce opposite signals
