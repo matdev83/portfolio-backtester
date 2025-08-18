@@ -2,7 +2,14 @@ import logging
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from scipy.stats import kurtosis, skew
+from scipy.stats import kurtosis
+try:
+    from ..numba_optimized import compensated_skew_fast, compensated_kurtosis_fast
+    _HAS_NUMBA_MOMENTS = True
+except Exception:
+    from scipy.stats import skew
+    from scipy.stats import kurtosis as _scipy_kurtosis
+    _HAS_NUMBA_MOMENTS = False
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +114,7 @@ def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_
         "Beta": beta,
         "R^2": r_squared,
         "Max Drawdown": calculate_max_drawdown(equity_curve),
-        "Skew": skew(rets),
-        "Kurtosis": kurtosis(rets),
+        "Skew": float(compensated_skew_fast(rets.values) if _HAS_NUMBA_MOMENTS else skew(rets)),
+        "Kurtosis": float(compensated_kurtosis_fast(rets.values) if _HAS_NUMBA_MOMENTS else kurtosis(rets)),
     }
     return pd.Series(metrics, name=name)

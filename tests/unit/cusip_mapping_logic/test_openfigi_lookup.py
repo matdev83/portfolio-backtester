@@ -50,3 +50,4 @@ class TestOpenFigiLookup:
         assert result is None
 
 
+

@@ -180,8 +180,15 @@ class PopulationDiversityManager:
                 similarity_matrix[i, j] = sim
                 similarity_matrix[j, i] = sim
 
-        # Average similarity across the population
-        avg_similarity = np.mean(similarity_matrix[np.triu_indices(len(population), k=1)])
+        # Average similarity across the population. If population has fewer than
+        # two members, the upper-triangle selection is empty and np.mean would
+        # warn about mean of empty slice — handle that explicitly.
+        if len(population) < 2:
+            avg_similarity = 0.0
+        else:
+            pairwise = similarity_matrix[np.triu_indices(len(population), k=1)]
+            # Defensive: if pairwise is empty (shouldn't happen when len>=2), default to 0.0
+            avg_similarity = float(np.mean(pairwise)) if pairwise.size > 0 else 0.0
 
         return {
             "diversity_ratio": self.diversity_ratio,

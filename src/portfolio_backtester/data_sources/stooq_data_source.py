@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import List
 
 import pandas as pd
-import pandas_datareader.data as web
 from rich.console import Console
 from rich.progress import (
     Progress,
@@ -82,6 +81,16 @@ class StooqDataSource(BaseDataSource):
     ) -> pd.DataFrame | None:
         """Download data from Stooq and write it to *file_path* as CSV."""
         try:
+            # Import pandas_datareader lazily to avoid triggering deprecated warnings
+            # at import/collection time in test environments that do not use
+            # this data source. Importing here prevents collection-time side
+            # effects from third-party libraries.
+            try:
+                import pandas_datareader.data as web  # local import
+            except Exception as imp_exc:
+                logger.warning(f"pandas_datareader unavailable: {imp_exc}")
+                return None
+
             downloaded_df: pd.DataFrame = web.DataReader(
                 ticker, "stooq", start=start_date, end=end_date
             )

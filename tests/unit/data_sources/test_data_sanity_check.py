@@ -208,7 +208,11 @@ class TestDataSanityCheck(unittest.TestCase):
         self.assertTrue(aapl_file.exists(), f"AAPL.csv file was not created at {aapl_file}")
 
         # Verify the file contains the expected data
-        file_data = pd.read_csv(aapl_file, index_col=0, parse_dates=True)
+        # Parse index using explicit format to avoid ambiguous inference warnings
+        # Read CSV without a custom date_parser (deprecated) and parse index explicitly
+        file_data = pd.read_csv(aapl_file, index_col=0, parse_dates=False)
+        # Convert index to datetime with explicit format to avoid inference warnings
+        file_data.index = pd.to_datetime(file_data.index, format="%Y-%m-%d", errors="coerce")
         self.assertGreater(len(file_data), 0, "AAPL.csv file is empty")
 
         # Check that the last row in the file matches our expectations

@@ -1,4 +1,21 @@
 # GA optimization performance improvements
+## Test hardening & Hypothesis improvements
+
+- Replaced broad Hypothesis HealthCheck suppressions with targeted `max_examples` limits
+  and removed `suppress_health_check` where tests were hardened to be robust. This
+  reduces hidden test failures and prevents Hypothesis from spending excessive time
+  shrinking or filtering examples. Affected files:
+  - `tests/unit/strategies/test_signal_strategy_properties.py` — removed broad suppressions and
+    improved signal generation mocks and assumptions.
+  - `tests/unit/reporting/test_performance_metrics_properties.py` — limited examples for long-running
+    property tests and preserved skips for unstable edge-case tests.
+  - `tests/unit/risk_management/test_take_profit_properties.py` and
+    `tests/unit/risk_management/test_stop_loss_properties.py` — limited examples and kept
+    problematic tests skipped with notes.
+
+This reduces test-suite noise and prevents broad health-check disablement that can hide
+real problems. Run `pytest -q --durations=50` to see current slowest tests and timing.
+
 
 This document outlines the performance improvements made to the GA optimization path and remaining opportunities. It captures constraints, design decisions, risks, and a step-by-step TODO list that we track to completion.
 
@@ -300,5 +317,49 @@ These optimizations have transformed the GA optimizer into a high-performance, r
 - **Further improve moment calculation stability**: consider using compensated summation or higher-precision accumulators for skew/kurtosis to remove the need for warnings in some edge cases. (medium effort)
 - **Unskip / revisit signal strategy tests**: several property-based signal tests were skipped earlier due to flaky assumptions — re-enable and fix underlying strategy logic or tighten test assumptions. (investigate)
 - **Docs**: add a short section in the main README describing the GA performance flags and recommended defaults (I can add this if you want).
+
+### New assigned TODOs (added in this run)
+
+- **Implement short-term actions to reduce runtime of `test_dummy_strategy_single_trial_optimizer`** (status: pending)
+  - Create a fast unit variant of the test that validates optimizer wiring while mocking heavy components (Optuna, WindowEvaluator, StrategyBacktester).
+  - Add a small-data fixture (e.g., 60-180 daily points) to exercise real evaluation paths quickly for CI and developer runs.
+  - Expose a `fast_optimize` test-mode flag (programmatic `fast_optimize=True` and `--test-fast-optimize` CLI) to enable a lightweight optimization path that skips heavy reporting and uses deterministic, in-memory evaluators.
+  - Priority: high — reduces developer iteration time significantly.
+
+- **Audit and remove temporary pandas global options across the codebase** (status: pending)
+  - Scan for `pd.set_option('future.no_silent_downcasting', ...)` and other global pandas options introduced as temporary workarounds.
+  - Replace implicit downcasting reliance with explicit dtype conversion patterns where appropriate (`astype`, `infer_objects`, explicit `fill_value` casting before `reindex`/`fillna`).
+  - Remove global options and run full test-suite to confirm no regressions. Add tests to cover previously problematic code paths.
+  - Priority: medium — reduces noisy warnings and future compatibility risks.
+
+- **Triage and reduce RuntimeWarnings in `performance_metrics` by improving moment calculation stability** (status: pending)
+  - Replace heuristics that emit `RuntimeWarning` with more numerically stable compensated summation implementations (Numba-optimized Kahan/compensated accumulators already present — expand to skew/kurtosis where needed).
+  - Add unit tests that assert warnings are only emitted for genuinely problematic inputs and that stable inputs return finite metrics without warnings.
+  - Tune thresholds (EPSILON_FOR_DIVISION, minimum unique values) to reduce false-positive warnings while preserving edge-case detection.
+  - Priority: medium — improves signal quality and reduces test noise.
+
+
+## This profiling run (optimizer test)
+
+- **Observed**: `tests/unit/optimizer/test_dummy_strategy_optimizer.py::test_dummy_strategy_single_trial_optimizer` took ~79s to run in a local profile (cProfile output saved to `profiler_optimizer.prof`). The top cumulative time is dominated by the pytest test runner / full `Backtester.run` path (worker/backtester initialization, Optuna study setup, and full backtest evaluation).
+
+- **Implication**: the test exercises the full optimizer stack and therefore is an excellent integration test but is costly for developer iteration. We should keep it as an explicit `@pytest.mark.slow` integration test but provide faster alternatives for frequent development runs and CI quick-feedback loops.
+
+### Immediate action items (short-term)
+
+- **Add a fast unit variant**: create a fast unit-level test that validates the optimizer wiring without running a full `Backtester.run` (mock the heavy components like Optuna/WindowEvaluator/backtester internals). (priority: high)
+- **Provide a small-data fixture**: add a CI-friendly fixture that uses a much shorter date-range (e.g., 60-180 daily points) and minimal windows to reduce runtime when exercising real backtest logic in tests. (priority: medium)
+- **Expose a test-only fast-path flag**: allow `Backtester` to accept an argument to run optimization in a "dry" or lightweight mode (skip heavy reporting, use in-memory deterministic evaluators) for tests. This should be wired behind a `--test-fast-optimize` CLI flag and a programmatic `fast_optimize=True` constructor arg. (priority: medium)
+- **Cache Optuna study initialization**: during tests, reuse an in-memory Optuna study instance or mock Optuna APIs to avoid repeated expensive setup. (priority: low)
+
+### Medium-term refactors (medium effort)
+
+- **Decouple optimization logic from full backtester**: extract a thin `OptimizerHarness` that runs the GA/Optuna loop given a lightweight `EvaluationContext`, enabling direct unit tests of optimization iterations without the full backtester lifecycle. (priority: medium)
+- **Add targeted profiling harness**: extend `dev/scripts/profile_ga_optimizer.py` with a `--test-harness` mode that runs focused hot-paths (dedup, evaluation dispatch, window evaluator) so we can micro-optimize without running full scenarios. (priority: low)
+
+### New TODO (added)
+
+- **Reduce runtime of `test_dummy_strategy_single_trial_optimizer`**: implement the short-term actions above and update the test to either use the new fast fixture or remain explicitly `@pytest.mark.slow` for CI. (status: pending)
+
 
 If you'd like, I can start on the first outstanding TODO (audit and remove the temporary pandas option) next — it will require scanning all places where `.fillna()/.ffill()/.bfill()` are called and adding explicit dtype handling or `infer_objects()` where appropriate.

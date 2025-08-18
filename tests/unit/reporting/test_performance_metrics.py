@@ -39,11 +39,8 @@ class TestPerformanceMetrics(unittest.TestCase):
         # Test with a zero volatility series
         zero_vol_rets = pd.Series([0.01] * 24, index=self.rets.index)
 
-        # Expect RuntimeWarning from scipy.stats.skew/kurtosis for constant data
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)  # Ignore other potential warnings
-            with self.assertWarns(RuntimeWarning):
-                metrics = calculate_metrics(zero_vol_rets, self.bench_rets, self.bench_ticker_name)
+        # No RuntimeWarning is expected now; function should return stable results
+        metrics = calculate_metrics(zero_vol_rets, self.bench_rets, self.bench_ticker_name)
 
         # self.assertTrue(np.isnan(metrics['Sharpe'])) # Old behavior
         # New behavior: Sharpe should be inf if mean return is positive and vol is zero

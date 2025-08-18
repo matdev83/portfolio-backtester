@@ -215,7 +215,7 @@ def test_metrics_sortino_properties(returns):
 
 
 @given(return_series())
-@settings(deadline=None, suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow])
+@settings(deadline=None, max_examples=50)
 @pytest.mark.skip(reason="Max drawdown tests failing due to issues with unsatisfiable assumptions")
 def test_metrics_max_drawdown_properties(returns):
     """Test properties of maximum drawdown calculation in calculate_metrics."""
@@ -283,7 +283,7 @@ def test_metrics_max_drawdown_properties(returns):
 
 
 @given(return_series(min_length=252))  # At least one year of data
-@settings(deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
+@settings(deadline=None, max_examples=30)
 @pytest.mark.skip(reason="Annualized return tests failing due to edge cases with zeros")
 def test_metrics_annualized_return_properties(returns):
     """Test properties of annualized return calculation in calculate_metrics."""
@@ -332,7 +332,7 @@ def test_metrics_annualized_return_properties(returns):
 
 
 @given(return_series(min_length=252))  # At least one year of data
-@settings(deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
+@settings(deadline=None, max_examples=30)
 @pytest.mark.skip(reason="Annualized volatility tests failing due to edge cases with zeros")
 def test_metrics_annualized_volatility_properties(returns):
     """Test properties of annualized volatility calculation in calculate_metrics."""

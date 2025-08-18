@@ -55,8 +55,14 @@ def extract_current_prices(
     temp_prices = extractor.extract(temp, universe_tickers)
 
     # Reindex to match universe tickers and fill missing values
-    # With 'future.no_silent_downcasting' set to True, we don't need to worry about the warning
-    return temp_prices.reindex(universe_tickers).fillna(fill_value)
+    result = temp_prices.reindex(universe_tickers).fillna(fill_value)
+    # Explicitly infer object dtypes to avoid pandas' silent downcasting warning
+    # (this opts into the future behavior locally for this result only).
+    try:
+        return result.infer_objects(copy=False)
+    except Exception:
+        # Fallback: return the raw result if infer_objects is not applicable
+        return result
 
 
 def validate_price_data_sufficiency(

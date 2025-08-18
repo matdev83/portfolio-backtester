@@ -7,6 +7,7 @@ from portfolio_backtester.core import Backtester
 
 
 @pytest.mark.fast
+@pytest.mark.slow
 def test_dummy_strategy_single_trial_optimizer():
     """Run optimisation with a single trial to ensure objective is non-zero and no crash."""
     rng = np.random.default_rng(11)

@@ -215,12 +215,25 @@ def generate_synthetic_data_paths(
 
 def calculate_statistics(returns: pd.Series, label: str) -> Dict:
     """Calculate comprehensive statistics for return series."""
+    # Prefer Numba compensated moments if available for stability
+    try:
+        from portfolio_backtester.reporting.metrics import (
+            compensated_skew_fast as _comp_skew,
+            compensated_kurtosis_fast as _comp_kurt,
+        )
+
+        skewness_val = float(_comp_skew(returns.values))
+        kurtosis_val = float(_comp_kurt(returns.values))
+    except Exception:
+        skewness_val = returns.skew()
+        kurtosis_val = returns.kurtosis()
+
     return {
         "label": label,
         "mean": returns.mean(),
         "std": returns.std(),
-        "skewness": returns.skew(),
-        "kurtosis": returns.kurtosis(),
+        "skewness": skewness_val,
+        "kurtosis": kurtosis_val,
         "min": returns.min(),
         "max": returns.max(),
         "var_95": returns.quantile(0.05),

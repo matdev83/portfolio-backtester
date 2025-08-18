@@ -175,7 +175,7 @@ def atr_stop_loss_configs(draw):
 
 
 @given(ohlc_data_with_positions(), atr_stop_loss_configs())
-@settings(deadline=None, suppress_health_check=[HealthCheck.data_too_large])
+@settings(deadline=None, max_examples=40)
 @pytest.mark.skip(reason="ATR stop loss handler test failing due to data size issues")
 def test_atr_based_stop_loss_handler_properties(data, stop_loss_config):
     """Test properties of AtrBasedStopLoss handler."""

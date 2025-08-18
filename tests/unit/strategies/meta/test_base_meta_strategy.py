@@ -6,12 +6,31 @@ import pandas as pd
 from portfolio_backtester.strategies._core.base.meta_strategy import BaseMetaStrategy
 
 
-class TestMetaStrategy(BaseMetaStrategy):
-    """Test implementation of BaseMetaStrategy for testing."""
+class DummyMetaStrategy(BaseMetaStrategy):
+    """Helper implementation of BaseMetaStrategy for testing (avoid pytest collection issues).
+
+    NOTE: Pytest cannot collect classes with a user-defined __init__ method as
+    test classes. We keep this helper here but rename to avoid conflicting with
+    pytest collection behavior. Tests will instantiate this class directly.
+    """
+
+    # Provide a lightweight no-arg __init__ so pytest can treat this as a helper
+    # class without treating it as a test class. We implement __new__ to avoid
+    # class-level __init__ detection by pytest's collector.
+    def __new__(cls, config=None):
+        obj = super(DummyMetaStrategy, cls).__new__(cls)
+        # Initialize via BaseMetaStrategy.__init__ normally
+        BaseMetaStrategy.__init__(obj, config if config is not None else {"initial_capital": 1000000, "allocations": []})
+        return obj
 
     def allocate_capital(self):
-        """Simple fixed allocation for testing."""
         return {allocation.strategy_id: allocation.weight for allocation in self.allocations}
+
+# Backwards-compatible factory function expected by some tests.
+# Exposing a function prevents pytest from attempting to collect a class
+# named `TestMetaStrategy` (which would conflict with pytest's collection rules).
+def TestMetaStrategy(config=None):
+    return DummyMetaStrategy(config)
 
 
 class TestBaseMetaStrategy:
@@ -37,7 +56,7 @@ class TestBaseMetaStrategy:
             ],
         }
 
-        meta_strategy = TestMetaStrategy(config)
+        meta_strategy = DummyMetaStrategy(config)
 
         assert meta_strategy.initial_capital == 1000000
         assert meta_strategy.available_capital == 1000000
@@ -135,7 +154,7 @@ class TestBaseMetaStrategy:
             ],
         }
 
-        meta_strategy = TestMetaStrategy(config)
+        meta_strategy = DummyMetaStrategy(config)
         capital_allocations = meta_strategy.calculate_sub_strategy_capital()
 
         assert capital_allocations["strategy1"] == 600000  # 60% of 1M
@@ -161,7 +180,7 @@ class TestBaseMetaStrategy:
             ],
         }
 
-        meta_strategy = TestMetaStrategy(config)
+        meta_strategy = DummyMetaStrategy(config)
 
         # Simulate returns: strategy1 +5%, strategy2 -2%
         returns = {"strategy1": 0.05, "strategy2": -0.02}  # 5% return  # -2% return
@@ -195,7 +214,7 @@ class TestBaseMetaStrategy:
             ],
         }
 
-        meta_strategy = TestMetaStrategy(config)
+        meta_strategy = DummyMetaStrategy(config)
         current_date = pd.Timestamp("2023-01-01")
 
         # Create mock signals
@@ -228,7 +247,7 @@ class TestBaseMetaStrategy:
             ]
         }
 
-        meta_strategy = TestMetaStrategy(config)
+        meta_strategy = DummyMetaStrategy(config)
         current_date = pd.Timestamp("2023-01-01")
 
         # Empty signals
@@ -237,6 +256,9 @@ class TestBaseMetaStrategy:
 
     def test_tunable_parameters(self):
         """Test tunable parameters."""
+        # Backwards-compatible reference: some tests expect TestMetaStrategy name
+        # to exist. Provide an alias to our DummyMetaStrategy defined above.
+        TestMetaStrategy = DummyMetaStrategy
         params = TestMetaStrategy.tunable_parameters()
         expected_params = {"initial_capital", "min_allocation", "rebalance_threshold"}
         assert expected_params.issubset(params)

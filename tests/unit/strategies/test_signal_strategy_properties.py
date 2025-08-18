@@ -339,7 +339,7 @@ def strategy_configs(draw):
 
 
 @given(ohlc_data_frames(), strategy_configs())
-@settings(deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
+@settings(deadline=None)
 def test_signal_strategy_signal_generation(ohlc_data_assets, config):
     """
     Test that signal-based strategies generate valid signals.
@@ -403,7 +403,7 @@ def test_signal_strategy_signal_generation(ohlc_data_assets, config):
 
 
 @given(ohlc_data_frames())
-@settings(deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
+@settings(deadline=None)
 def test_signal_strategy_normalization_methods(ohlc_data_assets):
     """
     Test that different normalization methods produce expected results.
@@ -476,7 +476,7 @@ def test_signal_strategy_normalization_methods(ohlc_data_assets):
 
 
 @given(ohlc_data_frames(), st.integers(min_value=2, max_value=15))  # Reduced max lookback
-@settings(deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
+@settings(deadline=None)
 def test_signal_strategy_lookback_periods(ohlc_data_assets, lookback):
     """
     Test that strategies respect their lookback period settings.
@@ -527,7 +527,7 @@ def test_signal_strategy_lookback_periods(ohlc_data_assets, lookback):
 
 
 @given(ohlc_data_frames())
-@settings(deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
+@settings(deadline=None)
 def test_momentum_vs_mean_reversion(ohlc_data_assets):
     """
     Test that momentum and mean reversion strategies produce opposite signals

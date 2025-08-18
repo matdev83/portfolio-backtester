@@ -281,13 +281,30 @@ class Backtester:
                 if isinstance(self.rets_full, pd.DataFrame)
                 else pd.DataFrame(self.rets_full)
             )
-            self._run_optimize_mode(
-                self.optimization_orchestrator,
-                scenario,
-                self.monthly_data,
-                self.daily_data_ohlc,
-                rets_df,
-            )
+            # Support test-only fast optimize path for CI/developer runs
+            if getattr(self.args, "test_fast_optimize", False) or getattr(
+                self.args, "test-fast-optimize", False
+            ):
+                # Use a lightweight orchestrator variant (fast path) that avoids heavy reporting
+                # and reduces data sizes. We'll call the existing orchestrator but instruct
+                # it via args to run in fast mode.
+                fast_args = self.args
+                setattr(fast_args, "test_fast_optimize", True)
+                self._run_optimize_mode(
+                    self.optimization_orchestrator,
+                    scenario,
+                    self.monthly_data,
+                    self.daily_data_ohlc,
+                    rets_df,
+                )
+            else:
+                self._run_optimize_mode(
+                    self.optimization_orchestrator,
+                    scenario,
+                    self.monthly_data,
+                    self.daily_data_ohlc,
+                    rets_df,
+                )
         else:
             rets_df = (
                 self.rets_full

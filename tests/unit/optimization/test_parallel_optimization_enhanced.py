@@ -57,8 +57,9 @@ class TestParallelOptimizationEnhanced:
         )
         monthly_prices = prices.resample("ME").last()
 
-        # Create sample returns data
-        returns = prices.pct_change().fillna(0)
+        # Create sample returns data. Specify fill_method=None to avoid pandas
+        # future-warning about the default fill_method behavior.
+        returns = prices.pct_change(fill_method=None).fillna(0)
 
         return OptimizationData(
             monthly=monthly_prices,

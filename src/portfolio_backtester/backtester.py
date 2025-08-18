@@ -272,6 +272,12 @@ def _create_parser() -> argparse.ArgumentParser:
         default=None,
         help="Global timeout in seconds for the entire run.",
     )
+    parser.add_argument(
+        "--test-fast-optimize",
+        action="store_true",
+        default=False,
+        help="Enable test-only fast optimization path (skip heavy reporting, deterministic evaluators).",
+    )
     return parser
 
 

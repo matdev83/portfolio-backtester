@@ -180,7 +180,7 @@ def atr_take_profit_configs(draw):
 
 
 @given(ohlc_data_with_positions(), atr_take_profit_configs())
-@settings(deadline=None, suppress_health_check=[HealthCheck.data_too_large])
+@settings(deadline=None, max_examples=50)
 @pytest.mark.skip(reason="Take profit test failing due to excessive entropy")
 def test_atr_based_take_profit_handler_properties(data, take_profit_config):
     """Test properties of AtrBasedTakeProfit handler."""
