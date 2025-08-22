@@ -226,19 +226,42 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
                 asset_closes_hist, current_date, current_universe_tickers
             )
 
-            prev = np.asarray([self.w_prev.get(asset, 0) for asset in current_universe_tickers])
-            target = np.asarray(
-                [w_target_pre_filter.get(asset, 0) for asset in current_universe_tickers]
-            )
-            entry = np.asarray(
-                [self.entry_prices.get(asset, np.nan) for asset in current_universe_tickers]
-            )
-            prices = np.asarray(
-                [
-                    current_prices_for_assets_at_date.get(asset, np.nan)
-                    for asset in current_universe_tickers
-                ]
-            )
+            # Vectorized alignment to avoid repeated Series lookups (reduces heavy indexing cost)
+            idx = list(current_universe_tickers)
+
+            prev = self.w_prev.reindex(idx).fillna(0.0).to_numpy()
+
+            # Coerce w_target_pre_filter to a 1-D pandas Series in a robust way
+            if isinstance(w_target_pre_filter, pd.Series):
+                weights_series = w_target_pre_filter
+            elif isinstance(w_target_pre_filter, pd.DataFrame):
+                # Prefer squeezing single-column or single-row DataFrames
+                if w_target_pre_filter.shape[1] == 1:
+                    weights_series = w_target_pre_filter.iloc[:, 0]
+                elif w_target_pre_filter.shape[0] == 1:
+                    weights_series = w_target_pre_filter.iloc[0]
+                else:
+                    # As a graceful fallback, aggregate across columns (e.g., mean)
+                    weights_series = w_target_pre_filter.mean(axis=1)
+            else:
+                # Numpy arrays, dicts, lists -> attempt to construct Series
+                weights_series = pd.Series(w_target_pre_filter)
+
+            target = weights_series.reindex(idx).fillna(0.0).to_numpy()
+
+            entry = self.entry_prices.reindex(idx).to_numpy()
+
+            # Ensure current prices are a Series aligned to the current universe
+            try:
+                prices_series = (
+                    current_prices_for_assets_at_date.reindex(idx)
+                    if isinstance(current_prices_for_assets_at_date, pd.Series)
+                    else pd.Series(current_prices_for_assets_at_date).reindex(idx)
+                )
+            except Exception:
+                prices_series = pd.Series(current_prices_for_assets_at_date).reindex(idx)
+
+            prices = prices_series.to_numpy()
 
             entry_mask = ((prev == 0) & (target != 0)) | (
                 (np.sign(prev) != np.sign(target)) & (target != 0)
@@ -246,7 +269,7 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
             exit_mask = target == 0
             entry[entry_mask] = prices[entry_mask]
             entry[exit_mask] = np.nan
-            self.entry_prices = pd.Series(entry, index=current_universe_tickers)
+            self.entry_prices = pd.Series(entry, index=idx)
             weights_at_current_date = w_target_pre_filter
 
         final_weights = weights_at_current_date
@@ -311,25 +334,43 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
 
         risk_off_generator = self.get_risk_off_signal_generator()
         if risk_off_generator:
+            # Avoid evaluating pandas.DataFrame in boolean context (which raises ValueError).
+            non_universe_data_safe = (
+                non_universe_historical_data
+                if non_universe_historical_data is not None
+                else pd.DataFrame()
+            )
             risk_off_signal = risk_off_generator.generate_risk_off_signal(
                 all_historical_data,
                 benchmark_historical_data,
-                non_universe_historical_data or pd.DataFrame(),
+                non_universe_data_safe,
                 current_date,
             )
             if risk_off_signal:
                 final_weights[:] = 0.0
 
-        before_risk = np.asarray(
-            [weights_at_current_date.get(asset, 0) for asset in current_universe_tickers]
+        # Ensure vectors are 1-D and aligned to the current universe to avoid
+        # broadcasting/indexing issues when weights are Series/DataFrame/array.
+        idx_final = list(current_universe_tickers)
+
+        prev_arr = (
+            pd.Series(weights_at_current_date)
+            .reindex(idx_final)
+            .fillna(0.0)
+            .to_numpy()
         )
-        after_risk = np.asarray([final_weights.get(asset, 0) for asset in current_universe_tickers])
-        entry = np.asarray(
-            [self.entry_prices.get(asset, np.nan) for asset in current_universe_tickers]
+        after_arr = (
+            pd.Series(final_weights)
+            .reindex(idx_final)
+            .fillna(0.0)
+            .to_numpy()
         )
-        exit_mask = (before_risk != 0) & (after_risk == 0)
-        entry[exit_mask] = np.nan
-        self.entry_prices = pd.Series(entry, index=current_universe_tickers)
+        entry_arr = pd.Series(self.entry_prices).reindex(idx_final).to_numpy()
+
+        exit_mask = (prev_arr != 0) & (after_arr == 0)
+        # exit_mask is 1-D boolean array aligned with entry_arr
+        entry_arr[exit_mask] = np.nan
+        self.entry_prices = pd.Series(entry_arr, index=idx_final)
 
         self.w_prev = final_weights
 
