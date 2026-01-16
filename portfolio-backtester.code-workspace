@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../market-data-multi-provider"
+		}
+	],
+	"settings": {}
+}
