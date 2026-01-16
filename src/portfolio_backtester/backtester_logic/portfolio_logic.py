@@ -59,7 +59,7 @@ def calculate_portfolio_returns(
 
     if rets_daily is None:
         logger.error("rets_daily is None before reindexing in run_scenario.")
-        return pd.Series(0.0, index=price_data_daily_ohlc.index)
+        return pd.Series(0.0, index=price_data_daily_ohlc.index), None
 
     aligned_rets_daily = rets_daily.reindex(price_data_daily_ohlc.index).fillna(0.0)
 
@@ -208,7 +208,7 @@ def calculate_portfolio_returns(
             weights_arr=weights_arr,
             prices_arr=prices_arr,
             commissions_arr=commissions_arr,
-            dates=common_index.to_numpy(),
+            dates=common_index.values.view("i8"),
             tickers=np.array(valid_cols),
         )
 
@@ -487,13 +487,45 @@ def _track_trades_and_populate(
     )
 
     # Call the new kernel to get completed trade data
-    completed_trades_arr = trade_lifecycle_kernel(
+    n_days, n_assets = positions.shape
+    max_trades = n_days * n_assets
+    
+    completed_trades_buffer = np.zeros(
+        max_trades,
+        dtype=[
+            ("ticker_idx", "i8"),
+            ("entry_date", "i8"),
+            ("exit_date", "i8"),
+            ("entry_price", "f8"),
+            ("exit_price", "f8"),
+            ("quantity", "f8"),
+            ("pnl", "f8"),
+            ("commission", "f8"),
+        ],
+    )
+    
+    open_positions_buffer = np.zeros(
+        n_assets,
+        dtype=[
+            ("is_open", "?"),
+            ("entry_date", "i8"),
+            ("entry_price", "f8"),
+            ("quantity", "f8"),
+            ("total_commission", "f8"),
+        ],
+    )
+
+    trade_count = trade_lifecycle_kernel(
         positions=positions,
         prices=prices_arr,
         dates=dates,
         commissions=commissions_arr,
         initial_capital=trade_tracker.initial_portfolio_value,
+        out_trades=completed_trades_buffer,
+        out_open_pos=open_positions_buffer,
     )
+    
+    completed_trades_arr = completed_trades_buffer[:trade_count]
 
     # Convert kernel output to DataFrames for the TradeTracker
     portfolio_values_series = pd.Series(portfolio_values, index=pd.to_datetime(dates))

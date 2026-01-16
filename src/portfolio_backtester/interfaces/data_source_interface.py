@@ -74,43 +74,43 @@ class ConcreteDataSourceFactory(IDataSourceFactory):
         Returns:
             Data source instance implementing IDataSource
         """
-        # Import here to avoid circular dependencies
-        from ..data_sources.stooq_data_source import StooqDataSource
-        from ..data_sources.yfinance_data_source import YFinanceDataSource
-        from ..data_sources.hybrid_data_source import HybridDataSource
         from ..data_sources.memory_data_source import MemoryDataSource
 
-        data_source_map = {
-            "stooq": StooqDataSource,
-            "yfinance": YFinanceDataSource,
-            "hybrid": HybridDataSource,
-            "memory": MemoryDataSource,
-            "test": MemoryDataSource,  # Test data source for API stability tests
-        }
+        ds_name = global_config.get("data_source", "mdmp").lower()
 
-        ds_name = global_config.get("data_source", "hybrid").lower()
-        data_source_class = data_source_map.get(ds_name)
+        # Handle memory/test data source
+        if ds_name in ("memory", "test"):
+            return cast(
+                IDataSource,
+                MemoryDataSource(global_config.get("data_source_config", {})),
+            )
 
-        if data_source_class:
-            if ds_name == "hybrid":
-                prefer_stooq = global_config.get("prefer_stooq", True)
+        # Handle MDMP data source (default)
+        if ds_name in ("mdmp", "market-data-multi-provider"):
+            try:
+                from ..data_sources.mdmp_data_source import MarketDataMultiProviderDataSource
+
+                data_dir = global_config.get("data_dir")
+                min_coverage_ratio = global_config.get("min_coverage_ratio")
                 return cast(
                     IDataSource,
-                    HybridDataSource(
-                        cache_expiry_hours=24,
-                        prefer_stooq=prefer_stooq,
-                        negative_cache_timeout_hours=4,
+                    MarketDataMultiProviderDataSource(
+                        data_dir=data_dir,
+                        min_coverage_ratio=min_coverage_ratio,
                     ),
                 )
-            elif ds_name == "memory" or ds_name == "test":
-                return cast(
-                    IDataSource,
-                    MemoryDataSource(global_config.get("data_source_config", {})),
-                )
-            else:
-                return cast(IDataSource, data_source_class())
-        else:
-            raise ValueError(f"Unsupported data source: {ds_name}")
+            except ImportError as e:
+                raise ImportError(
+                    f"Cannot use MDMP data source: {e}. "
+                    "Install market-data-multi-provider with: "
+                    "pip install -e ../market-data-multi-provider"
+                ) from e
+
+        # Unsupported data source
+        raise ValueError(
+            f"Unsupported data source: {ds_name}. "
+            f"Valid options: 'mdmp', 'market-data-multi-provider', 'memory', 'test'"
+        )
 
 
 # Factory instance for dependency injection

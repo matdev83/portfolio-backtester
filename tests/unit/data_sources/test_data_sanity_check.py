@@ -1,3 +1,10 @@
+"""
+Data sanity check tests for the MDMP data source.
+
+These tests ensure we have up-to-date market data available via the
+market-data-multi-provider package.
+"""
+
 import unittest
 import pandas as pd
 from datetime import datetime, timedelta
@@ -6,9 +13,7 @@ import shutil
 import pytest
 import pandas_market_calendars as mcal
 
-from portfolio_backtester.data_sources.hybrid_data_source import HybridDataSource
-from portfolio_backtester.data_sources.stooq_data_source import StooqDataSource
-from portfolio_backtester.data_sources.yfinance_data_source import YFinanceDataSource
+from portfolio_backtester.interfaces.data_source_interface import create_data_source
 
 
 class TestDataSanityCheck(unittest.TestCase):
@@ -17,39 +22,20 @@ class TestDataSanityCheck(unittest.TestCase):
     These tests verify that data sources can fetch recent data for major tickers like AAPL.
     """
 
-    def setUp(self):
+    def setUp(self) -> None:
         """Set up test fixtures."""
-        # Use a temporary directory for testing
-        self.test_data_dir = Path("./test_data_sanity")
-        self.test_data_dir.mkdir(exist_ok=True)
-
         # Initialize NYSE calendar for proper trading day calculation
         self.nyse = mcal.get_calendar("NYSE")
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         """Clean up test fixtures."""
-        if self.test_data_dir.exists():
-            shutil.rmtree(self.test_data_dir)
+        pass
 
-    def _get_expected_last_trading_day(self, reference_date=None):
+    def _get_expected_last_trading_day(
+        self, reference_date: datetime | None = None
+    ) -> pd.Timestamp:
         """
         Calculate the expected last trading day using NYSE market calendar.
-
-        IMPORTANT: This method handles several tricky timezone and date validation issues:
-
-        1. TIMEZONE HANDLING: NYSE calendar returns timezone-aware timestamps (UTC), but data
-           sources often return timezone-naive timestamps. Always convert to timezone-naive
-           using .tz_convert(None).normalize() for consistent comparison.
-
-        2. FUTURE DATE TOLERANCE: Data providers may return data for "future" dates due to
-           timezone differences (e.g., Asian markets trading while US is still in previous day).
-           Always include a buffer of future dates (typically 5 days) in validation ranges.
-
-        3. WEEKEND/HOLIDAY EDGE CASES: When testing on weekends or holidays, the "expected"
-           last trading day should be the most recent actual trading day, not the current date.
-
-        4. DATA PROVIDER LAG: Some data sources have delays. Don't be too strict about requiring
-           the absolute latest trading day - allow for reasonable lag (up to 10 trading days).
 
         Args:
             reference_date: Date to calculate from (default: today)
@@ -63,70 +49,50 @@ class TestDataSanityCheck(unittest.TestCase):
         # Convert to pandas Timestamp for easier manipulation
         current_date = pd.Timestamp(reference_date).normalize()
 
-        # CRITICAL: Include future dates to handle timezone differences and current data
-        # Data providers may return data for dates that appear "future" due to timezone offsets
+        # Include future dates to handle timezone differences and current data
         start_date = current_date - timedelta(days=30)
-        end_date = current_date + timedelta(days=5)  # Allow for future dates
+        end_date = current_date + timedelta(days=5)
 
         # Get valid trading days from NYSE calendar
-        # NOTE: This returns timezone-aware timestamps in UTC
         valid_trading_days = self.nyse.valid_days(start_date=start_date, end_date=end_date)
 
         if len(valid_trading_days) == 0:
-            # Fallback: if no valid days found, go back further
             start_date = current_date - timedelta(days=60)
             valid_trading_days = self.nyse.valid_days(start_date=start_date, end_date=end_date)
 
-        # CRITICAL: Convert timezone-aware NYSE calendar dates to timezone-naive
-        # This prevents comparison errors between timezone-aware and timezone-naive timestamps
+        # Convert timezone-aware NYSE calendar dates to timezone-naive
         valid_days_naive = [
             pd.Timestamp(day).tz_convert(None).normalize() for day in valid_trading_days
         ]
 
-        # Filter to only include days up to current date (allow same day)
+        # Filter to only include days up to current date
         current_or_past_days = [day for day in valid_days_naive if day <= current_date]
 
         if current_or_past_days:
-            # Return the most recent trading day (could be today if it's a trading day)
             return current_or_past_days[-1]
         elif valid_days_naive:
-            # Fallback: use the most recent valid day even if it's in the future
-            # This handles cases where we're testing with current/future data
             return valid_days_naive[-1]
         else:
-            # Ultimate fallback: just use current date minus 5 days
             return current_date - timedelta(days=5)
 
-    def _clean_cache_for_ticker(self, ticker, data_source):
-        """Remove cached data for a specific ticker to force fresh download."""
-        if hasattr(data_source, "data_dir"):
-            cache_file = data_source.data_dir / f"{ticker}.csv"
-            if cache_file.exists():
-                cache_file.unlink()
-                print(f"Removed cached file: {cache_file}")
-
     @pytest.mark.network
-    def test_hybrid_data_source_aapl_recent_data(self):
+    def test_mdmp_data_source_aapl_recent_data(self) -> None:
         """
-        Test that hybrid data source can fetch recent AAPL data.
+        Test that MDMP data source can fetch recent AAPL data.
         This is the main sanity check for data availability.
         """
         print("\n" + "=" * 60)
-        print("SANITY CHECK: Testing hybrid data source for recent AAPL data")
+        print("SANITY CHECK: Testing MDMP data source for recent AAPL data")
         print("=" * 60)
 
-        # Create hybrid data source with short cache expiry to force fresh data
-        hybrid_ds = HybridDataSource(cache_expiry_hours=0.01, prefer_stooq=True)
-        hybrid_ds.data_dir = self.test_data_dir
-        hybrid_ds.stooq_source.data_dir = self.test_data_dir
-        hybrid_ds.yfinance_source.data_dir = self.test_data_dir
-
-        # Clean any existing cache
-        self._clean_cache_for_ticker("AAPL", hybrid_ds)
+        # Create MDMP data source
+        mdmp_ds = create_data_source({"data_source": "mdmp"})
 
         # Calculate expected last trading day using NYSE calendar
         expected_last_trading_day = self._get_expected_last_trading_day()
-        print(f"Expected last trading day (NYSE): {expected_last_trading_day.strftime('%Y-%m-%d')}")
+        print(
+            f"Expected last trading day (NYSE): {expected_last_trading_day.strftime('%Y-%m-%d')}"
+        )
 
         # Fetch data for the last 30 days to ensure we get recent data
         end_date = datetime.now().strftime("%Y-%m-%d")
@@ -135,7 +101,7 @@ class TestDataSanityCheck(unittest.TestCase):
         print(f"Fetching AAPL data from {start_date} to {end_date}")
 
         # Fetch the data
-        data = hybrid_ds.get_data(["AAPL"], start_date, end_date)
+        data = mdmp_ds.get_data(["AAPL"], start_date, end_date)
 
         # Basic checks
         self.assertFalse(data.empty, "No data was fetched for AAPL")
@@ -151,35 +117,20 @@ class TestDataSanityCheck(unittest.TestCase):
         last_data_date = aapl_close.index.max()
         print(f"Last available data date: {last_data_date.strftime('%Y-%m-%d')}")
 
-        # CRITICAL DATE VALIDATION LOGIC - This section handles several tricky edge cases:
-        #
-        # PROBLEM 1: Data sources may return "future" dates due to timezone differences
-        # SOLUTION: Create a validation range that includes future dates (up to 5 days)
-        #
-        # PROBLEM 2: NYSE calendar returns timezone-aware dates, data sources return timezone-naive
-        # SOLUTION: Always normalize both to timezone-naive before comparison
-        #
-        # PROBLEM 3: Tests may run on weekends/holidays when markets are closed
-        # SOLUTION: Use NYSE market calendar to determine valid trading days, not just weekdays
-
+        # Date validation
         current_date = pd.Timestamp(datetime.now()).normalize()
-
-        # Create a wider validation range to handle edge cases
         range_start = current_date - timedelta(days=30)
-        range_end = current_date + timedelta(days=5)  # CRITICAL: Allow for future dates
+        range_end = current_date + timedelta(days=5)
 
         recent_trading_days = self.nyse.valid_days(start_date=range_start, end_date=range_end)
 
-        # CRITICAL: Timezone normalization to prevent comparison failures
-        # NYSE calendar returns UTC timestamps, but data sources often return timezone-naive
+        # Timezone normalization
         last_data_date_naive = pd.Timestamp(last_data_date).tz_localize(None).normalize()
         recent_trading_days_normalized = [
             pd.Timestamp(day).tz_convert(None).normalize() for day in recent_trading_days
         ]
 
         # Main validation: data should be from a recent trading day
-        # This was the primary failure point before the fix - data for 2025-07-25 (Friday)
-        # was being rejected because the validation range didn't include future dates
         self.assertIn(
             last_data_date_naive,
             recent_trading_days_normalized,
@@ -188,7 +139,7 @@ class TestDataSanityCheck(unittest.TestCase):
             f"Recent trading days: {[d.strftime('%Y-%m-%d') for d in recent_trading_days_normalized[-10:]]}",
         )
 
-        # Secondary validation: ensure data is not too stale (conservative lag tolerance)
+        # Secondary validation: ensure data is not too stale
         days_behind_expected = len(
             [
                 d
@@ -203,28 +154,6 @@ class TestDataSanityCheck(unittest.TestCase):
             f"({expected_last_trading_day.strftime('%Y-%m-%d')})",
         )
 
-        # Check that the data file was created
-        aapl_file = self.test_data_dir / "AAPL.csv"
-        self.assertTrue(aapl_file.exists(), f"AAPL.csv file was not created at {aapl_file}")
-
-        # Verify the file contains the expected data
-        # Parse index using explicit format to avoid ambiguous inference warnings
-        # Read CSV without a custom date_parser (deprecated) and parse index explicitly
-        file_data = pd.read_csv(aapl_file, index_col=0, parse_dates=False)
-        # Convert index to datetime with explicit format to avoid inference warnings
-        file_data.index = pd.to_datetime(file_data.index, format="%Y-%m-%d", errors="coerce")
-        self.assertGreater(len(file_data), 0, "AAPL.csv file is empty")
-
-        # Check that the last row in the file matches our expectations
-        last_file_date = file_data.index.max()
-        print(f"Last date in AAPL.csv file: {last_file_date.strftime('%Y-%m-%d')}")
-
-        self.assertEqual(
-            last_data_date.date(),
-            last_file_date.date(),
-            "Last date in DataFrame doesn't match last date in CSV file",
-        )
-
         # Check data quality
         last_close_price = aapl_close.iloc[-1]
         self.assertGreater(last_close_price, 0, "Last AAPL close price should be positive")
@@ -232,71 +161,39 @@ class TestDataSanityCheck(unittest.TestCase):
         self.assertGreater(last_close_price, 50, "Last AAPL close price seems unreasonably low")
 
         print(f"Last AAPL close price: ${last_close_price:.2f}")
-
-        # Check failure report
-        failure_report = hybrid_ds.get_failure_report()
-        print(f"Data source failure report: {failure_report}")
-
-        # AAPL should not have failed on both sources
-        self.assertNotIn(
-            "AAPL",
-            failure_report["total_failures"],
-            "AAPL failed on both Stooq and yfinance sources",
-        )
-
         print("✅ AAPL sanity check PASSED")
 
     @pytest.mark.network
-    def test_individual_data_sources_aapl(self):
+    def test_mdmp_multiple_tickers(self) -> None:
         """
-        Test individual data sources (Stooq and yfinance) for AAPL data.
-        This helps identify which source might be having issues.
+        Test that MDMP data source can fetch data for multiple tickers.
         """
         print("\n" + "=" * 60)
-        print("SANITY CHECK: Testing individual data sources for AAPL")
+        print("SANITY CHECK: Testing MDMP data source for multiple tickers")
         print("=" * 60)
+
+        # Create MDMP data source
+        mdmp_ds = create_data_source({"data_source": "mdmp"})
 
         # Test period
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 
-        self._get_expected_last_trading_day()
+        tickers = ["SPY", "AAPL", "MSFT"]
+        print(f"Fetching data for {tickers} from {start_date} to {end_date}")
 
-        # Test Stooq
-        print("\n--- Testing Stooq ---")
-        stooq_ds = StooqDataSource()
-        stooq_ds.data_dir = self.test_data_dir
-        self._clean_cache_for_ticker("AAPL", stooq_ds)
+        # Fetch the data
+        data = mdmp_ds.get_data(tickers, start_date, end_date)
 
-        try:
-            stooq_data = stooq_ds.get_data(["AAPL"], start_date, end_date)
-            if not stooq_data.empty and "AAPL" in stooq_data.columns.get_level_values("Ticker"):
-                stooq_last_date = stooq_data[("AAPL", "Close")].dropna().index.max()
-                print(f"Stooq last date: {stooq_last_date.strftime('%Y-%m-%d')}")
-                print("✅ Stooq source working")
-            else:
-                print("❌ Stooq source returned empty data")
-        except Exception as e:
-            print(f"❌ Stooq source failed: {e}")
+        # Basic checks
+        self.assertFalse(data.empty, "No data was fetched")
 
-        # Test yfinance
-        print("\n--- Testing yfinance ---")
-        yfinance_ds = YFinanceDataSource()
-        yfinance_ds.data_dir = self.test_data_dir
-        self._clean_cache_for_ticker("AAPL", yfinance_ds)
+        # Check that we got data for at least some tickers
+        fetched_tickers = data.columns.get_level_values("Ticker").unique().tolist()
+        print(f"Fetched tickers: {fetched_tickers}")
+        self.assertGreater(len(fetched_tickers), 0, "No tickers found in fetched data")
 
-        try:
-            yfinance_data = yfinance_ds.get_data(["AAPL"], start_date, end_date)
-            if not yfinance_data.empty and "AAPL" in yfinance_data.columns.get_level_values(
-                "Ticker"
-            ):
-                yfinance_last_date = yfinance_data[("AAPL", "Close")].dropna().index.max()
-                print(f"yfinance last date: {yfinance_last_date.strftime('%Y-%m-%d')}")
-                print("✅ yfinance source working")
-            else:
-                print("❌ yfinance source returned empty data")
-        except Exception as e:
-            print(f"❌ yfinance source failed: {e}")
+        print("✅ Multiple tickers sanity check PASSED")
 
 
 if __name__ == "__main__":

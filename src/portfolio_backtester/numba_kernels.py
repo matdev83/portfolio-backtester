@@ -237,50 +237,32 @@ def trade_lifecycle_kernel(
     dates: np.ndarray,
     commissions: np.ndarray,
     initial_capital: float,
-):
+    out_trades: np.ndarray,
+    out_open_pos: np.ndarray,
+) -> int:
     """
-    Numba-jitted kernel to identify and process the lifecycle of trades from
-    raw position, price, and commission data.
+    Numba-jitted kernel to identify and process the lifecycle of trades.
     Args:
-        positions (np.ndarray): Array of asset positions (shares).
-        prices (np.ndarray): Array of asset prices.
-        dates (np.ndarray): Array of dates.
-        commissions (np.ndarray): Array of commissions.
-        initial_capital (float): The starting capital for the backtest.
+        positions: [T, N] positions
+        prices: [T, N] prices
+        dates: [T] dates
+        commissions: [T, N] commissions
+        initial_capital: float
+        out_trades: Pre-allocated array for completed trades.
+        out_open_pos: Pre-allocated array for open positions tracking.
     Returns:
-        A structured NumPy array containing the details of each completed trade.
+        int: Number of completed trades found.
     """
     n_days, n_assets = positions.shape
-
-    # Pre-allocate a large array for trades. We will trim it later.
-    # The maximum number of trades is n_days * n_assets, but it's usually much less.
-    max_trades = n_days * n_assets
-    completed_trades = np.zeros(
-        max_trades,
-        dtype=[
-            ("ticker_idx", np.int64),
-            ("entry_date", np.int64),
-            ("exit_date", np.int64),
-            ("entry_price", np.float64),
-            ("exit_price", np.float64),
-            ("quantity", np.float64),
-            ("pnl", np.float64),
-            ("commission", np.float64),
-        ],
-    )
     trade_count = 0
 
-    # Track open positions for each asset
-    open_positions = np.zeros(
-        n_assets,
-        dtype=[
-            ("is_open", np.bool_),
-            ("entry_date", np.int64),
-            ("entry_price", np.float64),
-            ("quantity", np.float64),
-            ("total_commission", np.float64),
-        ],
-    )
+    # Reset open positions buffer
+    # It is assumed out_open_pos is initialized to zeros or doesn't matter,
+    # but strictly we should zero it out if it's reused. 
+    # Here we assume caller provides clean or valid buffer. 
+    # For safety in this kernel loop we rely on "is_open" flag which is false by default if zeros.
+    
+    # We can iterate and clear if needed, but assuming zeros from caller is standard for Numba kernels.
 
     for i in range(1, n_days):  # Start from the second day
         for j in range(n_assets):
@@ -294,38 +276,64 @@ def trade_lifecycle_kernel(
             if abs(current_pos - prev_pos) > 1e-6:
                 trade_quantity = current_pos - prev_pos
 
-                # Close existing position if direction changes
-                if open_positions[j]["is_open"] and np.sign(trade_quantity) != np.sign(
-                    open_positions[j]["quantity"]
-                ):
-                    completed_trades[trade_count]["ticker_idx"] = j
-                    completed_trades[trade_count]["entry_date"] = open_positions[j]["entry_date"]
-                    completed_trades[trade_count]["exit_date"] = date
-                    completed_trades[trade_count]["entry_price"] = open_positions[j]["entry_price"]
-                    completed_trades[trade_count]["exit_price"] = price
-                    completed_trades[trade_count]["quantity"] = open_positions[j]["quantity"]
-                    completed_trades[trade_count]["pnl"] = (
-                        price - open_positions[j]["entry_price"]
-                    ) * open_positions[j]["quantity"]
-                    completed_trades[trade_count]["commission"] = (
-                        open_positions[j]["total_commission"] + commission
+                # Check if we are reducing or flipping an existing position
+                is_reducing_or_flipping = False
+                if out_open_pos[j]["is_open"]:
+                    if np.sign(trade_quantity) != np.sign(out_open_pos[j]["quantity"]):
+                        is_reducing_or_flipping = True
+
+                if is_reducing_or_flipping:
+                    # We are closing the existing position (fully or partially) and potentially reopening
+                    
+                    # Calculate commission split based on virtual volumes
+                    total_virtual_vol = abs(prev_pos) + abs(current_pos)
+                    comm_close = 0.0
+                    comm_open = 0.0
+                    if total_virtual_vol > 1e-9:
+                         comm_close = commission * (abs(prev_pos) / total_virtual_vol)
+                         comm_open = commission * (abs(current_pos) / total_virtual_vol)
+                    else:
+                         comm_close = commission
+
+                    out_trades[trade_count]["ticker_idx"] = j
+                    out_trades[trade_count]["entry_date"] = out_open_pos[j]["entry_date"]
+                    out_trades[trade_count]["exit_date"] = date
+                    out_trades[trade_count]["entry_price"] = out_open_pos[j]["entry_price"]
+                    out_trades[trade_count]["exit_price"] = price
+                    out_trades[trade_count]["quantity"] = out_open_pos[j]["quantity"]
+                    out_trades[trade_count]["pnl"] = (
+                        price - out_open_pos[j]["entry_price"]
+                    ) * out_open_pos[j]["quantity"]
+                    out_trades[trade_count]["commission"] = (
+                        out_open_pos[j]["total_commission"] + comm_close
                     )
                     trade_count += 1
-                    open_positions[j]["is_open"] = False
+                    out_open_pos[j]["is_open"] = False
 
-                # Open a new position
-                if not open_positions[j]["is_open"] and abs(trade_quantity) > 1e-6:
-                    open_positions[j]["is_open"] = True
-                    open_positions[j]["entry_date"] = date
-                    open_positions[j]["entry_price"] = price
-                    open_positions[j]["quantity"] = trade_quantity
-                    open_positions[j]["total_commission"] = commission
-                # Add to existing position
-                elif open_positions[j]["is_open"]:
-                    open_positions[j]["quantity"] += trade_quantity
-                    open_positions[j]["total_commission"] += commission
+                    # Potentially Open New Position (if current_pos is not zero)
+                    if abs(current_pos) > 1e-6:
+                        out_open_pos[j]["is_open"] = True
+                        out_open_pos[j]["entry_date"] = date
+                        out_open_pos[j]["entry_price"] = price
+                        out_open_pos[j]["quantity"] = current_pos
+                        out_open_pos[j]["total_commission"] = comm_open
 
-    return completed_trades[:trade_count]
+                else:
+                    # We are extending the position or opening from zero
+                    if not out_open_pos[j]["is_open"]:
+                        # Opening from zero
+                        if abs(current_pos) > 1e-6:
+                            out_open_pos[j]["is_open"] = True
+                            out_open_pos[j]["entry_date"] = date
+                            out_open_pos[j]["entry_price"] = price
+                            out_open_pos[j]["quantity"] = current_pos
+                            out_open_pos[j]["total_commission"] = commission
+                    else:
+                        # Adding to existing position
+                        out_open_pos[j]["quantity"] += trade_quantity
+                        out_open_pos[j]["total_commission"] += commission
+
+    return trade_count
 
 
 @njit(cache=True, fastmath=False)

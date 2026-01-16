@@ -17,7 +17,7 @@ class TestBacktesterCore(unittest.TestCase):
         Set up a mock configuration and arguments for testing.
         """
         self.mock_global_config = {
-            "data_source": "yfinance",
+            "data_source": "mdmp",
             "benchmark": "SPY",
             "start_date": "2020-01-01",
             "end_date": "2021-01-01",
@@ -34,7 +34,7 @@ class TestBacktesterCore(unittest.TestCase):
         self.mock_args.mode = "backtest"
 
     @mock.patch("portfolio_backtester.interfaces.create_strategy_resolver")
-    @mock.patch("portfolio_backtester.data_sources.yfinance_data_source.YFinanceDataSource")
+    @mock.patch("portfolio_backtester.data_sources.mdmp_data_source.MarketDataMultiProviderDataSource")
     @mock.patch("numpy.random.randint")
     def test_backtester_initialization(
         self, mock_randint, mock_data_source, mock_strategy_resolver
@@ -48,7 +48,7 @@ class TestBacktesterCore(unittest.TestCase):
             columns=["AAPL", "GOOG"],
             index=pd.to_datetime(pd.date_range("2020-01-01", periods=10)),
         )
-        mock_data_source.__name__ = "YFinanceDataSource"
+        mock_data_source.__name__ = "MarketDataMultiProviderDataSource"
         mock_randint.return_value = 42
 
         backtester = Backtester(

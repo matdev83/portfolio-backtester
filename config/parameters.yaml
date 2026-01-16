@@ -1,6 +1,10 @@
 GLOBAL_CONFIG:
-  data_source: "hybrid"
-  prefer_stooq: true  # Use Stooq as primary source, yfinance as fallback
+  # Data Source Configuration
+  # Options: "mdmp" (default), "memory", "test"
+  # - "mdmp": Market Data Multi-Provider (centralized, multi-provider with caching)
+  # - "memory": In-memory data source for testing
+  # - "test": Alias for memory data source
+  data_source: "mdmp"
   
   # Portfolio capital configuration
   portfolio_value: 1000000.0  # Starting capital: $1M for compounding

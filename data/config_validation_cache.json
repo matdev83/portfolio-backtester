@@ -5,7 +5,7 @@
       "errors": []
     },
     "state": {
-      "timestamp": 1755592716.9061923,
+      "timestamp": 1768589603.1198275,
       "file_counts": {
         "scenarios": 25,
         "strategies": 70,
@@ -15,8 +15,8 @@
         "parameters": [
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\parameters.yaml",
-            "mtime": 1754944732.7033846,
-            "size": 13522
+            "mtime": 1768589346.228635,
+            "size": 13701
           }
         ],
         "scenarios": [
@@ -224,8 +224,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\sharpe_momentum_portfolio_strategy.py",
-            "mtime": 1755592704.1561925,
-            "size": 16804
+            "mtime": 1755762430.113895,
+            "size": 16414
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\simple_momentum_portfolio_strategy.py",

@@ -36,7 +36,7 @@ os.environ["PYTHONPATH"] = src_path
 
 def fetch_historical_data_with_hybrid_source(symbol: str, period: str = "2y") -> pd.DataFrame:
     """
-    Fetch historical data using the project's hybrid data source.
+    Fetch historical data using the project's MDMP data source.
 
     Args:
         symbol: Stock symbol (e.g., 'AAPL')
@@ -45,11 +45,11 @@ def fetch_historical_data_with_hybrid_source(symbol: str, period: str = "2y") ->
     Returns:
         DataFrame with OHLC data
     """
-    logger.info(f"Fetching historical data for {symbol} using hybrid data source...")
+    logger.info(f"Fetching historical data for {symbol} using MDMP data source...")
 
     try:
-        # Import the hybrid data source
-        from portfolio_backtester.data_sources.hybrid_data_source import HybridDataSource
+        # Import the data source factory
+        from portfolio_backtester.interfaces.data_source_interface import create_data_source
         from portfolio_backtester.interfaces.ohlc_normalizer import OHLCNormalizerFactory
 
         # Calculate date range
@@ -66,8 +66,8 @@ def fetch_historical_data_with_hybrid_source(symbol: str, period: str = "2y") ->
         start_date_str = start_date.strftime("%Y-%m-%d")
         end_date_str = end_date.strftime("%Y-%m-%d")
 
-        # Initialize hybrid data source
-        data_source = HybridDataSource(cache_expiry_hours=24, prefer_stooq=True)
+        # Initialize MDMP data source
+        data_source = create_data_source({"data_source": "mdmp"})
 
         # Fetch data
         raw_data = data_source.get_data([symbol], start_date_str, end_date_str)

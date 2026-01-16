@@ -35,7 +35,6 @@ from portfolio_backtester.strategies._core.base.base.trade_interceptor import (
 from portfolio_backtester.trading.portfolio_value_tracker import PortfolioValueTracker
 from portfolio_backtester.backtesting.position_tracker import PositionTracker, Trade
 from portfolio_backtester.backtesting.results import WindowResult
-from portfolio_backtester.data_sources.hybrid_data_source import HybridDataSource
 from portfolio_backtester.feature_flags.flag_registry import FlagRegistry
 
 
@@ -135,7 +134,6 @@ _use(
     WindowResult.avg_trade_duration,
     WindowResult.max_trade_duration,
     WindowResult.min_trade_duration,
-    HybridDataSource.get_failure_report,
     FlagRegistry.get_all_flags,
 )
 

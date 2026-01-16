@@ -179,9 +179,22 @@ def mdd_fast(series):
     - Drawdown is calculated as (current_value / running_maximum) - 1
     - Result is always <= 0, with more negative values indicating larger drawdowns
     """
-    cummax = np.maximum.accumulate(series)
-    drawdown = (series / cummax) - 1
-    return np.min(drawdown)
+    n = len(series)
+    if n == 0:
+        return 0.0
+    
+    max_drawdown = 0.0
+    running_max = series[0]
+    
+    for i in range(1, n):
+        if series[i] > running_max:
+            running_max = series[i]
+        else:
+            drawdown = (series[i] / running_max) - 1.0
+            if drawdown < max_drawdown:
+                max_drawdown = drawdown
+                
+    return max_drawdown
 
 
 # =============================================================================
@@ -916,8 +929,12 @@ def rolling_beta_fast(asset_returns, benchmark_returns, window):
         valid_asset = asset_window[valid_mask]
         valid_bench = bench_window[valid_mask]
 
-        if len(valid_asset) >= window // 2:
-            bench_var = np.var(valid_bench)
+        if len(valid_asset) >= window // 2 and len(valid_asset) > 1:
+            # Use ddof=1 for variance to match np.cov default (sample covariance)
+            # np.var defaults to ddof=0, so adjustment is needed
+            bench_var_pop = np.var(valid_bench)
+            bench_var = bench_var_pop * len(valid_bench) / (len(valid_bench) - 1.0)
+            
             if bench_var > 1e-10:
                 covariance = np.cov(valid_asset, valid_bench)[0, 1]
                 result[i] = covariance / bench_var
