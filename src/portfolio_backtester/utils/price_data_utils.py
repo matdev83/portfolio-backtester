@@ -59,7 +59,7 @@ def extract_current_prices(
     # Explicitly infer object dtypes to avoid pandas' silent downcasting warning
     # (this opts into the future behavior locally for this result only).
     try:
-        return result.infer_objects(copy=False)
+        return result.infer_objects()
     except Exception:
         # Fallback: return the raw result if infer_objects is not applicable
         return result

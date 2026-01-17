@@ -227,7 +227,7 @@ class EvaluationEngine:
 
                 # Handle Multi-Index vs single-level columns only when cache invalidated
                 if isinstance(daily_data.columns, pd.MultiIndex):
-                    self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data, field="Close")
+                    self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data, column_names=["Close"])
                 else:
                     self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data)
 
@@ -417,7 +417,7 @@ class EvaluationEngine:
 
                 # Handle Multi-Index vs single-level columns only when cache invalidated
                 if isinstance(daily_data.columns, pd.MultiIndex):
-                    self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data, field="Close")
+                    self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data, column_names=["Close"])
                 else:
                     self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data)
 

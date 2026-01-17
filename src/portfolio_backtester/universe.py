@@ -97,4 +97,14 @@ def get_top_weight_sp500_components(
     return list(top)
 
 
-__all__ = ["get_top_weight_sp500_components"]
+def get_all_historical_sp500_components() -> List[str]:
+    """Return a list of ALL unique tickers that have ever been in the S&P 500 history.
+    
+    This is useful for defining a survivorship-bias-free universe where the strategy
+    selects the active components dynamically.
+    """
+    from .universe_data.spy_holdings import get_all_historical_tickers
+    return get_all_historical_tickers()
+
+
+__all__ = ["get_top_weight_sp500_components", "get_all_historical_sp500_components"]

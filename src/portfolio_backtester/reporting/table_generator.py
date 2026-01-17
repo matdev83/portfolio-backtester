@@ -185,6 +185,7 @@ def generate_performance_table(
     num_trials_map: dict,
     report_dir: str,
 ):
+    os.makedirs(report_dir, exist_ok=True)
     table = Table(title=title)
     table.add_column("Metric", style="cyan", no_wrap=True)
     all_period_metrics = _collect_metrics(
@@ -323,6 +324,7 @@ def generate_enhanced_performance_table(
     report_dir: str,
 ):
     """Enhanced version that separates main performance metrics from trade statistics."""
+    os.makedirs(report_dir, exist_ok=True)
     # Generate main performance table (excluding trade metrics)
     table = Table(title=title)
     table.add_column("Metric", style="cyan", no_wrap=True)

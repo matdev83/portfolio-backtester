@@ -7,8 +7,8 @@ from ..portfolio.rebalancing import rebalance
 from ..trading.trade_tracker import TradeTracker
 from ..trading.unified_commission_calculator import get_unified_commission_calculator
 from ..numba_kernels import (
-    position_and_pnl_kernel,
     detailed_commission_slippage_kernel,
+    drifting_weights_returns_kernel,
     trade_tracking_kernel,
     trade_lifecycle_kernel,
 )
@@ -53,9 +53,9 @@ def calculate_portfolio_returns(
 
     weights_monthly = weights_monthly.reindex(columns=universe_tickers).fillna(0.0)
 
+    # NOTE: weights_daily is *target* weights. Realistic simulation holds shares constant
+    # between rebalances and only trades when target weights change.
     weights_daily = weights_monthly.reindex(price_data_daily_ohlc.index, method="ffill")
-    # Use previous-day weights for returns so first day's gross return is 0
-    weights_for_returns = weights_daily.shift(1).fillna(0.0)
 
     if rets_daily is None:
         logger.error("rets_daily is None before reindexing in run_scenario.")
@@ -87,23 +87,8 @@ def calculate_portfolio_returns(
             price_index = price_data_daily_ohlc.index
 
         valid_cols = [t for t in universe_tickers if t in aligned_rets_daily.columns]
-        r = (
-            aligned_rets_daily.reindex(index=price_index, columns=valid_cols)
-            .fillna(0.0)
-            .to_numpy(dtype=np.float32)
-        )
-        m = ~np.isnan(r)
-        w = (
-            weights_for_returns.reindex(index=price_index, columns=valid_cols)
-            .fillna(0.0)
-            .to_numpy(dtype=np.float32)
-        )
-
-        # Use single optimized kernel implementation
-        _, _, _ = position_and_pnl_kernel(w, r, m)
 
         # Compute detailed IBKR-style commission+slippage in ndarray path
-        # Build close price matrix aligned to valid_cols and price_index
         close_prices_use = close_prices_df.reindex(index=price_index, columns=valid_cols).astype(
             float
         )
@@ -138,12 +123,10 @@ def calculate_portfolio_returns(
             else 100000.0
         )
 
-        # Use current weights (not shifted) for turnover/commissions
         weights_current = (
             weights_daily.reindex(index=price_index, columns=valid_cols).fillna(0.0).to_numpy()
         )
 
-        # Use single optimized kernel implementation
         tc_frac, tc_frac_detailed = detailed_commission_slippage_kernel(
             weights_current=weights_current,
             close_prices=close_arr,
@@ -155,18 +138,53 @@ def calculate_portfolio_returns(
             price_mask=price_mask_arr,
         )
 
-        # transaction_costs: per-day total fraction of portfolio value
-        # per_asset_transaction_costs: per-day, per-asset fraction matrix
         transaction_costs = pd.Series(tc_frac, index=price_index, dtype=float)
         per_asset_transaction_costs = pd.DataFrame(
             tc_frac_detailed, index=price_index, columns=valid_cols
         )
 
-        gross_returns_series = (weights_for_returns * aligned_rets_daily).sum(axis=1)
-
-        returns_net_of_costs = pd.Series(
-            gross_returns_series - transaction_costs, index=price_index
+        # --- Return simulation (fast + realistic): drift weights between rebalances ---
+        w_for_returns = (
+            weights_daily.reindex(index=price_index, columns=valid_cols)
+            .fillna(0.0)
+            .shift(1)
+            .fillna(0.0)
+            .to_numpy(dtype=np.float32)
         )
+        r = (
+            aligned_rets_daily.reindex(index=price_index, columns=valid_cols)
+            .fillna(0.0)
+            .to_numpy(dtype=np.float32)
+        )
+        m = ~np.isnan(r)
+
+        gross_arr = drifting_weights_returns_kernel(w_for_returns, r, m)
+        gross_returns_series = pd.Series(gross_arr, index=price_index, dtype=float)
+
+        returns_net_of_costs = (gross_returns_series - transaction_costs).astype(float)
+
+        # Optional, compact diagnostics (kept small by design)
+        merged_flags: dict = {}
+        if isinstance(global_config, dict):
+            merged_flags.update(global_config.get("feature_flags", {}) or {})
+        merged_flags.update(scenario_config.get("feature_flags", {}) or {})
+        if bool(merged_flags.get("pnl_sanity", False)):
+            w_sums = (
+                weights_daily.reindex(index=price_index, columns=valid_cols).fillna(0.0).sum(axis=1)
+            )
+            logger.info(
+                "[PnL sanity] tickers=%d weights_sum[min=%.4f max=%.4f] ret[min=%.4f max=%.4f] tc_max=%.6f",
+                len(valid_cols),
+                float(w_sums.min()) if len(w_sums) else float("nan"),
+                float(w_sums.max()) if len(w_sums) else float("nan"),
+                float(returns_net_of_costs.min()) if len(returns_net_of_costs) else float("nan"),
+                float(returns_net_of_costs.max()) if len(returns_net_of_costs) else float("nan"),
+                (
+                    float(transaction_costs.max())
+                    if transaction_costs is not None and len(transaction_costs)
+                    else float("nan")
+                ),
+            )
 
     else:
         # The fallback path has been intentionally removed.
@@ -489,7 +507,7 @@ def _track_trades_and_populate(
     # Call the new kernel to get completed trade data
     n_days, n_assets = positions.shape
     max_trades = n_days * n_assets
-    
+
     completed_trades_buffer = np.zeros(
         max_trades,
         dtype=[
@@ -503,7 +521,7 @@ def _track_trades_and_populate(
             ("commission", "f8"),
         ],
     )
-    
+
     open_positions_buffer = np.zeros(
         n_assets,
         dtype=[
@@ -524,7 +542,7 @@ def _track_trades_and_populate(
         out_trades=completed_trades_buffer,
         out_open_pos=open_positions_buffer,
     )
-    
+
     completed_trades_arr = completed_trades_buffer[:trade_count]
 
     # Convert kernel output to DataFrames for the TradeTracker

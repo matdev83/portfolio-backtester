@@ -225,12 +225,12 @@ class PopulationDiversityManager:
 
         # Select a random subset of parameters to mutate (25-75% of parameters)
         param_names = list(self.parameter_space.keys())
-        num_params_to_mutate = max(
+        num_params_to_mutate = int(max(
             1,
-            rng.integers(
+            int(rng.integers(
                 low=max(1, len(param_names) // 4), high=max(2, (len(param_names) * 3) // 4)
-            ),
-        )
+            )),
+        ))
 
         params_to_mutate = rng.choice(param_names, size=num_params_to_mutate, replace=False)
 
@@ -338,7 +338,10 @@ class PopulationDiversityManager:
         
         while len(diversified_population) < len(population) and attempts < max_attempts:
             # Pick a random base individual to diversify
-            base_individual = rng.choice(list(unique_individuals.values()))
+            candidates = list(unique_individuals.values())
+            # Use index selection to avoid numpy typing issues with object arrays of dicts
+            idx = int(rng.integers(0, len(candidates)))
+            base_individual = candidates[idx]
             candidate = self.diversify_individual(base_individual, rng)
 
             # Check if the diversified individual is unique enough

@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import seaborn as sns
 from scipy import stats
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, cast
 import logging
 from pathlib import Path
 
@@ -227,8 +227,8 @@ class SyntheticDataVisualInspector:
             skewness_val = float(_comp_skew(returns.values))
             kurtosis_val = float(_comp_kurt(returns.values))
         except Exception:
-            skewness_val = returns.skew()
-            kurtosis_val = returns.kurtosis()
+            skewness_val = cast(float, returns.skew())
+            kurtosis_val = cast(float, returns.kurtosis())
 
         return {
             "mean": returns.mean(),
@@ -271,13 +271,14 @@ class SyntheticDataVisualInspector:
             # Anderson-Darling test
             try:
                 ad_stat, ad_crit, ad_sig = stats.anderson_ksamp([historical_returns, synth_returns])
-                path_tests["anderson_darling"] = {
+                ad_results: Dict[str, Any] = {
                     "statistic": np.float64(ad_stat),
                     "critical_values": (
                         ad_crit.tolist() if hasattr(ad_crit, "tolist") else list(ad_crit)
-                    ),  # type: ignore[dict-item]
+                    ),
                     "significance_level": np.float64(ad_sig),
                 }
+                path_tests["anderson_darling"] = ad_results
             except Exception:
                 path_tests["anderson_darling"] = {}
 

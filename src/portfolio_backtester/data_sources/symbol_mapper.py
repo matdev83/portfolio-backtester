@@ -49,20 +49,76 @@ _SPECIAL_SYMBOL_MAP: dict[str, str] = {
 
 # Known NASDAQ-listed stocks (for exchange prefix assignment)
 _NASDAQ_STOCKS: set[str] = {
-    "AAPL", "ADBE", "AMGN", "AMZN", "AVGO", "CMCSA", "COST", "CSCO",
-    "GOOG", "GOOGL", "HON", "INTC", "INTU", "META", "MSFT", "NFLX",
-    "NVDA", "PEP", "QCOM", "TSLA", "TXN", "WBA",
+    "AAPL",
+    "ADBE",
+    "AMGN",
+    "AMZN",
+    "AVGO",
+    "CMCSA",
+    "COST",
+    "CSCO",
+    "GOOG",
+    "GOOGL",
+    "HON",
+    "INTC",
+    "INTU",
+    "META",
+    "MSFT",
+    "NFLX",
+    "NVDA",
+    "PEP",
+    "QCOM",
+    "TSLA",
+    "TXN",
+    "WBA",
+    # Additional NASDAQ top components
+    "AMD",
+    "LRCX",
+    "MU",
+    "AMAT",
+    "ADI",
+    "KLAC",
+    "SNPS",
     # Add QQQ and NASDAQ ETFs
-    "QQQ", "QQQE", "TQQQ", "SQQQ",
+    "QQQ",
+    "QQQE",
+    "TQQQ",
+    "SQQQ",
 }
 
 # Known AMEX-listed ETFs
 _AMEX_ETFS: set[str] = {
-    "SPY", "IWM", "DIA", "RSP", "GLD", "SLV", "VTI", "VEA", "VWO",
-    "XLB", "XLE", "XLF", "XLI", "XLP", "XLU", "XLV", "XLK", "XLY", "XLRE",
-    "UVXY", "SVXY", "VXX", "VIXY",
-    "TLT", "IEF", "SHY", "BND", "AGG",
-    "EEM", "EFA", "IEMG",
+    "SPY",
+    "IWM",
+    "DIA",
+    "RSP",
+    "GLD",
+    "SLV",
+    "VTI",
+    "VEA",
+    "VWO",
+    "XLB",
+    "XLE",
+    "XLF",
+    "XLI",
+    "XLP",
+    "XLU",
+    "XLV",
+    "XLK",
+    "XLY",
+    "XLRE",
+    "UVXY",
+    "SVXY",
+    "VXX",
+    "VIXY",
+    "TLT",
+    "IEF",
+    "SHY",
+    "BND",
+    "AGG",
+    "EEM",
+    "EFA",
+    "IEMG",
 }
 
 # Reverse mapping cache for canonical -> local
@@ -75,9 +131,18 @@ def _build_reverse_map() -> None:
     if _REVERSE_MAP:
         return
     for local, canonical in _SPECIAL_SYMBOL_MAP.items():
-        # Prefer simpler forms (without ^) for reverse mapping
-        if canonical not in _REVERSE_MAP or not local.startswith("^"):
+        # Prefer the *clean* (non-yfinance) symbol for reverse mapping, e.g.
+        # canonical SP:SPX -> local SPX (not ^GSPC).
+        if canonical not in _REVERSE_MAP:
             _REVERSE_MAP[canonical] = local
+            continue
+
+        existing = _REVERSE_MAP[canonical]
+        if existing.startswith("^") and not local.startswith("^"):
+            _REVERSE_MAP[canonical] = local
+
+    # Explicit preference to keep behavior stable across dict-order differences
+    _REVERSE_MAP["SP:SPX"] = "SPX"
 
 
 @lru_cache(maxsize=4096)
@@ -116,11 +181,15 @@ def to_canonical_id(ticker: str) -> str:
 
     # 3. Try MDMP registry lookup (if available)
     try:
-        from market_data_multi_provider import get_symbol
+        from market_data_multi_provider import get_symbol  # type: ignore[import-untyped]
 
         spec = get_symbol(ticker_upper)
         if spec is not None:
-            return spec.symbol_id
+            # In some test environments the MDMP dependency can be stubbed/mocked.
+            # Only trust results that look like a real canonical symbol id.
+            symbol_id = getattr(spec, "symbol_id", spec)
+            if isinstance(symbol_id, str) and ":" in symbol_id:
+                return symbol_id
     except ImportError:
         pass  # MDMP not installed, continue with static mapping
     except Exception as e:

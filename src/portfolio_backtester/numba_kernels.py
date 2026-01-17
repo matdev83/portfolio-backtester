@@ -63,23 +63,11 @@ def position_and_pnl_kernel(
     rets: np.ndarray,  # [T, N]
     mask: np.ndarray,  # [T, N], True where rets valid
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Compute daily gross portfolio return (using weights_for_returns),
-    equity curve (cumprod of 1+ret), and per-day turnover.
-
-    Returns:
-      daily_gross: [T]
-      equity_curve: [T]
-      turnover: [T] (sum of per-asset abs weight changes)
-    """
-    # Daily gross portfolio returns
+    """Compute daily gross portfolio return, equity curve, and per-day turnover."""
     daily_gross = _masked_weighted_sum(rets, weights_for_returns, mask)
-
-    # Equity curve
     equity_curve = _cumprod_1p(daily_gross)
 
-    # Turnover from weights_for_turnover = current weights
-    weights_diff = _weights_diff_abs(weights_for_returns)  # same shape
+    weights_diff = _weights_diff_abs(weights_for_returns)
     T, N = weights_for_returns.shape
     turnover = np.zeros(T, dtype=weights_for_returns.dtype)
     for i in range(T):
@@ -89,6 +77,70 @@ def position_and_pnl_kernel(
         turnover[i] = s
 
     return daily_gross, equity_curve, turnover
+
+
+@njit(cache=True, fastmath=False)
+def drifting_weights_returns_kernel(
+    target_weights_for_returns: np.ndarray,  # [T, N] target weights (typically shifted by 1 day)
+    rets: np.ndarray,  # [T, N]
+    mask: np.ndarray,  # [T, N]
+    eps: float = 1e-9,
+) -> np.ndarray:
+    """Compute daily gross returns assuming buy-and-hold between rebalance dates.
+
+    The key idea:
+    - On days when the target weights change, we rebalance to those target weights.
+    - On other days, we hold shares constant, so weights drift with returns.
+
+    This avoids the unrealistic "daily rebalance" effect that can inflate results.
+
+    Args:
+        target_weights_for_returns: Target weights applied to returns on each day.
+            In the surrounding code, this should typically be `weights_daily.shift(1)`.
+        rets: Daily asset returns.
+        mask: Valid-return mask.
+        eps: Threshold for detecting a rebalance (weight changes).
+
+    Returns:
+        Daily gross portfolio returns, shape [T]. First element is 0.0.
+    """
+    T, N = target_weights_for_returns.shape
+    out = np.zeros(T, dtype=rets.dtype)
+
+    # Current drifting weights (interpreted as fractions of equity, can be <0 or >1)
+    w = np.empty(N, dtype=rets.dtype)
+    for j in range(N):
+        w[j] = target_weights_for_returns[0, j]
+
+    for i in range(1, T):
+        # Detect rebalance: any weight changed materially
+        rebalance = False
+        for j in range(N):
+            if abs(target_weights_for_returns[i, j] - target_weights_for_returns[i - 1, j]) > eps:
+                rebalance = True
+                break
+        if rebalance:
+            for j in range(N):
+                w[j] = target_weights_for_returns[i, j]
+
+        # Compute daily gross return using current weights and today's returns
+        gross = 0.0
+        for j in range(N):
+            if mask[i, j]:
+                gross += w[j] * rets[i, j]
+        out[i] = gross
+
+        # Drift weights forward (shares held constant) via weight evolution:
+        # w_{t+1} = w_t * (1 + r_t) / (1 + gross)
+        denom = 1.0 + gross
+        if denom <= eps:
+            # Pathological: portfolio value collapsed; keep weights unchanged to avoid blow-ups
+            continue
+        for j in range(N):
+            r = rets[i, j] if mask[i, j] else 0.0
+            w[j] = w[j] * (1.0 + r) / denom
+
+    return out
 
 
 # NumPy fallback function removed - using only optimized Numba implementation
@@ -166,66 +218,85 @@ def trade_tracking_kernel(
     price_mask: np.ndarray,  # [T, N] boolean mask for valid prices
     commissions: np.ndarray,  # [T, N] detailed commission costs as fraction of portfolio
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Vectorized trade tracking with dynamic capital allocation.
+    """Vectorized trade tracking with realistic rebalancing semantics.
+
+    Critical: weights are interpreted as **target weights on rebalancing dates**.
+    Between rebalances, the portfolio holds shares constant and weights drift with prices.
+
     Args:
-        initial_portfolio_value (float): Starting value.
-        allocation_mode (int): 0 for 'reinvestment', 1 for 'fixed'.
-        weights (np.ndarray): Daily target weights.
-        prices (np.ndarray): Daily close prices.
-        price_mask (np.ndarray): Mask for valid prices.
-        commissions (np.ndarray): Per-asset, per-day commission/slippage cost fraction.
+        initial_portfolio_value: Starting value.
+        allocation_mode: 0 for 'reinvestment'/compounding, 1 for 'fixed' capital base.
+        weights: Daily target weights (typically ffilled across non-rebalance days).
+        prices: Daily close prices.
+        price_mask: Mask for valid prices.
+        commissions: Per-asset, per-day commission/slippage **fraction**.
+
     Returns:
-        Tuple[np.ndarray, np.ndarray, np.ndarray]:
-            - portfolio_values (np.ndarray): [T] daily total portfolio value.
-            - cash_values (np.ndarray): [T] daily cash value.
-            - positions (np.ndarray): [T, N] daily asset quantities (shares).
+        (portfolio_values, cash_values, positions)
     """
     T, N = weights.shape
     portfolio_values = np.zeros(T, dtype=np.float64)
     cash_values = np.zeros(T, dtype=np.float64)
     positions = np.zeros((T, N), dtype=np.float64)
 
-    # Initialization
-    portfolio_values[0] = initial_portfolio_value
-    cash_values[0] = initial_portfolio_value
+    # --- Day 0: open initial positions from cash ---
     capital_base = initial_portfolio_value
+    current_prices0 = prices[0]
+    current_mask0 = price_mask[0]
 
-    for i in range(T):
-        if i > 0:
-            # --- Valuation Stage (Start of Day) ---
-            last_positions = positions[i - 1]
-            current_prices = prices[i]
-            current_mask = price_mask[i]
+    target_weights0 = weights[0]
+    target_dollar_values0 = target_weights0 * capital_base
+    safe_prices0 = np.where(current_prices0 > 0, current_prices0, 1.0)
+    target_positions0 = (target_dollar_values0 / safe_prices0) * current_mask0
 
-            # VECTORIZED VALUATION
-            market_value_of_holdings = np.sum(last_positions * current_prices * current_mask)
-            portfolio_values[i] = cash_values[i - 1] + market_value_of_holdings
+    positions[0] = target_positions0
 
-            # Determine capital base for new trades based on allocation mode
-            if allocation_mode == 0:  # Reinvestment
-                capital_base = portfolio_values[i]
+    holdings_value0 = np.sum(positions[0] * current_prices0 * current_mask0)
+    total_commission_cost0 = np.sum(commissions[0] * capital_base * current_mask0)
+    cash_values[0] = capital_base - holdings_value0 - total_commission_cost0
+    portfolio_values[0] = cash_values[0] + holdings_value0
 
-        # --- Rebalancing Stage (End of Day) ---
-        target_weights = weights[i]
+    eps = 1e-9
+
+    for i in range(1, T):
+        # --- Valuation Stage (Start of Day) ---
+        last_positions = positions[i - 1]
         current_prices = prices[i]
         current_mask = price_mask[i]
 
-        # VECTORIZED REBALANCING
-        target_dollar_values = target_weights * capital_base
+        holdings_value = np.sum(last_positions * current_prices * current_mask)
+        portfolio_values[i] = cash_values[i - 1] + holdings_value
 
-        # Guard against division by zero
+        # Default: no trades => positions and cash unchanged
+        positions[i] = last_positions
+        cash_values[i] = cash_values[i - 1]
+
+        # Determine capital base for new trades based on allocation mode
+        if allocation_mode == 0:  # reinvestment
+            capital_base = portfolio_values[i]
+
+        # Rebalance only if weights changed meaningfully day-over-day
+        rebalance = False
+        for j in range(N):
+            if abs(weights[i, j] - weights[i - 1, j]) > eps:
+                rebalance = True
+                break
+        if not rebalance:
+            continue
+
+        # --- Rebalancing Stage (End of Day) ---
+        target_weights = weights[i]
+        target_dollar_values = target_weights * capital_base
         safe_prices = np.where(current_prices > 0, current_prices, 1.0)
         target_positions = (target_dollar_values / safe_prices) * current_mask
 
         positions[i] = target_positions
 
-        # VECTORIZED COST CALCULATION
-        new_market_value = np.sum(positions[i] * current_prices * current_mask)
+        new_holdings_value = np.sum(positions[i] * current_prices * current_mask)
         total_commission_cost = np.sum(commissions[i] * capital_base * current_mask)
 
-        # Update cash
-        cash_values[i] = capital_base - new_market_value - total_commission_cost
+        cash_values[i] = portfolio_values[i] - new_holdings_value - total_commission_cost
+        portfolio_values[i] = cash_values[i] + new_holdings_value
 
     return portfolio_values, cash_values, positions
 
@@ -258,10 +329,10 @@ def trade_lifecycle_kernel(
 
     # Reset open positions buffer
     # It is assumed out_open_pos is initialized to zeros or doesn't matter,
-    # but strictly we should zero it out if it's reused. 
-    # Here we assume caller provides clean or valid buffer. 
+    # but strictly we should zero it out if it's reused.
+    # Here we assume caller provides clean or valid buffer.
     # For safety in this kernel loop we rely on "is_open" flag which is false by default if zeros.
-    
+
     # We can iterate and clear if needed, but assuming zeros from caller is standard for Numba kernels.
 
     for i in range(1, n_days):  # Start from the second day
@@ -284,16 +355,16 @@ def trade_lifecycle_kernel(
 
                 if is_reducing_or_flipping:
                     # We are closing the existing position (fully or partially) and potentially reopening
-                    
+
                     # Calculate commission split based on virtual volumes
                     total_virtual_vol = abs(prev_pos) + abs(current_pos)
                     comm_close = 0.0
                     comm_open = 0.0
                     if total_virtual_vol > 1e-9:
-                         comm_close = commission * (abs(prev_pos) / total_virtual_vol)
-                         comm_open = commission * (abs(current_pos) / total_virtual_vol)
+                        comm_close = commission * (abs(prev_pos) / total_virtual_vol)
+                        comm_open = commission * (abs(current_pos) / total_virtual_vol)
                     else:
-                         comm_close = commission
+                        comm_close = commission
 
                     out_trades[trade_count]["ticker_idx"] = j
                     out_trades[trade_count]["entry_date"] = out_open_pos[j]["entry_date"]

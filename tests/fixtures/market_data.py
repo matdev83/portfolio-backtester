@@ -7,7 +7,7 @@ various market data patterns used across different test scenarios.
 
 import pandas as pd
 import numpy as np
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 from functools import lru_cache
 
 
@@ -52,7 +52,7 @@ class MarketDataFixture:
         fields = ["Open", "High", "Low", "Close", "Volume"]
         columns = pd.MultiIndex.from_product([tickers, fields], names=["Ticker", "Field"])
 
-        data = {}
+        data: Dict[Tuple[str, str], List[float]] = {}
 
         for ticker in tickers:
             # Generate price series with random walk
@@ -110,7 +110,7 @@ class MarketDataFixture:
         fields = ["Open", "High", "Low", "Close", "Volume"]
         columns = pd.MultiIndex.from_product([tickers, fields], names=["Ticker", "Field"])
 
-        data = {}
+        data: Dict[Tuple[str, str], List[float]] = {}
 
         for ticker in tickers:
             # Define trend characteristics
@@ -175,7 +175,7 @@ class MarketDataFixture:
         fields = ["Open", "High", "Low", "Close", "Volume"]
         columns = pd.MultiIndex.from_product([tickers, fields], names=["Ticker", "Field"])
 
-        data = {}
+        data: Dict[Tuple[str, str], List[float]] = {}
 
         for ticker in tickers:
             # High volatility returns
@@ -239,7 +239,7 @@ class MarketDataFixture:
         fields = ["Open", "High", "Low", "Close", "Volume"]
         columns = pd.MultiIndex.from_product([tickers, fields], names=["Ticker", "Field"])
 
-        data = {}
+        data: Dict[Tuple[str, str], List[float]] = {}
 
         for ticker in tickers:
             # Low volatility with mean reversion
@@ -317,7 +317,7 @@ class MarketDataFixture:
         for ret in returns[1:]:
             prices.append(prices[-1] * (1 + ret))
 
-        data = {}
+        data: Dict[Tuple[str, str], List[float]] = {}
 
         for i, date in enumerate(date_range):
             close_price = prices[i]
@@ -369,7 +369,7 @@ class MarketDataFixture:
         missing_dates_parsed = pd.to_datetime(missing_dates)
 
         if tickers is None:
-            tickers = data.columns.get_level_values("Ticker").unique()
+            tickers = list(data.columns.get_level_values("Ticker").unique())
 
         for date in missing_dates_parsed:
             if date in data_with_nans.index:

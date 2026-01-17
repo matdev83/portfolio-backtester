@@ -8,7 +8,6 @@ try:
     _HAS_NUMBA_MOMENTS = True
 except Exception:
     from scipy.stats import skew
-    from scipy.stats import kurtosis as _scipy_kurtosis
     _HAS_NUMBA_MOMENTS = False
 
 logger = logging.getLogger(__name__)

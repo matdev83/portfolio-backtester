@@ -57,7 +57,7 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
                 Set to None to disable coverage checks (default).
         """
         try:
-            from market_data_multi_provider import MarketDataClient
+            from market_data_multi_provider import MarketDataClient  # type: ignore[import-untyped]
         except ImportError as e:
             raise ImportError(
                 "market-data-multi-provider is not installed. "

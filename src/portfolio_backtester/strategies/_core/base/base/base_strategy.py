@@ -969,103 +969,110 @@ class BaseStrategy(ABC):
         current_date: pd.Timestamp,
         min_periods_override: Optional[int] = None,
     ) -> List[str]:
-        """
-        Filter the universe to only include assets that have sufficient historical data
-        as of the current date. This handles cases where stocks were not yet listed
-        or have been delisted.
+        """Filter the universe to assets with sufficient data as of current_date.
 
-        Args:
-            all_historical_data: DataFrame with historical data for universe assets
-            current_date: The date for which we're checking data availability
-            min_periods_override: Override minimum periods requirement (default: use strategy requirement)
+        Performance note:
+        The previous implementation performed an expensive per-asset slice (xs/column
+        selection) inside a Python loop, repeated for every evaluation date.
+        That becomes prohibitively slow for large survivorship-bias-free universes.
 
-        Returns:
-            list: List of assets that have sufficient data
+        This implementation vectorizes the key checks and caches per-date results:
+        - **Recency**: asset has at least one non-NaN close in [current_date-30d, current_date]
+        - **History**: asset's first valid close is at least min_periods_required months before current_date
         """
         min_periods_required = min_periods_override or self.get_minimum_required_periods()
 
         if all_historical_data.empty:
             return []
 
-        # Filter data up to current_date
-        available_data = all_historical_data[all_historical_data.index <= current_date]
-        if available_data.empty:
+        # Normalize current_date to match index comparisons
+        current_date = pd.Timestamp(current_date)
+
+        # Cache per (data_identity, current_date, min_periods_required)
+        cache_key = (
+            id(all_historical_data),
+            current_date.normalize(),
+            int(min_periods_required),
+        )
+        cache = getattr(self, "_data_availability_cache", None)
+        if cache is None:
+            cache = {}
+            setattr(self, "_data_availability_cache", cache)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
+
+        # Extract close price matrix (tickers as columns)
+        if isinstance(all_historical_data.columns, pd.MultiIndex):
+            if "Close" not in all_historical_data.columns.get_level_values("Field"):
+                return []
+            close_df = all_historical_data.xs("Close", level="Field", axis=1)
+        else:
+            close_df = all_historical_data
+
+        if close_df.empty:
+            cache[cache_key] = []
             return []
 
-        valid_assets = []
+        # If current_date is beyond the available index, clamp to last index
+        if current_date > close_df.index.max():
+            current_date = pd.Timestamp(close_df.index.max())
 
-        # Get asset list based on column structure
-        if isinstance(all_historical_data.columns, pd.MultiIndex):
-            # MultiIndex columns - get unique tickers
-            asset_list = all_historical_data.columns.get_level_values("Ticker").unique()
+        # 1) Recency check (vectorized): any non-NaN close in last 30 days
+        window_start = current_date - pd.Timedelta(days=30)
+        recent_window = close_df.loc[window_start:current_date]
+        if recent_window.empty:
+            cache[cache_key] = []
+            return []
+        has_recent = recent_window.notna().any(axis=0)
+
+        # 2) First-valid date per asset (computed once per dataset/strategy)
+        bounds_key = (id(all_historical_data), tuple(close_df.columns))
+        bounds_cache = getattr(self, "_data_availability_bounds", None)
+        if bounds_cache is None:
+            bounds_cache = {}
+            setattr(self, "_data_availability_bounds", bounds_cache)
+
+        if bounds_key not in bounds_cache:
+            first_valid = close_df.apply(lambda s: s.first_valid_index())
+            bounds_cache[bounds_key] = first_valid
         else:
-            # Simple columns - column names are tickers
-            asset_list = all_historical_data.columns
+            first_valid = bounds_cache[bounds_key]
 
-        for asset in asset_list:
-            try:
-                # Extract asset data
-                if isinstance(all_historical_data.columns, pd.MultiIndex):
-                    # For MultiIndex, get all fields for this ticker
-                    asset_data = available_data.xs(asset, level="Ticker", axis=1, drop_level=False)
-                    # Check if we have Close prices (most important)
-                    if (asset, "Close") in asset_data.columns:
-                        asset_prices = asset_data[(asset, "Close")].dropna()
-                    else:
-                        continue  # Skip if no Close prices
-                else:
-                    # Simple column structure
-                    if asset not in available_data.columns:
-                        continue
-                    asset_prices = available_data[asset].dropna()
+        # Convert to timestamps and compute months available
+        first_valid_ts = pd.to_datetime(first_valid)
+        # Assets with no valid date are excluded
+        first_valid_ts = first_valid_ts.where(first_valid_ts.notna(), other=pd.NaT)
 
-                # Check if asset has sufficient data
-                if len(asset_prices) == 0:
-                    continue  # No data for this asset
+        # available_months = (Ydiff*12 + Mdiff)
+        available_months = (current_date.year - first_valid_ts.dt.year) * 12 + (
+            current_date.month - first_valid_ts.dt.month
+        )
 
-                # Check data availability period
-                asset_earliest = asset_prices.index.min()
-                asset_latest = asset_prices.index.max()
+        enough_history = available_months >= int(min_periods_required)
 
-                # Skip if asset data doesn't reach current date (delisted or data gap)
-                if asset_latest < current_date - pd.DateOffset(days=30):  # Allow 30-day lag
-                    continue
+        valid_mask = has_recent & enough_history
+        valid_assets = [str(t) for t, ok in valid_mask.items() if bool(ok)]
 
-                # Calculate available months for this asset
-                available_months = (current_date.year - asset_earliest.year) * 12 + (
-                    current_date.month - asset_earliest.month
+        total_assets = int(valid_mask.shape[0])
+        if len(valid_assets) == 0:
+            if logger.isEnabledFor(logging.ERROR):
+                logger.error(
+                    "No assets have sufficient data for %s - all %d assets excluded",
+                    current_date.strftime("%Y-%m-%d"),
+                    total_assets,
+                )
+        else:
+            excluded_count = total_assets - len(valid_assets)
+            exclusion_rate = excluded_count / max(total_assets, 1)
+            if exclusion_rate > 0.5 and logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "High asset exclusion rate: %d/%d assets have sufficient data for %s (%.1f%% excluded)",
+                    len(valid_assets),
+                    total_assets,
+                    current_date.strftime("%Y-%m-%d"),
+                    exclusion_rate * 100.0,
                 )
 
-                # Check if asset has minimum required data
-                if available_months >= min_periods_required:
-                    valid_assets.append(asset)
-
-            except Exception as e:
-                # Skip assets that cause errors in data processing
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Skipping asset {asset} due to data processing error: {e}")
-                continue
-
-        if len(valid_assets) < len(asset_list):
-            excluded_count = len(asset_list) - len(valid_assets)
-            exclusion_rate = excluded_count / len(asset_list)
-
-            # Only log if there are significant issues
-            if len(valid_assets) == 0:
-                if logger.isEnabledFor(logging.ERROR):
-                    logger.error(
-                        f"No assets have sufficient data for {current_date.strftime('%Y-%m-%d')} - all {len(asset_list)} assets excluded"
-                    )
-            elif exclusion_rate > 0.5:  # More than 50% excluded
-                if logger.isEnabledFor(logging.WARNING):
-                    logger.warning(
-                        f"High asset exclusion rate: {len(valid_assets)}/{len(asset_list)} assets have sufficient data for {current_date.strftime('%Y-%m-%d')} ({exclusion_rate:.1%} excluded)"
-                    )
-                # Also log at debug level when filtered universe is less than 50% of original
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(
-                        f"Filtered universe: {len(valid_assets)}/{len(asset_list)} assets have sufficient data for {current_date.strftime('%Y-%m-%d')} (excluded {excluded_count} assets)"
-                    )
-            # Remove the else clause - no debug logging for normal filtering (exclusion_rate <= 50%)
-
+        cache[cache_key] = valid_assets
         return valid_assets

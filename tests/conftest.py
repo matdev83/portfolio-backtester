@@ -71,6 +71,7 @@ def pytest_collection_modifyitems(config, items):
     tests_root = Path(__file__).parent
 
     def add_dir_markers(parts: tuple[str, ...], item):
+        is_code_quality = "code_quality" in str(item.fspath).lower()
         if "unit" in parts:
             item.add_marker(pytest.mark.unit)
             item.add_marker(pytest.mark.fast)
@@ -78,7 +79,8 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.integration)
         elif "system" in parts:
             item.add_marker(pytest.mark.system)
-            item.add_marker(pytest.mark.slow)
+            if not is_code_quality:
+                item.add_marker(pytest.mark.slow)
 
         dir_to_marker = {
             "strategies": pytest.mark.strategy,
@@ -95,17 +97,25 @@ def pytest_collection_modifyitems(config, items):
 
     def add_filename_markers(filename: str, item):
         name = filename.lower()
+        if "code_quality" in name:
+            # Code quality tests should NOT be marked as slow
+            return
         if "integration" in name:
             item.add_marker(pytest.mark.integration)
         if "system" in name or "end_to_end" in name:
             item.add_marker(pytest.mark.system)
+            item.add_marker(pytest.mark.slow)
+        if "performance" in name:
             item.add_marker(pytest.mark.slow)
         if "network" in name or "web" in name:
             item.add_marker(pytest.mark.network)
 
     def add_testname_markers(test_name: str, item):
         name = test_name.lower()
-        if "slow" in name or "performance" in name:
+        # Only mark slow by test name when it is explicitly labeled as such.
+        # Do NOT use broad keywords like "performance" here because many unit tests
+        # legitimately discuss performance metrics without being slow/flaky.
+        if "slow" in name or "benchmark" in name:
             item.add_marker(pytest.mark.slow)
         if "fast" in name or "smoke" in name:
             item.add_marker(pytest.mark.fast)

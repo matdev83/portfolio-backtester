@@ -1,0 +1,52 @@
+name: simple_momentum_small_universe_opt
+strategy: SimpleMomentumPortfolioStrategy
+
+# Keep this intentionally small/fast for debugging/validation
+start_date: "2018-01-01"
+end_date: "2020-12-31"
+
+position_sizer: equal_weight
+rebalance_frequency: ME
+
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+
+train_window_months: 12
+test_window_months: 12
+
+universe_config:
+  type: fixed
+  tickers: [AAPL, MSFT, AMZN, GOOGL, NVDA, TSLA, V, MCD, AVGO, AMD]
+
+benchmark_ticker: SPY
+optimization_metric: Sharpe
+
+feature_flags:
+  pnl_sanity: true
+
+strategy_params:
+  lookback_months: 6
+  num_holdings: 5
+  top_decile_fraction: 0.2
+  smoothing_lambda: 0.5
+  leverage: 1.0
+  skip_months: 0
+
+optimize:
+  - parameter: num_holdings
+    type: int
+    min_value: 3
+    max_value: 8
+    step: 1
+  - parameter: lookback_months
+    type: int
+    min_value: 3
+    max_value: 12
+    step: 3
+  - parameter: skip_months
+    type: int
+    min_value: 0
+    max_value: 2
+    step: 1
+

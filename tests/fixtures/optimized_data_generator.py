@@ -25,7 +25,7 @@ class OptimizedDataGenerator:
     """
 
     # Class-level cache for expensive computations
-    _cache = {}
+    _cache: Dict[str, pd.DataFrame] = {}
 
     @staticmethod
     @lru_cache(maxsize=50)

@@ -1,0 +1,96 @@
+# Dual Momentum with Universe and Lag Strategy - Optimization Configuration
+# 
+# Uses a fixed universe of top S&P 500 components verified to be available in MDMP.
+# This ensures the optimization run completes successfully.
+
+name: dual_momentum_lagged_portfolio_opt
+strategy: DualMomentumLaggedPortfolioStrategy
+
+# Position sizing and timing
+position_sizer: equal_weight
+rebalance_frequency: ME
+
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+
+# Universe: Key S&P 500 components (Tech, Finance, Health, Consumer) + Benchmark
+universe_config:
+  type: fixed
+  tickers:
+    - SPY
+    - AAPL
+    - MSFT
+    - AMZN
+    - GOOGL
+    - META
+    - TSLA
+    - NVDA
+    - JPM
+    - JNJ
+    - V
+    - PG
+    - UNH
+    - MA
+    - HD
+    - CVX
+    - KO
+    - PEP
+    - AVGO
+
+# Benchmark
+benchmark_ticker: SPX
+optimization_metric: Sortino
+
+# Strategy parameters
+strategy_params:
+  # Momentum calculation parameters
+  lookback_months: 12
+  min_absolute_momentum: 0.0
+  
+  # Lag parameters
+  lag_months: 1
+  
+  # Portfolio construction
+  max_holdings: 5  # Smaller universe, so hold fewer
+  
+  # Risk management
+  use_200sma_filter: true
+  sma_period: 200
+  
+  # Trade direction
+  trade_longs: true
+  trade_shorts: false
+
+# Optimization parameters - Comprehensive scan
+optimize:
+  - parameter: lookback_months
+    type: int
+    min_value: 6
+    max_value: 12
+    step: 2
+    
+  - parameter: lag_months
+    type: int
+    min_value: 0
+    max_value: 2
+    step: 1
+    
+  - parameter: max_holdings
+    type: int
+    min_value: 3
+    max_value: 10
+    step: 2
+    
+  - parameter: use_200sma_filter
+    type: categorical
+    choices: [true, false]
+    
+  # Position sizer optimization skipped for speed/simplicity in this run, defaults to equal_weight
+  # but can be enabled if needed.
+  
+  - parameter: min_absolute_momentum
+    type: float
+    min_value: -0.05
+    max_value: 0.05
+    step: 0.05

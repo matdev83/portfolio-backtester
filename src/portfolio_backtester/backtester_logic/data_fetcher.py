@@ -12,6 +12,53 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# --- Universe perf helpers -------------------------------------------------
+
+
+def _coerce_date_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        return str(pd.Timestamp(value).date())
+    except Exception:
+        return None
+
+
+def _collect_sp500_top_components_over_range(
+    *,
+    start_date: str | None,
+    end_date: str | None,
+    n_holdings: int = 50,
+    exact: bool = False,
+) -> list[str]:
+    """Return union of top-N SP500 (SPY holdings) components over month-ends in range.
+
+    This is a targeted performance optimization for dynamic-universe scenarios:
+    instead of fetching OHLCV for every historical SP500 ticker (~1000), we only
+    fetch the tickers that can actually appear in the Top-N during the run.
+    """
+    from portfolio_backtester.universe import get_top_weight_sp500_components
+
+    if start_date is None or end_date is None:
+        # Fall back to empty; caller can decide whether to use full historical list.
+        return []
+
+    start = pd.Timestamp(start_date).normalize()
+    end = pd.Timestamp(end_date).normalize()
+    if end < start:
+        return []
+
+    # Month-end schedule aligns with typical rebalance frequencies (ME)
+    dates = pd.date_range(start=start, end=end, freq="BME")
+    out: set[str] = set()
+    for d in dates:
+        try:
+            out.update(get_top_weight_sp500_components(d, n=n_holdings, exact=exact))
+        except Exception:
+            # Missing holdings for some dates is expected in sparse histories; skip quietly.
+            continue
+    return sorted(out)
+
 
 class DataFetcher:
     """
@@ -56,7 +103,9 @@ class DataFetcher:
                 scenario_has_universe = True
                 if "universe" in scenario_config:
                     try:
-                        from ..interfaces.ticker_collector import TickerCollectorFactory
+                        from portfolio_backtester.interfaces.ticker_collector import (
+                            TickerCollectorFactory,
+                        )
 
                         collector = TickerCollectorFactory.create_collector(
                             scenario_config["universe"]
@@ -67,7 +116,46 @@ class DataFetcher:
                         logger.error(f"Failed to collect universe tickers: {e}")
                 elif "universe_config" in scenario_config:
                     try:
-                        from ..interfaces.ticker_collector import TickerCollectorFactory
+                        # Special-case: dynamic SP500 historical universe is huge; reduce tickers up-front.
+                        ucfg = scenario_config["universe_config"]
+                        if (
+                            isinstance(ucfg, dict)
+                            and ucfg.get("type") == "method"
+                            and ucfg.get("method_name")
+                            in {
+                                # Survivorship-bias-aware: the strategy uses Top-N SP500 by weight
+                                # over time. Prefetching the union over month-ends avoids fetching
+                                # ~1000 historical tickers up-front.
+                                "get_all_historical_sp500_components",
+                                "get_top_weight_sp500_components",
+                            }
+                        ):
+                            start_s = _coerce_date_str(
+                                scenario_config.get("start_date")
+                            ) or _coerce_date_str(self.global_config.get("start_date"))
+                            end_s = _coerce_date_str(
+                                scenario_config.get("end_date")
+                            ) or _coerce_date_str(self.global_config.get("end_date"))
+                            reduced = _collect_sp500_top_components_over_range(
+                                start_date=start_s,
+                                end_date=end_s,
+                                n_holdings=int(ucfg.get("n_holdings", 50)),
+                                exact=bool(ucfg.get("exact", False)),
+                            )
+                            if reduced:
+                                logger.info(
+                                    "Reduced SP500 universe to %d tickers (Top-%d union over %s..%s).",
+                                    len(reduced),
+                                    int(ucfg.get("n_holdings", 50)),
+                                    start_s,
+                                    end_s,
+                                )
+                                all_tickers.update(reduced)
+                                continue
+
+                        from portfolio_backtester.interfaces.ticker_collector import (
+                            TickerCollectorFactory,
+                        )
 
                         collector = TickerCollectorFactory.create_collector(
                             scenario_config["universe_config"]
@@ -222,9 +310,10 @@ class DataFetcher:
             )
             try:
                 # Get minimal data to find the earliest available date
+                # IMPORTANT: honor configured start_date to keep runs fast and bounded.
                 test_data = self.data_source.get_data(
                     tickers=[single_symbol],
-                    start_date="1990-01-01",  # Very early date to get all available data
+                    start_date=str(default_start_date),
                     end_date=self.global_config["end_date"],
                 )
                 if test_data is not None and not test_data.empty:
@@ -249,9 +338,12 @@ class DataFetcher:
 
             try:
                 # Get data for all universe tickers to determine availability
+                # IMPORTANT: honor configured start_date to keep runs fast and bounded.
+                # We only need enough history to find the first date where >50% have data,
+                # and searching before start_date creates unnecessary I/O.
                 test_data = self.data_source.get_data(
                     tickers=list(universe_tickers),
-                    start_date="1990-01-01",  # Very early date to get all available data
+                    start_date=str(default_start_date),
                     end_date=self.global_config["end_date"],
                 )
 

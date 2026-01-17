@@ -1,124 +1,143 @@
 import pytest
 import pandas as pd
 import numpy as np
-from src.portfolio_backtester.backtesting.position_tracker import PositionTracker, Position, Trade
+from portfolio_backtester.backtesting.position_tracker import PositionTracker, Position, Trade
 
-class TestPositionTracker:
+class TestPositionTrackerExtended:
+    """Extended test cases for PositionTracker class."""
+    
     @pytest.fixture
     def tracker(self):
         return PositionTracker()
-
-    @pytest.fixture
-    def sample_prices(self):
-        dates = pd.date_range("2020-01-01", periods=10, freq="B")
-        prices = pd.DataFrame({
-            "AAPL": [100.0, 101.0, 102.0, 103.0, 102.0, 105.0, 106.0, 107.0, 108.0, 109.0],
-            "MSFT": [200.0, 202.0, 204.0, 201.0, 205.0, 208.0, 210.0, 212.0, 215.0, 218.0]
-        }, index=dates)
-        return prices
-
-    def test_open_position(self, tracker, sample_prices):
-        date = sample_prices.index[0]
-        signals = pd.DataFrame({"AAPL": [0.5]}, index=[date])
+    
+    def test_partial_exit(self, tracker):
+        """Test partial exit of a position."""
+        dates = pd.DatetimeIndex(["2025-01-01", "2025-01-02", "2025-01-03"])
         
-        weights = tracker.update_positions(signals, date, sample_prices)
+        # Day 1: Open full position
+        signals_open = pd.DataFrame({"TLT": [1.0]}, index=[dates[0]])
+        tracker.update_positions(signals_open, dates[0])
         
-        assert "AAPL" in tracker.current_positions
-        pos = tracker.current_positions["AAPL"]
-        assert pos.weight == 0.5
-        assert pos.entry_price == 100.0
-        assert pos.entry_date == date
+        assert tracker.current_positions["TLT"].weight == 1.0
         
-        assert weights["AAPL"] == 0.5
-
-    def test_close_position_and_pnl(self, tracker, sample_prices):
-        # Open
-        date_open = sample_prices.index[0]
-        tracker.update_positions(pd.DataFrame({"AAPL": [0.5]}, index=[date_open]), date_open, sample_prices)
+        # Day 2: Reduce position to 0.5 (Partial Exit - technically an adjustment in this tracker)
+        # Note: The current PositionTracker logic treats adjustments as updating the weight,
+        # but does NOT create a Trade record for the partial closure.
+        # It only creates a Trade record when weight goes to 0 (or crosses 0, effectively close & reopen).
+        signals_partial = pd.DataFrame({"TLT": [0.5]}, index=[dates[1]])
+        tracker.update_positions(signals_partial, dates[1])
         
-        # Close
-        date_close = sample_prices.index[5] # Price 105.0
-        # Signal 0.0 means close
-        tracker.update_positions(pd.DataFrame({"AAPL": [0.0]}, index=[date_close]), date_close, sample_prices)
+        assert tracker.current_positions["TLT"].weight == 0.5
+        # No trade should be recorded for partial exit yet based on current logic
+        assert len(tracker.completed_trades) == 0
         
-        assert "AAPL" not in tracker.current_positions
+        # Day 3: Close remainder
+        signals_close = pd.DataFrame({"TLT": [0.0]}, index=[dates[2]])
+        tracker.update_positions(signals_close, dates[2])
+        
+        assert "TLT" not in tracker.current_positions
         assert len(tracker.completed_trades) == 1
         
+        # The recorded trade covers the *entire* lifecycle from original entry date to final exit date
+        # The weight logged is the *current* weight at time of closure (which was 0.5 before closing)
+        # Wait, let's verify logic. _close_position uses `position.weight`.
+        # When we adjusted to 0.5, we updated position.weight.
+        # So the trade record will show entry_weight=0.5 (the weight at time of closure logic).
+        # The entry_date remains the original entry date.
+        
         trade = tracker.completed_trades[0]
-        assert trade.ticker == "AAPL"
-        assert trade.entry_date == date_open
-        assert trade.exit_date == date_close
-        assert trade.entry_weight == 0.5
-        assert trade.exit_weight == 0.0
-        
-        # PnL = (Exit - Entry) / Entry * Weight
-        # (105 - 100) / 100 * 0.5 = 0.05 * 0.5 = 0.025
-        assert trade.pnl == pytest.approx(0.025)
-        
-        # Duration: business days from index[0] to index[5] is 5 days diff
-        # bdate_range includes both ends, so length is 6, -1 = 5
-        assert trade.duration_days == 5
+        assert trade.entry_date == dates[0]
+        assert trade.exit_date == dates[2]
+        assert trade.entry_weight == 0.5 # Updated weight
 
-    def test_adjust_position(self, tracker, sample_prices):
-        date_1 = sample_prices.index[0]
-        tracker.update_positions(pd.DataFrame({"AAPL": [0.5]}, index=[date_1]), date_1, sample_prices)
+    def test_flip_position(self, tracker):
+        """Test flipping from long to short."""
+        dates = pd.DatetimeIndex(["2025-01-01", "2025-01-02"])
         
-        date_2 = sample_prices.index[2]
-        tracker.update_positions(pd.DataFrame({"AAPL": [0.7]}, index=[date_2]), date_2, sample_prices)
+        # Day 1: Long 1.0
+        signals_long = pd.DataFrame({"TLT": [1.0]}, index=[dates[0]])
+        tracker.update_positions(signals_long, dates[0])
         
-        assert tracker.current_positions["AAPL"].weight == 0.7
-        # Entry price/date should remain from INITIAL entry (FIFO/Average logic or just update? implementation updates weight only)
-        # Looking at code: current_position.weight = target_weight. It does NOT update entry_price/date.
-        assert tracker.current_positions["AAPL"].entry_price == 100.0
-        assert tracker.current_positions["AAPL"].entry_date == date_1
+        # Day 2: Short -1.0
+        # This is an adjustment in the current logic, unless we explicitly check for sign change?
+        # Let's see update_positions logic:
+        # It does `current_position.weight = target_weight`
+        # It does NOT close and reopen on sign flip.
+        signals_short = pd.DataFrame({"TLT": [-1.0]}, index=[dates[1]])
+        tracker.update_positions(signals_short, dates[1])
+        
+        pos = tracker.current_positions["TLT"]
+        assert pos.weight == -1.0
+        assert pos.entry_date == dates[0] # Maintains original entry date? Yes.
+        
+        # This confirms current behavior: Sign flips are treated as weight adjustments, not trade lifecycle events.
 
-    def test_daily_weights_tracking(self, tracker, sample_prices):
-        date_1 = sample_prices.index[0]
-        tracker.update_positions(pd.DataFrame({"AAPL": [0.5]}, index=[date_1]), date_1, sample_prices)
+    def test_duplicate_columns_in_signals(self, tracker):
+        """Test handling of duplicate columns in signals DataFrame."""
+        date = pd.Timestamp("2025-01-01")
+        # DataFrame with duplicate columns
+        signals = pd.DataFrame([[1.0, 1.0]], columns=["TLT", "TLT"], index=[date])
         
-        date_2 = sample_prices.index[1]
-        tracker.update_positions(pd.DataFrame({"AAPL": [0.5]}, index=[date_2]), date_2, sample_prices)
+        # Should handle gracefully (e.g. take first, or error handled)
+        # The code has specific handling: `if isinstance(raw_tw, pd.Series): ...`
+        weights = tracker.update_positions(signals, date)
         
-        df = tracker.get_daily_weights_df()
-        assert len(df) == 2
-        assert "AAPL" in df.columns
-        assert df.iloc[0]["AAPL"] == 0.5
-        assert df.iloc[1]["AAPL"] == 0.5
+        assert "TLT" in tracker.current_positions
+        assert tracker.current_positions["TLT"].weight == 1.0
+        assert len(weights) == 1 # Result series should handle duplicates by deduplication or last-write?
+        # Actually current_weights dict construction overwrites keys, so we get one entry.
 
-    def test_missing_prices(self, tracker):
-        date = pd.Timestamp("2020-01-01")
-        signals = pd.DataFrame({"AAPL": [0.5]}, index=[date])
-        # Pass None for prices
-        tracker.update_positions(signals, date, None)
+    def test_scalar_extraction_robustness(self, tracker):
+        """Test extracting numeric scalars from various inputs."""
+        date = pd.Timestamp("2025-01-01")
         
-        pos = tracker.current_positions["AAPL"]
-        assert pos.entry_price is None
+        # Case 1: Series with single value
+        signals_series = pd.DataFrame({"A": [1.0]}, index=[date])
+        # Force the accessor to return a Series-like object if possible, or just standard DF behavior
         
-        # Close without price
-        tracker.update_positions(pd.DataFrame({"AAPL": [0.0]}, index=[date]), date, None)
+        tracker.update_positions(signals_series, date)
+        assert tracker.current_positions["A"].weight == 1.0
+        
+        # Case 2: NaN handling
+        signals_nan = pd.DataFrame({"B": [np.nan]}, index=[date])
+        tracker.update_positions(signals_nan, date)
+        # Nan -> 0.0 -> Close/Do nothing
+        assert "B" not in tracker.current_positions
+
+    def test_get_price_robustness(self, tracker):
+        """Test _get_price with various DataFrame structures."""
+        date = pd.Timestamp("2025-01-01")
+        
+        # Single level
+        prices_single = pd.DataFrame({"A": [100.0]}, index=[date])
+        p = tracker._get_price(prices_single, date, "A")
+        assert p == 100.0
+        
+        p_missing = tracker._get_price(prices_single, date, "B")
+        assert p_missing is None
+        
+        # Multi level
+        cols = pd.MultiIndex.from_tuples([("A", "Close"), ("B", "Open")])
+        prices_multi = pd.DataFrame([[100.0, 50.0]], index=[date], columns=cols)
+        
+        p_multi = tracker._get_price(prices_multi, date, "A")
+        assert p_multi == 100.0
+        
+        p_wrong_field = tracker._get_price(prices_multi, date, "B") # Only "Open" available
+        assert p_wrong_field is None
+
+    def test_trade_pnl_with_missing_prices(self, tracker):
+        """Test trade creation when price data is missing for entry or exit."""
+        dates = pd.DatetimeIndex(["2025-01-01", "2025-01-02"])
+        
+        # Entry with price
+        prices_entry = pd.DataFrame({"A": [100.0]}, index=[dates[0]])
+        signals_entry = pd.DataFrame({"A": [1.0]}, index=[dates[0]])
+        tracker.update_positions(signals_entry, dates[0], prices_entry)
+        
+        # Exit without price
+        signals_exit = pd.DataFrame({"A": [0.0]}, index=[dates[1]])
+        tracker.update_positions(signals_exit, dates[1], prices=None)
+        
         trade = tracker.completed_trades[0]
         assert trade.pnl is None
-
-    def test_multiindex_prices(self, tracker):
-        date = pd.Timestamp("2020-01-01")
-        # MultiIndex columns (Ticker, Field)
-        cols = pd.MultiIndex.from_product([["AAPL"], ["Close", "Open"]])
-        prices = pd.DataFrame([[150.0, 148.0]], index=[date], columns=cols)
-        
-        signals = pd.DataFrame({"AAPL": [1.0]}, index=[date])
-        tracker.update_positions(signals, date, prices)
-        
-        assert tracker.current_positions["AAPL"].entry_price == 150.0
-
-    def test_trade_summary(self, tracker, sample_prices):
-        # Create a profitable trade
-        date_open = sample_prices.index[0]
-        tracker.update_positions(pd.DataFrame({"AAPL": [1.0]}, index=[date_open]), date_open, sample_prices)
-        
-        date_close = sample_prices.index[1] # 100 -> 101 (+1%)
-        tracker.update_positions(pd.DataFrame({"AAPL": [0.0]}, index=[date_close]), date_close, sample_prices)
-        
-        summary = tracker.get_trade_summary()
-        assert summary["total_trades"] == 1
-        assert summary["avg_pnl"] == pytest.approx(0.01)
-        assert summary["max_duration"] == 1.0

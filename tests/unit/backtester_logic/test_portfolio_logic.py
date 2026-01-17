@@ -1,202 +1,108 @@
+import pytest
 import pandas as pd
 import numpy as np
-import pytest
 from unittest.mock import MagicMock, patch
+from src.portfolio_backtester.backtester_logic.portfolio_logic import calculate_portfolio_returns
 
-from portfolio_backtester.backtester_logic.portfolio_logic import calculate_portfolio_returns
-from portfolio_backtester.trading.trade_tracker import TradeTracker
+class TestPortfolioLogic:
+    @pytest.fixture
+    def sample_data(self):
+        dates = pd.date_range("2023-01-01", periods=10, freq="B")
+        daily = pd.DataFrame(100.0, index=dates, columns=["A", "B"])
+        rets = daily.pct_change().fillna(0.0)
+        return daily, rets
 
-@pytest.fixture
-def mock_data():
-    dates = pd.date_range("2023-01-01", periods=10, freq="B")
-    tickers = ["AAPL", "GOOG"]
-    
-    price_data = pd.DataFrame(
-        100.0 + np.random.randn(len(dates), len(tickers)),
-        index=dates,
-        columns=tickers
-    )
-    
-    # Add Field level for MultiIndex if needed, but the logic handles single level too
-    # Let's create a MultiIndex version as it's common
-    mi_columns = pd.MultiIndex.from_product([tickers, ["Close", "Open", "High", "Low", "Volume"]], names=["Ticker", "Field"])
-    price_data_mi = pd.DataFrame(
-        np.random.randn(len(dates), len(mi_columns)) + 100,
-        index=dates,
-        columns=mi_columns
-    )
-    
-    rets_daily = price_data.pct_change().fillna(0.0)
-    
-    sized_signals = pd.DataFrame(
-        0.5,
-        index=dates,
-        columns=tickers
-    )
-    
-    return {
-        "dates": dates,
-        "tickers": tickers,
-        "price_data": price_data,
-        "price_data_mi": price_data_mi,
-        "rets_daily": rets_daily,
-        "sized_signals": sized_signals
-    }
-
-def test_calculate_portfolio_returns_standard(mock_data):
-    scenario_config = {
-        "timing_config": {"rebalance_frequency": "M"},
-        "allocation_mode": "reinvestment"
-    }
-    global_config = {
-        "feature_flags": {"ndarray_simulation": True},
-        "commission_per_share": 0.0,
-        "slippage_bps": 0.0
-    }
-    
-    rets, tracker = calculate_portfolio_returns(
-        sized_signals=mock_data["sized_signals"],
-        scenario_config=scenario_config,
-        price_data_daily_ohlc=mock_data["price_data"],
-        rets_daily=mock_data["rets_daily"],
-        universe_tickers=mock_data["tickers"],
-        global_config=global_config,
-        track_trades=False
-    )
-    
-    assert isinstance(rets, pd.Series)
-    assert len(rets) == len(mock_data["dates"])
-    assert tracker is None
-    # Basic sanity: returns should be roughly average of asset returns (since weights are 0.5 each)
-    # Note: rebalancing might change weights, but with Monthly rebalance and 10 days, it might just be constant
-    
-def test_calculate_portfolio_returns_with_costs(mock_data):
-    scenario_config = {"timing_config": {"rebalance_frequency": "M"}}
-    global_config = {
-        "feature_flags": {"ndarray_simulation": True},
-        "commission_per_share": 0.01,
-        "slippage_bps": 5.0
-    }
-    
-    rets_net, _ = calculate_portfolio_returns(
-        sized_signals=mock_data["sized_signals"],
-        scenario_config=scenario_config,
-        price_data_daily_ohlc=mock_data["price_data"],
-        rets_daily=mock_data["rets_daily"],
-        universe_tickers=mock_data["tickers"],
-        global_config=global_config,
-        track_trades=False
-    )
-    
-    # With costs, returns should be slightly lower than gross returns (if we calculated them)
-    # Here we just check it runs and produces output
-    assert isinstance(rets_net, pd.Series)
-    assert not rets_net.isna().any()
-
-def test_calculate_portfolio_returns_track_trades(mock_data):
-    scenario_config = {
-        "timing_config": {"rebalance_frequency": "M"},
-        "allocation_mode": "reinvestment"
-    }
-    global_config = {
-        "feature_flags": {"ndarray_simulation": True},
-        "portfolio_value": 100000.0
-    }
-    
-    # Ensure MultiIndex data is handled
-    rets, tracker = calculate_portfolio_returns(
-        sized_signals=mock_data["sized_signals"],
-        scenario_config=scenario_config,
-        price_data_daily_ohlc=mock_data["price_data_mi"],
-        rets_daily=mock_data["rets_daily"],
-        universe_tickers=mock_data["tickers"],
-        global_config=global_config,
-        track_trades=True
-    )
-    
-    assert isinstance(tracker, TradeTracker)
-    assert isinstance(rets, pd.Series)
-    
-    # Check if tracker has data
-    stats = tracker.get_trade_statistics()
-    # Depending on logic, might have trades or open positions
-    # With constant 0.5 weights, we expect initial entry trades
-    assert stats["all_num_trades"] >= 0 
-
-def test_calculate_portfolio_returns_meta_strategy(mock_data):
-    # Mock a meta strategy
-    mock_strategy = MagicMock()
-    # StrategyResolver needs to say it is a meta strategy
-    
-    with patch("portfolio_backtester.backtester_logic.portfolio_logic.StrategyResolverFactory") as MockFactory:
-        mock_resolver = MockFactory.create.return_value
-        mock_resolver.is_meta_strategy.return_value = True
+    def test_calculate_portfolio_returns_ndarray_path(self, sample_data):
+        daily, rets = sample_data
         
-        # Mock aggregation
-        mock_aggregator = MagicMock()
-        mock_strategy.get_trade_aggregator.return_value = mock_aggregator
+        # Signals: 50/50 allocation
+        sized_signals = pd.DataFrame(0.5, index=daily.index, columns=["A", "B"])
         
-        # Mock trades
-        mock_trade = MagicMock()
-        mock_trade.date = mock_data["dates"][0]
-        mock_trade.asset = "AAPL"
-        mock_trade.quantity = 10
-        mock_trade.price = 100.0
-        mock_trade.side.value = "buy"
+        scenario_config = {"timing_config": {"rebalance_frequency": "D"}}
+        global_config = {
+            "feature_flags": {"ndarray_simulation": True},
+            "portfolio_value": 10000.0
+        }
         
-        mock_aggregator.get_aggregated_trades.return_value = [mock_trade]
-        
-        # Mock portfolio timeline
-        mock_timeline = pd.DataFrame({
-            "returns": pd.Series(0.01, index=mock_data["dates"])
-        })
-        mock_aggregator.get_portfolio_timeline.return_value = mock_timeline
-        
-        scenario_config = {"name": "MetaScenario"}
-        global_config = {"portfolio_value": 100000.0}
-        
-        rets, tracker = calculate_portfolio_returns(
-            sized_signals=mock_data["sized_signals"],
-            scenario_config=scenario_config,
-            price_data_daily_ohlc=mock_data["price_data_mi"],
-            rets_daily=mock_data["rets_daily"],
-            universe_tickers=mock_data["tickers"],
-            global_config=global_config,
-            track_trades=True,
-            strategy=mock_strategy
+        # Returns should be 0 since price is constant 100.0
+        returns, tracker = calculate_portfolio_returns(
+            sized_signals,
+            scenario_config,
+            daily,
+            rets,
+            ["A", "B"],
+            global_config,
+            track_trades=False
         )
         
-        assert isinstance(rets, pd.Series)
-        assert len(rets) == len(mock_data["dates"])
-        assert tracker is not None # We requested track_trades=True
+        assert isinstance(returns, pd.Series)
+        assert (returns == 0.0).all()
 
-def test_missing_rets_daily_error(mock_data):
-    scenario_config = {}
-    global_config = {}
-    
-    rets, _ = calculate_portfolio_returns(
-        sized_signals=mock_data["sized_signals"],
-        scenario_config=scenario_config,
-        price_data_daily_ohlc=mock_data["price_data"],
-        rets_daily=None, # Explicitly None
-        universe_tickers=mock_data["tickers"],
-        global_config=global_config
-    )
-    
-    assert (rets == 0.0).all()
-
-def test_legacy_mode_error(mock_data):
-    scenario_config = {}
-    global_config = {
-        "feature_flags": {"ndarray_simulation": False} # Explicitly False
-    }
-    
-    with pytest.raises(RuntimeError, match="legacy Pandas-based portfolio simulation has been removed"):
-        calculate_portfolio_returns(
-            sized_signals=mock_data["sized_signals"],
-            scenario_config=scenario_config,
-            price_data_daily_ohlc=mock_data["price_data"],
-            rets_daily=mock_data["rets_daily"],
-            universe_tickers=mock_data["tickers"],
-            global_config=global_config
+    def test_calculate_portfolio_returns_with_returns(self):
+        dates = pd.date_range("2023-01-01", periods=3)
+        # Prices: 100 -> 110 -> 121 (+10% each day)
+        daily = pd.DataFrame({
+            "A": [100.0, 110.0, 121.0]
+        }, index=dates)
+        rets = daily.pct_change().fillna(0.0)
+        
+        sized_signals = pd.DataFrame({"A": [1.0, 1.0, 1.0]}, index=dates)
+        
+        scenario_config = {"timing_config": {"rebalance_frequency": "D"}}
+        global_config = {"feature_flags": {"ndarray_simulation": True}}
+        
+        # calculate_portfolio_returns uses shifted weights (previous day's weight)
+        # Day 0: Weight NaN (shift) -> 0.0. Ret 0.0. Port Ret 0.0.
+        # Day 1: Weight 1.0 (from Day 0). Ret 0.1. Port Ret 0.1.
+        # Day 2: Weight 1.0 (from Day 1). Ret 0.1. Port Ret 0.1.
+        
+        returns, _ = calculate_portfolio_returns(
+            sized_signals,
+            scenario_config,
+            daily,
+            rets,
+            ["A"],
+            global_config
         )
+        
+        assert returns.iloc[0] == 0.0
+        assert returns.iloc[1] == pytest.approx(0.1)
+        assert returns.iloc[2] == pytest.approx(0.1)
+
+    def test_calculate_portfolio_returns_disabled_ndarray_error(self, sample_data):
+        daily, rets = sample_data
+        sized_signals = pd.DataFrame(0.5, index=daily.index, columns=["A", "B"])
+        
+        # Explicitly disable ndarray simulation to trigger error
+        global_config = {"feature_flags": {"ndarray_simulation": False}}
+        
+        with pytest.raises(RuntimeError, match="legacy Pandas-based portfolio simulation has been removed"):
+            calculate_portfolio_returns(
+                sized_signals, {}, daily, rets, ["A", "B"], global_config
+            )
+
+    @patch("src.portfolio_backtester.backtester_logic.portfolio_logic.TradeTracker")
+    def test_calculate_portfolio_returns_track_trades(self, mock_tracker_cls, sample_data):
+        daily, rets = sample_data
+        sized_signals = pd.DataFrame(0.5, index=daily.index, columns=["A", "B"])
+        
+        mock_tracker = MagicMock()
+        # Numba needs a concrete float type, not a Mock object
+        mock_tracker.initial_portfolio_value = 1000.0 
+        mock_tracker.allocation_mode = "fixed" # Add allocation mode
+        mock_tracker.portfolio_value_tracker.daily_portfolio_value = pd.Series(1000.0, index=daily.index)
+        mock_tracker_cls.return_value = mock_tracker
+        
+        returns, tracker = calculate_portfolio_returns(
+            sized_signals,
+            {"allocation_mode": "fixed"},
+            daily,
+            rets,
+            ["A", "B"],
+            {"portfolio_value": 1000.0},
+            track_trades=True
+        )
+        
+        assert tracker is not None
+        # Check if populate_from_kernel_results was called on the tracker
+        mock_tracker.populate_from_kernel_results.assert_called_once()

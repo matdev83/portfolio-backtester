@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Union
 import pandas as pd
 import logging
 
+from ..reporting.metrics import calculate_metrics
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,8 +91,6 @@ class StandardEvaluationStrategy(IEvaluationStrategy):
             Dictionary of performance metrics
         """
         try:
-            from ..reporting.metrics import calculate_metrics
-
             # Convert DataFrame to Series if needed
             if isinstance(returns, pd.DataFrame):
                 if returns.shape[1] == 1:

@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import List, Optional
 import portfolio_backtester.config_loader as config_loader
 
+# Ensure headless-safe plotting backend (prevents Tkinter thread crashes in CLI runs).
+os.environ.setdefault("MPLBACKEND", "Agg")
+
 from portfolio_backtester.core import Backtester
 from portfolio_backtester.config_loader import (
     ConfigurationError,
