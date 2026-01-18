@@ -1,0 +1,62 @@
+# Dual Momentum (Lagged) - Research-Enhanced Defaults
+#
+# High-ROI upgrades based on the research summary:
+# - Volatility targeting overlay (Barroso & Santa-Clara; Moreira & Muir)
+# - "Panic-state" crash overlay (Daniel & Moskowitz-style proxy)
+# - Residual / beta-adjusted momentum ranking (Blitz et al.-style signal cleanup)
+# - Exit hysteresis buffers to reduce churn / turnover
+
+name: dual_momentum_lagged_portfolio_research_enhanced
+strategy: DualMomentumLaggedPortfolioStrategy
+
+# Position sizing and timing
+position_sizer: equal_weight
+rebalance_frequency: ME
+
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+
+# Universe: TOP 50 S&P 500 components (via MDMP) - strategy also applies a dynamic top-50 filter
+universe_config:
+  type: method
+  method_name: get_top_weight_sp500_components
+  n_holdings: 20
+
+# Benchmark for relative momentum and regime overlays
+benchmark_ticker: SPX
+
+strategy_params:
+  # Dual momentum core
+  lookback_months: 12
+  min_absolute_momentum: 0.0
+  lag_months: 1
+  max_holdings: 10
+
+  # Risk management
+  use_200sma_filter: true
+  sma_period: 200
+
+  # Signal upgrade: beta-adjusted (residual) momentum ranking
+  ranking_method: residual_momentum
+
+  # Turnover control: hysteresis buffers for held names
+  absolute_exit_buffer: 0.02
+  relative_exit_buffer: 0.02
+
+  # Volatility targeting overlay (benchmark realized vol)
+  vol_target_enabled: true
+  target_vol_annual: 0.12
+  vol_lookback_days: 63
+  vol_max_gross_exposure: 1.0
+
+  # Panic-state overlay: reduce exposure after large drawdown + high vol
+  panic_overlay_enabled: true
+  panic_drawdown_lookback_days: 126
+  panic_drawdown_threshold: -0.12
+  panic_vol_threshold: 0.25
+  panic_exposure_multiplier: 0.25
+
+  # Trade direction
+  trade_longs: true
+  trade_shorts: false

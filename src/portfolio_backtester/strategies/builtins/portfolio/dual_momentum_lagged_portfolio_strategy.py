@@ -18,7 +18,7 @@ This module implements a classical dual momentum strategy with the following fea
 from __future__ import annotations
 
 from collections import deque
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -54,6 +54,35 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         If True, only enter new positions when SPX close > 200-day SMA (default: True)
     min_absolute_momentum : float
         Minimum absolute momentum threshold (default: 0.0, i.e., any positive)
+    ranking_method : str
+        How to rank candidates that pass dual momentum filtering (default: "excess_total_return").
+        Options:
+        - "excess_total_return": (asset total return - benchmark total return) over lookback
+        - "residual_momentum": beta-adjusted momentum using daily returns vs benchmark
+    absolute_exit_buffer : float
+        Hysteresis buffer for absolute momentum exits; held names are allowed to stay invested
+        until their absolute momentum drops below (min_absolute_momentum - buffer).
+    relative_exit_buffer : float
+        Hysteresis buffer for relative momentum exits; held names are allowed to stay invested
+        until their momentum drops below (benchmark_momentum - buffer).
+    vol_target_enabled : bool
+        If True, scale total gross exposure using trailing realized benchmark volatility.
+    target_vol_annual : float
+        Annualized volatility target for the overlay (e.g., 0.10 to 0.15).
+    vol_lookback_days : int
+        Trailing window length (in trading days) for realized vol estimation.
+    vol_max_gross_exposure : float
+        Maximum gross exposure after scaling (1.0 = fully invested long-only).
+    panic_overlay_enabled : bool
+        If True, apply a "panic-state" crash overlay based on benchmark drawdown + volatility.
+    panic_drawdown_lookback_days : int
+        Window (trading days) used to compute benchmark drawdown.
+    panic_drawdown_threshold : float
+        Trigger threshold for drawdown (negative value, e.g., -0.10 for -10%).
+    panic_vol_threshold : float
+        Trigger threshold for benchmark annualized vol (e.g., 0.25).
+    panic_exposure_multiplier : float
+        Exposure multiplier applied when panic-state triggers (e.g., 0.25).
     """
 
     def __init__(self, strategy_config: Dict[str, Any]) -> None:
@@ -71,6 +100,22 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         params.setdefault("use_200sma_filter", True)
         params.setdefault("min_absolute_momentum", 0.0)
         params.setdefault("sma_period", 200)  # 200-day SMA for RORO filter
+
+        # Signal upgrades / robustness overlays (research-backed; opt-in via config)
+        params.setdefault("ranking_method", "excess_total_return")
+        params.setdefault("absolute_exit_buffer", 0.0)
+        params.setdefault("relative_exit_buffer", 0.0)
+
+        params.setdefault("vol_target_enabled", False)
+        params.setdefault("target_vol_annual", 0.12)
+        params.setdefault("vol_lookback_days", 63)
+        params.setdefault("vol_max_gross_exposure", 1.0)
+
+        params.setdefault("panic_overlay_enabled", False)
+        params.setdefault("panic_drawdown_lookback_days", 126)
+        params.setdefault("panic_drawdown_threshold", -0.1)
+        params.setdefault("panic_vol_threshold", 0.25)
+        params.setdefault("panic_exposure_multiplier", 0.25)
 
         # Track pending signals (signals waiting for lag confirmation)
         # Key: ticker, Value: deque of (signal_date, signal_type) tuples
@@ -151,7 +196,223 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
                 "default": False,
                 "description": "Allow short positions",
             },
+            "ranking_method": {
+                "type": "categorical",
+                "choices": ["excess_total_return", "residual_momentum"],
+                "default": "excess_total_return",
+                "description": "How to rank dual momentum candidates",
+            },
+            "absolute_exit_buffer": {
+                "type": "float",
+                "min": 0.0,
+                "max": 0.2,
+                "default": 0.0,
+                "description": "Absolute momentum hysteresis buffer for held names",
+            },
+            "relative_exit_buffer": {
+                "type": "float",
+                "min": 0.0,
+                "max": 0.2,
+                "default": 0.0,
+                "description": "Relative momentum hysteresis buffer for held names",
+            },
+            "vol_target_enabled": {
+                "type": "categorical",
+                "choices": [True, False],
+                "default": False,
+                "description": "Enable benchmark volatility targeting overlay",
+            },
+            "target_vol_annual": {
+                "type": "float",
+                "min": 0.05,
+                "max": 0.25,
+                "default": 0.12,
+                "description": "Target annualized volatility for exposure scaling",
+            },
+            "vol_lookback_days": {
+                "type": "int",
+                "min": 21,
+                "max": 252,
+                "default": 63,
+                "description": "Lookback window (days) for volatility estimation",
+            },
+            "vol_max_gross_exposure": {
+                "type": "float",
+                "min": 0.25,
+                "max": 2.0,
+                "default": 1.0,
+                "description": "Max gross exposure after scaling",
+            },
+            "panic_overlay_enabled": {
+                "type": "categorical",
+                "choices": [True, False],
+                "default": False,
+                "description": "Enable panic-state crash overlay",
+            },
+            "panic_drawdown_lookback_days": {
+                "type": "int",
+                "min": 63,
+                "max": 504,
+                "default": 126,
+                "description": "Lookback window (days) for drawdown calculation",
+            },
+            "panic_drawdown_threshold": {
+                "type": "float",
+                "min": -0.5,
+                "max": -0.01,
+                "default": -0.1,
+                "description": "Drawdown threshold to trigger panic overlay",
+            },
+            "panic_vol_threshold": {
+                "type": "float",
+                "min": 0.1,
+                "max": 1.0,
+                "default": 0.25,
+                "description": "Volatility threshold to trigger panic overlay",
+            },
+            "panic_exposure_multiplier": {
+                "type": "float",
+                "min": 0.0,
+                "max": 1.0,
+                "default": 0.25,
+                "description": "Exposure multiplier applied during panic regime",
+            },
         }
+
+    @staticmethod
+    def _extract_close_series(
+        historical_prices: pd.DataFrame,
+        price_column: str = "Close",
+    ) -> pd.Series:
+        """Extract a 1D close price series from an OHLC dataframe (MultiIndex or flat)."""
+        if isinstance(historical_prices.columns, pd.MultiIndex):
+            try:
+                close_df = historical_prices.xs(price_column, level="Field", axis=1)
+                if isinstance(close_df, pd.DataFrame):
+                    return close_df.iloc[:, 0]
+                return close_df
+            except KeyError:
+                first_col = historical_prices.iloc[:, 0]
+                return first_col if isinstance(first_col, pd.Series) else first_col.iloc[:, 0]
+
+        if price_column in historical_prices.columns:
+            close_series = historical_prices[price_column]
+            if isinstance(close_series, pd.Series):
+                return close_series
+        # Fallback: first column
+        first = historical_prices.iloc[:, 0]
+        return first if isinstance(first, pd.Series) else first.iloc[:, 0]
+
+    @staticmethod
+    def _annualized_vol_from_returns(returns: pd.Series) -> Optional[float]:
+        """Compute annualized volatility from daily returns, guarding edge cases."""
+        cleaned = returns.replace([np.inf, -np.inf], np.nan).dropna()
+        if len(cleaned) < 2:
+            return None
+        vol_daily = float(cleaned.std(ddof=1))
+        return float(vol_daily * np.sqrt(252.0))
+
+    def _calculate_residual_momentum(
+        self,
+        asset_prices: pd.Series,
+        benchmark_close: pd.Series,
+        current_date: pd.Timestamp,
+        lookback_months: int,
+        min_obs: int = 60,
+    ) -> Optional[float]:
+        """Compute beta-adjusted momentum (abnormal component) using daily returns.
+
+        Uses a market-model beta estimated over the lookback window and computes
+        residual daily returns as: r_asset - beta * r_benchmark.
+
+        This intentionally retains an intercept/alpha component (i.e., not removing alpha).
+        """
+        lookback_start = current_date - pd.DateOffset(months=lookback_months)
+
+        asset_px = asset_prices.loc[asset_prices.index <= current_date]
+        bench_px = benchmark_close.loc[benchmark_close.index <= current_date]
+        if asset_px.empty or bench_px.empty:
+            return None
+
+        asset_rets = asset_px.pct_change(fill_method=None)
+        bench_rets = bench_px.pct_change(fill_method=None)
+
+        # Avoid lookahead: use returns up to the day before current_date (if available).
+        asset_rets = asset_rets.loc[asset_rets.index < current_date]
+        bench_rets = bench_rets.loc[bench_rets.index < current_date]
+
+        asset_rets = asset_rets.loc[asset_rets.index >= lookback_start]
+        bench_rets = bench_rets.loc[bench_rets.index >= lookback_start]
+
+        aligned = pd.concat([asset_rets, bench_rets], axis=1, join="inner").dropna()
+        if len(aligned) < min_obs:
+            return None
+
+        y = aligned.iloc[:, 0].astype(float).to_numpy()
+        x = aligned.iloc[:, 1].astype(float).to_numpy()
+
+        x_var = float(np.var(x, ddof=1))
+        if not np.isfinite(x_var) or x_var <= 0:
+            return None
+
+        beta = float(np.cov(x, y, ddof=1)[0, 1] / x_var)
+        residual = y - (beta * x)
+
+        # Robustly compound residual returns.
+        residual = np.clip(residual, -0.99, 10.0)
+        compounded = float(np.prod(1.0 + residual) - 1.0)
+        return compounded if np.isfinite(compounded) else None
+
+    def _exposure_scale_from_benchmark(
+        self,
+        benchmark_prices_hist: pd.DataFrame,
+        current_date: pd.Timestamp,
+        params: Dict[str, Any],
+    ) -> float:
+        """Compute gross exposure scaling factor using benchmark vol and optional panic overlay."""
+        if not bool(params.get("vol_target_enabled", False)):
+            return 1.0
+
+        target_vol_annual = float(params.get("target_vol_annual", 0.12))
+        vol_lookback_days = int(params.get("vol_lookback_days", 63))
+        max_gross = float(params.get("vol_max_gross_exposure", 1.0))
+
+        bench_close = self._extract_close_series(
+            benchmark_prices_hist, price_column=str(params.get("price_column_benchmark", "Close"))
+        )
+        bench_close = bench_close.loc[bench_close.index <= current_date]
+        if len(bench_close) < (vol_lookback_days + 2):
+            return 1.0
+
+        bench_rets = bench_close.pct_change(fill_method=None).dropna()
+        bench_rets = bench_rets.loc[bench_rets.index < current_date].tail(vol_lookback_days)
+
+        vol_annual = self._annualized_vol_from_returns(bench_rets)
+        if vol_annual is None or vol_annual <= 0:
+            return 1.0
+
+        scale = target_vol_annual / max(vol_annual, 1e-12)
+        scale = float(np.clip(scale, 0.0, max_gross))
+
+        if bool(params.get("panic_overlay_enabled", False)):
+            dd_lookback = int(params.get("panic_drawdown_lookback_days", 126))
+            dd_threshold = float(params.get("panic_drawdown_threshold", -0.1))
+            vol_threshold = float(params.get("panic_vol_threshold", 0.25))
+            panic_mult = float(params.get("panic_exposure_multiplier", 0.25))
+
+            # Use close up to (but not including) current_date to avoid lookahead.
+            bench_close_for_regime = bench_close.loc[bench_close.index < current_date]
+            if len(bench_close_for_regime) >= 2:
+                dd_window = bench_close_for_regime.tail(dd_lookback)
+                if not dd_window.empty:
+                    peak = float(dd_window.max())
+                    last = float(dd_window.iloc[-1])
+                    if peak > 0 and np.isfinite(peak) and np.isfinite(last):
+                        drawdown = (last / peak) - 1.0
+                        if (drawdown <= dd_threshold) and (vol_annual >= vol_threshold):
+                            scale *= float(np.clip(panic_mult, 0.0, 1.0))
+
+        return float(np.clip(scale, 0.0, max_gross))
 
     def _calculate_momentum_score(
         self,
@@ -247,13 +508,22 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         benchmark_prices: pd.DataFrame,
         current_date: pd.Timestamp,
         params: Dict[str, Any],
-    ) -> List[tuple[str, float]]:
+        current_holdings: Optional[Set[str]] = None,
+    ) -> List[Tuple[str, float]]:
         """Get candidates that pass both absolute and relative momentum tests.
 
-        Returns list of (ticker, excess_momentum) tuples, sorted by excess momentum descending.
+        Returns list of (ticker, score) tuples, sorted by score descending.
         """
         lookback_months = int(params.get("lookback_months", 12))
         min_abs_momentum = float(params.get("min_absolute_momentum", 0.0))
+        ranking_method = str(params.get("ranking_method", "excess_total_return")).lower()
+        abs_exit_buffer = float(params.get("absolute_exit_buffer", 0.0))
+        rel_exit_buffer = float(params.get("relative_exit_buffer", 0.0))
+        current_holdings = current_holdings or set()
+
+        bench_close = self._extract_close_series(
+            benchmark_prices, price_column=str(params.get("price_column_benchmark", "Close"))
+        )
 
         # Calculate benchmark momentum
         bench_momentum = self._calculate_benchmark_momentum(
@@ -262,7 +532,7 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         if bench_momentum is None:
             return []
 
-        candidates: List[tuple[str, float]] = []
+        candidates: List[Tuple[str, float]] = []
 
         for ticker in asset_prices.columns:
             asset_momentum = self._calculate_momentum_score(
@@ -271,14 +541,29 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
             if asset_momentum is None:
                 continue
 
-            # Dual momentum conditions:
-            # 1. Absolute: momentum > min_absolute_momentum (default 0, meaning positive)
-            # 2. Relative: momentum > benchmark momentum
-            if asset_momentum > min_abs_momentum and asset_momentum > bench_momentum:
-                excess_momentum = asset_momentum - bench_momentum
-                candidates.append((ticker, excess_momentum))
+            abs_threshold = min_abs_momentum
+            rel_threshold = bench_momentum
+            if ticker in current_holdings:
+                abs_threshold = min_abs_momentum - abs_exit_buffer
+                rel_threshold = bench_momentum - rel_exit_buffer
 
-        # Sort by excess momentum (descending)
+            # Dual momentum conditions:
+            # 1. Absolute: momentum > threshold
+            # 2. Relative: momentum > benchmark momentum threshold
+            if asset_momentum > abs_threshold and asset_momentum > rel_threshold:
+                score = asset_momentum - bench_momentum
+                if ranking_method == "residual_momentum":
+                    residual_score = self._calculate_residual_momentum(
+                        asset_prices[ticker],
+                        bench_close,
+                        current_date,
+                        lookback_months=lookback_months,
+                    )
+                    if residual_score is not None:
+                        score = residual_score
+                candidates.append((ticker, float(score)))
+
+        # Sort by score (descending)
         candidates.sort(key=lambda x: x[1], reverse=True)
         return candidates
 
@@ -470,7 +755,11 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
 
         # Get dual momentum candidates
         candidates_with_scores = self._get_dual_momentum_candidates(
-            asset_prices_hist, benchmark_prices_hist, current_date, params
+            asset_prices_hist,
+            benchmark_prices_hist,
+            current_date,
+            params,
+            current_holdings=self._current_holdings,
         )
 
         # Current candidate tickers (top performers that pass dual momentum)
@@ -508,6 +797,14 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
             for ticker in self._current_holdings:
                 if ticker in output_df.columns:
                     output_df.loc[current_date, ticker] = weight_per_holding
+
+        # Volatility targeting + panic overlay (scale gross exposure; leftover goes to cash)
+        if self._current_holdings:
+            exposure_scale = self._exposure_scale_from_benchmark(
+                benchmark_prices_hist, current_date, params
+            )
+            if exposure_scale != 1.0:
+                output_df = output_df.mul(exposure_scale)
 
         # Log holdings periodically
         if len(self._current_holdings) > 0:

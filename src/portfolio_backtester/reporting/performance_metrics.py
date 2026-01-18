@@ -75,7 +75,9 @@ def _safe_moment(func, series: pd.Series) -> float:
     try:
         non_na = series.dropna()
         unique_vals = non_na.nunique()
-        std_val = float(non_na.std(ddof=0)) if not non_na.empty and pd.notna(non_na.std(ddof=0)) else 0.0
+        std_val = (
+            float(non_na.std(ddof=0)) if not non_na.empty and pd.notna(non_na.std(ddof=0)) else 0.0
+        )
     except Exception:
         non_na = series
         unique_vals = 0
@@ -273,8 +275,13 @@ def calculate_metrics(
     rets, bench_rets, bench_ticker_name, name="Strategy", num_trials=1, trade_stats=None
 ):
     is_all_zero_returns = _is_all_zero(rets)
-    active_rets = rets[rets != 0].dropna()
-    active_bench_rets = bench_rets[bench_rets != 0].dropna()
+    # IMPORTANT:
+    # Treat 0.0 returns as valid "in-cash / no-position" days. Filtering them out
+    # artificially shortens the effective time horizon for strategies that spend
+    # time in cash, which can inflate annualized return / Sharpe / Sortino and
+    # lead to inconsistent comparisons vs the benchmark.
+    active_rets = rets.dropna()
+    active_bench_rets = bench_rets.dropna()
 
     if active_rets.empty:
         metrics = _default_zero_activity_metrics(is_all_zero_returns)

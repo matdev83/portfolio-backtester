@@ -181,7 +181,7 @@ def to_canonical_id(ticker: str) -> str:
 
     # 3. Try MDMP registry lookup (if available)
     try:
-        from market_data_multi_provider import get_symbol  # type: ignore[import-untyped]
+        from market_data_multi_provider import get_symbol  # type: ignore[attr-defined]
 
         spec = get_symbol(ticker_upper)
         if spec is not None:

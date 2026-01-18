@@ -57,7 +57,7 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
                 Set to None to disable coverage checks (default).
         """
         try:
-            from market_data_multi_provider import MarketDataClient  # type: ignore[import-untyped]
+            from market_data_multi_provider import MarketDataClient  # type: ignore[attr-defined]
         except ImportError as e:
             raise ImportError(
                 "market-data-multi-provider is not installed. "
@@ -104,9 +104,7 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
             logger.warning("No tickers provided")
             return pd.DataFrame()
 
-        logger.info(
-            f"Fetching {len(tickers)} tickers from {start_date} to {end_date} via MDMP"
-        )
+        logger.info(f"Fetching {len(tickers)} tickers from {start_date} to {end_date} via MDMP")
 
         # Parse dates
         try:
@@ -148,14 +146,10 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
         failed_tickers: List[str] = []
 
         for canonical_id, df in results.items():
-            original_ticker = symbol_map.get(
-                canonical_id, from_canonical_id(canonical_id)
-            )
+            original_ticker = symbol_map.get(canonical_id, from_canonical_id(canonical_id))
 
             if df is None or df.empty:
-                logger.warning(
-                    f"No data for {original_ticker} ({canonical_id})"
-                )
+                logger.warning(f"No data for {original_ticker} ({canonical_id})")
                 failed += 1
                 failed_tickers.append(original_ticker)
                 continue
@@ -166,17 +160,14 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
             if ticker_df is not None and not ticker_df.empty:
                 all_ticker_data.append(ticker_df)
                 successful += 1
-                logger.debug(
-                    f"Fetched {original_ticker}: {len(ticker_df)} rows"
-                )
+                logger.debug(f"Fetched {original_ticker}: {len(ticker_df)} rows")
             else:
                 failed += 1
                 failed_tickers.append(original_ticker)
 
         # Log summary
         logger.info(
-            f"MDMP fetch complete: {successful}/{len(tickers)} successful, "
-            f"{failed} failed"
+            f"MDMP fetch complete: {successful}/{len(tickers)} successful, " f"{failed} failed"
         )
         if failed_tickers:
             logger.warning(f"Failed tickers: {failed_tickers[:10]}")
@@ -211,9 +202,7 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
         """
         return datetime.strptime(date_str, "%Y-%m-%d").date()
 
-    def _normalize_ohlcv(
-        self, df: pd.DataFrame, ticker: str
-    ) -> Optional[pd.DataFrame]:
+    def _normalize_ohlcv(self, df: pd.DataFrame, ticker: str) -> Optional[pd.DataFrame]:
         """Normalize DataFrame to expected OHLCV MultiIndex format.
 
         Args:
