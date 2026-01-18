@@ -5,9 +5,9 @@
       "errors": []
     },
     "state": {
-      "timestamp": 1768695620.878166,
+      "timestamp": 1768740298.990928,
       "file_counts": {
-        "scenarios": 31,
+        "scenarios": 38,
         "strategies": 71,
         "parameters": 1
       },
@@ -76,9 +76,44 @@
             "size": 1984
           },
           {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\production_optimize_baseline.yaml",
+            "mtime": 1768698379.1693902,
+            "size": 1511
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\production_optimize_research.yaml",
+            "mtime": 1768734164.1413605,
+            "size": 2953
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\production_optimize_research_forced_vol_target.yaml",
+            "mtime": 1768740280.5763059,
+            "size": 2728
+          },
+          {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\research_enhanced.yaml",
             "mtime": 1768695136.8398335,
             "size": 1770
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\research_portfolio_vol_target.yaml",
+            "mtime": 1768698086.0898564,
+            "size": 1104
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\research_portfolio_vol_target_high_target.yaml",
+            "mtime": 1768699727.8479743,
+            "size": 1071
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\research_residual_portfolio_vol_target.yaml",
+            "mtime": 1768699727.851944,
+            "size": 1032
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\research_tuned.yaml",
+            "mtime": 1768697658.3791683,
+            "size": 1104
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\filtered_lagged_momentum_portfolio_strategy\\default.yaml",
@@ -219,8 +254,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy.py",
-            "mtime": 1768695438.3660903,
-            "size": 35096
+            "mtime": 1768698033.5880823,
+            "size": 36947
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\dvol_sizer_momentum_portfolio_strategy.py",
@@ -459,8 +494,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\base\\base\\base_strategy.py",
-            "mtime": 1768671349.5673873,
-            "size": 48050
+            "mtime": 1768736440.6022556,
+            "size": 48984
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\base\\base\\meta_reporting.py",

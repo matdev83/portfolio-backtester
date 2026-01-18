@@ -260,6 +260,7 @@ class OptimizationOrchestrator:
             # Create BacktestEvaluator
             # For population-based optimizers, disable window-level parallelism to avoid
             # nested oversubscription (population parallelism is handled separately).
+            evaluator_n_jobs = self._attribute_accessor.get_attribute(optimizer_args, "n_jobs", 1)
             if optimizer_type in [
                 "genetic",
                 "particle_swarm",
@@ -275,6 +276,7 @@ class OptimizationOrchestrator:
                 evaluator = BacktestEvaluator(
                     metrics_to_optimize=metrics_to_optimize,
                     is_multi_objective=is_multi_objective,
+                    n_jobs=int(evaluator_n_jobs),
                 )
 
             # Create OptimizationOrchestrator using the factory

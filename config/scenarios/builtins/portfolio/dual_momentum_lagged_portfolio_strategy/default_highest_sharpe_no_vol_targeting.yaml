@@ -1,0 +1,39 @@
+# Dual Momentum (Lagged) - Default (Highest Sharpe, No Vol Targeting)
+#
+# Derived from the best baseline production optimization run:
+# - data/reports/dual_momentum_lagged_portfolio_prod_opt_baseline_20260118_131350
+
+name: dual_momentum_lagged_portfolio_default_highest_sharpe_no_vol_targeting
+strategy: DualMomentumLaggedPortfolioStrategy
+
+position_sizer: equal_weight
+rebalance_frequency: ME
+
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+
+universe_config:
+  type: method
+  method_name: get_top_weight_sp500_components
+  n_holdings: 20
+
+benchmark_ticker: SPX
+
+strategy_params:
+  lookback_months: 6
+  lag_months: 0
+  max_holdings: 10
+  min_absolute_momentum: 0.1
+
+  use_200sma_filter: false
+  sma_period: 250
+
+  ranking_method: excess_total_return
+  absolute_exit_buffer: 0.0
+  relative_exit_buffer: 0.0
+  vol_target_enabled: false
+  panic_overlay_enabled: false
+
+  trade_longs: true
+  trade_shorts: false

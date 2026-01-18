@@ -100,6 +100,7 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
     # ------------------------------------------------------------------
     adv_cfg: Dict[str, Any] = self.global_config.get("advanced_reporting_config", {})
     if adv_cfg.get("enable_optimization_reports", True):
+        stage2_processed_scenarios: set[str] = set()
         for name, result in self.results.items():
             logger.info("Processing optimization report for: %s", name)
             best_trial = result.get("best_trial_obj")
@@ -114,20 +115,27 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
                 continue
 
             # locate matching scenario config
-            scenario_cfg = next((s for s in self.scenarios if s["name"] in name), None)
+            scenario_name = name.removesuffix("_Optimized")
+            scenario_cfg = next((s for s in self.scenarios if s.get("name") == scenario_name), None)
             if scenario_cfg is not None:
                 logger.info("  - Found matching scenario config.")
                 # Stage 2 MC is disabled by default; enable only if CLI flag is set
                 if getattr(self.args, "enable_stage2_mc", False):
-                    _plot_monte_carlo_robustness_analysis(
-                        self,
-                        name,
-                        scenario_cfg,
-                        opt_params,
-                        self.monthly_data,
-                        daily_data_for_display,
-                        self.rets_full,
-                    )
+                    if scenario_name in stage2_processed_scenarios:
+                        logger.info(
+                            "  - Stage 2 MC already generated for %s, skipping.", scenario_name
+                        )
+                    else:
+                        stage2_processed_scenarios.add(scenario_name)
+                        _plot_monte_carlo_robustness_analysis(
+                            self,
+                            scenario_name,
+                            scenario_cfg,
+                            opt_params,
+                            self.monthly_data,
+                            daily_data_for_display,
+                            self.rets_full,
+                        )
                 else:
                     logger.info(
                         "  - Stage 2 MC is disabled. Use --enable-stage2-mc to generate robustness plots."

@@ -1,9 +1,11 @@
-from typing import Set
+from __future__ import annotations
+
+from typing import Any, Set
 
 from .interfaces import ParameterExtractorFactory, OptimizationPopulatorFactory
 
 
-def _get_strategy_tunable_params(strategy_spec) -> Set[str]:
+def _get_strategy_tunable_params(strategy_spec: Any) -> Set[str]:
     """Resolve a strategy specification (string name or dict) to its tunable parameters."""
     # Use polymorphic parameter extractor instead of isinstance checks
     from unittest.mock import Mock
@@ -21,7 +23,9 @@ def _get_sizer_tunable_param(sizer_name: str | None, sizer_param_map: dict) -> s
     return None
 
 
-def populate_default_optimizations(scenarios: list, optimizer_parameter_defaults: dict):
+def populate_default_optimizations(
+    scenarios: list[dict[str, Any]], optimizer_parameter_defaults: dict[str, Any]
+) -> None:
     """Ensure each scenario has an optimize section covering all tunable
     parameters of its strategy and dynamic position sizer.
     Min/max/step values for these parameters are sourced from
@@ -61,8 +65,11 @@ def populate_default_optimizations(scenarios: list, optimizer_parameter_defaults
         optimization_populator_factory.populate_strategy_params(scenario_config, scenario_config)
 
         # Validate existing optimization parameters against strategy tunable parameters
+        strategy_spec = (
+            scenario_config.get("strategy") if "strategy" in scenario_config else scenario_config
+        )
         strategy_name = scenario_config.get("strategy", "unknown")
-        strategy_tunable_params = _get_strategy_tunable_params(scenario_config)
+        strategy_tunable_params = _get_strategy_tunable_params(strategy_spec)
         sizer_param = _get_sizer_tunable_param(
             scenario_config.get("position_sizer"), sizer_param_map
         )
@@ -113,7 +120,7 @@ def populate_default_optimizations(scenarios: list, optimizer_parameter_defaults
         else:
             # Scenario has no optimize list - add all tunable parameters
             # Get tunable parameters from the strategy
-            strategy_params_to_add = _get_strategy_tunable_params(scenario_config["strategy"])
+            strategy_params_to_add = _get_strategy_tunable_params(strategy_spec)
 
             # Get tunable parameter from the sizer, if any
             sizer_param_to_add = _get_sizer_tunable_param(

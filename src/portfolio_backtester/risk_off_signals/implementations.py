@@ -5,10 +5,11 @@ Provides concrete implementations of the IRiskOffSignalGenerator interface.
 Includes both production-ready and testing implementations following SOLID principles.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, cast
 import logging
 
 import pandas as pd
+import numpy as np
 
 from .interface import IRiskOffSignalGenerator
 
@@ -232,32 +233,264 @@ class DummyRiskOffSignalGenerator(IRiskOffSignalGenerator):
         )
 
 
-# Example of how to implement a real risk-off signal generator:
-#
-# class VixBasedRiskOffSignalGenerator(IRiskOffSignalGenerator):
-#     """
-#     Risk-off signal based on VIX (volatility index) levels.
-#
-#     Signals risk-off when VIX exceeds configured threshold,
-#     indicating heightened market fear and volatility.
-#     """
-#
-#     def __init__(self, config: Dict[str, Any] | None = None):
-#         self._config = config or {}
-#         self._vix_threshold = self._config.get('vix_threshold', 30.0)
-#         self._lookback_days = self._config.get('lookback_days', 5)
-#
-#     def generate_risk_off_signal(
-#         self,
-#         all_historical_data: pd.DataFrame,
-#         benchmark_historical_data: pd.DataFrame,
-#         non_universe_historical_data: pd.DataFrame,
-#         current_date: pd.Timestamp,
-#     ) -> bool:
-#         # Implementation would:
-#         # 1. Extract VIX data from non_universe_historical_data
-#         # 2. Check if recent VIX levels exceed threshold
-#         # 3. Return True if risk-off conditions detected
+def _extract_benchmark_close_series(
+    benchmark_historical_data: pd.DataFrame,
+    current_date: pd.Timestamp,
+) -> pd.Series:
+    """Extract a benchmark close-price series up to `current_date`.
+
+    The framework may pass benchmark data as:
+    - Single-column DataFrame (e.g., just prices)
+    - OHLCV DataFrame (expects 'Close' when present)
+
+    Args:
+        benchmark_historical_data: Benchmark historical data.
+        current_date: Current evaluation date.
+
+    Returns:
+        Close price series indexed by date (may be empty if unavailable).
+    """
+    if benchmark_historical_data is None or benchmark_historical_data.empty:
+        return pd.Series(dtype=float)
+
+    df = benchmark_historical_data
+
+    if isinstance(df, pd.Series):
+        ser = df
+    else:
+        if "Close" in df.columns:
+            ser = cast(pd.Series, df["Close"])
+        elif "Adj Close" in df.columns:
+            ser = cast(pd.Series, df["Adj Close"])
+        elif df.shape[1] == 1:
+            ser = cast(pd.Series, df.iloc[:, 0])
+        else:
+            ser = cast(pd.Series, df.iloc[:, 0])
+
+    ser = ser.loc[ser.index <= current_date].dropna()
+    ser.name = "Close"
+    return ser
+
+
+class BenchmarkSmaRiskOffSignalGenerator(IRiskOffSignalGenerator):
+    """Risk-off when benchmark is below its SMA.
+
+    Configuration:
+        - sma_window_days: SMA window in trading days (default: 200).
+        - min_periods: Minimum observations required (default: sma_window_days).
+
+    Signal:
+        True  => risk-off (go to cash)
+        False => risk-on
+    """
+
+    def __init__(self, config: Dict[str, Any] | None = None) -> None:
+        self._config = config or {}
+
+        self._sma_window_days = int(self._config.get("sma_window_days", 200))
+        self._min_periods = int(self._config.get("min_periods", self._sma_window_days))
+
+        if self._sma_window_days <= 1:
+            raise ValueError("sma_window_days must be > 1")
+        if self._min_periods <= 1:
+            raise ValueError("min_periods must be > 1")
+
+    def generate_risk_off_signal(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        non_universe_historical_data: pd.DataFrame,
+        current_date: pd.Timestamp,
+    ) -> bool:
+        prices = _extract_benchmark_close_series(benchmark_historical_data, current_date)
+        if prices.empty or prices.shape[0] < self._min_periods:
+            return False
+
+        sma = prices.rolling(window=self._sma_window_days, min_periods=self._min_periods).mean()
+        price_now = float(prices.iloc[-1])
+        sma_now = float(sma.iloc[-1]) if not np.isnan(sma.iloc[-1]) else np.nan
+        if np.isnan(sma_now):
+            return False
+        return bool(price_now < sma_now)
+
+    def get_configuration(self) -> Dict[str, Any]:
+        return dict(self._config)
+
+    def validate_configuration(self, config: Dict[str, Any]) -> tuple[bool, str]:
+        try:
+            window = int(config.get("sma_window_days", 200))
+            min_periods = int(config.get("min_periods", window))
+        except Exception as e:
+            return (False, f"Invalid integer parameter: {e}")
+
+        if window <= 1:
+            return (False, "sma_window_days must be > 1")
+        if min_periods <= 1:
+            return (False, "min_periods must be > 1")
+        if min_periods > window:
+            return (False, "min_periods must be <= sma_window_days")
+        return (True, "")
+
+    def get_required_data_columns(self) -> List[str]:
+        return []
+
+    def get_minimum_data_periods(self) -> int:
+        return self._min_periods
+
+    def get_signal_description(self) -> str:
+        return f"Benchmark SMA risk-off: Close < SMA({self._sma_window_days})"
+
+
+class BenchmarkEmaCrossoverRiskOffSignalGenerator(IRiskOffSignalGenerator):
+    """Risk-off when benchmark fast EMA is below slow EMA.
+
+    Configuration:
+        - fast_ema_days: fast EMA span (default: 50)
+        - slow_ema_days: slow EMA span (default: 200)
+        - min_periods: minimum data points (default: slow_ema_days)
+    """
+
+    def __init__(self, config: Dict[str, Any] | None = None) -> None:
+        self._config = config or {}
+        self._fast_ema_days = int(self._config.get("fast_ema_days", 50))
+        self._slow_ema_days = int(self._config.get("slow_ema_days", 200))
+        self._min_periods = int(self._config.get("min_periods", self._slow_ema_days))
+
+        if self._fast_ema_days <= 1 or self._slow_ema_days <= 1:
+            raise ValueError("fast_ema_days and slow_ema_days must be > 1")
+        if self._fast_ema_days >= self._slow_ema_days:
+            raise ValueError("fast_ema_days must be < slow_ema_days")
+        if self._min_periods <= 1:
+            raise ValueError("min_periods must be > 1")
+
+    def generate_risk_off_signal(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        non_universe_historical_data: pd.DataFrame,
+        current_date: pd.Timestamp,
+    ) -> bool:
+        prices = _extract_benchmark_close_series(benchmark_historical_data, current_date)
+        if prices.empty or prices.shape[0] < self._min_periods:
+            return False
+
+        fast = prices.ewm(span=self._fast_ema_days, adjust=False, min_periods=self._min_periods).mean()
+        slow = prices.ewm(span=self._slow_ema_days, adjust=False, min_periods=self._min_periods).mean()
+
+        fast_now = float(fast.iloc[-1]) if not np.isnan(fast.iloc[-1]) else np.nan
+        slow_now = float(slow.iloc[-1]) if not np.isnan(slow.iloc[-1]) else np.nan
+        if np.isnan(fast_now) or np.isnan(slow_now):
+            return False
+        return bool(fast_now < slow_now)
+
+    def get_configuration(self) -> Dict[str, Any]:
+        return dict(self._config)
+
+    def validate_configuration(self, config: Dict[str, Any]) -> tuple[bool, str]:
+        try:
+            fast_days = int(config.get("fast_ema_days", 50))
+            slow_days = int(config.get("slow_ema_days", 200))
+            min_periods = int(config.get("min_periods", slow_days))
+        except Exception as e:
+            return (False, f"Invalid integer parameter: {e}")
+
+        if fast_days <= 1 or slow_days <= 1:
+            return (False, "fast_ema_days and slow_ema_days must be > 1")
+        if fast_days >= slow_days:
+            return (False, "fast_ema_days must be < slow_ema_days")
+        if min_periods <= 1:
+            return (False, "min_periods must be > 1")
+        return (True, "")
+
+    def get_required_data_columns(self) -> List[str]:
+        return []
+
+    def get_minimum_data_periods(self) -> int:
+        return self._min_periods
+
+    def get_signal_description(self) -> str:
+        return f"Benchmark EMA crossover risk-off: EMA({self._fast_ema_days}) < EMA({self._slow_ema_days})"
+
+
+class BenchmarkDrawdownVolRiskOffSignalGenerator(IRiskOffSignalGenerator):
+    """Risk-off during 'panic' conditions: deep drawdown + elevated volatility.
+
+    Configuration:
+        - drawdown_lookback_days: lookback for peak-to-trough drawdown (default: 126)
+        - drawdown_threshold: drawdown trigger (negative float, default: -0.12)
+        - vol_lookback_days: lookback for realized volatility (default: 63)
+        - vol_threshold_annual: annualized vol trigger (default: 0.25)
+    """
+
+    def __init__(self, config: Dict[str, Any] | None = None) -> None:
+        self._config = config or {}
+
+        self._drawdown_lookback_days = int(self._config.get("drawdown_lookback_days", 126))
+        self._drawdown_threshold = float(self._config.get("drawdown_threshold", -0.12))
+        self._vol_lookback_days = int(self._config.get("vol_lookback_days", 63))
+        self._vol_threshold_annual = float(self._config.get("vol_threshold_annual", 0.25))
+
+        if self._drawdown_lookback_days <= 1 or self._vol_lookback_days <= 1:
+            raise ValueError("drawdown_lookback_days and vol_lookback_days must be > 1")
+        if self._drawdown_threshold >= 0.0:
+            raise ValueError("drawdown_threshold must be negative")
+        if self._vol_threshold_annual <= 0.0:
+            raise ValueError("vol_threshold_annual must be > 0")
+
+    def generate_risk_off_signal(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        non_universe_historical_data: pd.DataFrame,
+        current_date: pd.Timestamp,
+    ) -> bool:
+        prices = _extract_benchmark_close_series(benchmark_historical_data, current_date)
+        min_needed = max(self._drawdown_lookback_days, self._vol_lookback_days) + 1
+        if prices.empty or prices.shape[0] < min_needed:
+            return False
+
+        window_prices = prices.tail(self._drawdown_lookback_days)
+        peak = float(window_prices.max())
+        last = float(window_prices.iloc[-1])
+        drawdown = (last / peak) - 1.0 if peak > 0 else 0.0
+
+        returns = prices.pct_change(fill_method=None).dropna()
+        vol = float(returns.tail(self._vol_lookback_days).std() * np.sqrt(252))
+
+        return bool(drawdown <= self._drawdown_threshold and vol >= self._vol_threshold_annual)
+
+    def get_configuration(self) -> Dict[str, Any]:
+        return dict(self._config)
+
+    def validate_configuration(self, config: Dict[str, Any]) -> tuple[bool, str]:
+        try:
+            dd_lb = int(config.get("drawdown_lookback_days", 126))
+            dd_th = float(config.get("drawdown_threshold", -0.12))
+            vol_lb = int(config.get("vol_lookback_days", 63))
+            vol_th = float(config.get("vol_threshold_annual", 0.25))
+        except Exception as e:
+            return (False, f"Invalid parameter: {e}")
+
+        if dd_lb <= 1 or vol_lb <= 1:
+            return (False, "drawdown_lookback_days and vol_lookback_days must be > 1")
+        if dd_th >= 0.0:
+            return (False, "drawdown_threshold must be negative")
+        if vol_th <= 0.0:
+            return (False, "vol_threshold_annual must be > 0")
+        return (True, "")
+
+    def get_required_data_columns(self) -> List[str]:
+        return []
+
+    def get_minimum_data_periods(self) -> int:
+        return max(self._drawdown_lookback_days, self._vol_lookback_days) + 1
+
+    def get_signal_description(self) -> str:
+        return (
+            "Benchmark drawdown+vol panic risk-off: "
+            f"DD({self._drawdown_lookback_days}) <= {self._drawdown_threshold:.2%} and "
+            f"Vol({self._vol_lookback_days}) >= {self._vol_threshold_annual:.2%}"
+        )
 #         pass
 #
 #     def supports_non_universe_data(self) -> bool:

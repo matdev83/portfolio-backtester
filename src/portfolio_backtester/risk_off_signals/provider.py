@@ -91,6 +91,9 @@ class ConfigBasedRiskOffSignalProvider(IRiskOffSignalProvider):
         from .implementations import (
             NoRiskOffSignalGenerator,
             DummyRiskOffSignalGenerator,
+            BenchmarkSmaRiskOffSignalGenerator,
+            BenchmarkEmaCrossoverRiskOffSignalGenerator,
+            BenchmarkDrawdownVolRiskOffSignalGenerator,
         )
 
         generator_type_name = self.risk_off_config.get("type", "NoRiskOffSignalGenerator")
@@ -99,6 +102,9 @@ class ConfigBasedRiskOffSignalProvider(IRiskOffSignalProvider):
         generator_registry = {
             "NoRiskOffSignalGenerator": NoRiskOffSignalGenerator,
             "DummyRiskOffSignalGenerator": DummyRiskOffSignalGenerator,
+            "BenchmarkSmaRiskOffSignalGenerator": BenchmarkSmaRiskOffSignalGenerator,
+            "BenchmarkEmaCrossoverRiskOffSignalGenerator": BenchmarkEmaCrossoverRiskOffSignalGenerator,
+            "BenchmarkDrawdownVolRiskOffSignalGenerator": BenchmarkDrawdownVolRiskOffSignalGenerator,
             # Future implementations can be added here:
             # "VixBasedRiskOffSignalGenerator": VixBasedRiskOffSignalGenerator,
             # "TechnicalRiskOffSignalGenerator": TechnicalRiskOffSignalGenerator,
@@ -154,12 +160,18 @@ class FixedRiskOffSignalProvider(IRiskOffSignalProvider):
         from .implementations import (
             NoRiskOffSignalGenerator,
             DummyRiskOffSignalGenerator,
+            BenchmarkSmaRiskOffSignalGenerator,
+            BenchmarkEmaCrossoverRiskOffSignalGenerator,
+            BenchmarkDrawdownVolRiskOffSignalGenerator,
         )
 
         # Registry of available generator types
         generator_registry = {
             "NoRiskOffSignalGenerator": NoRiskOffSignalGenerator,
             "DummyRiskOffSignalGenerator": DummyRiskOffSignalGenerator,
+            "BenchmarkSmaRiskOffSignalGenerator": BenchmarkSmaRiskOffSignalGenerator,
+            "BenchmarkEmaCrossoverRiskOffSignalGenerator": BenchmarkEmaCrossoverRiskOffSignalGenerator,
+            "BenchmarkDrawdownVolRiskOffSignalGenerator": BenchmarkDrawdownVolRiskOffSignalGenerator,
         }
 
         generator_class = generator_registry.get(self.generator_type)

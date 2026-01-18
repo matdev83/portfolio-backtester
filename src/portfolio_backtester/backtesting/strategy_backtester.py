@@ -251,6 +251,37 @@ class StrategyBacktester:
             window.test_end,
         )
 
+        # Normalize timezone awareness across window boundaries and data indexes.
+        # WFO windows are often generated from tz-naive monthly indexes, while
+        # MDMP-sourced daily data can be tz-aware. Pandas slicing raises if they
+        # don't match.
+        def _drop_tz(ts: pd.Timestamp) -> pd.Timestamp:
+            if isinstance(ts, pd.Timestamp) and ts.tz is not None:
+                return ts.tz_localize(None)
+            return ts
+
+        train_start = _drop_tz(train_start)
+        train_end = _drop_tz(train_end)
+        test_start = _drop_tz(test_start)
+        test_end = _drop_tz(test_end)
+
+        if isinstance(monthly_data.index, pd.DatetimeIndex) and monthly_data.index.tz is not None:
+            from typing import cast
+
+            monthly_data = monthly_data.copy()
+            monthly_index = cast(pd.DatetimeIndex, monthly_data.index)
+            monthly_data.index = monthly_index.tz_localize(None)
+
+        if isinstance(daily_data.index, pd.DatetimeIndex) and daily_data.index.tz is not None:
+            daily_data = daily_data.copy()
+            daily_index = cast(pd.DatetimeIndex, daily_data.index)
+            daily_data.index = daily_index.tz_localize(None)
+
+        if isinstance(rets_full.index, pd.DatetimeIndex) and rets_full.index.tz is not None:
+            rets_full = rets_full.copy()
+            rets_index = cast(pd.DatetimeIndex, rets_full.index)
+            rets_full.index = rets_index.tz_localize(None)
+
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Evaluating window: {train_start} to {test_end}")
 

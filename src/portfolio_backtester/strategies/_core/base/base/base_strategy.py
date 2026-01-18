@@ -1026,18 +1026,37 @@ class BaseStrategy(ABC):
             return []
         has_recent = recent_window.notna().any(axis=0)
 
-        # 2) First-valid date per asset (computed once per dataset/strategy)
-        bounds_key = (id(all_historical_data), tuple(close_df.columns))
+        # 2) First-valid date per asset (cached across WFO windows)
+        #
+        # In WFO evaluation we often pass a *slice* of the full daily data into
+        # `generate_signals()`. Using `id(all_historical_data)` as part of the cache key
+        # defeats caching because each slice is a new object, causing an expensive
+        # per-column scan (first_valid_index) to repeat for every window and trial.
+        #
+        # Instead, cache by column set and keep the earliest observed start date;
+        # if we later see an earlier slice, recompute once.
+        bounds_key = tuple(str(c) for c in close_df.columns)
         bounds_cache = getattr(self, "_data_availability_bounds", None)
         if bounds_cache is None:
             bounds_cache = {}
             setattr(self, "_data_availability_bounds", bounds_cache)
 
-        if bounds_key not in bounds_cache:
+        index_min = pd.Timestamp(close_df.index.min())
+        if index_min.tz is not None:
+            index_min = index_min.tz_localize(None)
+
+        bounds_entry = bounds_cache.get(bounds_key)
+        if (
+            bounds_entry is None
+            or not isinstance(bounds_entry, dict)
+            or "first_valid" not in bounds_entry
+            or "index_min" not in bounds_entry
+            or index_min < pd.Timestamp(bounds_entry["index_min"])
+        ):
             first_valid = close_df.apply(lambda s: s.first_valid_index())
-            bounds_cache[bounds_key] = first_valid
+            bounds_cache[bounds_key] = {"index_min": index_min, "first_valid": first_valid}
         else:
-            first_valid = bounds_cache[bounds_key]
+            first_valid = bounds_entry["first_valid"]
 
         # Convert to timestamps and compute months available
         first_valid_ts = pd.to_datetime(first_valid)

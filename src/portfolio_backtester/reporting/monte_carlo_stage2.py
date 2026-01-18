@@ -86,8 +86,62 @@ def _plot_monte_carlo_robustness_analysis(
             )
             return
 
-        universe = scenario_config.get("universe", self.global_config.get("universe", []))
+        # Resolve a universe consistent with this scenario (do not fall back to global universe
+        # unless the scenario doesn't define one). Falling back to GLOBAL_CONFIG.universe can
+        # inflate the replacement counts and skew the stress test.
+        universe: list[str] = []
+        available_tickers: list[str] = []
+        try:
+            if isinstance(monthly_data, pd.DataFrame) and not monthly_data.empty:
+                available_tickers = [str(c) for c in monthly_data.columns if isinstance(c, str)]
+        except Exception:
+            available_tickers = []
+
+        if isinstance(scenario_config.get("universe"), list) and scenario_config.get("universe"):
+            universe = list(scenario_config["universe"])
+        elif "universe_config" in scenario_config:
+            try:
+                from ..universe_resolver import resolve_universe_config
+
+                current_date = None
+                try:
+                    if isinstance(daily_data, pd.DataFrame) and not daily_data.empty:
+                        current_date = pd.Timestamp(daily_data.index.max())
+                except Exception:
+                    current_date = None
+
+                universe = resolve_universe_config(
+                    scenario_config["universe_config"], current_date=current_date
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Stage 2 MC: failed to resolve scenario universe_config: {exc}")
+                universe = []
+
+        # Exclude the benchmark from the replacement pool if present.
+        benchmark_ticker = self.global_config.get("benchmark")
+        if isinstance(benchmark_ticker, str) and benchmark_ticker:
+            universe = [t for t in universe if t != benchmark_ticker]
+
+        # Prefer the tickers actually present in the backtest data before falling back to the
+        # global universe. This avoids skewing the replacement percentages and eliminates
+        # "tickers not found" warnings during Stage 2 runs.
+        if not universe and available_tickers:
+            if isinstance(benchmark_ticker, str) and benchmark_ticker:
+                universe = [t for t in available_tickers if t != benchmark_ticker]
+            else:
+                universe = list(available_tickers)
+
+        if not universe:
+            universe = list(self.global_config.get("universe", []))
+            if isinstance(benchmark_ticker, str) and benchmark_ticker:
+                universe = [t for t in universe if t != benchmark_ticker]
+
         universe_size = len(universe)
+        if universe_size <= 0:
+            logger.warning(
+                "Stage 2 MC: empty universe after resolution; skipping robustness analysis."
+            )
+            return
 
         base_percentages = [0.05, 0.075, 0.10]
         replacement_counts = [max(1, int(np.ceil(universe_size * p))) for p in base_percentages]
@@ -98,6 +152,14 @@ def _plot_monte_carlo_robustness_analysis(
 
         optimized_scenario = scenario_config.copy()
         optimized_scenario["strategy_params"] = optimal_params
+        if available_tickers:
+            optimized_scenario["universe"] = list(available_tickers)
+        elif universe:
+            optimized_scenario["universe"] = (
+                [benchmark_ticker, *universe]
+                if isinstance(benchmark_ticker, str) and benchmark_ticker
+                else list(universe)
+            )
 
         simulation_results: dict[float, list[pd.Series]] = {}
         total_sims = len(replacement_percentages) * num_simulations_per_level

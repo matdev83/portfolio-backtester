@@ -110,6 +110,7 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         params.setdefault("target_vol_annual", 0.12)
         params.setdefault("vol_lookback_days", 63)
         params.setdefault("vol_max_gross_exposure", 1.0)
+        params.setdefault("vol_target_source", "benchmark")
 
         params.setdefault("panic_overlay_enabled", False)
         params.setdefault("panic_drawdown_lookback_days", 126)
@@ -243,6 +244,12 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
                 "default": 1.0,
                 "description": "Max gross exposure after scaling",
             },
+            "vol_target_source": {
+                "type": "categorical",
+                "choices": ["benchmark", "portfolio_proxy"],
+                "default": "benchmark",
+                "description": "Volatility series used for scaling",
+            },
             "panic_overlay_enabled": {
                 "type": "categorical",
                 "choices": [True, False],
@@ -365,40 +372,60 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
 
     def _exposure_scale_from_benchmark(
         self,
+        asset_prices_hist: pd.DataFrame,
         benchmark_prices_hist: pd.DataFrame,
         current_date: pd.Timestamp,
         params: Dict[str, Any],
+        holdings: Set[str],
     ) -> float:
-        """Compute gross exposure scaling factor using benchmark vol and optional panic overlay."""
+        """Compute gross exposure scaling factor using vol targeting + optional panic overlay."""
         if not bool(params.get("vol_target_enabled", False)):
             return 1.0
 
         target_vol_annual = float(params.get("target_vol_annual", 0.12))
         vol_lookback_days = int(params.get("vol_lookback_days", 63))
         max_gross = float(params.get("vol_max_gross_exposure", 1.0))
+        vol_source = str(params.get("vol_target_source", "benchmark")).lower()
 
         bench_close = self._extract_close_series(
             benchmark_prices_hist, price_column=str(params.get("price_column_benchmark", "Close"))
         )
         bench_close = bench_close.loc[bench_close.index <= current_date]
-        if len(bench_close) < (vol_lookback_days + 2):
+
+        vol_annual_bench: Optional[float] = None
+        if len(bench_close) >= (vol_lookback_days + 2):
+            bench_rets = bench_close.pct_change(fill_method=None).dropna()
+            bench_rets = bench_rets.loc[bench_rets.index < current_date].tail(vol_lookback_days)
+            vol_annual_bench = self._annualized_vol_from_returns(bench_rets)
+
+        vol_annual_target: Optional[float]
+        if vol_source == "portfolio_proxy":
+            held = [t for t in sorted(holdings) if t in asset_prices_hist.columns]
+            if len(held) < 1:
+                return 1.0
+            px = asset_prices_hist.loc[asset_prices_hist.index <= current_date, held]
+            if len(px) < (vol_lookback_days + 2):
+                return 1.0
+            rets = px.pct_change(fill_method=None).dropna(how="all")
+            rets = rets.loc[rets.index < current_date].tail(vol_lookback_days)
+            portfolio_rets = rets.mean(axis=1, skipna=True)
+            vol_annual_target = self._annualized_vol_from_returns(portfolio_rets)
+        else:
+            vol_annual_target = vol_annual_bench
+
+        if vol_annual_target is None or vol_annual_target <= 0:
             return 1.0
 
-        bench_rets = bench_close.pct_change(fill_method=None).dropna()
-        bench_rets = bench_rets.loc[bench_rets.index < current_date].tail(vol_lookback_days)
-
-        vol_annual = self._annualized_vol_from_returns(bench_rets)
-        if vol_annual is None or vol_annual <= 0:
-            return 1.0
-
-        scale = target_vol_annual / max(vol_annual, 1e-12)
-        scale = float(np.clip(scale, 0.0, max_gross))
+        scale = float(np.clip(target_vol_annual / max(vol_annual_target, 1e-12), 0.0, max_gross))
 
         if bool(params.get("panic_overlay_enabled", False)):
             dd_lookback = int(params.get("panic_drawdown_lookback_days", 126))
             dd_threshold = float(params.get("panic_drawdown_threshold", -0.1))
             vol_threshold = float(params.get("panic_vol_threshold", 0.25))
             panic_mult = float(params.get("panic_exposure_multiplier", 0.25))
+
+            if vol_annual_bench is None:
+                return scale
 
             # Use close up to (but not including) current_date to avoid lookahead.
             bench_close_for_regime = bench_close.loc[bench_close.index < current_date]
@@ -409,7 +436,7 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
                     last = float(dd_window.iloc[-1])
                     if peak > 0 and np.isfinite(peak) and np.isfinite(last):
                         drawdown = (last / peak) - 1.0
-                        if (drawdown <= dd_threshold) and (vol_annual >= vol_threshold):
+                        if (drawdown <= dd_threshold) and (vol_annual_bench >= vol_threshold):
                             scale *= float(np.clip(panic_mult, 0.0, 1.0))
 
         return float(np.clip(scale, 0.0, max_gross))
@@ -753,6 +780,22 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
                 self._pending_buy_signals.clear()
                 return pd.DataFrame(0.0, index=[current_date], columns=original_assets)
 
+        # Risk-off signal generator (new system: True = risk-off)
+        risk_off_generator = self.get_risk_off_signal_generator()
+        non_universe_data_safe = (
+            non_universe_historical_data if non_universe_historical_data is not None else pd.DataFrame()
+        )
+        if risk_off_generator.generate_risk_off_signal(
+            all_historical_data,
+            benchmark_historical_data,
+            non_universe_data_safe,
+            current_date,
+        ):
+            self._current_holdings.clear()
+            self._pending_buy_signals.clear()
+            self._pending_sell_signals.clear()
+            return pd.DataFrame(0.0, index=[current_date], columns=original_assets)
+
         # Get dual momentum candidates
         candidates_with_scores = self._get_dual_momentum_candidates(
             asset_prices_hist,
@@ -801,7 +844,11 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         # Volatility targeting + panic overlay (scale gross exposure; leftover goes to cash)
         if self._current_holdings:
             exposure_scale = self._exposure_scale_from_benchmark(
-                benchmark_prices_hist, current_date, params
+                asset_prices_hist,
+                benchmark_prices_hist,
+                current_date,
+                params,
+                self._current_holdings,
             )
             if exposure_scale != 1.0:
                 output_df = output_df.mul(exposure_scale)

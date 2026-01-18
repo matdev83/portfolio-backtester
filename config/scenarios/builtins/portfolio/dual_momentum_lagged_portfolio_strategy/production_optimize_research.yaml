@@ -1,12 +1,11 @@
-# Dual Momentum (Lagged) - Default (Forced Vol Targeting)
+# Dual Momentum (Lagged) - Production WFO Optimization (Research)
 #
-# This default scenario is intentionally aligned with the production-grade
-# research configuration (forced portfolio-proxy volatility targeting).
-#
-# Source template:
-# - config/scenarios/builtins/portfolio/dual_momentum_lagged_portfolio_strategy/production_optimize_research_forced_vol_target.yaml
+# Optimizes a small set of high-ROI robustness knobs:
+# - Portfolio-proxy vol targeting (and whether it should be enabled)
+# - Exit hysteresis buffers
+# - Optional panic overlay
 
-name: dual_momentum_lagged_portfolio
+name: dual_momentum_lagged_portfolio_prod_opt_research
 strategy: DualMomentumLaggedPortfolioStrategy
 
 position_sizer: equal_weight
@@ -20,8 +19,6 @@ universe_config:
   type: method
   method_name: get_top_weight_sp500_components
   n_holdings: 20
-
-benchmark_ticker: SPX
 
 train_window_months: 60
 test_window_months: 12
@@ -92,6 +89,10 @@ optimize:
     max_value: 250
     step: 25
 
+  - parameter: ranking_method
+    type: categorical
+    choices: [excess_total_return, residual_momentum]
+
   - parameter: absolute_exit_buffer
     type: float
     min_value: 0.0
@@ -104,10 +105,18 @@ optimize:
     max_value: 0.05
     step: 0.01
 
+  - parameter: vol_target_enabled
+    type: categorical
+    choices: [true, false]
+
+  - parameter: vol_target_source
+    type: categorical
+    choices: [benchmark, portfolio_proxy]
+
   - parameter: target_vol_annual
     type: float
-    min_value: 0.12
-    max_value: 0.30
+    min_value: 0.18
+    max_value: 0.28
     step: 0.01
 
   - parameter: vol_lookback_days

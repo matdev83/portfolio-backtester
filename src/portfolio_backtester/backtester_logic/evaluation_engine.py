@@ -70,13 +70,13 @@ class EvaluationEngine:
         trial: Any,
         scenario_config: dict,
         windows: list,
-        monthly_data_np: np.ndarray,
-        daily_data_np: np.ndarray,
-        rets_full_np: np.ndarray,
+        monthly_data: pd.DataFrame,
+        daily_data: pd.DataFrame,
+        rets_full: pd.DataFrame,
         metrics_to_optimize: list,
         is_multi_objective: bool,
-        signals: np.ndarray,
-        strategy_instance: BaseStrategy,
+        signals: np.ndarray,  # noqa: ARG002
+        strategy_instance: BaseStrategy,  # noqa: ARG002
     ) -> float | tuple[float, ...]:
         """
         Evaluate walk-forward optimization using fast path.
@@ -96,16 +96,15 @@ class EvaluationEngine:
         Returns:
             Objective value (float for single objective, tuple for multi-objective)
         """
+        # NOTE:
+        # This "fast" path previously reconstructed DataFrames from raw NumPy arrays,
+        # dropping the index/column labels needed for universe resolution. That made
+        # WFO optimization degenerate (empty universes → NaN metrics). We keep the
+        # structure but evaluate via the new-architecture backtester using the
+        # original labeled DataFrames.
 
-        # Always use new architecture evaluation path
         from ..backtesting.strategy_backtester import StrategyBacktester
         from ..optimization.evaluator import BacktestEvaluator
-
-        monthly_data = (
-            pd.DataFrame(monthly_data_np) if monthly_data_np is not None else pd.DataFrame()
-        )
-        daily_data = pd.DataFrame(daily_data_np) if daily_data_np is not None else pd.DataFrame()
-        rets_full = pd.DataFrame(rets_full_np) if rets_full_np is not None else pd.DataFrame()
 
         # Create new architecture components
         strategy_backtester = StrategyBacktester(self.global_config, self.data_source)
@@ -227,7 +226,9 @@ class EvaluationEngine:
 
                 # Handle Multi-Index vs single-level columns only when cache invalidated
                 if isinstance(daily_data.columns, pd.MultiIndex):
-                    self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data, column_names=["Close"])
+                    self._daily_prices_np_cache, _ = _df_to_float32_array(
+                        daily_data, column_names=["Close"]
+                    )
                 else:
                     self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data)
 
@@ -278,18 +279,13 @@ class EvaluationEngine:
 
             signals = signals_df
 
-            # Convert DataFrames to numpy arrays for fast evaluation
-            monthly_data_np, _ = _df_to_float32_array(monthly_data)
-            daily_data_np, _ = _df_to_float32_array(daily_data)
-            rets_full_np, _ = _df_to_float32_array(rets_full)
-
             obj_evaluated = self.evaluate_walk_forward_fast(
                 trial,
                 scenario_config,
                 windows,
-                monthly_data_np,
-                daily_data_np,
-                rets_full_np,
+                monthly_data,
+                daily_data,
+                rets_full,
                 metrics_to_optimize,
                 is_multi_objective,
                 signals.to_numpy(),
@@ -417,7 +413,9 @@ class EvaluationEngine:
 
                 # Handle Multi-Index vs single-level columns only when cache invalidated
                 if isinstance(daily_data.columns, pd.MultiIndex):
-                    self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data, column_names=["Close"])
+                    self._daily_prices_np_cache, _ = _df_to_float32_array(
+                        daily_data, column_names=["Close"]
+                    )
                 else:
                     self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data)
 

@@ -1,12 +1,10 @@
-# Dual Momentum (Lagged) - Default (Forced Vol Targeting)
+# Dual Momentum (Lagged) - Production WFO Optimization (Research - Forced Vol Targeting)
 #
-# This default scenario is intentionally aligned with the production-grade
-# research configuration (forced portfolio-proxy volatility targeting).
-#
-# Source template:
-# - config/scenarios/builtins/portfolio/dual_momentum_lagged_portfolio_strategy/production_optimize_research_forced_vol_target.yaml
+# Same as the "research" production scenario, but forces the high-ROI overlay
+# (portfolio-proxy volatility targeting) to stay enabled, so Optuna can tune its
+# parameters instead of switching it off.
 
-name: dual_momentum_lagged_portfolio
+name: dual_momentum_lagged_portfolio_prod_opt_research_forced_vol_target
 strategy: DualMomentumLaggedPortfolioStrategy
 
 position_sizer: equal_weight
@@ -20,8 +18,6 @@ universe_config:
   type: method
   method_name: get_top_weight_sp500_components
   n_holdings: 20
-
-benchmark_ticker: SPX
 
 train_window_months: 60
 test_window_months: 12

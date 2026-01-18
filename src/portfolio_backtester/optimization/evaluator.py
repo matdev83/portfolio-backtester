@@ -7,10 +7,11 @@ backends and supports both single and multi-objective optimization.
 """
 
 import logging
+import os
+from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
 import pandas as pd
-import os
-from typing import Any, Dict, List, Union, Optional, cast
 
 try:
     # Prefer optional import; used only when parallel path is enabled
@@ -25,9 +26,6 @@ from ..backtesting.strategy_backtester import StrategyBacktester
 from ..parallel_wfo import ParallelWFOProcessor, create_parallel_wfo_processor
 from ..optimization.wfo_window import WFOWindow
 from .incremental_evaluation import IncrementalEvaluationManager
-
-# WFO enhancement imports
-from ..backtesting.window_evaluator import WindowEvaluator
 
 # Performance optimizer imports - hard dependency for Alpha
 from .performance_optimizer import (
@@ -187,10 +185,6 @@ class BacktestEvaluator:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Evaluating parameters: {parameters}")
 
-        # Initialize window evaluator if needed, now with backtester instance
-        if self.window_evaluator is None:
-            self.window_evaluator = WindowEvaluator(backtester=backtester)
-
         # The 'data.windows' attribute now contains WFOWindow objects directly.
         enhanced_windows = data.windows
         window_results: List[WindowResult] = []
@@ -205,30 +199,38 @@ class BacktestEvaluator:
             derived_universe = []
 
         def _eval_single_window(win: WFOWindow) -> WindowResult:
-            """Worker-safe single window evaluation."""
-            assert self.window_evaluator is not None
+            """Worker-safe single window evaluation.
+
+            Use `StrategyBacktester.evaluate_window()` directly so we:
+            - apply the candidate `parameters` via `strategy_params`
+            - avoid relying on `BaseStrategy.config` semantics
+            - provide a stable universe using the already-fetched data columns
+            """
             try:
-                strategy = backtester._get_strategy(
-                    scenario_config["strategy"], parameters, scenario_config
+                config_for_eval = dict(scenario_config)
+                config_for_eval["strategy_params"] = dict(parameters)
+
+                if derived_universe:
+                    benchmark_global = backtester.global_config.get("benchmark", "SPY")
+                    benchmark_scenario = config_for_eval.get("benchmark_ticker")
+                    excluded = {
+                        b
+                        for b in (benchmark_global, benchmark_scenario)
+                        if isinstance(b, str) and b
+                    }
+                    config_for_eval["universe"] = [
+                        t for t in derived_universe if isinstance(t, str) and t not in excluded
+                    ]
+
+                return backtester.evaluate_window(
+                    config_for_eval,
+                    win,
+                    data.monthly,
+                    data.daily,
+                    data.returns,
                 )
-                universe_tickers_local = derived_universe or self._get_universe_tickers(strategy)
-                benchmark_ticker_local = (
-                    universe_tickers_local[0] if universe_tickers_local else "SPY"
-                )
-                return cast(
-                    WindowResult,
-                    self.window_evaluator.evaluate_window(
-                        window=win,
-                        strategy=strategy,
-                        daily_data=data.daily,
-                        full_monthly_data=data.monthly,
-                        full_rets_daily=data.returns,
-                        benchmark_data=data.daily,
-                        universe_tickers=universe_tickers_local,
-                        benchmark_ticker=benchmark_ticker_local,
-                    ),
-                )
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                logger.error("WFO window evaluation failed: %s", exc, exc_info=True)
                 return WindowResult(
                     window_returns=pd.Series(dtype=float),
                     metrics={metric: -1e9 for metric in self.metrics_to_optimize},

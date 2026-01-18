@@ -72,6 +72,58 @@ def test_vol_targeting_scales_gross_exposure_down() -> None:
     assert gross < 1.0
 
 
+def test_portfolio_proxy_vol_targeting_scales_gross_exposure_down() -> None:
+    rng = np.random.default_rng(0)
+    dates = pd.date_range(start="2019-01-01", periods=420, freq="B")
+
+    bench_rets = rng.normal(loc=0.0002, scale=0.01, size=len(dates))
+    bench_close = pd.Series(100.0 * np.cumprod(1.0 + bench_rets), index=dates)
+
+    # High-vol assets so the portfolio proxy vol exceeds target.
+    a_rets = rng.normal(loc=0.0004, scale=0.03, size=len(dates))
+    b_rets = rng.normal(loc=0.0003, scale=0.025, size=len(dates))
+    a_close = pd.Series(50.0 * np.cumprod(1.0 + a_rets), index=dates)
+    b_close = pd.Series(70.0 * np.cumprod(1.0 + b_rets), index=dates)
+
+    all_historical_data = pd.concat(
+        [_make_ohlc_multiindex(a_close, "AAA"), _make_ohlc_multiindex(b_close, "BBB")], axis=1
+    )
+    benchmark_historical_data = _make_ohlc_multiindex(bench_close, "SPX")
+
+    strategy = DualMomentumLaggedPortfolioStrategy(
+        {
+            "strategy_params": {
+                "lookback_months": 12,
+                "lag_months": 0,
+                "max_holdings": 2,
+                "use_200sma_filter": False,
+                "min_absolute_momentum": -1.0,
+                "vol_target_enabled": True,
+                "vol_target_source": "portfolio_proxy",
+                "target_vol_annual": 0.08,
+                "vol_lookback_days": 63,
+                "vol_max_gross_exposure": 1.0,
+            }
+        }
+    )
+
+    current_date = dates[-1]
+
+    with patch(
+        "portfolio_backtester.strategies.builtins.portfolio.dual_momentum_lagged_portfolio_strategy.get_top_weight_sp500_components",
+        return_value=["AAA", "BBB"],
+    ):
+        weights = strategy.generate_signals(
+            all_historical_data=all_historical_data,
+            benchmark_historical_data=benchmark_historical_data,
+            current_date=current_date,
+        ).iloc[0]
+
+    gross = float(weights.abs().sum())
+    assert gross > 0.0
+    assert gross < 1.0
+
+
 def test_residual_momentum_ranking_prefers_alpha_over_beta() -> None:
     dates = pd.date_range(start="2020-01-01", periods=300, freq="B")
     bench_rets = np.full(len(dates), 0.0005, dtype=float)
