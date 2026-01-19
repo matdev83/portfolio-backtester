@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional, Type, TypeVar
 
 T = TypeVar("T")
+_MISSING = object()
 
 
 class IAttributeAccessor(ABC):
@@ -18,7 +19,7 @@ class IAttributeAccessor(ABC):
     """
 
     @abstractmethod
-    def get_attribute(self, obj: Any, attr_name: str, default: Optional[Any] = None) -> Any:
+    def get_attribute(self, obj: Any, attr_name: str, default: Any = _MISSING) -> Any:
         """
         Get an attribute from an object.
 
@@ -28,7 +29,7 @@ class IAttributeAccessor(ABC):
             default: Default value if attribute doesn't exist
 
         Returns:
-            The attribute value or default if not found
+            The attribute value or the provided default if not found
 
         Raises:
             AttributeError: If attribute doesn't exist and no default provided

@@ -409,8 +409,11 @@ class OptimizerReportGenerator:
             return float(obj)
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
-        elif isinstance(obj, (pd.Timestamp, pd.DatetimeIndex)):
-            return str(obj)
+        elif isinstance(obj, pd.Timestamp):
+            return obj.isoformat()
+        elif isinstance(obj, pd.DatetimeIndex):
+            # Avoid pandas' pretty-formatting which can trigger platform-specific issues
+            return [ts.isoformat() for ts in obj.to_pydatetime()]
         elif pd.isna(obj) if not isinstance(obj, (pd.Series, pd.DataFrame)) else False:
             return None
         else:

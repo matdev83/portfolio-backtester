@@ -54,10 +54,12 @@ def _ensure_aligned_frames(
     Align inputs by date and columns in the given order, ffill weights_for_returns/current.
     """
     valid_cols: List[str] = [str(t) for t in universe_tickers if t in rets_daily.columns]
-    # Reindex weights and ffill, fillna zeros
-    wret = weights_for_returns.reindex(index=price_index, columns=valid_cols).fillna(0.0)
-    wcur = weights_current.reindex(index=price_index, columns=valid_cols).fillna(0.0)
-    rets = rets_daily.reindex(index=price_index, columns=valid_cols).fillna(0.0)
+    # Reindex to the desired timeline/column order.
+    # NOTE: Do not call DataFrame.fillna here; we handle NaNs during ndarray conversion
+    # via np.nan_to_num for robustness across pandas/numpy versions.
+    wret = weights_for_returns.reindex(index=price_index, columns=valid_cols)
+    wcur = weights_current.reindex(index=price_index, columns=valid_cols)
+    rets = rets_daily.reindex(index=price_index, columns=valid_cols)
     prices_close: Optional[pd.DataFrame] = None
     if prices_close_df is not None:
         prices_close = prices_close_df.reindex(index=price_index, columns=valid_cols)
@@ -93,9 +95,13 @@ def prepare_ndarrays(
         prices_close_df=prices_close_df,
     )
     tickers: List[str] = aligned["tickers"]
-    wret_arr = np.ascontiguousarray(aligned["weights_for_returns"].to_numpy(dtype=dtype))
-    wcur_arr = np.ascontiguousarray(aligned["weights_current"].to_numpy(dtype=dtype))
-    rets_arr = np.ascontiguousarray(aligned["rets"].to_numpy(dtype=dtype))
+    wret_arr = np.nan_to_num(
+        np.ascontiguousarray(aligned["weights_for_returns"].to_numpy(dtype=dtype)), nan=0.0
+    )
+    wcur_arr = np.nan_to_num(
+        np.ascontiguousarray(aligned["weights_current"].to_numpy(dtype=dtype)), nan=0.0
+    )
+    rets_arr = np.nan_to_num(np.ascontiguousarray(aligned["rets"].to_numpy(dtype=dtype)), nan=0.0)
     rets_mask = np.ascontiguousarray(
         ~rets_daily.reindex(index=price_index, columns=tickers).isna().to_numpy()
     )
@@ -104,7 +110,9 @@ def prepare_ndarrays(
     prices_mask = None
     prices_aligned = aligned["prices_close"]
     if prices_aligned is not None:
-        prices_arr = np.ascontiguousarray(prices_aligned.fillna(0.0).to_numpy(dtype=dtype))
+        prices_arr = np.nan_to_num(
+            np.ascontiguousarray(prices_aligned.to_numpy(dtype=dtype)), nan=0.0
+        )
         prices_mask = np.ascontiguousarray(
             (prices_aligned.notna() & (prices_aligned > 0.0)).to_numpy()
         )
@@ -175,15 +183,15 @@ def to_ndarrays(
     dtype = _normalize_dtype(use_float32)
     # Reindex to desired ticker order and timeline
     tickers: List[str] = [str(t) for t in universe_tickers]
-    weights = weights_daily.reindex(columns=tickers).fillna(0.0)
-    weights = weights.reindex(price_index, method="ffill").fillna(0.0)
-    rets = rets_daily.reindex(index=price_index, columns=tickers).fillna(0.0)
+    weights = weights_daily.reindex(columns=tickers)
+    weights = weights.reindex(price_index, method="ffill")
+    rets = rets_daily.reindex(index=price_index, columns=tickers)
     # Build mask for original NaNs (true valid where original non-NaN)
     orig_rets = rets_daily.reindex(index=price_index, columns=tickers)
     mask = ~orig_rets.isna().to_numpy()
     # Convert to contiguous arrays
-    weights_arr = np.ascontiguousarray(weights.to_numpy(dtype=dtype))
-    rets_arr = np.ascontiguousarray(rets.to_numpy(dtype=dtype))
+    weights_arr = np.nan_to_num(np.ascontiguousarray(weights.to_numpy(dtype=dtype)), nan=0.0)
+    rets_arr = np.nan_to_num(np.ascontiguousarray(rets.to_numpy(dtype=dtype)), nan=0.0)
     mask_arr = np.ascontiguousarray(mask)
     return {
         "weights": weights_arr,

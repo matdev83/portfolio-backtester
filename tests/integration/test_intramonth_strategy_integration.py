@@ -64,12 +64,12 @@ class TestIntramonthStrategyIntegration:
 
             price_data[ticker] = prices[1:]  # Remove the initial base_price
 
-        # Add SPY as benchmark
+        # Add SPY as benchmark (canonical ticker)
         spy_returns = np.random.normal(0.0003, 0.015, n_days)  # Market benchmark
         spy_prices = [100]
         for ret in spy_returns:
             spy_prices.append(spy_prices[-1] * (1 + ret))
-        price_data["SPY"] = spy_prices[1:]
+        price_data["AMEX:SPY"] = spy_prices[1:]
 
         return pd.DataFrame(price_data, index=business_dates)
 
@@ -178,15 +178,33 @@ class TestIntramonthStrategyIntegration:
             day_of_month = current_date.day
 
             if day_of_month <= 3:  # Entry period (first few days)
-                return pd.Series({"AAPL": 0.4, "MSFT": 0.3, "GOOGL": 0.3, "AMZN": 0.0, "TSLA": 0.0})
+                weights = pd.Series(
+                    {"AAPL": 0.4, "MSFT": 0.3, "GOOGL": 0.3, "AMZN": 0.0, "TSLA": 0.0}
+                )
+                return pd.DataFrame([weights], index=[current_date])
             elif 13 <= day_of_month <= 17:  # Exit period (around 15th)
-                return pd.Series({"AAPL": 0.0, "MSFT": 0.0, "GOOGL": 0.0, "AMZN": 0.0, "TSLA": 0.0})
+                weights = pd.Series(
+                    {"AAPL": 0.0, "MSFT": 0.0, "GOOGL": 0.0, "AMZN": 0.0, "TSLA": 0.0}
+                )
+                return pd.DataFrame([weights], index=[current_date])
             else:
                 # Hold existing positions - return None to maintain current positions
                 return None
 
         strategy.generate_signals = generate_signals
         strategy.get_universe_tickers = Mock(return_value=["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"])
+        strategy.get_non_universe_data_requirements = Mock(return_value=[])
+
+        def _get_rebalance_dates(start_date, end_date, available_dates, strategy_context):
+            return available_dates[(available_dates >= start_date) & (available_dates <= end_date)]
+
+        timing_controller = Mock()
+        timing_controller.get_rebalance_dates.side_effect = _get_rebalance_dates
+        timing_controller.should_generate_signal.return_value = True
+        timing_controller.reset_state = Mock()
+        timing_controller.update_signal_state = Mock()
+        timing_controller.update_position_state = Mock()
+        strategy.get_timing_controller = Mock(return_value=timing_controller)
 
         return strategy
 
@@ -207,13 +225,26 @@ class TestIntramonthStrategyIntegration:
             """Generate monthly rebalancing signals."""
             # Rebalance on first business day of month
             if current_date.day <= 3:
-                return pd.Series(
+                weights = pd.Series(
                     {"AAPL": 0.25, "MSFT": 0.25, "GOOGL": 0.25, "AMZN": 0.25, "TSLA": 0.0}
                 )
+                return pd.DataFrame([weights], index=[current_date])
             return None
 
         strategy.generate_signals = generate_signals
         strategy.get_universe_tickers = Mock(return_value=["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"])
+        strategy.get_non_universe_data_requirements = Mock(return_value=[])
+
+        def _get_rebalance_dates(start_date, end_date, available_dates, strategy_context):
+            return available_dates[(available_dates >= start_date) & (available_dates <= end_date)]
+
+        timing_controller = Mock()
+        timing_controller.get_rebalance_dates.side_effect = _get_rebalance_dates
+        timing_controller.should_generate_signal.return_value = True
+        timing_controller.reset_state = Mock()
+        timing_controller.update_signal_state = Mock()
+        timing_controller.update_position_state = Mock()
+        strategy.get_timing_controller = Mock(return_value=timing_controller)
 
         return strategy
 
@@ -286,7 +317,7 @@ class TestIntramonthStrategyIntegration:
             full_rets_daily=optimization_data.returns,
             benchmark_data=optimization_data.daily,
             universe_tickers=["AAPL", "MSFT", "GOOGL"],
-            benchmark_ticker="SPY",
+            benchmark_ticker="AMEX:SPY",
         )
 
         # Validate result structure - this is the key integration test
@@ -499,7 +530,7 @@ class TestIntramonthStrategyIntegration:
                 full_rets_daily=optimization_data.returns,
                 benchmark_data=optimization_data.daily,
                 universe_tickers=["AAPL", "MSFT", "GOOGL"],
-                benchmark_ticker="SPY",
+                benchmark_ticker="AMEX:SPY",
             )
 
             window_results.append(result)

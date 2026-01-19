@@ -4,13 +4,16 @@ Unit tests for enhanced window generation utilities.
 Tests the enhanced WFO window generation with evaluation frequency detection.
 """
 
-import pandas as pd
 from unittest.mock import patch
-from portfolio_backtester.utils import (
-    generate_enhanced_wfo_windows,
-    _determine_evaluation_frequency,
-)
+
 import numpy as np
+import pandas as pd
+
+from portfolio_backtester.utils import (
+    _determine_evaluation_frequency,
+    generate_enhanced_wfo_windows,
+    generate_randomized_wfo_windows,
+)
 
 
 class TestEnhancedWindowGeneration:
@@ -84,9 +87,7 @@ class TestEnhancedWindowGeneration:
         assert freq == "M"
 
     @patch("portfolio_backtester.utils.generate_randomized_wfo_windows")
-    def test_generate_enhanced_wfo_windows_with_wfo_window_available(
-        self, mock_generate_base
-    ):
+    def test_generate_enhanced_wfo_windows_with_wfo_window_available(self, mock_generate_base):
         """Test enhanced window generation when WFOWindow is available."""
         # Mock base window generation
         mock_generate_base.return_value = [
@@ -190,9 +191,7 @@ class TestEnhancedWindowGeneration:
         rng = np.random.default_rng(42)
 
         # Generate enhanced windows
-        generate_enhanced_wfo_windows(
-            monthly_data_index, scenario_config, global_config, rng
-        )
+        generate_enhanced_wfo_windows(monthly_data_index, scenario_config, global_config, rng)
 
         # Check that random state was passed through
         mock_generate_base.assert_called_once_with(
@@ -200,9 +199,7 @@ class TestEnhancedWindowGeneration:
         )
 
     @patch("portfolio_backtester.utils.generate_randomized_wfo_windows")
-    def test_generate_enhanced_wfo_windows_fallback_when_import_fails(
-        self, mock_generate_base
-    ):
+    def test_generate_enhanced_wfo_windows_fallback_when_import_fails(self, mock_generate_base):
         """Test fallback to regular windows when WFOWindow import fails."""
         # Mock base window generation
         base_windows = [
@@ -222,9 +219,7 @@ class TestEnhancedWindowGeneration:
         rng = np.random.default_rng(42)
 
         # Mock import failure by patching the import inside the function
-        with patch(
-            "portfolio_backtester.utils.generate_enhanced_wfo_windows"
-        ) as mock_enhanced:
+        with patch("portfolio_backtester.utils.generate_enhanced_wfo_windows") as mock_enhanced:
             # Make the mock function simulate import failure and call the original fallback
             def mock_fallback(*args, **kwargs):
                 # Simulate the import failure path in the actual function
@@ -289,9 +284,7 @@ class TestEnhancedWindowGeneration:
         assert freq == "D"  # Should be daily due to signal-based, not monthly
 
     @patch("portfolio_backtester.utils.generate_randomized_wfo_windows")
-    def test_generate_enhanced_wfo_windows_preserves_window_boundaries(
-        self, mock_generate_base
-    ):
+    def test_generate_enhanced_wfo_windows_preserves_window_boundaries(self, mock_generate_base):
         """Test that enhanced windows preserve original window boundaries."""
         # Mock base window generation with specific dates
         original_windows = [
@@ -335,3 +328,45 @@ class TestEnhancedWindowGeneration:
         assert windows[1].train_end == pd.Timestamp("2025-01-31")
         assert windows[1].test_start == pd.Timestamp("2025-02-01")
         assert windows[1].test_end == pd.Timestamp("2025-02-28")
+
+    def test_generate_randomized_wfo_windows_applies_embargo(self):
+        """Test that embargo shifts test_start forward by business days."""
+        monthly_data_index = pd.date_range("2019-01-01", "2022-12-31", freq="ME")
+        scenario_config = {
+            "train_window_months": 12,
+            "test_window_months": 6,
+            "wfo_embargo_bdays": 5,
+            "walk_forward_type": "rolling",
+        }
+        global_config: dict = {"wfo_robustness_config": {}}
+        rng = np.random.default_rng(123)
+
+        windows = generate_randomized_wfo_windows(
+            monthly_data_index, scenario_config, global_config, rng
+        )
+
+        assert windows
+        train_end = windows[0][1]
+        test_start = windows[0][2]
+        assert test_start >= train_end + pd.offsets.BDay(5)
+
+    def test_generate_randomized_wfo_windows_respects_step_months(self):
+        """Test that step months advance the rolling window start."""
+        monthly_data_index = pd.date_range("2020-01-01", "2023-12-31", freq="ME")
+        scenario_config = {
+            "train_window_months": 12,
+            "test_window_months": 6,
+            "wfo_step_months": 3,
+            "walk_forward_type": "rolling",
+        }
+        global_config: dict = {"wfo_robustness_config": {}}
+        rng = np.random.default_rng(321)
+
+        windows = generate_randomized_wfo_windows(
+            monthly_data_index, scenario_config, global_config, rng
+        )
+
+        assert len(windows) >= 2
+        first_start = windows[0][0].to_period("M")
+        second_start = windows[1][0].to_period("M")
+        assert second_start == (first_start + 3)

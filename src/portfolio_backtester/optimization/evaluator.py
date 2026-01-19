@@ -46,6 +46,28 @@ def _lookup_metric(metrics: Dict[str, float], name: str, default: float = -1e9) 
     if key is not None and not pd.isna(key):
         return float(key)
     lower = name.lower()
+    alias_map = {
+        "sharpe": "Sharpe",
+        "sharpe_ratio": "Sharpe",
+        "sortino": "Sortino",
+        "sortino_ratio": "Sortino",
+        "calmar": "Calmar",
+        "calmar_ratio": "Calmar",
+        "max_drawdown": "Max Drawdown",
+        "max_drawdown_ratio": "Max Drawdown",
+        "total_return": "Total Return",
+        "annual_return": "Ann. Return",
+        "annualized_return": "Ann. Return",
+        "volatility": "Ann. Vol",
+        "annual_volatility": "Ann. Vol",
+    }
+
+    mapped_key = alias_map.get(lower)
+    if mapped_key is not None:
+        val = metrics.get(mapped_key)
+        if val is not None and not pd.isna(val):
+            return float(val)
+
     for alias in (lower, lower.replace(" ", "_"), f"{lower}_ratio"):
         val = metrics.get(alias)
         if val is not None and not pd.isna(val):
@@ -338,10 +360,19 @@ class BacktestEvaluator:
             self.incremental_manager.new_generation()
 
         # Aggregate results
-        return self._aggregate_window_results(window_results, parameters)
+        return self._aggregate_window_results(
+            window_results,
+            parameters,
+            data.daily,
+            backtester.global_config if hasattr(backtester, "global_config") else {},
+        )
 
     def _aggregate_window_results(
-        self, window_results: List[WindowResult], parameters: Dict[str, Any]
+        self,
+        window_results: List[WindowResult],
+        parameters: Dict[str, Any],
+        daily_data: Optional[pd.DataFrame],
+        global_config: Dict[str, Any],
     ) -> EvaluationResult:
         """Aggregate results from daily evaluation windows.
 
@@ -354,21 +385,59 @@ class BacktestEvaluator:
         """
         # Combine daily returns from all windows
         all_returns = []
-        all_trades = []
 
         for result in window_results:
             if len(result.window_returns) > 0:
                 all_returns.append(result.window_returns)
-            if hasattr(result, "trades") and result.trades:
-                all_trades.extend(result.trades)
 
         if all_returns:
-            combined_returns = pd.concat(all_returns)
+            combined_returns = pd.concat(all_returns).sort_index()
+            combined_returns = combined_returns[~combined_returns.index.duplicated(keep="first")]
         else:
             combined_returns = pd.Series(dtype=float)
 
-        # Calculate performance metrics
-        metrics = self._calculate_metrics(combined_returns, all_trades)
+        # Calculate performance metrics using canonical metrics implementation
+        benchmark_ticker = global_config.get("benchmark", "SPY")
+        benchmark_returns = pd.Series(0.0, index=combined_returns.index)
+        if daily_data is not None and not daily_data.empty and benchmark_ticker:
+            try:
+                if isinstance(daily_data.columns, pd.MultiIndex):
+                    if "Close" in daily_data.columns.get_level_values("Field"):
+                        daily_close = daily_data.xs("Close", level="Field", axis=1)
+                    else:
+                        daily_close = daily_data
+                else:
+                    daily_close = daily_data
+
+                if benchmark_ticker in daily_close.columns:
+                    bench_prices = daily_close[benchmark_ticker]
+                    benchmark_returns = (
+                        bench_prices.pct_change(fill_method=None)
+                        .reindex(combined_returns.index)
+                        .fillna(0.0)
+                    )
+            except Exception:
+                benchmark_returns = pd.Series(0.0, index=combined_returns.index)
+
+        from ..reporting.performance_metrics import calculate_metrics
+
+        metrics_series = calculate_metrics(combined_returns, benchmark_returns, benchmark_ticker)
+        metrics = {
+            k: float(v) if not pd.isna(v) else float("nan") for k, v in metrics_series.items()
+        }
+        alias_map = {
+            "sharpe_ratio": "Sharpe",
+            "sortino_ratio": "Sortino",
+            "calmar_ratio": "Calmar",
+            "max_drawdown": "Max Drawdown",
+            "annual_return": "Ann. Return",
+            "annualized_return": "Ann. Return",
+            "annual_volatility": "Ann. Vol",
+            "total_return": "Total Return",
+        }
+        for alias, canonical in alias_map.items():
+            if alias not in metrics and canonical in metrics:
+                metrics[alias] = metrics[canonical]
 
         # Extract objective values for optimization
         if self.is_multi_objective:

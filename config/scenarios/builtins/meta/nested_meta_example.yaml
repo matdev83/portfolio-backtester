@@ -3,8 +3,8 @@ strategy: SimpleMetaStrategy
 
 rebalance_frequency: M
 position_sizer: equal_weight
-train_window_months: 36
-test_window_months: 48
+train_window_months: 60
+test_window_months: 12
 optimization_targets:
 - name: Sharpe
   direction: maximize

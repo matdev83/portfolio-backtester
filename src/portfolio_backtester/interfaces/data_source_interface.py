@@ -92,11 +92,19 @@ class ConcreteDataSourceFactory(IDataSourceFactory):
 
                 data_dir = global_config.get("data_dir")
                 min_coverage_ratio = global_config.get("min_coverage_ratio")
+                data_source_config = global_config.get("data_source_config", {}) or {}
                 return cast(
                     IDataSource,
                     MarketDataMultiProviderDataSource(
                         data_dir=data_dir,
                         min_coverage_ratio=min_coverage_ratio,
+                        preferred_provider=data_source_config.get("preferred_provider"),
+                        allow_fallbacks=bool(data_source_config.get("allow_fallbacks", True)),
+                        max_workers=data_source_config.get("max_workers"),
+                        cache_only=bool(data_source_config.get("cache_only", False)),
+                        cache_max_age_seconds=data_source_config.get(
+                            "cache_max_age_seconds", 14400
+                        ),
                     ),
                 )
             except ImportError as e:

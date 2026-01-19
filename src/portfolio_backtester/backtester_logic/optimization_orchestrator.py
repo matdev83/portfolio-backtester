@@ -7,6 +7,7 @@ operations including parameter space conversion, optimization setup, and result 
 
 import logging
 import time
+from collections import Counter
 from typing import Any, Dict, List, Tuple, Optional
 
 import numpy as np
@@ -66,6 +67,251 @@ class OptimizationOrchestrator:
         from ..constants import DEFAULT_OPTUNA_STORAGE_URL
 
         return DEFAULT_OPTUNA_STORAGE_URL
+
+    def _get_wfo_mode(self, scenario_config: Dict[str, Any]) -> str:
+        """Resolve the walk-forward mode with a realistic default."""
+        raw_mode = scenario_config.get("wfo_mode") or self.global_config.get("wfo_mode")
+        mode = str(raw_mode or "reoptimize").strip().lower()
+        if mode in {
+            "reoptimize",
+            "reopt",
+            "true",
+            "walk_forward",
+            "walk-forward",
+            "wfo",
+        }:
+            return "reoptimize"
+        if mode in {"cv", "cross_validation", "cross-validation", "fixed"}:
+            return "cv"
+        logger.warning("Unknown wfo_mode '%s'; defaulting to 'reoptimize'.", mode)
+        return "reoptimize"
+
+    def _calculate_consensus_params(self, window_params: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Derive a stable parameter set from per-window optimal parameters."""
+        if not window_params:
+            return {}
+
+        consensus: Dict[str, Any] = {}
+        all_keys = sorted({key for params in window_params for key in params.keys()})
+        for key in all_keys:
+            values = [params[key] for params in window_params if key in params]
+            if not values:
+                continue
+
+            if all(isinstance(v, bool) for v in values):
+                consensus[key] = Counter(values).most_common(1)[0][0]
+                continue
+
+            if all(
+                isinstance(v, (int, float, np.number)) and not isinstance(v, bool) for v in values
+            ):
+                median_val = float(np.median([float(v) for v in values]))
+                if all(isinstance(v, int) and not isinstance(v, bool) for v in values):
+                    consensus[key] = int(round(median_val))
+                else:
+                    consensus[key] = median_val
+                continue
+
+            normalized = [tuple(v) if isinstance(v, list) else v for v in values]
+            most_common = Counter(normalized).most_common(1)[0][0]
+            consensus[key] = list(most_common) if isinstance(most_common, tuple) else most_common
+
+        return consensus
+
+    def _run_reoptimized_wfo(
+        self,
+        scenario_config: Dict[str, Any],
+        monthly_data: pd.DataFrame,
+        daily_data: pd.DataFrame,
+        rets_full: pd.DataFrame,
+        windows: List[Any],
+        metrics_to_optimize: List[str],
+        is_multi_objective: bool,
+        optimization_config: Dict[str, Any],
+        optimizer_type: str,
+        optimizer_args: Any,
+    ) -> OptimizationResult:
+        """Run true walk-forward: re-optimize each window, stitch OOS returns."""
+        from ..optimization.factory import create_parameter_generator
+        from ..optimization.orchestrator_factory import create_orchestrator
+        from ..optimization.evaluator import BacktestEvaluator, _lookup_metric
+        from ..optimization.results import OptimizationData
+        from ..optimization.wfo_window import WFOWindow
+        from ..backtesting.strategy_backtester import StrategyBacktester
+        from ..reporting.performance_metrics import calculate_metrics
+
+        if not windows:
+            raise ValueError("No WFO windows available for re-optimization.")
+
+        strategy_backtester = StrategyBacktester(
+            global_config=self.global_config, data_source=self.data_source
+        )
+
+        window_results = []
+        window_params: List[Dict[str, Any]] = []
+        stitched_returns_list: List[pd.Series] = []
+        total_evaluations = 0
+
+        for idx, window in enumerate(windows, start=1):
+            train_window = WFOWindow(
+                train_start=window.train_start,
+                train_end=window.train_end,
+                test_start=window.train_start,
+                test_end=window.train_end,
+                evaluation_frequency=getattr(window, "evaluation_frequency", "M"),
+                strategy_name=getattr(window, "strategy_name", None),
+            )
+
+            optimization_data = OptimizationData(
+                monthly=monthly_data,
+                daily=daily_data,
+                returns=rets_full,
+                windows=[train_window],
+            )
+
+            parameter_generator = create_parameter_generator(
+                optimizer_type=optimizer_type, random_state=self.rng
+            )
+            evaluator_n_jobs = self._attribute_accessor.get_attribute(optimizer_args, "n_jobs", 1)
+            if optimizer_type in [
+                "genetic",
+                "particle_swarm",
+                "differential_evolution",
+            ]:
+                evaluator = BacktestEvaluator(
+                    metrics_to_optimize=metrics_to_optimize,
+                    is_multi_objective=is_multi_objective,
+                    n_jobs=1,
+                    enable_parallel_optimization=False,
+                )
+            else:
+                evaluator = BacktestEvaluator(
+                    metrics_to_optimize=metrics_to_optimize,
+                    is_multi_objective=is_multi_objective,
+                    n_jobs=int(evaluator_n_jobs),
+                )
+
+            window_opt_config = dict(optimization_config)
+            window_suffix = f"wfo_{idx}_{window.train_end:%Y%m%d}"
+            if window_opt_config.get("study_name"):
+                window_opt_config["study_name"] = (
+                    f"{window_opt_config['study_name']}_{window_suffix}"
+                )
+            else:
+                window_opt_config["study_name"] = (
+                    f"{scenario_config.get('name', 'wfo')}_{window_suffix}"
+                )
+
+            orchestrator = create_orchestrator(
+                optimizer_type=optimizer_type,
+                parameter_generator=parameter_generator,
+                evaluator=evaluator,
+                n_jobs=self._attribute_accessor.get_attribute(optimizer_args, "n_jobs", -1),
+                joblib_batch_size=self._attribute_accessor.get_attribute(
+                    optimizer_args, "joblib_batch_size", None
+                ),
+                joblib_pre_dispatch=self._attribute_accessor.get_attribute(
+                    optimizer_args, "joblib_pre_dispatch", None
+                ),
+                timeout=self._attribute_accessor.get_attribute(
+                    optimizer_args, "optuna_timeout_sec", None
+                ),
+                early_stop_patience=self._attribute_accessor.get_attribute(
+                    optimizer_args, "early_stop_patience", 10
+                ),
+                enable_adaptive_batch_sizing=self._attribute_accessor.get_attribute(
+                    optimizer_args, "enable_adaptive_batch_sizing", True
+                ),
+                enable_hybrid_parallelism=self._attribute_accessor.get_attribute(
+                    optimizer_args, "enable_hybrid_parallelism", True
+                ),
+                enable_incremental_evaluation=self._attribute_accessor.get_attribute(
+                    optimizer_args, "enable_incremental_evaluation", True
+                ),
+                enable_gpu_acceleration=self._attribute_accessor.get_attribute(
+                    optimizer_args, "enable_gpu_acceleration", True
+                ),
+            )
+
+            optimization_result = orchestrator.optimize(
+                scenario_config=scenario_config,
+                optimization_config=window_opt_config,
+                data=optimization_data,
+                backtester=strategy_backtester,  # type: ignore[arg-type]
+            )
+            total_evaluations += optimization_result.n_evaluations
+
+            best_params = optimization_result.best_parameters or {}
+            window_params.append(best_params)
+
+            eval_config = dict(scenario_config)
+            base_params = eval_config.get("strategy_params", {}).copy()
+            base_params.update(best_params)
+            eval_config["strategy_params"] = base_params
+
+            test_result = strategy_backtester.evaluate_window(
+                eval_config, window, monthly_data, daily_data, rets_full
+            )
+            window_results.append(test_result)
+            if (
+                isinstance(test_result.window_returns, pd.Series)
+                and not test_result.window_returns.empty
+            ):
+                stitched_returns_list.append(test_result.window_returns)
+
+        if stitched_returns_list:
+            stitched_returns = pd.concat(stitched_returns_list).sort_index()
+            stitched_returns = stitched_returns[~stitched_returns.index.duplicated(keep="first")]
+        else:
+            stitched_returns = pd.Series(dtype=float)
+
+        benchmark_ticker = self.global_config.get("benchmark", "SPY")
+        benchmark_returns = pd.Series(0.0, index=stitched_returns.index)
+        if not stitched_returns.empty and benchmark_ticker:
+            try:
+                if isinstance(daily_data.columns, pd.MultiIndex):
+                    if "Close" in daily_data.columns.get_level_values("Field"):
+                        daily_close = daily_data.xs("Close", level="Field", axis=1)
+                    else:
+                        daily_close = daily_data
+                else:
+                    daily_close = daily_data
+
+                if benchmark_ticker in daily_close.columns:
+                    benchmark_returns = (
+                        daily_close[benchmark_ticker]
+                        .pct_change(fill_method=None)
+                        .reindex(stitched_returns.index)
+                        .fillna(0.0)
+                    )
+            except Exception:
+                benchmark_returns = pd.Series(0.0, index=stitched_returns.index)
+
+        metrics_series = calculate_metrics(stitched_returns, benchmark_returns, benchmark_ticker)
+        metrics = {
+            k: float(v) if not pd.isna(v) else float("nan") for k, v in metrics_series.items()
+        }
+
+        objective_values = [_lookup_metric(metrics, metric, -1e9) for metric in metrics_to_optimize]
+        best_value: float | list[float]
+        if is_multi_objective:
+            best_value = objective_values
+        else:
+            best_value = float(objective_values[0]) if objective_values else -1e9
+
+        consensus_params = self._calculate_consensus_params(window_params)
+
+        return OptimizationResult(
+            best_parameters=consensus_params,
+            best_value=best_value,
+            n_evaluations=total_evaluations,
+            optimization_history=[],
+            best_trial=None,
+            wfo_mode="reoptimize",
+            wfo_window_params=window_params,
+            wfo_window_results=window_results,
+            stitched_returns=stitched_returns,
+        )
 
     def run_optimization(
         self,
@@ -257,6 +503,24 @@ class OptimizationOrchestrator:
                 ),
             }
 
+            wfo_mode = self._get_wfo_mode(scenario_config)
+            if not scenario_config.get("is_wfo", True):
+                wfo_mode = "cv"
+
+            if wfo_mode == "reoptimize":
+                return self._run_reoptimized_wfo(
+                    scenario_config=scenario_config,
+                    monthly_data=monthly_data,
+                    daily_data=daily_data,
+                    rets_full=rets_full,
+                    windows=windows,
+                    metrics_to_optimize=metrics_to_optimize,
+                    is_multi_objective=is_multi_objective,
+                    optimization_config=optimization_config,
+                    optimizer_type=optimizer_type,
+                    optimizer_args=optimizer_args,
+                )
+
             # Create BacktestEvaluator
             # For population-based optimizers, disable window-level parallelism to avoid
             # nested oversubscription (population parallelism is handled separately).
@@ -317,6 +581,7 @@ class OptimizationOrchestrator:
                 data=optimization_data,
                 backtester=strategy_backtester,  # type: ignore[arg-type]
             )
+            optimization_result.wfo_mode = wfo_mode
 
             # The rest of this function handles running a final backtest on the
             # best parameters and storing the results. For the purpose of the

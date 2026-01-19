@@ -39,8 +39,9 @@ def test_get_spy_holdings_fast_lookup_exact_and_non_exact(monkeypatch: pytest.Mo
     import types
     import sys
 
-    fake_mod = types.SimpleNamespace(builder=_FakeBuilder)
-    sys.modules["market_data_multi_provider.sp500"] = fake_mod  # type: ignore[assignment]
+    fake_mod = types.ModuleType("market_data_multi_provider.sp500")
+    fake_mod.builder = _FakeBuilder  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "market_data_multi_provider.sp500", fake_mod)
 
     # Ensure we do not call the slower mdmp_get_holdings fallback during this test
     monkeypatch.setattr(
@@ -91,8 +92,9 @@ def test_get_spy_holdings_fast_lookup_out_of_range_fails_fast(
     import types
     import sys
 
-    fake_mod = types.SimpleNamespace(builder=_FakeBuilder)
-    sys.modules["market_data_multi_provider.sp500"] = fake_mod  # type: ignore[assignment]
+    fake_mod = types.ModuleType("market_data_multi_provider.sp500")
+    fake_mod.builder = _FakeBuilder  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "market_data_multi_provider.sp500", fake_mod)
 
     monkeypatch.setattr(
         spy_holdings,

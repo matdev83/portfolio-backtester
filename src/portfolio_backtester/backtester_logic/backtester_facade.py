@@ -391,6 +391,73 @@ class Backtester:
             scenario_config, monthly_data, daily_data, rets_full, self.args
         )
 
+        stitched_returns = getattr(optimization_result, "stitched_returns", None)
+        if isinstance(stitched_returns, pd.Series):
+            from ..backtesting.strategy_backtester import StrategyBacktester
+            from ..reporting.performance_metrics import calculate_metrics
+
+            benchmark_ticker = self.global_config.get("benchmark", "SPY")
+            benchmark_returns = pd.Series(0.0, index=stitched_returns.index)
+            if isinstance(daily_data, pd.DataFrame) and not daily_data.empty:
+                try:
+                    if isinstance(daily_data.columns, pd.MultiIndex):
+                        if "Close" in daily_data.columns.get_level_values("Field"):
+                            daily_close = daily_data.xs("Close", level="Field", axis=1)
+                        else:
+                            daily_close = daily_data
+                    else:
+                        daily_close = daily_data
+
+                    if benchmark_ticker in daily_close.columns:
+                        benchmark_returns = (
+                            daily_close[benchmark_ticker]
+                            .pct_change(fill_method=None)
+                            .reindex(stitched_returns.index)
+                            .fillna(0.0)
+                        )
+                except Exception:
+                    benchmark_returns = pd.Series(0.0, index=stitched_returns.index)
+
+            metrics_series = calculate_metrics(
+                stitched_returns, benchmark_returns, benchmark_ticker
+            )
+            metrics = {
+                k: float(v) if not pd.isna(v) else float("nan") for k, v in metrics_series.items()
+            }
+
+            strategy_backtester = StrategyBacktester(self.global_config, self.data_source)
+            performance_stats = strategy_backtester._create_performance_stats(
+                stitched_returns, metrics
+            )
+            charts_data = strategy_backtester._create_charts_data(
+                stitched_returns, benchmark_returns
+            )
+
+            optimal_params = optimization_result.best_parameters
+            optimized_name = f"{scenario_config['name']}_Optimized"
+            train_end_date = pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
+
+            final_backtest_results = {
+                "returns": stitched_returns,
+                "display_name": optimized_name,
+                "train_end_date": train_end_date,
+                "trade_stats": None,
+                "trade_history": pd.DataFrame(),
+                "performance_stats": performance_stats,
+                "charts_data": charts_data,
+                "optimal_params": optimal_params,
+                "num_trials_for_dsr": optimization_result.n_evaluations,
+                "best_trial_obj": optimization_result.best_trial,
+                "optimization_result": optimization_result,
+                "wfo_mode": getattr(optimization_result, "wfo_mode", None),
+                "wfo_window_params": getattr(optimization_result, "wfo_window_params", None),
+                "wfo_window_results": getattr(optimization_result, "wfo_window_results", None),
+            }
+
+            self.results[optimized_name] = final_backtest_results
+            self.results[scenario_config["name"]] = final_backtest_results
+            return
+
         # Run a final backtest using the best parameters found
         optimal_params = optimization_result.best_parameters
         optimized_scenario = scenario_config.copy()

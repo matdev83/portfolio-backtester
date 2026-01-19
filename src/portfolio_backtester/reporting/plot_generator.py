@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 def plot_performance_summary(
     backtester,
     bench_rets_full: Optional[pd.Series] = None,
+    secondary_save_path: Optional[str] = None,
 ):
     """
     Main plotting facade that generates a comprehensive performance summary plot.
@@ -107,7 +108,13 @@ def plot_performance_summary(
 
     plt.savefig(filepath)
     if logger.isEnabledFor(logging.INFO):
-        logger.info(f"Performance plot saved to: {filepath}")
+        logger.info("Performance plot saved to: %s", filepath)
+
+    if secondary_save_path:
+        os.makedirs(os.path.dirname(secondary_save_path), exist_ok=True)
+        plt.savefig(secondary_save_path)
+        if logger.isEnabledFor(logging.INFO):
+            logger.info("Performance summary saved to %s", secondary_save_path)
 
     # Display plot interactively if requested, but silence warnings when using non-interactive backends such as Agg.
     if getattr(backtester.args, "interactive", False):

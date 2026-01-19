@@ -1,0 +1,69 @@
+# Dual Momentum (Lagged) - Optimize Highest-Sharpe (No Vol Targeting) + Benchmark EMA Crossover Risk-Off
+name: dual_momentum_lagged_portfolio_highest_sharpe_no_vol_targeting_opt_roro_benchmark_ema
+strategy: DualMomentumLaggedPortfolioStrategy
+
+position_sizer: equal_weight
+rebalance_frequency: ME
+
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+
+universe_config:
+  type: method
+  method_name: get_top_weight_sp500_components
+  n_holdings: 20
+
+train_window_months: 60
+test_window_months: 12
+walk_forward_type: rolling
+optimization_metric: Sortino
+
+risk_off_signal_config:
+  type: BenchmarkEmaCrossoverRiskOffSignalGenerator
+  fast_ema_days: 50
+  slow_ema_days: 200
+
+strategy_params:
+  lookback_months: 6
+  lag_months: 0
+  max_holdings: 10
+  min_absolute_momentum: 0.1
+
+  use_200sma_filter: false
+  sma_period: 250
+
+  ranking_method: excess_total_return
+  absolute_exit_buffer: 0.0
+  relative_exit_buffer: 0.0
+  vol_target_enabled: false
+  panic_overlay_enabled: false
+
+  trade_longs: true
+  trade_shorts: false
+
+optimize:
+  - parameter: lookback_months
+    type: int
+    min_value: 6
+    max_value: 18
+    step: 1
+
+  - parameter: lag_months
+    type: int
+    min_value: 0
+    max_value: 2
+    step: 1
+
+  - parameter: max_holdings
+    type: int
+    min_value: 5
+    max_value: 20
+    step: 5
+
+  - parameter: min_absolute_momentum
+    type: float
+    min_value: -0.05
+    max_value: 0.10
+    step: 0.05
+

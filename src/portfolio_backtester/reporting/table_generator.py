@@ -3,7 +3,6 @@ import os
 from rich.console import Console
 from rich.table import Table
 import pandas as pd
-from ..reporting.performance_metrics import calculate_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +88,13 @@ def _add_metrics_rows(
 def _collect_metrics(
     backtester, period_returns: dict, bench_period_rets: pd.Series, num_trials_map: dict
 ) -> dict:
+    """Collect performance metrics for strategies and benchmark.
+
+    Note: This function lazily imports calculate_metrics to avoid importing
+    heavy statsmodels/scipy dependencies at module import time.
+    """
+    from ..reporting.performance_metrics import calculate_metrics
+
     bench_name = backtester.global_config["benchmark"]
     bench_metrics = calculate_metrics(
         bench_period_rets, bench_period_rets, bench_name, name=bench_name, num_trials=1
@@ -323,6 +329,9 @@ def generate_enhanced_performance_table(
     num_trials_map: dict,
     report_dir: str,
 ):
+    # Lazy import to avoid importing heavy statsmodels/scipy dependency at module import time
+    from ..reporting.performance_metrics import calculate_metrics
+
     """Enhanced version that separates main performance metrics from trade statistics."""
     os.makedirs(report_dir, exist_ok=True)
     # Generate main performance table (excluding trade metrics)
@@ -588,6 +597,10 @@ def generate_transaction_history_csv(backtest_results: dict, report_dir: str):
         # Create DataFrame and save to CSV
         if transactions:
             transactions_df = pd.DataFrame(transactions)
+            transactions_df["datetime"] = pd.to_datetime(
+                transactions_df["datetime"], errors="coerce"
+            ).dt.strftime("%Y-%m-%dT%H:%M:%S")
+
             csv_path = os.path.join(report_dir, f"transaction_history_{name}.csv")
             transactions_df.to_csv(csv_path, index=False)
             logger.info("Transaction history for %s saved to %s", name, csv_path)

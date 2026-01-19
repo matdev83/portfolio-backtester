@@ -67,6 +67,10 @@ class OptimizationResult:
         n_evaluations: Total number of parameter evaluations performed
         optimization_history: History of all evaluations performed
         best_trial: Reference to the best trial object (optimizer-specific)
+        wfo_mode: Walk-forward mode used (e.g., 'cv' or 'reoptimize')
+        wfo_window_params: Per-window optimal parameters when re-optimizing
+        wfo_window_results: Per-window evaluation results for stitched OOS
+        stitched_returns: Stitched out-of-sample returns (if applicable)
     """
 
     best_parameters: Dict[str, Any]
@@ -74,6 +78,10 @@ class OptimizationResult:
     n_evaluations: int
     optimization_history: List[Dict[str, Any]]
     best_trial: Optional[Any] = None
+    wfo_mode: Optional[str] = None
+    wfo_window_params: Optional[List[Dict[str, Any]]] = None
+    wfo_window_results: Optional[List[WindowResult]] = None
+    stitched_returns: Optional[pd.Series] = None
 
 
 @dataclass

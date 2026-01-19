@@ -11,11 +11,11 @@ has been split into smaller, maintainable pieces.
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime
 from typing import Any, Dict
 
-import matplotlib.pyplot as plt
 import pandas as pd
 from rich.console import Console
 
@@ -74,12 +74,29 @@ __all__ = [
 
 def _benchmark_returns(daily_data_for_display: pd.DataFrame, benchmark_ticker: str) -> pd.Series:
     """Extract benchmark price series and convert to returns."""
+    candidates = [benchmark_ticker]
+    if ":" in benchmark_ticker:
+        candidates.append(benchmark_ticker.split(":")[-1])
+
+    prices = None
     if isinstance(daily_data_for_display.columns, pd.MultiIndex):
-        prices = daily_data_for_display.xs(
-            (benchmark_ticker, "Close"), level=("Ticker", "Field"), axis=1
-        )
+        tickers = daily_data_for_display.columns.get_level_values("Ticker")
+        for candidate in candidates:
+            if candidate in tickers and (candidate, "Close") in daily_data_for_display.columns:
+                prices = daily_data_for_display[(candidate, "Close")]
+                break
     else:
-        prices = daily_data_for_display[benchmark_ticker]
+        for candidate in candidates:
+            if candidate in daily_data_for_display.columns:
+                prices = daily_data_for_display[candidate]
+                break
+
+    if prices is None:
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Benchmark %s not found in price data; skipping benchmark returns.", benchmark_ticker
+        )
+        return pd.Series(dtype=float)
 
     rets = prices.pct_change(fill_method=None).fillna(0.0)
     return rets.iloc[:, 0] if isinstance(rets, pd.DataFrame) else rets
@@ -192,12 +209,8 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
         )
         _generate_transaction_history_csv(self.results, report_dir)
 
-        _plot_performance_summary(self, benchmark_rets)
-        plt.tight_layout()
         plot_path = os.path.join(report_dir, "equity_curve.png")
-        plt.savefig(plot_path)
-        plt.close()
-        logger.info("Performance summary saved to %s", plot_path)
+        _plot_performance_summary(self, benchmark_rets, secondary_save_path=plot_path)
 
         # --------------------------------------------------------------
         # 3) Price charts with trade markers for strategies trading ≤2 symbols

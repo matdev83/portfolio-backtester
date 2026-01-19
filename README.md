@@ -72,16 +72,17 @@ Use the convenience script for quick optimization runs:
 
 ### 📈 Walk-Forward Optimization
 
-- **Robust Parameter Finding** — Time-series cross-validation prevents overfitting
+- **True Walk-Forward (Default)** — Re-optimize each window and stitch OOS results
+- **CV Mode Option** — Fixed-parameter time-series cross-validation when desired
 - **Dual Engines** — Optuna (Bayesian) or Genetic Algorithm
 - **Early Stopping** — Automatically stops unpromising optimization runs
 - **Resumable Studies** — Continue optimization sessions anytime
 
 ### 🎲 Monte Carlo Stress Testing
 
-- **GARCH-Based Synthetic Data** — Realistic market simulations
-- **Two-Stage Testing** — During optimization and post-optimization
-- **Robustness Analysis** — Test your strategy under various market conditions
+- **Block-Bootstrap Projection** — Preserves short-term return structure
+- **Two-Stage Testing** — Projection (Stage 1) and post-optimization robustness (Stage 2)
+- **Synthetic OHLC Injection** — Stress test with asset-level synthetic data
 
 ### 📊 Risk Management
 
@@ -122,6 +123,8 @@ source .venv/bin/activate
 
 # 4. Install the package
 pip install -e .
+
+# AutoGluon models are cached under .strategy_cache/autogluon_models/
 ```
 
 ---
@@ -138,6 +141,7 @@ Portfolio Backtester includes 11+ production-ready strategies:
 | **Sharpe Momentum** | Ranks by risk-adjusted momentum (Sharpe ratio) | `lookback_period`, `min_periods` |
 | **Calmar Momentum** | Ranks by return-to-drawdown ratio | `lookback_period`, `hold_period` |
 | **Sortino Momentum** | Ranks by downside-risk-adjusted returns | `lookback_period`, `target_return` |
+| **AutoGluon Sortino ML** | ML model predicts long-only weights from rolling Sortino/relative/correlation features | `rebalance_frequency`, `label_lookback_days` |
 | **VAMS (Volatility-Adjusted)** | Momentum with volatility scaling | `lookback_period`, `vol_lookback` |
 | **Low Volatility Factor** | Selects lowest volatility assets | `lookback_period`, `n_holdings` |
 | **Static Allocation** | Fixed-weight portfolio | `weights`, `rebalance_frequency` |
@@ -164,6 +168,7 @@ config/scenarios/builtins/
 │   ├── simple_momentum_strategy/
 │   ├── sharpe_momentum_portfolio_strategy/
 │   ├── calmar_momentum_portfolio_strategy/
+│   ├── autogluon_sortino_ml_portfolio_strategy/
 │   └── ...
 └── signal/              # Signal strategies
     ├── ema_crossover_signal_strategy/
@@ -181,6 +186,18 @@ python -m src.portfolio_backtester.backtester \
   --mode backtest \
   --scenario-filename "config/scenarios/builtins/portfolio/simple_momentum_strategy/default.yaml"
 ```
+
+For the AutoGluon Sortino ML strategy:
+
+```bash
+python -m src.portfolio_backtester.backtester \
+  --mode backtest \
+  --scenario-filename "config/scenarios/builtins/portfolio/autogluon_sortino_ml_portfolio_strategy/default.yaml"
+```
+
+Note: the default AutoGluon scenario starts at the first date when all
+universe tickers have data (`min_universe_coverage: 1.0`). Add explicit
+`start_date`/`end_date` if you want shorter runs.
 
 The backtest will:
 
@@ -224,6 +241,10 @@ python -m src.portfolio_backtester.backtester \
   --interactive
 ```
 
+Stage 1 projections use block-bootstrap sampling of returns. Stage 2 stress tests
+inject synthetic OHLC into the backtest inputs; tune block size via
+`monte_carlo_config.stage2_block_size_days` in `config/parameters.yaml`.
+
 ---
 
 ## Configuration
@@ -265,6 +286,20 @@ universe_config:
   type: method
   method_name: get_top_weight_sp500_components
   n_holdings: 20
+```
+
+### Walk-Forward Optimization Settings
+
+Control how the optimizer runs across windows:
+
+```yaml
+# True walk-forward (default)
+wfo_mode: "reoptimize"  # or "cv" for fixed-parameter cross-validation
+train_window_months: 60
+test_window_months: 12
+wfo_step_months: 12      # step between window starts (months)
+wfo_embargo_bdays: 5     # optional embargo between train_end and test_start
+walk_forward_type: "rolling"  # or "expanding"
 ```
 
 ### Risk Management
@@ -358,6 +393,7 @@ strategy_params:
 | `--mode` | `backtest`, `optimize`, or `monte_carlo` | Required |
 | `--scenario-filename` | Path to scenario YAML | Required |
 | `--log-level` | `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` |
+| `--mdmp-cache-only` | Use MDMP cached data only; skip downloads | Off |
 
 ### Optimization Parameters
 
@@ -398,10 +434,11 @@ After running a backtest, you'll find a report in `data/reports/` containing:
 
 Optimization produces:
 
-- **Best Parameters** — Optimal values found
+- **Best Parameters** — Consensus parameters (or CV best)
+- **Per-Window Parameters** — When `wfo_mode: reoptimize`
 - **Trial History** — Performance of each tested combination
 - **Parameter Importance** — Which parameters matter most
-- **Walk-Forward Validation** — Out-of-sample performance estimates
+- **Walk-Forward Validation** — Stitched out-of-sample performance estimates
 
 ---
 

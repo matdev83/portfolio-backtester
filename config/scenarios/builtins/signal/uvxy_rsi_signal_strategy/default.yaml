@@ -7,8 +7,8 @@ timing_config:
   mode: signal_based
   scan_frequency: D
   min_holding_period: 1
-train_window_months: 36
-test_window_months: 48
+train_window_months: 60
+test_window_months: 12
 universe_config:
   type: named
   universe_name: sp500_top50

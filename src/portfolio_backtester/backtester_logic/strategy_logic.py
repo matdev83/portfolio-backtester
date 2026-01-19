@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import pandas as pd
+from typing import Optional
 
 from ..interfaces.strategy_resolver import StrategyResolverFactory
 from ..interfaces.enforcement import enforce_strategy_parameter
@@ -37,8 +38,35 @@ def generate_signals(
     start_date = price_data_daily_ohlc.index.min()
     end_date = price_data_daily_ohlc.index.max()
 
-    wfo_start_date = pd.to_datetime(scenario_config.get("wfo_start_date", None))
-    wfo_end_date = pd.to_datetime(scenario_config.get("wfo_end_date", None))
+    scenario_start_raw = scenario_config.get("start_date")
+    scenario_end_raw = scenario_config.get("end_date")
+    wfo_start_raw = scenario_config.get("wfo_start_date")
+    wfo_end_raw = scenario_config.get("wfo_end_date")
+
+    def _align_ts(ts: Optional[pd.Timestamp]) -> Optional[pd.Timestamp]:
+        if ts is None:
+            return None
+        if getattr(start_date, "tzinfo", None) is not None:
+            return (
+                ts.tz_localize(start_date.tzinfo)
+                if ts.tzinfo is None
+                else ts.tz_convert(start_date.tzinfo)
+            )
+        if ts.tzinfo is not None:
+            return ts.tz_convert(None)
+        return ts
+
+    scenario_start_date = _align_ts(
+        pd.to_datetime(scenario_start_raw) if scenario_start_raw else None
+    )
+    scenario_end_date = _align_ts(pd.to_datetime(scenario_end_raw) if scenario_end_raw else None)
+    wfo_start_date = _align_ts(pd.to_datetime(wfo_start_raw) if wfo_start_raw else None)
+    wfo_end_date = _align_ts(pd.to_datetime(wfo_end_raw) if wfo_end_raw else None)
+
+    if scenario_start_date is not None:
+        start_date = max(start_date, scenario_start_date)
+    if scenario_end_date is not None:
+        end_date = min(end_date, scenario_end_date)
 
     if wfo_start_date is not None:
         start_date = max(start_date, wfo_start_date)

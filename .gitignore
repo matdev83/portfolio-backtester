@@ -145,6 +145,7 @@ cython_debug/
 # Project-specific cache directories
 #cache/
 plots/
+.strategy_cache/autogluon_models/
 
 # Added by Gemini
 optuna_studies.db

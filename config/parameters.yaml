@@ -5,6 +5,24 @@ GLOBAL_CONFIG:
   # - "memory": In-memory data source for testing
   # - "test": Alias for memory data source
   data_source: "mdmp"
+
+  # MDMP fetch configuration (used when data_source == "mdmp")
+  data_source_config:
+    # Prefer yfinance because some environments may block stooq.com.
+    preferred_provider: "yfinance"
+
+    # Disable fallbacks to providers that may require auth (e.g., tradingview)
+    # to prevent "provider not available" failures from zeroing out otherwise-fine symbols.
+    allow_fallbacks: false
+
+    # Limit per-call parallelism inside MDMP to reduce provider throttling / deadlocks.
+    max_workers: 2
+
+    # Cache max-age (seconds) for MDMP reads; 14400 = 4 hours.
+    cache_max_age_seconds: 14400
+
+    # If true, only use cached MDMP data and skip downloads.
+    cache_only: false
   
   # Portfolio capital configuration
   portfolio_value: 1000000.0  # Starting capital: $1M for compounding
@@ -66,9 +84,13 @@ GLOBAL_CONFIG:
     - "UNH"
     - "GBTC"
     - "UVXY"
-  benchmark: "SPY"
+  benchmark: "AMEX:SPY"
   start_date: "2013-01-01"
   end_date: "2025-06-30"
+
+  # Walk-Forward Optimization mode
+  # Options: "reoptimize" (true WFO), "cv" (fixed-params cross-validation)
+  wfo_mode: "reoptimize"
   # IBKR Commission Structure (for detailed calculations if needed)
   commission_per_share: 0.005
   commission_min_per_order: 1.0
@@ -136,6 +158,9 @@ monte_carlo_config:
   
   # Number of simulations to run per replacement level in Stage 2
   num_simulations_per_level: 10
+
+  # Block size (in trading days) for Stage 2 bootstrap sampling
+  stage2_block_size_days: 20
   
   # Percentage of assets to replace with synthetic data (0.0 to 1.0)
   replacement_percentage: 0.05  # Reduced to 5% for faster testing
@@ -303,6 +328,11 @@ OPTIMIZER_PARAMETER_DEFAULTS:
     low: 0.0
     high: 0.1
     step: 0.01
+  rolling_window:
+    type: "int"
+    low: 3
+    high: 24
+    step: 1
   lookback_months: # Old parameter, can be kept for strategies not yet updated
     type: "categorical"
     values: [6]

@@ -6,6 +6,7 @@ including ticker collection, data fetching, normalization, and preprocessing.
 """
 
 import logging
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -278,7 +279,11 @@ class DataFetcher:
 
         return daily_closes_df
 
-    def determine_optimal_start_date(self, all_tickers: set) -> str:
+    def determine_optimal_start_date(
+        self,
+        all_tickers: set,
+        min_universe_coverage: float | None = None,
+    ) -> str:
         """
         Determine optimal start date based on data availability rules:
 
@@ -331,9 +336,14 @@ class DataFetcher:
                 return str(default_start_date)
 
         else:
-            # Rule 2: Multi-stock universe - find date where >50% of tickers have data
+            # Rule 2: Multi-stock universe - find date where >= min coverage has data
+            coverage = 0.5 if min_universe_coverage is None else float(min_universe_coverage)
+            if not 0 < coverage <= 1.0:
+                coverage = 0.5
             logger.info(
-                f"Multi-ticker universe detected: {len(universe_tickers)} tickers. Finding date where >50% have data available."
+                "Multi-ticker universe detected: %d tickers. Finding date where >= %.1f%% have data available.",
+                len(universe_tickers),
+                coverage * 100.0,
             )
 
             try:
@@ -376,8 +386,8 @@ class DataFetcher:
                     f"Checking data availability for {len(available_tickers)} tickers: {available_tickers}"
                 )
 
-                # Calculate threshold (greater than 50%)
-                threshold = len(available_tickers) / 2.0
+                # Calculate required count based on coverage threshold
+                required_count = max(1, math.ceil(len(available_tickers) * coverage))
 
                 # Count non-null values for each date
                 if isinstance(test_data.columns, pd.MultiIndex):
@@ -398,22 +408,29 @@ class DataFetcher:
                 # Count non-null values per date
                 daily_availability_count = availability_data.notna().sum(axis=1)
 
-                # Find first date where more than 50% of tickers have data
-                qualifying_dates = daily_availability_count[daily_availability_count > threshold]
+                # Find first date where required coverage is met
+                qualifying_dates = daily_availability_count[
+                    daily_availability_count >= required_count
+                ]
 
                 if not qualifying_dates.empty:
                     # Use first index value robustly as Timestamp/string date
                     first_idx = qualifying_dates.index[0]
                     available_count = int(qualifying_dates.iloc[0])
                     logger.info(
-                        f"Using optimal start date {first_idx} where {available_count}/{len(available_tickers)} tickers ({available_count / len(available_tickers) * 100:.1f}%) have data available"
+                        "Using optimal start date %s where %d/%d tickers (%.1f%%) have data available",
+                        first_idx,
+                        available_count,
+                        len(available_tickers),
+                        (available_count / len(available_tickers)) * 100.0,
                     )
                     # Convert to pandas Timestamp safely, then to string
                     ts = pd.to_datetime(first_idx)
                     return str(ts.strftime("%Y-%m-%d"))
                 else:
                     logger.warning(
-                        "Could not find date where >50% of tickers have data available, using default start date"
+                        "Could not find date meeting %.1f%% coverage, using default start date",
+                        coverage * 100.0,
                     )
                     return str(default_start_date)
 
@@ -459,7 +476,20 @@ class DataFetcher:
             )
 
         # Determine optimal start date and fetch data
-        start_date = self.determine_optimal_start_date(all_tickers)
+        coverage_candidates = []
+        for scenario in scenarios_to_run:
+            coverage_value = scenario.get("min_universe_coverage")
+            if coverage_value is None:
+                continue
+            try:
+                coverage_candidates.append(float(coverage_value))
+            except (TypeError, ValueError):
+                continue
+
+        min_coverage = max(coverage_candidates) if coverage_candidates else None
+        start_date = self.determine_optimal_start_date(
+            all_tickers, min_universe_coverage=min_coverage
+        )
         daily_data = self.fetch_daily_data(all_tickers, start_date)
         daily_ohlc = self.normalize_ohlc_format(daily_data)
 

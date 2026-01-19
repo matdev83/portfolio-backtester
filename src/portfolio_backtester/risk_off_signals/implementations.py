@@ -5,7 +5,7 @@ Provides concrete implementations of the IRiskOffSignalGenerator interface.
 Includes both production-ready and testing implementations following SOLID principles.
 """
 
-from typing import Dict, Any, List, cast
+from typing import Any, Dict, List
 import logging
 
 import pandas as pd
@@ -259,13 +259,11 @@ def _extract_benchmark_close_series(
         ser = df
     else:
         if "Close" in df.columns:
-            ser = cast(pd.Series, df["Close"])
+            ser = df["Close"]
         elif "Adj Close" in df.columns:
-            ser = cast(pd.Series, df["Adj Close"])
-        elif df.shape[1] == 1:
-            ser = cast(pd.Series, df.iloc[:, 0])
+            ser = df["Adj Close"]
         else:
-            ser = cast(pd.Series, df.iloc[:, 0])
+            ser = df.iloc[:, 0]
 
     ser = ser.loc[ser.index <= current_date].dropna()
     ser.name = "Close"
@@ -341,6 +339,101 @@ class BenchmarkSmaRiskOffSignalGenerator(IRiskOffSignalGenerator):
         return f"Benchmark SMA risk-off: Close < SMA({self._sma_window_days})"
 
 
+class BenchmarkMonthlySmaRiskOffSignalGenerator(IRiskOffSignalGenerator):
+    """Risk-off when benchmark is below its monthly SMA (e.g., 10-month SMA).
+
+    This implements the classic "10-month SMA" market timing rule using monthly closes.
+    It is evaluated at strategy rebalancing dates; for month-end rebalancing the signal
+    uses the last available close in each calendar month (i.e., last trading day).
+
+    Configuration:
+        - sma_window_months: SMA window in months (default: 10).
+        - min_periods: Minimum observations required (default: sma_window_months).
+
+    Signal:
+        True  => risk-off (go to cash)
+        False => risk-on
+    """
+
+    def __init__(self, config: Dict[str, Any] | None = None) -> None:
+        self._config = config or {}
+
+        self._sma_window_months = int(self._config.get("sma_window_months", 10))
+        self._min_periods = int(self._config.get("min_periods", self._sma_window_months))
+
+        if self._sma_window_months <= 1:
+            raise ValueError("sma_window_months must be > 1")
+        if self._min_periods <= 1:
+            raise ValueError("min_periods must be > 1")
+        if self._min_periods > self._sma_window_months:
+            raise ValueError("min_periods must be <= sma_window_months")
+
+    @staticmethod
+    def _monthly_last(prices: pd.Series) -> pd.Series:
+        """Return one price per month using the last observed value in each month.
+
+        The output index is the actual last observed date in each month (not a synthetic
+        month-end timestamp), which aligns with business-month-end rebalancing schedules.
+        """
+        if prices.empty:
+            return prices
+
+        ser = prices.sort_index()
+        periods = pd.PeriodIndex(pd.DatetimeIndex(ser.index), freq="M")
+        return ser.groupby(periods).tail(1)
+
+    def generate_risk_off_signal(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        non_universe_historical_data: pd.DataFrame,
+        current_date: pd.Timestamp,
+    ) -> bool:
+        prices = _extract_benchmark_close_series(benchmark_historical_data, current_date)
+        monthly_prices = self._monthly_last(prices)
+
+        if monthly_prices.empty or monthly_prices.shape[0] < self._min_periods:
+            return False
+
+        sma = monthly_prices.rolling(
+            window=self._sma_window_months,
+            min_periods=self._min_periods,
+        ).mean()
+
+        price_now = float(monthly_prices.iloc[-1])
+        sma_now = float(sma.iloc[-1]) if not np.isnan(sma.iloc[-1]) else np.nan
+        if np.isnan(sma_now):
+            return False
+        return bool(price_now < sma_now)
+
+    def get_configuration(self) -> Dict[str, Any]:
+        return dict(self._config)
+
+    def validate_configuration(self, config: Dict[str, Any]) -> tuple[bool, str]:
+        try:
+            window = int(config.get("sma_window_months", 10))
+            min_periods = int(config.get("min_periods", window))
+        except Exception as e:
+            return (False, f"Invalid integer parameter: {e}")
+
+        if window <= 1:
+            return (False, "sma_window_months must be > 1")
+        if min_periods <= 1:
+            return (False, "min_periods must be > 1")
+        if min_periods > window:
+            return (False, "min_periods must be <= sma_window_months")
+        return (True, "")
+
+    def get_required_data_columns(self) -> List[str]:
+        return []
+
+    def get_minimum_data_periods(self) -> int:
+        return self._min_periods
+
+    def get_signal_description(self) -> str:
+        return f"Benchmark monthly SMA risk-off: Close < SMA({self._sma_window_months}m)"
+
+
 class BenchmarkEmaCrossoverRiskOffSignalGenerator(IRiskOffSignalGenerator):
     """Risk-off when benchmark fast EMA is below slow EMA.
 
@@ -374,8 +467,12 @@ class BenchmarkEmaCrossoverRiskOffSignalGenerator(IRiskOffSignalGenerator):
         if prices.empty or prices.shape[0] < self._min_periods:
             return False
 
-        fast = prices.ewm(span=self._fast_ema_days, adjust=False, min_periods=self._min_periods).mean()
-        slow = prices.ewm(span=self._slow_ema_days, adjust=False, min_periods=self._min_periods).mean()
+        fast = prices.ewm(
+            span=self._fast_ema_days, adjust=False, min_periods=self._min_periods
+        ).mean()
+        slow = prices.ewm(
+            span=self._slow_ema_days, adjust=False, min_periods=self._min_periods
+        ).mean()
 
         fast_now = float(fast.iloc[-1]) if not np.isnan(fast.iloc[-1]) else np.nan
         slow_now = float(slow.iloc[-1]) if not np.isnan(slow.iloc[-1]) else np.nan
@@ -491,6 +588,8 @@ class BenchmarkDrawdownVolRiskOffSignalGenerator(IRiskOffSignalGenerator):
             f"DD({self._drawdown_lookback_days}) <= {self._drawdown_threshold:.2%} and "
             f"Vol({self._vol_lookback_days}) >= {self._vol_threshold_annual:.2%}"
         )
+
+
 #         pass
 #
 #     def supports_non_universe_data(self) -> bool:

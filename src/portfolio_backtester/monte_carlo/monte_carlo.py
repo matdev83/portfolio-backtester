@@ -16,7 +16,13 @@ class MonteCarloSimulator:
     Provides a clean interface for the existing Monte Carlo functions.
     """
 
-    def __init__(self, n_simulations=1000, n_years=10, initial_capital=1.0):
+    def __init__(
+        self,
+        n_simulations=1000,
+        n_years=10,
+        initial_capital=1.0,
+        block_size: int | None = None,
+    ):
         """
         Initialize the Monte Carlo simulator.
 
@@ -24,10 +30,12 @@ class MonteCarloSimulator:
             n_simulations: Number of simulation paths
             n_years: Number of years to simulate
             initial_capital: Starting capital
+            block_size: Block length (in months) for bootstrap sampling
         """
         self.n_simulations = n_simulations
         self.n_years = n_years
         self.initial_capital = initial_capital
+        self.block_size = block_size
 
     def run_simulation(self, strategy_returns):
         """
@@ -44,6 +52,7 @@ class MonteCarloSimulator:
             n_simulations=self.n_simulations,
             n_years=self.n_years,
             initial_capital=self.initial_capital,
+            block_size=self.block_size,
         )
 
     def plot_results(
@@ -76,8 +85,60 @@ class MonteCarloSimulator:
         )
 
 
+def _coerce_returns_to_monthly(returns: pd.Series) -> pd.Series:
+    """Ensure returns are monthly by compounding within each month."""
+    if not isinstance(returns.index, pd.DatetimeIndex):
+        return returns
+
+    if len(returns) < 3:
+        return returns
+
+    try:
+        freq = pd.infer_freq(returns.index)
+    except (ValueError, TypeError):
+        freq = None
+
+    if freq and (freq.startswith("M") or freq.startswith("ME") or freq.startswith("MS")):
+        return returns
+
+    # Treat daily/weekly or unknown frequency as sub-monthly.
+    monthly = (1 + returns).resample("ME").prod() - 1
+    return monthly.dropna()
+
+
+def _block_bootstrap_series(
+    values: np.ndarray,
+    n_samples: int,
+    block_size: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Generate a block-bootstrap sample preserving short-term autocorrelation."""
+    if n_samples <= 0 or len(values) == 0:
+        return np.array([])
+
+    block_size = max(1, int(block_size))
+    samples: list[float] = []
+    n_values = len(values)
+
+    while len(samples) < n_samples:
+        start = int(rng.integers(0, n_values))
+        end = start + block_size
+        if end <= n_values:
+            block = values[start:end]
+        else:
+            wrap = end - n_values
+            block = np.concatenate([values[start:], values[:wrap]])
+        samples.extend(block.tolist())
+
+    return np.asarray(samples[:n_samples], dtype=float)
+
+
 def run_monte_carlo_simulation(
-    strategy_returns, n_simulations=1000, n_years=10, initial_capital=1.0
+    strategy_returns,
+    n_simulations=1000,
+    n_years=10,
+    initial_capital=1.0,
+    block_size: int | None = None,
 ):
     """
     Runs a Monte Carlo simulation on a given strategy's returns.
@@ -87,23 +148,39 @@ def run_monte_carlo_simulation(
         n_simulations (int): Number of simulation paths to generate.
         n_years (int): Number of years to simulate into the future.
         initial_capital (float): The starting capital for the simulation.
+        block_size (int | None): Block length in months for bootstrap sampling.
 
     Returns:
         pd.DataFrame: A DataFrame containing the simulated portfolio values for each path.
     """
-    # Use monthly returns, assuming CAL_FACTOR is 12
-    monthly_returns = strategy_returns
-    n_months = n_years * 12
+    returns_series: pd.Series
+    if isinstance(strategy_returns, pd.DataFrame):
+        if strategy_returns.shape[1] >= 1:
+            returns_series = strategy_returns.iloc[:, 0]
+        else:
+            returns_series = pd.Series(dtype=float)
+    elif isinstance(strategy_returns, pd.Series):
+        returns_series = strategy_returns
+    else:
+        returns_series = pd.Series(strategy_returns)
 
-    # Calculate historical statistics
-    mean_return = monthly_returns.mean()
-    std_dev = monthly_returns.std()
+    returns_series = returns_series.dropna()
+    monthly_returns = _coerce_returns_to_monthly(returns_series)
+    if monthly_returns.empty:
+        return pd.DataFrame([initial_capital])
 
-    # Vectorized simulation
-    random_returns = np.random.normal(mean_return, std_dev, (n_months, n_simulations))
-    compounded_returns = 1 + random_returns
-    compounded_returns = np.vstack([np.ones(n_simulations), compounded_returns])
-    all_sim_results = initial_capital * np.cumprod(compounded_returns, axis=0)
+    n_months = int(n_years * 12)
+    block_len = block_size or max(1, min(12, len(monthly_returns) // 4 or 1))
+    rng = np.random.default_rng()
+
+    all_sim_results = np.empty((n_months + 1, n_simulations), dtype=float)
+    all_sim_results[0, :] = float(initial_capital)
+
+    values = monthly_returns.to_numpy(dtype=float)
+    for sim in range(n_simulations):
+        sampled = _block_bootstrap_series(values, n_months, block_len, rng)
+        compounded = np.cumprod(1 + sampled)
+        all_sim_results[1:, sim] = float(initial_capital) * compounded
 
     return pd.DataFrame(all_sim_results)
 

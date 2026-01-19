@@ -3,6 +3,7 @@ from .implementations import (
     NoRiskOffSignalGenerator,
     DummyRiskOffSignalGenerator,
     BenchmarkSmaRiskOffSignalGenerator,
+    BenchmarkMonthlySmaRiskOffSignalGenerator,
     BenchmarkEmaCrossoverRiskOffSignalGenerator,
     BenchmarkDrawdownVolRiskOffSignalGenerator,
 )
@@ -13,6 +14,7 @@ __all__ = [
     "NoRiskOffSignalGenerator",
     "DummyRiskOffSignalGenerator",
     "BenchmarkSmaRiskOffSignalGenerator",
+    "BenchmarkMonthlySmaRiskOffSignalGenerator",
     "BenchmarkEmaCrossoverRiskOffSignalGenerator",
     "BenchmarkDrawdownVolRiskOffSignalGenerator",
     "RiskOffSignalProviderFactory",

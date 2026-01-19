@@ -53,16 +53,21 @@ def _resolve_strategy(name: object, strategy_params: Optional[Dict[str, Any]] = 
     from ..interfaces import create_strategy_resolver
     from ..interfaces.strategy_resolver_interface import PolymorphicStrategyResolver
 
-    # Check if there are any mocked strategies for testing
-    mocked_strategies = PolymorphicStrategyResolver.enumerate_strategies_with_params()
-    if mocked_strategies:
-        # For tests, use the mocked strategies
+    # NOTE:
+    # PolymorphicStrategyResolver.enumerate_strategies_with_params() returns a mapping
+    # of {strategy_name: tunable_params_dict} in production. Some unit tests patch it
+    # to return {strategy_name: mock_strategy_object}. Only treat it as an override
+    # mechanism when the values are NOT parameter dicts.
+    injected_strategies = PolymorphicStrategyResolver.enumerate_strategies_with_params()
+    if injected_strategies and any(
+        not isinstance(value, dict) for value in injected_strategies.values()
+    ):
         if isinstance(name, dict):
             strategy_name = name.get("name") or name.get("strategy") or name.get("type")
-            if strategy_name in mocked_strategies:
-                return mocked_strategies[strategy_name]
-        elif isinstance(name, str) and name in mocked_strategies:
-            return mocked_strategies[name]
+            if strategy_name in injected_strategies:
+                return injected_strategies[strategy_name]
+        elif isinstance(name, str) and name in injected_strategies:
+            return injected_strategies[name]
 
     # Use polymorphic strategy resolver to eliminate isinstance violations
     resolver = create_strategy_resolver()
@@ -175,9 +180,49 @@ def generate_randomized_wfo_windows(
     Generate walk-forward optimization windows with optional randomization for robustness.
     Windows are aligned to calendar months and adjusted to business days.
     """
-    base_train_window_m = int(scenario_config.get("train_window_months", 36))
-    base_test_window_m = int(scenario_config.get("test_window_months", 48))
+    base_train_window_m = int(scenario_config.get("train_window_months", 60))
+    base_test_window_m = int(scenario_config.get("test_window_months", 12))
     wf_type = str(scenario_config.get("walk_forward_type", "expanding")).lower()
+
+    start_bound = scenario_config.get("start_date")
+    end_bound = scenario_config.get("end_date")
+    index_tz = getattr(monthly_data_index, "tz", None)
+    if start_bound:
+        start_ts = pd.to_datetime(start_bound)
+        if index_tz is not None:
+            start_ts = (
+                start_ts.tz_localize(index_tz)
+                if start_ts.tzinfo is None
+                else start_ts.tz_convert(index_tz)
+            )
+        elif start_ts.tzinfo is not None:
+            start_ts = start_ts.tz_convert(None)
+        monthly_data_index = monthly_data_index[monthly_data_index >= start_ts]
+    if end_bound:
+        end_ts = pd.to_datetime(end_bound)
+        if index_tz is not None:
+            end_ts = (
+                end_ts.tz_localize(index_tz)
+                if end_ts.tzinfo is None
+                else end_ts.tz_convert(index_tz)
+            )
+        elif end_ts.tzinfo is not None:
+            end_ts = end_ts.tz_convert(None)
+        monthly_data_index = monthly_data_index[monthly_data_index <= end_ts]
+
+    step_months_raw = scenario_config.get(
+        "wfo_step_months",
+        scenario_config.get("walk_forward_step_months"),
+    )
+    step_months = int(step_months_raw) if step_months_raw is not None else base_test_window_m
+    if step_months <= 0:
+        step_months = base_test_window_m
+
+    embargo_bdays_raw = scenario_config.get(
+        "wfo_embargo_bdays",
+        scenario_config.get("wfo_embargo_days", 0),
+    )
+    embargo_bdays = max(0, int(embargo_bdays_raw or 0))
 
     robustness_config = global_config.get("wfo_robustness_config", {}) or {}
     enable_window_randomization = bool(robustness_config.get("enable_window_randomization", False))
@@ -250,10 +295,15 @@ def generate_randomized_wfo_windows(
         test_start_date = _month_start_bday(monthly_data_index[test_start_idx])
         test_end_date = _month_end_bday(monthly_data_index[test_end_idx])
 
+        if embargo_bdays:
+            test_start_date = test_start_date + pd.offsets.BDay(embargo_bdays)
+            if test_start_date > test_end_date:
+                current_window_start_idx += step_months
+                continue
+
         windows.append((train_start_date, train_end_date, test_start_date, test_end_date))
 
-        step = int(test_win)
-        current_window_start_idx += step
+        current_window_start_idx += step_months
         if current_window_start_idx + base_train_window_m + base_test_window_m > len(
             monthly_data_index
         ):

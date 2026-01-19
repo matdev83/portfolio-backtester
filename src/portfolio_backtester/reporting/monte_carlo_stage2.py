@@ -14,6 +14,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from ..numba_optimized import generate_ohlc_from_prices_fast
+
+
 # Removed multiprocessing to ensure reliability across platforms
 # Stage 2 MC now runs sequentially to avoid pickling/serialization issues
 # and to provide deterministic progress and logs
@@ -58,6 +61,62 @@ def _plot_original_series(ax, series: pd.Series | None) -> None:
         label="Original Strategy",
         zorder=10,
     )
+
+
+def _block_bootstrap_returns(
+    returns: pd.Series,
+    target_length: int,
+    block_size: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Block-bootstrap returns to preserve short-term autocorrelation."""
+    if target_length <= 0:
+        return np.array([], dtype=float)
+
+    clean = returns.dropna()
+    if clean.empty:
+        return np.array([], dtype=float)
+
+    values = clean.to_numpy(dtype=float)
+    block_size = max(1, min(int(block_size), len(values)))
+    samples: list[float] = []
+
+    while len(samples) < target_length:
+        start = int(rng.integers(0, len(values)))
+        end = start + block_size
+        if end <= len(values):
+            block = values[start:end]
+        else:
+            wrap = end - len(values)
+            block = np.concatenate([values[start:], values[:wrap]])
+        samples.extend(block.tolist())
+
+    return np.asarray(samples[:target_length], dtype=float)
+
+
+def _apply_synthetic_prices(
+    daily_data: pd.DataFrame,
+    ticker: str,
+    synthetic_prices: pd.Series,
+    random_seed: int,
+) -> None:
+    """Replace daily OHLC (or close) prices with synthetic series in-place."""
+    if isinstance(daily_data.columns, pd.MultiIndex):
+        ohlc = generate_ohlc_from_prices_fast(
+            synthetic_prices.to_numpy(dtype=float), random_seed=random_seed
+        )
+        synthetic_ohlc = pd.DataFrame(
+            ohlc,
+            columns=["Open", "High", "Low", "Close"],
+            index=synthetic_prices.index,
+        )
+        for field in ["Open", "High", "Low", "Close"]:
+            col = (ticker, field)
+            if col in daily_data.columns:
+                daily_data.loc[synthetic_ohlc.index, col] = synthetic_ohlc[field].values
+    else:
+        if ticker in daily_data.columns:
+            daily_data.loc[synthetic_prices.index, ticker] = synthetic_prices.values
 
 
 def _plot_monte_carlo_robustness_analysis(
@@ -167,28 +226,60 @@ def _plot_monte_carlo_robustness_analysis(
         def _run_simulation_task(rep_pct: float, sim_seed: int) -> Optional[pd.Series]:
             """Worker function for a single MC simulation, designed for joblib."""
             try:
-                # Naive synthetic: bootstrap returns with noise
-                synthetic = rets_full.copy()
                 rng = np.random.default_rng(sim_seed)
+
+                synthetic_daily = daily_data.copy(deep=True)
+                if isinstance(daily_data.columns, pd.MultiIndex):
+                    if "Close" in daily_data.columns.get_level_values("Field"):
+                        close_prices = daily_data.xs("Close", level="Field", axis=1)
+                    else:
+                        close_prices = daily_data
+                else:
+                    close_prices = daily_data
+
+                target_index = close_prices.index
+                block_size = int(monte_carlo_config.get("stage2_block_size_days", 20))
+
                 assets_to_replace = rng.choice(
                     universe, max(1, int(len(universe) * rep_pct)), replace=False
                 )
+
                 for ticker in assets_to_replace:
-                    if ticker in synthetic.columns:
-                        orig = synthetic[ticker].dropna()
-                        if len(orig) < 50:
-                            continue
-                        boot = rng.choice(orig.to_numpy(), size=len(orig))
-                        noise = rng.normal(0, orig.std() * rng.uniform(0.15, 0.25), len(orig))
-                        synthetic[ticker] = pd.Series(boot + noise, index=orig.index)
+                    if ticker not in close_prices.columns:
+                        continue
+
+                    close_series = close_prices[ticker].dropna()
+                    if close_series.empty:
+                        continue
+
+                    if isinstance(rets_full, pd.DataFrame) and ticker in rets_full.columns:
+                        returns_source = rets_full[ticker].dropna()
+                    else:
+                        returns_source = close_series.pct_change(fill_method=None).dropna()
+
+                    if len(returns_source) < max(5, block_size):
+                        continue
+
+                    synthetic_returns = _block_bootstrap_returns(
+                        returns_source, len(target_index), block_size, rng
+                    )
+                    start_price = float(close_series.iloc[0])
+                    synthetic_prices = pd.Series(
+                        start_price * np.cumprod(1 + synthetic_returns),
+                        index=target_index,
+                    )
+
+                    _apply_synthetic_prices(
+                        synthetic_daily, ticker, synthetic_prices, random_seed=sim_seed
+                    )
 
                 return cast(
                     Optional[pd.Series],
                     self.run_scenario(
                         optimized_scenario,
                         monthly_data,
-                        daily_data,
-                        synthetic,
+                        synthetic_daily,
+                        None,
                         verbose=False,
                     ),
                 )

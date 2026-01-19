@@ -72,13 +72,21 @@ def _ensure_history_index_built() -> None:
         return
 
     try:
-        from market_data_multi_provider.sp500 import builder
+        import sys
+
+        module = sys.modules.get("market_data_multi_provider.sp500")
+        if module is not None and hasattr(module, "builder"):
+            builder_obj = module.builder
+        else:
+            from market_data_multi_provider.sp500 import builder
+
+            builder_obj = builder
     except ImportError as e:
         raise ImportError("market-data-multi-provider package is required") from e
 
     # Ensure MDMP has loaded its history (typically from parquet cache)
-    builder._ensure_history_loaded()
-    hist = getattr(builder, "_HISTORY_DF", None)
+    builder_obj._ensure_history_loaded()
+    hist = getattr(builder_obj, "_HISTORY_DF", None)
     if hist is None or not isinstance(hist, pd.DataFrame) or hist.empty:
         raise ValueError("SPY holdings history is not available (empty history)")
 
@@ -155,7 +163,7 @@ def get_spy_holdings(
         assert _HISTORY_DATES is not None
         assert _HISTORY_SLICES is not None
 
-        target = _normalize_holdings_date(date).to_datetime64()
+        target = np.datetime64(_normalize_holdings_date(date).to_datetime64(), "ns")
 
         # Exact match required
         if exact:
@@ -273,7 +281,12 @@ def reset_history_cache() -> None:
     _HISTORY_DATES = None
     _HISTORY_SLICES = None
     if mdmp_reset_cache:
-        mdmp_reset_cache()
+        import sys
+        import types
+
+        module = sys.modules.get("market_data_multi_provider.sp500")
+        if isinstance(module, types.ModuleType):
+            mdmp_reset_cache()
 
 
 def get_all_historical_tickers() -> List[str]:

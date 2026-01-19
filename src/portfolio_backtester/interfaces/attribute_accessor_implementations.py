@@ -11,6 +11,7 @@ from .attribute_accessor_interface import (
     IModuleAttributeAccessor,
     IClassAttributeAccessor,
     IObjectFieldAccessor,
+    _MISSING,
 )
 
 
@@ -20,11 +21,14 @@ class DefaultAttributeAccessor(IAttributeAccessor):
     Direct wrapper around getattr() function.
     """
 
-    def get_attribute(self, obj: Any, attr_name: str, default: Optional[Any] = None) -> Any:
-        """Get an attribute from an object using getattr."""
-        if default is not None:
-            return getattr(obj, attr_name, default)
-        return getattr(obj, attr_name)
+    def get_attribute(self, obj: Any, attr_name: str, default: Any = _MISSING) -> Any:
+        """Get an attribute from an object using getattr.
+
+        Returns the provided default (including None) when the attribute is missing.
+        """
+        if default is _MISSING:
+            return getattr(obj, attr_name)
+        return getattr(obj, attr_name, default)
 
 
 class ModuleAttributeAccessor(IModuleAttributeAccessor):

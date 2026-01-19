@@ -17,6 +17,11 @@ class TestMarketDataMultiProviderDataSource:
             source.client = MagicMock()
             source.data_dir = None
             source._min_coverage_ratio = None
+            source._preferred_provider = None
+            source._allow_fallbacks = True
+            source._max_workers = None
+            source._cache_only = False
+            source._cache_max_age_seconds = 14400
             return source
 
     def test_get_data_success(self, mock_client):
@@ -39,6 +44,24 @@ class TestMarketDataMultiProviderDataSource:
         assert isinstance(result.columns, pd.MultiIndex)
         assert ("SPY", "Close") in result.columns
         assert result.loc["2020-01-01", ("SPY", "Close")] == 102
+
+    def test_get_data_cache_only_uses_canonical_cache(self, mock_client):
+        mock_client._cache_only = True
+        mock_client._cache_max_age_seconds = 3600
+
+        dates = pd.date_range("2020-01-01", periods=2, tz="America/New_York")
+        cached_df = pd.DataFrame(
+            {"Open": [100, 101], "Close": [102, 103], "Volume": [1000, 2000]},
+            index=dates,
+        )
+        mock_client.client.canonical = MagicMock()
+        mock_client.client.canonical.load_if_fresh.return_value = cached_df
+
+        result = mock_client.get_data(["SPY"], "2020-01-01", "2020-01-02")
+
+        mock_client.client.fetch_many.assert_not_called()
+        assert not result.empty
+        assert ("SPY", "Close") in result.columns
 
     def test_get_data_empty(self, mock_client):
         mock_client.client.fetch_many.return_value = {}

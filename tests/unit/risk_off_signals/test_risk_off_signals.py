@@ -7,6 +7,7 @@ from portfolio_backtester.risk_off_signals import (
     IRiskOffSignalGenerator,
     NoRiskOffSignalGenerator,
     DummyRiskOffSignalGenerator,
+    BenchmarkMonthlySmaRiskOffSignalGenerator,
     RiskOffSignalProviderFactory,
 )
 
@@ -189,6 +190,53 @@ class TestRiskOffSignalProviderFactory:
 
         with pytest.raises(ValueError, match="Unknown risk-off signal generator type"):
             provider.get_risk_off_signal_generator()
+
+
+class TestBenchmarkMonthlySmaRiskOffSignalGenerator:
+    """Test the monthly-SMA (e.g. 10-month SMA) risk-off generator."""
+
+    def test_monthly_sma_risk_off_triggers_below_10m_sma(self) -> None:
+        idx = pd.date_range("2019-01-01", "2020-12-31", freq="B")
+        prices = pd.Series(100.0, index=idx)
+
+        month_ends = (
+            prices.groupby(pd.PeriodIndex(pd.DatetimeIndex(prices.index), freq="M")).tail(1).index
+        )
+        for i, dt in enumerate(month_ends):
+            prices.loc[dt] = 100.0 + float(i)
+
+        # Make the last month close drop far below the trailing monthly SMA.
+        prices.loc[month_ends[-1]] = 50.0
+
+        bench = pd.DataFrame({"Close": prices})
+        gen = BenchmarkMonthlySmaRiskOffSignalGenerator({"sma_window_months": 10})
+
+        assert gen.generate_risk_off_signal(
+            all_historical_data=pd.DataFrame(),
+            benchmark_historical_data=bench,
+            non_universe_historical_data=pd.DataFrame(),
+            current_date=month_ends[-1],
+        )
+
+    def test_monthly_sma_risk_off_false_when_above_sma(self) -> None:
+        idx = pd.date_range("2019-01-01", "2020-12-31", freq="B")
+        prices = pd.Series(100.0, index=idx)
+
+        month_ends = (
+            prices.groupby(pd.PeriodIndex(pd.DatetimeIndex(prices.index), freq="M")).tail(1).index
+        )
+        for i, dt in enumerate(month_ends):
+            prices.loc[dt] = 100.0 + float(i)
+
+        bench = pd.DataFrame({"Close": prices})
+        gen = BenchmarkMonthlySmaRiskOffSignalGenerator({"sma_window_months": 10})
+
+        assert not gen.generate_risk_off_signal(
+            all_historical_data=pd.DataFrame(),
+            benchmark_historical_data=bench,
+            non_universe_historical_data=pd.DataFrame(),
+            current_date=month_ends[-1],
+        )
 
 
 if __name__ == "__main__":

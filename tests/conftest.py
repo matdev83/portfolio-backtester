@@ -8,14 +8,25 @@ This module provides:
 - Common test utilities and shared test patterns
 """
 
+import os
+
+# Set threading limits to 1 to prevent CPU oversubscription when running with pytest-xdist
+# This must be done BEFORE importing numpy/pandas
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 import pytest
 import pandas as pd
 import numpy as np
-import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
+import requests
+import urllib.request
 from hypothesis import settings
 
 # Add src to path for imports
@@ -33,8 +44,10 @@ def pytest_configure(config):
     """Configure pytest with custom markers and settings."""
     # Hypothesis profiles: choose via HYPOTHESIS_PROFILE (defaults to 'dev')
     try:
-        settings.register_profile("dev", settings(max_examples=100, deadline=2000))
-        settings.register_profile("ci", settings(max_examples=300, deadline=4000))
+        # Increase deadline to allow for Numba compilation and xdist load
+        # Disable database to prevent write conflicts in parallel execution
+        settings.register_profile("dev", settings(max_examples=100, deadline=None, database=None))
+        settings.register_profile("ci", settings(max_examples=300, deadline=None, database=None))
         settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "dev"))
     except Exception:
         # If profiles are already registered by a rerun, ignore
@@ -471,6 +484,35 @@ def validation_rules():
 # ============================================================================
 # CLEANUP AND TEARDOWN FIXTURES
 # ============================================================================
+
+
+@pytest.fixture(autouse=True)
+def block_network_calls(monkeypatch, request):
+    """
+    Globally block network calls to prevent accidental external API hits.
+
+    Tests marked with @pytest.mark.network are EXEMPT from this block.
+    """
+    # Check if the test is marked with @pytest.mark.network
+    marker = request.node.get_closest_marker("network")
+    if marker:
+        return
+
+    def fail_request(*args, **kwargs):
+        raise RuntimeError(
+            f"Network call blocked in test '{request.node.name}'. "
+            "Use 'requests_mock', 'httpretty', or mark the test with @pytest.mark.network."
+        )
+
+    # Block requests
+    monkeypatch.setattr("requests.get", fail_request)
+    monkeypatch.setattr("requests.post", fail_request)
+    monkeypatch.setattr("requests.Session.get", fail_request)
+    monkeypatch.setattr("requests.Session.post", fail_request)
+    monkeypatch.setattr("requests.Session.request", fail_request)
+    
+    # Block urllib
+    monkeypatch.setattr("urllib.request.urlopen", fail_request)
 
 
 @pytest.fixture(autouse=True)

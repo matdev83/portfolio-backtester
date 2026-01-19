@@ -783,7 +783,9 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         # Risk-off signal generator (new system: True = risk-off)
         risk_off_generator = self.get_risk_off_signal_generator()
         non_universe_data_safe = (
-            non_universe_historical_data if non_universe_historical_data is not None else pd.DataFrame()
+            non_universe_historical_data
+            if non_universe_historical_data is not None
+            else pd.DataFrame()
         )
         if risk_off_generator.generate_risk_off_signal(
             all_historical_data,

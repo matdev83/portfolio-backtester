@@ -137,6 +137,24 @@ class TestDataFetcher:
         assert isinstance(result, str)
         assert len(result) == 10  # YYYY-MM-DD format
 
+    def test_determine_optimal_start_date_full_coverage(self, sample_global_config):
+        """Test optimal start date with full universe coverage requirement."""
+        dates = pd.date_range("2020-01-01", periods=5, freq="D")
+        columns = pd.MultiIndex.from_product(
+            [["AAPL", "MSFT", "SPY"], ["Close"]], names=["Ticker", "Field"]
+        )
+        data = pd.DataFrame(100.0, index=dates, columns=columns)
+        data.loc[dates[:2], ("MSFT", "Close")] = np.nan
+
+        mock_ds = Mock()
+        mock_ds.get_data.return_value = data
+        fetcher = DataFetcher(sample_global_config, mock_ds)
+
+        tickers = {"SPY", "AAPL", "MSFT"}
+        result = fetcher.determine_optimal_start_date(tickers, min_universe_coverage=1.0)
+
+        assert result == str(dates[2].date())
+
 
 class TestStrategyManager:
     """Test suite for StrategyManager class."""

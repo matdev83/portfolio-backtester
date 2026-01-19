@@ -44,12 +44,14 @@ dependencies = [
     "httpx",
     "tqdm",
     "psutil",
+    "autogluon",
     "market-data-multi-provider"
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "pytest-xdist",
     "pytest-cov",
     "coverage",
     "radon",
@@ -150,7 +152,8 @@ module = [
     "pandas_market_calendars.*",
     "ta.*",
     "numba.*",
-    "statsmodels.*"
+    "statsmodels.*",
+    "autogluon.*"
 ]
 ignore_missing_imports = true
 

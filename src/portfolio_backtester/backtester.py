@@ -50,6 +50,11 @@ def _create_parser() -> argparse.ArgumentParser:
         help="Path to a single scenario file to run/optimize.",
     )
     parser.add_argument(
+        "--mdmp-cache-only",
+        action="store_true",
+        help="Use MDMP cached data only; skip any downloads.",
+    )
+    parser.add_argument(
         "--study-name",
         type=str,
         help="Name of the Optuna study to use for optimization or to load best parameters from.",
@@ -324,6 +329,11 @@ def main(args: Optional[List[str]] = None) -> None:
                 performance_config.get("OPENBLAS_NUM_THREADS", 1)
             )
             logger.info("Applied performance.thread_caps environment limits.")
+
+        if getattr(parsed_args, "mdmp_cache_only", False):
+            data_source_config = GLOBAL_CONFIG_RELOADED.setdefault("data_source_config", {})
+            data_source_config["cache_only"] = True
+            logger.info("MDMP cache-only mode enabled via CLI.")
 
         logger.info("Configuration loaded successfully")
 

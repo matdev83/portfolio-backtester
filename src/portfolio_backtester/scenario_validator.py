@@ -59,11 +59,14 @@ _VALID_PARAM_TYPES: Set[str] = {"int", "float", "categorical", "str", "bool"}
 _COMMON_INT_KEYS: Set[str] = {
     "train_window_months",
     "test_window_months",
+    "wfo_step_months",
+    "walk_forward_step_months",
 }
 
 _COMMON_STR_KEYS: Set[str] = {
     "rebalance_frequency",
     "position_sizer",
+    "wfo_mode",
 }
 
 
@@ -258,6 +261,50 @@ def _validate_common_types_and_windows(
                     file_path=file_path_str,
                 )
             )
+
+    wfo_mode = scenario_data.get("wfo_mode")
+    if wfo_mode is not None:
+        allowed_modes = {
+            "cv",
+            "cross_validation",
+            "cross-validation",
+            "fixed",
+            "reoptimize",
+            "reopt",
+            "true",
+            "walk_forward",
+            "walk-forward",
+            "wfo",
+        }
+        if str(wfo_mode).strip().lower() not in allowed_modes:
+            errors.append(
+                YamlError(
+                    error_type=YamlErrorType.VALIDATION_ERROR,
+                    message=f"wfo_mode '{wfo_mode}' is not supported. Allowed: {sorted(allowed_modes)}",
+                    file_path=file_path_str,
+                )
+            )
+
+    for key in ("wfo_embargo_bdays", "wfo_embargo_days"):
+        if key in scenario_data:
+            val = scenario_data[key]
+            if not _is_int(val):
+                errors.append(
+                    YamlError(
+                        error_type=YamlErrorType.VALIDATION_ERROR,
+                        message=f"'{key}' should be an integer (got {type(val).__name__})",
+                        file_path=file_path_str,
+                    )
+                )
+            elif val < 0:
+                errors.append(
+                    YamlError(
+                        error_type=YamlErrorType.VALIDATION_ERROR,
+                        message=f"'{key}' must be non-negative (got {val})",
+                        file_path=file_path_str,
+                    )
+                )
+
     return errors
 
 

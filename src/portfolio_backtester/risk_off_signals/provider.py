@@ -7,7 +7,7 @@ SOLID principles and Dependency Inversion Principle (DIP).
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .interface import IRiskOffSignalGenerator
@@ -92,6 +92,7 @@ class ConfigBasedRiskOffSignalProvider(IRiskOffSignalProvider):
             NoRiskOffSignalGenerator,
             DummyRiskOffSignalGenerator,
             BenchmarkSmaRiskOffSignalGenerator,
+            BenchmarkMonthlySmaRiskOffSignalGenerator,
             BenchmarkEmaCrossoverRiskOffSignalGenerator,
             BenchmarkDrawdownVolRiskOffSignalGenerator,
         )
@@ -99,15 +100,24 @@ class ConfigBasedRiskOffSignalProvider(IRiskOffSignalProvider):
         generator_type_name = self.risk_off_config.get("type", "NoRiskOffSignalGenerator")
 
         # Registry of available generator types
-        generator_registry = {
-            "NoRiskOffSignalGenerator": NoRiskOffSignalGenerator,
-            "DummyRiskOffSignalGenerator": DummyRiskOffSignalGenerator,
-            "BenchmarkSmaRiskOffSignalGenerator": BenchmarkSmaRiskOffSignalGenerator,
-            "BenchmarkEmaCrossoverRiskOffSignalGenerator": BenchmarkEmaCrossoverRiskOffSignalGenerator,
-            "BenchmarkDrawdownVolRiskOffSignalGenerator": BenchmarkDrawdownVolRiskOffSignalGenerator,
+        generator_registry: dict[str, Callable[[Dict[str, Any]], "IRiskOffSignalGenerator"]] = {
+            "NoRiskOffSignalGenerator": lambda cfg: NoRiskOffSignalGenerator(cfg),
+            "DummyRiskOffSignalGenerator": lambda cfg: DummyRiskOffSignalGenerator(cfg),
+            "BenchmarkSmaRiskOffSignalGenerator": lambda cfg: BenchmarkSmaRiskOffSignalGenerator(
+                cfg
+            ),
+            "BenchmarkMonthlySmaRiskOffSignalGenerator": (
+                lambda cfg: BenchmarkMonthlySmaRiskOffSignalGenerator(cfg)
+            ),
+            "BenchmarkEmaCrossoverRiskOffSignalGenerator": (
+                lambda cfg: BenchmarkEmaCrossoverRiskOffSignalGenerator(cfg)
+            ),
+            "BenchmarkDrawdownVolRiskOffSignalGenerator": (
+                lambda cfg: BenchmarkDrawdownVolRiskOffSignalGenerator(cfg)
+            ),
             # Future implementations can be added here:
-            # "VixBasedRiskOffSignalGenerator": VixBasedRiskOffSignalGenerator,
-            # "TechnicalRiskOffSignalGenerator": TechnicalRiskOffSignalGenerator,
+            # "VixBasedRiskOffSignalGenerator": lambda cfg: VixBasedRiskOffSignalGenerator(cfg),
+            # "TechnicalRiskOffSignalGenerator": lambda cfg: TechnicalRiskOffSignalGenerator(cfg),
         }
 
         generator_class = generator_registry.get(generator_type_name)
@@ -161,17 +171,27 @@ class FixedRiskOffSignalProvider(IRiskOffSignalProvider):
             NoRiskOffSignalGenerator,
             DummyRiskOffSignalGenerator,
             BenchmarkSmaRiskOffSignalGenerator,
+            BenchmarkMonthlySmaRiskOffSignalGenerator,
             BenchmarkEmaCrossoverRiskOffSignalGenerator,
             BenchmarkDrawdownVolRiskOffSignalGenerator,
         )
 
         # Registry of available generator types
-        generator_registry = {
-            "NoRiskOffSignalGenerator": NoRiskOffSignalGenerator,
-            "DummyRiskOffSignalGenerator": DummyRiskOffSignalGenerator,
-            "BenchmarkSmaRiskOffSignalGenerator": BenchmarkSmaRiskOffSignalGenerator,
-            "BenchmarkEmaCrossoverRiskOffSignalGenerator": BenchmarkEmaCrossoverRiskOffSignalGenerator,
-            "BenchmarkDrawdownVolRiskOffSignalGenerator": BenchmarkDrawdownVolRiskOffSignalGenerator,
+        generator_registry: dict[str, Callable[[Dict[str, Any]], "IRiskOffSignalGenerator"]] = {
+            "NoRiskOffSignalGenerator": lambda cfg: NoRiskOffSignalGenerator(cfg),
+            "DummyRiskOffSignalGenerator": lambda cfg: DummyRiskOffSignalGenerator(cfg),
+            "BenchmarkSmaRiskOffSignalGenerator": lambda cfg: BenchmarkSmaRiskOffSignalGenerator(
+                cfg
+            ),
+            "BenchmarkMonthlySmaRiskOffSignalGenerator": (
+                lambda cfg: BenchmarkMonthlySmaRiskOffSignalGenerator(cfg)
+            ),
+            "BenchmarkEmaCrossoverRiskOffSignalGenerator": (
+                lambda cfg: BenchmarkEmaCrossoverRiskOffSignalGenerator(cfg)
+            ),
+            "BenchmarkDrawdownVolRiskOffSignalGenerator": (
+                lambda cfg: BenchmarkDrawdownVolRiskOffSignalGenerator(cfg)
+            ),
         }
 
         generator_class = generator_registry.get(self.generator_type)
