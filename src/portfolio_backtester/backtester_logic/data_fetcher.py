@@ -100,10 +100,19 @@ class DataFetcher:
             Tuple of (all_tickers_set, scenario_has_universe_flag)
         """
         all_tickers: set = set()
-        all_tickers.add(self.global_config["benchmark"])
+
+        # Add global benchmark to the fetch list
+        global_benchmark = self.global_config.get("benchmark")
+        if global_benchmark:
+            all_tickers.add(global_benchmark)
+
         scenario_has_universe = False
 
         for scenario_config in scenarios_to_run:
+            # Add scenario-specific benchmark if it exists
+            if scenario_config.benchmark_ticker:
+                all_tickers.add(scenario_config.benchmark_ticker)
+
             # Universe handling
             if scenario_config.universe_definition:
                 scenario_has_universe = True
@@ -122,12 +131,12 @@ class DataFetcher:
                             "get_top_weight_sp500_components",
                         }
                     ):
-                        start_s = _coerce_date_str(
-                            scenario_config.start_date
-                        ) or _coerce_date_str(self.global_config.get("start_date"))
-                        end_s = _coerce_date_str(
-                            scenario_config.end_date
-                        ) or _coerce_date_str(self.global_config.get("end_date"))
+                        start_s = _coerce_date_str(scenario_config.start_date) or _coerce_date_str(
+                            self.global_config.get("start_date")
+                        )
+                        end_s = _coerce_date_str(scenario_config.end_date) or _coerce_date_str(
+                            self.global_config.get("end_date")
+                        )
                         reduced = _collect_sp500_top_components_over_range(
                             start_date=start_s,
                             end_date=end_s,
@@ -160,14 +169,12 @@ class DataFetcher:
                     logger.error(f"Failed to collect universe tickers: {e}")
 
             # Strategy-specific non-universe data
-            strategy = strategy_getter(
-                scenario_config.strategy, scenario_config.strategy_params
-            )
+            # Use full canonical config for strategy creation to avoid leaking raw dicts
+            strategy = strategy_getter(scenario_config.strategy, scenario_config)
             non_universe_tickers = strategy.get_non_universe_data_requirements()
             all_tickers.update(non_universe_tickers)
 
         return all_tickers, scenario_has_universe
-
 
     def fetch_daily_data(self, all_tickers: set, start_date: str) -> pd.DataFrame:
         """

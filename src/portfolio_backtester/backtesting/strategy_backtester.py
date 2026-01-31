@@ -93,10 +93,13 @@ class StrategyBacktester:
             logger.warning(
                 "ACCIDENTAL BYPASS: Raw strategy_config dictionary passed to StrategyBacktester.backtest_strategy. "
                 "All scenarios should be canonicalized at the boundary. "
-                "Scenario: %s", strategy_config.get('name', 'unnamed')
+                "Scenario: %s",
+                strategy_config.get("name", "unnamed"),
             )
             normalizer = ScenarioNormalizer()
-            canonical_config = normalizer.normalize(scenario=strategy_config, global_config=self.global_config)
+            canonical_config = normalizer.normalize(
+                scenario=strategy_config, global_config=self.global_config
+            )
         else:
             canonical_config = strategy_config
 
@@ -133,7 +136,9 @@ class StrategyBacktester:
             logger.warning("No universe tickers remain after filtering. Returning empty results.")
             return self._create_empty_backtest_result()
 
-        benchmark_ticker = self.global_config["benchmark"]
+        benchmark_ticker = canonical_config.benchmark_ticker or self.global_config.get(
+            "benchmark", "SPY"
+        )
 
         # Prepare data
         monthly_closes, rets_daily = prepare_scenario_data(daily_data, self.data_cache)
@@ -308,7 +313,11 @@ class StrategyBacktester:
             return self._create_empty_window_result(train_start, train_end, test_start, test_end)
 
         # Calculate benchmark returns for this window
-        benchmark_ticker = self.global_config["benchmark"]
+        benchmark_ticker = (
+            strategy_config.benchmark_ticker
+            if isinstance(strategy_config, CanonicalScenarioConfig)
+            else strategy_config.get("benchmark_ticker", self.global_config.get("benchmark", "SPY"))
+        )
         benchmark_data = daily_slice[benchmark_ticker].loc[test_start:test_end]
         benchmark_returns = benchmark_data.pct_change(fill_method=None).fillna(0)
 
@@ -325,7 +334,10 @@ class StrategyBacktester:
         )
 
     def _get_strategy(
-        self, strategy_spec, params: Mapping[str, Any], strategy_config: Union[Dict[str, Any], CanonicalScenarioConfig]
+        self,
+        strategy_spec,
+        params: Mapping[str, Any],
+        strategy_config: Union[Dict[str, Any], CanonicalScenarioConfig],
     ) -> BaseStrategy:
         """Get a strategy instance by name and parameters.
 
@@ -433,10 +445,13 @@ class StrategyBacktester:
             logger.warning(
                 "ACCIDENTAL BYPASS: Raw strategy_config dictionary passed to StrategyBacktester._run_scenario_for_window. "
                 "All scenarios should be canonicalized at the boundary. "
-                "Scenario: %s", strategy_config.get('name', 'unnamed')
+                "Scenario: %s",
+                strategy_config.get("name", "unnamed"),
             )
             normalizer = ScenarioNormalizer()
-            canonical_config = normalizer.normalize(scenario=strategy_config, global_config=self.global_config)
+            canonical_config = normalizer.normalize(
+                scenario=strategy_config, global_config=self.global_config
+            )
         else:
             canonical_config = strategy_config
 
@@ -575,14 +590,14 @@ class StrategyBacktester:
         relevant_tickers = sized_signals.columns
         aligned_prices = prices_df.reindex(index=sized_signals.index, columns=relevant_tickers)
         stacked_prices = aligned_prices.stack()
-        
+
         # Create the result DataFrame
         trade_history = non_zero_signals.to_frame()
         trade_history.reset_index(inplace=True)
         # Signals stacked index names might be [None, None] or [DateName, TickerName]
         # We force standard names for the output
         trade_history.columns = ["date", "ticker", "position"]
-        
+
         # Add prices via mapping from the stacked price series (fast lookup)
         trade_history["price"] = non_zero_signals.index.map(stacked_prices)
 

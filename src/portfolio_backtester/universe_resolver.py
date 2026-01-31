@@ -25,13 +25,22 @@ def _resolve_single_symbol(config: Dict[str, Any]) -> List[str]:
     return [_normalize_ticker(ticker)]
 
 
-def _resolve_method(config: Dict[str, Any], current_date: Optional[pd.Timestamp]) -> List[str]:
+def _resolve_method(
+    config: Dict[str, Any],
+    current_date: Optional[pd.Timestamp],
+    global_config: Optional[Dict[str, Any]] = None,
+) -> List[str]:
     method_name = config.get("method_name", "get_top_weight_sp500_components")
     if method_name == "get_top_weight_sp500_components":
         from .universe import get_top_weight_sp500_components
 
         if current_date is None:
-            current_date = pd.Timestamp.now().normalize()
+            # Prefer start_date from global config for deterministic static resolution of dynamic universes
+            fallback_date = (global_config or {}).get("start_date")
+            if fallback_date:
+                current_date = pd.Timestamp(fallback_date).normalize()
+            else:
+                current_date = pd.Timestamp.now().normalize()
         n_holdings = config.get("n_holdings", 50)
         exact = config.get("exact", False)
         try:
@@ -127,7 +136,9 @@ def _resolve_named(config: Dict[str, Any]) -> List[str]:
 
 # Internal function used by universe providers
 def resolve_universe_config(
-    universe_config: dict, current_date: Optional[pd.Timestamp] = None
+    universe_config: dict,
+    current_date: Optional[pd.Timestamp] = None,
+    global_config: Optional[Dict[str, Any]] = None,
 ) -> list[str]:
     """
     Resolve universe configuration to a list of tickers.
@@ -135,6 +146,7 @@ def resolve_universe_config(
     Args:
         universe_config: Universe configuration dictionary
         current_date: Optional current date for universe resolution
+        global_config: Optional global configuration for defaults
 
     Returns:
         List of ticker symbols
@@ -154,7 +166,7 @@ def resolve_universe_config(
         raise ValueError("universe_config must specify 'type'")
 
     if universe_type == "method":
-        return _resolve_method(universe_config, current_date)
+        return _resolve_method(universe_config, current_date, global_config)
 
     elif universe_type == "fixed":
         return _resolve_fixed(universe_config)

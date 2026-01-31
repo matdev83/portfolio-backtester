@@ -94,10 +94,13 @@ class BacktestRunner:
             logger.warning(
                 "ACCIDENTAL BYPASS: Raw scenario dictionary passed to BacktestRunner.run_scenario. "
                 "All scenarios should be canonicalized at the boundary. "
-                "Scenario: %s", scenario_config.get('name', 'unnamed')
+                "Scenario: %s",
+                scenario_config.get("name", "unnamed"),
             )
             normalizer = ScenarioNormalizer()
-            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=self.global_config
+            )
         else:
             canonical_config = scenario_config
 
@@ -106,9 +109,7 @@ class BacktestRunner:
                 logger.debug(f"Running scenario: {canonical_config.name}")
 
         # Instantiate strategy using full canonical config to support new features
-        strategy = self.strategy_manager.get_strategy(
-            canonical_config.strategy, canonical_config
-        )
+        strategy = self.strategy_manager.get_strategy(canonical_config.strategy, canonical_config)
 
         # Resolve universe tickers
         # Use strategy's universe provider - no direct universe resolution
@@ -132,7 +133,9 @@ class BacktestRunner:
             )
             return None
 
-        benchmark_ticker = self.global_config["benchmark"]
+        benchmark_ticker = canonical_config.benchmark_ticker or self.global_config.get(
+            "benchmark", "SPY"
+        )
 
         price_data_monthly_closes, rets_daily = prepare_scenario_data(
             price_data_daily_ohlc, self.data_cache
@@ -217,10 +220,13 @@ class BacktestRunner:
             logger.warning(
                 "ACCIDENTAL BYPASS: Raw scenario dictionary passed to BacktestRunner.run_backtest_mode. "
                 "All scenarios should be canonicalized at the boundary. "
-                "Scenario: %s", scenario_config.get('name', 'unnamed')
+                "Scenario: %s",
+                scenario_config.get("name", "unnamed"),
             )
             normalizer = ScenarioNormalizer()
-            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=self.global_config
+            )
         else:
             canonical_config = scenario_config
 
@@ -238,22 +244,24 @@ class BacktestRunner:
                     study_name=study_name,
                     storage=self._get_default_optuna_storage_url(),
                 )
-                
+
                 # Convert to dict to update parameters
                 params_dict = dict(canonical_config.strategy_params)
                 params_dict.update(study.best_params)
-                
+
                 # Re-normalize
                 scen_dict = canonical_config.to_dict()
                 scen_dict["strategy_params"] = params_dict
                 normalizer = ScenarioNormalizer()
-                canonical_config = normalizer.normalize(scenario=scen_dict, global_config=self.global_config)
+                canonical_config = normalizer.normalize(
+                    scenario=scen_dict, global_config=self.global_config
+                )
 
                 if self.logger.isEnabledFor(logging.DEBUG):
                     self.logger.debug(
                         f"Loaded best parameters from study '{study_name}': {canonical_config.strategy_params}"
                     )
-                
+
                 # Legacy compatibility: update input dict if provided
                 if isinstance(scenario_config, dict):
                     if "strategy_params" not in scenario_config:

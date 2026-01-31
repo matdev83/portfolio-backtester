@@ -27,7 +27,6 @@ class DriftRegimeConditionalFactorPortfolioStrategy(PortfolioStrategy):
 
     def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]) -> None:
         super().__init__(strategy_config)
-
         
         params = self._get_params_dict()
         
@@ -138,7 +137,15 @@ class DriftRegimeConditionalFactorPortfolioStrategy(PortfolioStrategy):
             str_return = (current_prices / past_prices) - 1
         else:
             str_return = prices.pct_change(periods=reversal_window).loc[current_date]
-            
+        
+        # FIX: Ensure factor variables are defined
+        str_signal_global = -str_return # Reversal: losers get high score
+        
+        # Value Factor (Paper uses Inverse Price 1/P as proxy)
+        current_prices = prices.loc[current_date]
+        valid_price_mask = (current_prices >= 1.0) # Standard filter
+        value_signal_global = (1.0 / current_prices).where(valid_price_mask)
+
         # 4. Standardize Factors (Percentile Ranks for both for stability)
         def get_percentile(series: pd.Series) -> pd.Series:
             if series.empty:
@@ -161,7 +168,8 @@ class DriftRegimeConditionalFactorPortfolioStrategy(PortfolioStrategy):
         num_in_regime = len(candidates)
         num_holdings = params.get("num_holdings", 30) # Default to 30 for S&P 500
         leverage = params.get("leverage", 1.0)
-        weights = pd.Series(0.0, index=all_historical_data.columns.get_level_values("Ticker").unique() if isinstance(all_historical_data.columns, pd.MultiIndex) else all_historical_data.columns)
+        weight_indices = all_historical_data.columns.get_level_values("Ticker").unique() if isinstance(all_historical_data.columns, pd.MultiIndex) else all_historical_data.columns
+        weights = pd.Series(0.0, index=weight_indices)
 
         # Log diagnostics
         if logger.isEnabledFor(logging.INFO):

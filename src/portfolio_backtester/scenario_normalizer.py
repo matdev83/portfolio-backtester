@@ -47,6 +47,14 @@ class ScenarioNormalizer:
                     f"Scenario '{name}' is missing required 'strategy' key."
                 )
 
+            # 5.2 Check if strategy is registered
+            registry = get_strategy_registry()
+            if not registry.is_strategy_registered(strategy):
+                raise ScenarioNormalizationError(
+                    f"Unknown strategy '{strategy}' for scenario '{name}'. "
+                    "Please ensure the strategy class is properly named and placed in a discovered directory."
+                )
+
             # 1. Normalize Timing
             timing_config = self._normalize_timing(scenario, global_config)
 
@@ -71,7 +79,11 @@ class ScenarioNormalizer:
             start_date = scenario.get("start_date", global_config.get("start_date"))
             end_date = scenario.get("end_date", global_config.get("end_date"))
             benchmark_ticker = scenario.get(
-                "benchmark_ticker", global_config.get("benchmark_ticker")
+                "benchmark_ticker",
+                scenario.get(
+                    "benchmark",
+                    global_config.get("benchmark_ticker", global_config.get("benchmark")),
+                ),
             )
             position_sizer = scenario.get("position_sizer", global_config.get("position_sizer"))
 
@@ -121,12 +133,12 @@ class ScenarioNormalizer:
                 optimizer_config=freeze_config(optimizer_config),
                 strategy_params=freeze_config(strategy_params),
                 optimize=freeze_config(optimize),
-                extras=freeze_config(extras)
+                extras=freeze_config(extras),
             )
-            
+
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Normalization outcome for '{name}': {result}")
-                
+
             return result
 
         except ScenarioNormalizationError:
@@ -177,11 +189,13 @@ class ScenarioNormalizer:
             if param_name in normalized_params and normalized_params[param_name] != v:
                 raise ScenarioNormalizationError(
                     f"Conflict in 'strategy_params': both '{k}' and another key normalize to '{param_name}' "
-                    f"with different values ({v} vs {normalized_params[param_name]})."
+                    f"with different values ({v} vs {normalized_params[param_name]}). "
+                    "Please ensure all strategy parameters have unique names after prefix stripping."
                 )
             if k != param_name:
                 logger.warning(
-                    f"Normalized prefixed parameter '{k}' to '{param_name}' in scenario."
+                    f"Legacy normalization: stripped prefix from '{k}' and moved value '{v}' to canonical "
+                    f"parameter '{param_name}' in 'strategy_params'."
                 )
             normalized_params[param_name] = v
 
@@ -238,7 +252,8 @@ class ScenarioNormalizer:
                 # If same value, we just warn and proceed
             else:
                 logger.warning(
-                    f"Flattened legacy top-level parameter '{k}' into 'strategy_params'."
+                    f"Legacy normalization: flattened top-level key '{k}' with value '{v}' into "
+                    f"'strategy_params' because it is a known parameter for strategy '{strategy_name}'."
                 )
 
             normalized_params[k] = v
@@ -248,7 +263,7 @@ class ScenarioNormalizer:
 
     def _get_valid_strategy_param_names(self, strategy_name: str) -> set[str]:
         """Get the set of valid parameter names for a strategy.
-        
+
         Returns an empty set if the strategy is unknown (allowing all keys to be flattened
         for backward compatibility with legacy scenarios).
         """
@@ -267,9 +282,7 @@ class ScenarioNormalizer:
                 tunables = strategy_class.tunable_parameters()
                 valid_names.update(tunables.keys())
             except Exception as e:
-                logger.debug(
-                    f"Could not get tunable_parameters for '{strategy_name}': {e}"
-                )
+                logger.debug(f"Could not get tunable_parameters for '{strategy_name}': {e}")
 
         # Check for get_default_params (common interface)
         if hasattr(strategy_class, "get_default_params"):
@@ -277,9 +290,7 @@ class ScenarioNormalizer:
                 defaults = strategy_class.get_default_params()
                 valid_names.update(defaults.keys())
             except Exception as e:
-                logger.debug(
-                    f"Could not get get_default_params for '{strategy_name}': {e}"
-                )
+                logger.debug(f"Could not get get_default_params for '{strategy_name}': {e}")
 
         # Check for get_params_space (older interface)
         if hasattr(strategy_class, "get_params_space"):
@@ -287,9 +298,7 @@ class ScenarioNormalizer:
                 params_space = strategy_class.get_params_space()
                 valid_names.update(params_space.keys())
             except Exception as e:
-                logger.debug(
-                    f"Could not get get_params_space for '{strategy_name}': {e}"
-                )
+                logger.debug(f"Could not get get_params_space for '{strategy_name}': {e}")
 
         return valid_names
 
@@ -342,7 +351,7 @@ class ScenarioNormalizer:
         return optimizer_config
 
     def _normalize_optimize(self, scenario: Mapping[str, Any]) -> Optional[List[Dict[str, Any]]]:
-        """Normalize the 'optimize' list."""
+        """Normalize the 'optimize' list and validate parameters."""
         optimize = scenario.get("optimize")
         if optimize is None:
             return None
@@ -350,10 +359,27 @@ class ScenarioNormalizer:
         if not isinstance(optimize, list):
             raise ScenarioNormalizationError("'optimize' section must be a list.")
 
+        strategy_name = scenario.get("strategy", "")
+        valid_param_names = self._get_valid_strategy_param_names(strategy_name)
+
         normalized = []
         for i, item in enumerate(optimize):
             if not isinstance(item, Mapping):
                 raise ScenarioNormalizationError(f"Item {i} in 'optimize' list must be a mapping.")
+
+            param_name = item.get("parameter")
+            if not param_name:
+                raise ScenarioNormalizationError(
+                    f"Item {i} in 'optimize' list is missing 'parameter' key."
+                )
+
+            # 5.2 Fail early for invalid optimization parameters
+            if valid_param_names and param_name not in valid_param_names:
+                raise ScenarioNormalizationError(
+                    f"Invalid optimization parameter '{param_name}' for strategy '{strategy_name}'. "
+                    f"Available parameters: {sorted(list(valid_param_names))}"
+                )
+
             normalized.append(dict(item))
 
         return normalized
@@ -370,8 +396,9 @@ class ScenarioNormalizer:
         if rebalance_frequency is not None and config_freq is not None:
             if rebalance_frequency != config_freq:
                 raise ScenarioNormalizationError(
-                    f"Conflict in timing configuration: 'rebalance_frequency' ({rebalance_frequency}) "
-                    f"differs from 'timing_config.rebalance_frequency' ({config_freq})."
+                    f"Conflict in timing configuration for scenario: 'rebalance_frequency' ({rebalance_frequency}) "
+                    f"differs from 'timing_config.rebalance_frequency' ({config_freq}). "
+                    "Please use only one of these keys or ensure they have identical values to avoid ambiguity."
                 )
 
         final_freq = rebalance_frequency or config_freq or global_config.get("rebalance_frequency")
@@ -388,7 +415,8 @@ class ScenarioNormalizer:
         if universe_config is not None and universe is not None:
             raise ScenarioNormalizationError(
                 f"Conflict in universe definition: both 'universe_config' and 'universe' keys are present. "
-                f"universe_config: {universe_config}, universe: {universe}"
+                f"universe_config: {universe_config}, universe: {universe}. "
+                "Please use only one of these keys (prefer 'universe_config') to define the asset universe."
             )
 
         if universe_config is not None:

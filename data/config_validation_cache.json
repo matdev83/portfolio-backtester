@@ -5,7 +5,7 @@
       "errors": []
     },
     "state": {
-      "timestamp": 1769897105.245821,
+      "timestamp": 1769899089.78982,
       "file_counts": {
         "scenarios": 56,
         "strategies": 73,
@@ -349,8 +349,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy.py",
-            "mtime": 1769896814.2098215,
-            "size": 8960
+            "mtime": 1769899078.3238213,
+            "size": 9425
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy.py",
@@ -444,13 +444,13 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\seasonal_signal_strategy.py",
-            "mtime": 1755122488.5197453,
-            "size": 4020
+            "mtime": 1769897336.3933218,
+            "size": 3934
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\uvxy_rsi_signal_strategy.py",
-            "mtime": 1755101079.5594573,
-            "size": 2874
+            "mtime": 1769897341.9108198,
+            "size": 2888
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\__init__.py",
@@ -529,13 +529,13 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\user\\signal\\hello_world_signal_strategy.py",
-            "mtime": 1755101079.5504568,
-            "size": 2662
+            "mtime": 1769897329.5153208,
+            "size": 2720
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\user\\signal\\momentum_signal_strategy.py",
-            "mtime": 1755125829.2840514,
-            "size": 365
+            "mtime": 1769897324.648821,
+            "size": 560
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\user\\signal\\__init__.py",

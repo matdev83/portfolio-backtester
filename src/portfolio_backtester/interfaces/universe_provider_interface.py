@@ -175,7 +175,7 @@ class ConfigBasedUniverseProvider(IUniverseProvider, IUniverseWeightProvider):
 
         if self.universe_config:
             # Let errors propagate so BaseStrategy can log and handle fallback
-            return list(resolve_universe_config(self.universe_config))
+            return list(resolve_universe_config(self.universe_config, global_config=global_config))
 
         # Use global config universe
         default_universe = global_config.get("universe", [])
@@ -191,7 +191,7 @@ class ConfigBasedUniverseProvider(IUniverseProvider, IUniverseWeightProvider):
 
         if self.universe_config:
             # Let errors propagate so BaseStrategy can log and handle fallback
-            return list(resolve_universe_config(self.universe_config, current_date))
+            return list(resolve_universe_config(self.universe_config, current_date, global_config))
 
         # Use global config universe
         default_universe = global_config.get("universe", [])
