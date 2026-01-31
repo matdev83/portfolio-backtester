@@ -9,9 +9,12 @@ pruning, and study persistence.
 
 import logging
 from unittest.mock import Mock
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast, TYPE_CHECKING
 import warnings
 import numpy as np
+
+if TYPE_CHECKING:
+    from ...canonical_config import CanonicalScenarioConfig
 
 from ...interfaces.attribute_accessor_interface import (
     IAttributeAccessor,
@@ -119,7 +122,9 @@ class OptunaParameterGenerator(ParameterGenerator):
             )
 
     def initialize(
-        self, scenario_config: Dict[str, Any], optimization_config: Dict[str, Any]
+        self,
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
+        optimization_config: Dict[str, Any],
     ) -> None:
         """Initialize the parameter generator with configuration.
 
@@ -131,6 +136,7 @@ class OptunaParameterGenerator(ParameterGenerator):
             ValueError: If the configuration is invalid
             ParameterGeneratorError: If initialization fails
         """
+
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("OptunaParameterGenerator.initialize() called")
 
@@ -216,17 +222,25 @@ class OptunaParameterGenerator(ParameterGenerator):
                 f"Failed to initialize OptunaParameterGenerator: {e}"
             ) from e
 
-    def _create_study(self, scenario_config: Dict[str, Any]) -> None:
+    def _create_study(
+        self, scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"]
+    ) -> None:
         """Create and configure the Optuna study.
 
         Args:
             scenario_config: Scenario configuration for study naming
         """
+        from ...canonical_config import CanonicalScenarioConfig
+
         # Generate study name if not provided
         if self.study_name is None:
             from ..study_utils import StudyNameGenerator
 
-            scenario_name = scenario_config.get("name", "optimization")
+            if isinstance(scenario_config, CanonicalScenarioConfig):
+                scenario_name = scenario_config.name
+            else:
+                scenario_name = scenario_config.get("name", "optimization")
+
             base_name = f"{scenario_name}_optuna"
             if self.random_state is not None:
                 # Extract integer seed if a Generator is passed
@@ -582,6 +596,7 @@ class OptunaParameterGenerator(ParameterGenerator):
             )
 
         try:
+            best_value: Union[float, List[float]]
             if self.is_multi_objective:
                 # Multi-objective optimization
                 best_trials = self._attribute_accessor.get_attribute(self.study, "best_trials", [])
@@ -626,10 +641,10 @@ class OptunaParameterGenerator(ParameterGenerator):
                     best_trial = None
                 if best_trial is not None:
                     best_parameters = best_trial.params.copy()
-                    best_value = best_trial.value
+                    best_value = cast(Union[float, List[float]], best_trial.value)
                 else:
                     best_parameters = {}
-                    best_value = -1e9  # type: ignore[assignment]
+                    best_value = -1e9
 
             return OptimizationResult(
                 best_parameters=best_parameters,

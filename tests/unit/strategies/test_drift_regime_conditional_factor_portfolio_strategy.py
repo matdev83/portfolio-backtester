@@ -121,6 +121,67 @@ class TestDriftRegimeConditionalFactorPortfolioStrategy:
             current_date=current_date
         )
         
-        # Should be zero as no stock is likely to have 99% positive days
+    # Should be zero as no stock is likely to have 99% positive days
         assert (signals == 0).all().all()
+
+    def test_long_short_signals(self, drift_test_data):
+        # 1. Test Long/Short (Default)
+        config_ls = {
+            "strategy_params": {
+                "drift_threshold": 0.4, # Lower to ensure enough candidates
+                "num_holdings": 1,
+                "trade_longs": True,
+                "trade_shorts": True
+            }
+        }
+        strategy_ls = DriftRegimeConditionalFactorPortfolioStrategy(config_ls)
+        current_date = drift_test_data["dates"][-1]
+        signals_ls = strategy_ls.generate_signals(
+            drift_test_data["all_data"],
+            drift_test_data["benchmark_data"],
+            current_date=current_date
+        )
+        
+        # Should have both positive and negative weights (if enough candidates)
+        assert (signals_ls > 0).any().any()
+        assert (signals_ls < 0).any().any()
+        # Sum should be near 0 (dollar neutral style with equal holdings)
+        # Note: if only one side has candidates, sum will follow that side.
+        # But in our test data, we should have multiple.
+        
+        # 2. Test Long Only
+        config_lo = {
+            "strategy_params": {
+                "drift_threshold": 0.4,
+                "num_holdings": 1,
+                "trade_longs": True,
+                "trade_shorts": False
+            }
+        }
+        strategy_lo = DriftRegimeConditionalFactorPortfolioStrategy(config_lo)
+        signals_lo = strategy_lo.generate_signals(
+            drift_test_data["all_data"],
+            drift_test_data["benchmark_data"],
+            current_date=current_date
+        )
+        assert (signals_lo >= 0).all().all()
+        assert (signals_lo > 0).any().any()
+        
+        # 3. Test Short Only
+        config_so = {
+            "strategy_params": {
+                "drift_threshold": 0.4,
+                "num_holdings": 1,
+                "trade_longs": False,
+                "trade_shorts": True
+            }
+        }
+        strategy_so = DriftRegimeConditionalFactorPortfolioStrategy(config_so)
+        signals_so = strategy_so.generate_signals(
+            drift_test_data["all_data"],
+            drift_test_data["benchmark_data"],
+            current_date=current_date
+        )
+        assert (signals_so <= 0).all().all()
+        assert (signals_so < 0).any().any()
 

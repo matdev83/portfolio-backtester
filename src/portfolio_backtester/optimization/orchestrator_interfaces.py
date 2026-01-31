@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Union
 
 from portfolio_backtester.backtester_logic.backtester_facade import Backtester
 
@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from portfolio_backtester.optimization.results import (
         OptimizationResult,
     )
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 
 # Alias for backward compatibility
 BacktesterFacade = Backtester
@@ -18,7 +19,7 @@ class OptimizationOrchestrator(ABC):
     @abstractmethod
     def optimize(
         self,
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
         optimization_config: Dict[str, Any],
         data: Any,
         backtester: "BacktesterFacade",

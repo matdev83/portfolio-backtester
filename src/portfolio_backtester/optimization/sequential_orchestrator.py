@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING, Union
 
 from .orchestrator_interfaces import OptimizationOrchestrator
 from .progress_tracker import ProgressTracker
@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from portfolio_backtester.backtester_logic.backtester_facade import (
         Backtester as BacktesterFacade,
     )
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +41,31 @@ class SequentialOrchestrator(OptimizationOrchestrator):
 
     def optimize(
         self,
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
         optimization_config: Dict[str, Any],
         data: "OptimizationData",
         backtester: "BacktesterFacade",  # Changed to match the interface
     ) -> "OptimizationResult":
+        from portfolio_backtester.canonical_config import CanonicalScenarioConfig
+        from portfolio_backtester.scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config internally
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw scenario dictionary passed to SequentialOrchestrator.optimize. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: %s", scenario_config.get('name', 'unnamed')
+            )
+            normalizer = ScenarioNormalizer()
+            # Assuming global_config is available via backtester or something
+            global_config = getattr(backtester, "global_config", {})
+            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+        else:
+            canonical_config = scenario_config
+
         logger.info("Starting sequential optimization process")
 
-        self.parameter_generator.initialize(scenario_config, optimization_config)
+        self.parameter_generator.initialize(canonical_config, optimization_config)
 
         try:
             while (

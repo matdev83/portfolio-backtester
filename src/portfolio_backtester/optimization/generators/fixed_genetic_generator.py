@@ -1,5 +1,8 @@
 import logging
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Union, cast, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ...canonical_config import CanonicalScenarioConfig
 
 import numpy as np
 
@@ -39,20 +42,31 @@ class FixedGeneticParameterGenerator(PopulationBasedParameterGenerator):
         )
 
     def initialize(
-        self, scenario_config: Dict[str, Any], optimization_config: Dict[str, Any]
+        self,
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
+        optimization_config: Dict[str, Any],
     ) -> None:
         """Initialize the generator with configuration."""
-        # Prefer scenario-level parameter_space; fallback to optimization_config
-        self.parameter_space = scenario_config.get(
-            "parameter_space", optimization_config.get("parameter_space", {})
-        )
+        from ...canonical_config import CanonicalScenarioConfig
+
+        # Extract settings from scenario_config or optimization_config
+        if isinstance(scenario_config, CanonicalScenarioConfig):
+            # Prefer scenario-level parameter_space; fallback to optimization_config
+            self.parameter_space = scenario_config.extras.get(
+                "parameter_space", optimization_config.get("parameter_space", {})
+            )
+            ga_config = scenario_config.extras.get(
+                "ga_settings", optimization_config.get("ga_settings", {})
+            )
+        else:
+            self.parameter_space = scenario_config.get(
+                "parameter_space", optimization_config.get("parameter_space", {})
+            )
+            ga_config = scenario_config.get(
+                "ga_settings", optimization_config.get("ga_settings", {})
+            )
+
         validate_parameter_space(self.parameter_space)
-
-        # Configure diversity manager with parameter space
-        if hasattr(self, "diversity_manager") and hasattr(self.diversity_manager, "set_parameter_space"):
-            self.diversity_manager.set_parameter_space(self.parameter_space)
-
-        ga_config = scenario_config.get("ga_settings", optimization_config.get("ga_settings", {}))
         self.population_size = ga_config.get("population_size", 50)
         self.max_generations = ga_config.get("max_generations", 10)
         self.mutation_rate = ga_config.get("mutation_rate", 0.1)

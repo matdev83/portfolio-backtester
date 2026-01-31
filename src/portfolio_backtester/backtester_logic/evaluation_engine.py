@@ -5,11 +5,15 @@ This module implements the EvaluationEngine class that handles all performance
 evaluation operations including fast evaluation, walk-forward analysis, and parameter testing.
 """
 
+from __future__ import annotations
 import logging
-from typing import Any, Dict, Optional, Union, cast, Protocol
+from typing import Any, Dict, Optional, Union, cast, Protocol, TYPE_CHECKING, Mapping
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from ..canonical_config import CanonicalScenarioConfig
 
 from ..strategies._core.base.base_strategy import BaseStrategy
 from ..strategies._core.strategy_factory import StrategyFactory
@@ -68,7 +72,7 @@ class EvaluationEngine:
     def evaluate_walk_forward_fast(
         self,
         trial: Any,
-        scenario_config: dict,
+        scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
         windows: list,
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
@@ -83,7 +87,7 @@ class EvaluationEngine:
 
         Args:
             trial: Optimization trial object
-            scenario_config: Scenario configuration
+            scenario_config: Scenario configuration (raw dict or canonical object)
             windows: List of walk-forward windows
             monthly_data_np: Monthly data as numpy array
             daily_data_np: Daily data as numpy array
@@ -105,6 +109,20 @@ class EvaluationEngine:
 
         from ..backtesting.strategy_backtester import StrategyBacktester
         from ..optimization.evaluator import BacktestEvaluator
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw scenario dictionary passed to EvaluationEngine.evaluate_walk_forward_fast. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: %s", scenario_config.get('name', 'unnamed')
+            )
+            normalizer = ScenarioNormalizer()
+            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+        else:
+            canonical_config = scenario_config
 
         # Create new architecture components
         strategy_backtester = StrategyBacktester(self.global_config, self.data_source)
@@ -119,7 +137,7 @@ class EvaluationEngine:
         )
 
         # Extract parameters from trial
-        parameters = scenario_config.get("strategy_params", {}).copy()
+        parameters = dict(canonical_config.strategy_params)
         if hasattr(trial, "params") and trial.params is not None:
             parameters.update(trial.params)
         elif hasattr(trial, "user_attrs") and "parameters" in trial.user_attrs:
@@ -127,7 +145,7 @@ class EvaluationEngine:
 
         # Evaluate using new architecture
         evaluation_result = evaluator.evaluate_parameters(
-            parameters, scenario_config, optimization_data, strategy_backtester
+            parameters, canonical_config, optimization_data, strategy_backtester
         )
 
         obj = evaluation_result.objective_value
@@ -139,7 +157,7 @@ class EvaluationEngine:
     def evaluate_fast(
         self,
         trial: Any,
-        scenario_config: dict,
+        scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
         windows: list,
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
@@ -152,7 +170,7 @@ class EvaluationEngine:
 
         Args:
             trial: Optimization trial object
-            scenario_config: Scenario configuration
+            scenario_config: Scenario configuration (raw dict or canonical object)
             windows: List of walk-forward windows
             monthly_data: Monthly price data
             daily_data: Daily OHLC data
@@ -165,6 +183,20 @@ class EvaluationEngine:
         """
         import os
         from ..utils import _df_to_float32_array
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw scenario dictionary passed to EvaluationEngine.evaluate_fast. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: %s", scenario_config.get('name', 'unnamed')
+            )
+            normalizer = ScenarioNormalizer()
+            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+        else:
+            canonical_config = scenario_config
 
         disable_env = os.environ.get("DISABLE_NUMBA_WALKFORWARD", "0") == "1"
         enable_env = os.environ.get("ENABLE_NUMBA_WALKFORWARD", "0") == "1"
@@ -191,7 +223,7 @@ class EvaluationEngine:
             )
 
             # Extract parameters from trial
-            parameters = scenario_config.get("strategy_params", {}).copy()
+            parameters = dict(canonical_config.strategy_params)
             if hasattr(trial, "params") and trial.params is not None:
                 parameters.update(trial.params)
             elif hasattr(trial, "user_attrs") and "parameters" in trial.user_attrs:
@@ -199,7 +231,7 @@ class EvaluationEngine:
 
             # Evaluate using new architecture
             evaluation_result = evaluator.evaluate_parameters(
-                parameters, scenario_config, optimization_data, strategy_backtester
+                parameters, canonical_config, optimization_data, strategy_backtester
             )
 
             objective_value_raw = evaluation_result.objective_value
@@ -233,8 +265,8 @@ class EvaluationEngine:
                     self._daily_prices_np_cache, _ = _df_to_float32_array(daily_data)
 
             strategy_instance = StrategyFactory.create_strategy(
-                str(scenario_config["strategy"]),
-                scenario_config["strategy_params"],
+                str(canonical_config.strategy),
+                dict(canonical_config.strategy_params),
                 global_config=self.global_config,
             )
 
@@ -281,7 +313,7 @@ class EvaluationEngine:
 
             obj_evaluated = self.evaluate_walk_forward_fast(
                 trial,
-                scenario_config,
+                canonical_config,
                 windows,
                 monthly_data,
                 daily_data,
@@ -321,7 +353,7 @@ class EvaluationEngine:
             )
 
             # Extract parameters from trial
-            parameters = scenario_config.get("strategy_params", {}).copy()
+            parameters = dict(canonical_config.strategy_params)
             if hasattr(trial, "params") and trial.params is not None:
                 parameters.update(trial.params)
             elif hasattr(trial, "user_attrs") and "parameters" in trial.user_attrs:
@@ -329,7 +361,7 @@ class EvaluationEngine:
 
             # Evaluate using new architecture
             evaluation_result = evaluator.evaluate_parameters(
-                parameters, scenario_config, optimization_data, strategy_backtester
+                parameters, canonical_config, optimization_data, strategy_backtester
             )
 
             objective_value_raw2 = evaluation_result.objective_value
@@ -524,7 +556,7 @@ class EvaluationEngine:
 
     def evaluate_trial_parameters(
         self,
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
         params: Dict[str, Any],
         monthly_data: pd.DataFrame,
         daily_data_ohlc: pd.DataFrame,
@@ -535,7 +567,7 @@ class EvaluationEngine:
         Evaluates a single set of parameters and returns performance metrics.
 
         Args:
-            scenario_config: Base scenario configuration
+            scenario_config: Base scenario configuration (raw dict or canonical object)
             params: Parameters to evaluate
             monthly_data: Monthly price data
             daily_data_ohlc: Daily OHLC data
@@ -545,8 +577,31 @@ class EvaluationEngine:
         Returns:
             Dictionary of metric names to values
         """
-        temp_scenario_config = scenario_config.copy()
-        temp_scenario_config["strategy_params"] = params
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw scenario dictionary passed to EvaluationEngine.evaluate_trial_parameters. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: %s", scenario_config.get('name', 'unnamed')
+            )
+            normalizer = ScenarioNormalizer()
+            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+        else:
+            canonical_config = scenario_config
+
+        # Create a modified canonical config with updated parameters
+        params_dict = dict(canonical_config.strategy_params)
+        params_dict.update(params)
+        
+        scen_dict = canonical_config.to_dict()
+        scen_dict["strategy_params"] = params_dict
+        
+        # Re-normalize
+        normalizer = ScenarioNormalizer()
+        temp_scenario_config = normalizer.normalize(scenario=scen_dict, global_config=self.global_config)
 
         returns = run_scenario_func(
             temp_scenario_config,

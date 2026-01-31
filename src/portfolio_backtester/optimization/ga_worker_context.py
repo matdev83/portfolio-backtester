@@ -5,18 +5,20 @@ This module keeps process-local singletons for heavy objects so that repeated
 task executions in the same joblib worker process can reuse them.
 """
 
-from typing import Any, Optional, TYPE_CHECKING, Dict, List
+from typing import Any, Optional, TYPE_CHECKING, Dict, List, Union
 from loguru import logger
 
 if TYPE_CHECKING:
     from .evaluator import BacktestEvaluator
     from .results import OptimizationData, EvaluationResult, OptimizationDataContext
     from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
+    from ..canonical_config import CanonicalScenarioConfig
 
 
 # Process-local singletons (per worker process)
 _initialized: bool = False
-_scenario_config: Optional[Dict[str, Any]] = None
+_scenario_config: Optional[Union[Dict[str, Any], "CanonicalScenarioConfig"]] = None
+
 _data: Optional["OptimizationData"] = None
 _backtester: Optional["StrategyBacktester"] = None
 _evaluator: Optional["BacktestEvaluator"] = None
@@ -35,12 +37,13 @@ def _init_worker_logging() -> None:
 
 
 def ensure_initialized(
-    scenario_config: Dict[str, Any],
+    scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
     data: "OptimizationData",
     backtester: "StrategyBacktester",
     evaluator: "BacktestEvaluator",
     worker_id: Optional[int] = None,
 ) -> None:
+
     """Initialize worker-local singletons if not set."""
     global _initialized, _scenario_config, _data, _backtester, _evaluator, _worker_id
 
@@ -58,12 +61,13 @@ def ensure_initialized(
 
 def evaluate_with_context(
     params: Dict[str, Any],
-    scenario_config: Dict[str, Any],
+    scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
     data: "OptimizationData",
     backtester: "StrategyBacktester",
     evaluator: "BacktestEvaluator",
     previous_parameters: Optional[Dict[str, Any]] = None,
 ) -> "EvaluationResult":
+
     """Top-level function for joblib: lazily init context and evaluate params."""
     ensure_initialized(scenario_config, data, backtester, evaluator)
 
@@ -86,12 +90,13 @@ def evaluate_with_context(
 
 def evaluate_with_context_memmap(
     params: Dict[str, Any],
-    scenario_config: Dict[str, Any],
+    scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
     data_context: "OptimizationDataContext",
     backtester: "StrategyBacktester",
     evaluator: "BacktestEvaluator",
     previous_parameters: Optional[Dict[str, Any]] = None,
 ) -> "EvaluationResult":
+
     """Initialize context from memory-mapped data and evaluate params."""
     global _initialized, _scenario_config, _data, _backtester, _evaluator
 

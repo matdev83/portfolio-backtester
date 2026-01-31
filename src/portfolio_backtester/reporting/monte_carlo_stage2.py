@@ -122,7 +122,7 @@ def _apply_synthetic_prices(
 def _plot_monte_carlo_robustness_analysis(
     self,
     scenario_name: str,
-    scenario_config: dict,
+    scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
     optimal_params: dict,
     monthly_data,
     daily_data,
@@ -130,6 +130,7 @@ def _plot_monte_carlo_robustness_analysis(
     attribute_accessor: Optional[IAttributeAccessor] = None,
 ):
     """Stage-2 comprehensive stress-test after optimisation completes."""
+    from ..canonical_config import CanonicalScenarioConfig
     logger = self.logger
 
     try:
@@ -145,9 +146,7 @@ def _plot_monte_carlo_robustness_analysis(
             )
             return
 
-        # Resolve a universe consistent with this scenario (do not fall back to global universe
-        # unless the scenario doesn't define one). Falling back to GLOBAL_CONFIG.universe can
-        # inflate the replacement counts and skew the stress test.
+        # Resolve a universe consistent with this scenario
         universe: list[str] = []
         available_tickers: list[str] = []
         try:
@@ -156,25 +155,42 @@ def _plot_monte_carlo_robustness_analysis(
         except Exception:
             available_tickers = []
 
-        if isinstance(scenario_config.get("universe"), list) and scenario_config.get("universe"):
-            universe = list(scenario_config["universe"])
-        elif "universe_config" in scenario_config:
-            try:
-                from ..universe_resolver import resolve_universe_config
-
-                current_date = None
+        if isinstance(scenario_config, CanonicalScenarioConfig):
+            # Use canonical universe definition
+            u_def = scenario_config.universe_definition
+            if u_def.get("type") == "fixed":
+                universe = list(u_def.get("tickers", []))
+            elif u_def:
                 try:
+                    from ..universe_resolver import resolve_universe_config
+                    current_date = None
                     if isinstance(daily_data, pd.DataFrame) and not daily_data.empty:
                         current_date = pd.Timestamp(daily_data.index.max())
-                except Exception:
-                    current_date = None
+                    universe = resolve_universe_config(u_def, current_date=current_date)
+                except Exception as exc:
+                    logger.warning(f"Stage 2 MC: failed to resolve canonical universe_definition: {exc}")
+        else:
+            # Legacy path
+            if isinstance(scenario_config.get("universe"), list) and scenario_config.get("universe"):
+                universe = list(scenario_config["universe"])
+            elif "universe_config" in scenario_config:
+                try:
+                    from ..universe_resolver import resolve_universe_config
 
-                universe = resolve_universe_config(
-                    scenario_config["universe_config"], current_date=current_date
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(f"Stage 2 MC: failed to resolve scenario universe_config: {exc}")
-                universe = []
+                    current_date = None
+                    try:
+                        if isinstance(daily_data, pd.DataFrame) and not daily_data.empty:
+                            current_date = pd.Timestamp(daily_data.index.max())
+                    except Exception:
+                        current_date = None
+
+                    universe = resolve_universe_config(
+                        scenario_config["universe_config"], current_date=current_date
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(f"Stage 2 MC: failed to resolve scenario universe_config: {exc}")
+                    universe = []
+
 
         # Exclude the benchmark from the replacement pool if present.
         benchmark_ticker = self.global_config.get("benchmark")

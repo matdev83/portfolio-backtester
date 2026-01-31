@@ -17,6 +17,8 @@ from .evaluator import BacktestEvaluator
 if TYPE_CHECKING:
     from .results import EvaluationResult, OptimizationData, OptimizationDataContext
     from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
+    from ..canonical_config import CanonicalScenarioConfig
+
 
 
 class HybridParallelismManager:
@@ -92,10 +94,11 @@ class HybridParallelismManager:
         self,
         evaluator: "BacktestEvaluator",
         params: Dict[str, Any],
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
         data: "OptimizationData",
         backtester: "StrategyBacktester",
     ) -> "EvaluationResult":
+
         """
         Evaluate a parameter set across multiple windows using thread-level parallelism.
 
@@ -131,11 +134,12 @@ class HybridParallelismManager:
     def evaluate_population(
         self,
         population: List[Dict[str, Any]],
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
         data: Union["OptimizationData", "OptimizationDataContext"],
         backtester: "StrategyBacktester",
         evaluator: "BacktestEvaluator",
     ) -> List["EvaluationResult"]:
+
         """
         Evaluate a population using hybrid parallelism.
 
@@ -210,12 +214,13 @@ class HybridParallelismManager:
     @staticmethod
     def _hybrid_evaluate_with_context(
         params: Dict[str, Any],
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
         data: "OptimizationData",
         backtester: "StrategyBacktester",
         evaluator: "BacktestEvaluator",
         n_threads: int,
     ) -> "EvaluationResult":
+
         """
         Static method for joblib to evaluate with context and thread-level parallelism.
 
@@ -248,12 +253,13 @@ class HybridParallelismManager:
     @staticmethod
     def _hybrid_evaluate_with_memmap(
         params: Dict[str, Any],
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
         data_context: "OptimizationDataContext",
         backtester: "StrategyBacktester",
         evaluator: "BacktestEvaluator",
         n_threads: int,
     ) -> "EvaluationResult":
+
         """
         Static method for joblib to evaluate with memory-mapped context and thread-level parallelism.
 

@@ -5,10 +5,14 @@ This module implements the BacktestRunner class that handles core backtest execu
 including scenario running and backtest mode orchestration.
 """
 
+from __future__ import annotations
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING, Union
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from ..canonical_config import CanonicalScenarioConfig
 
 from ..api_stability import api_stable
 from ..backtester_logic.strategy_logic import generate_signals, size_positions
@@ -60,7 +64,7 @@ class BacktestRunner:
     @api_stable(version="1.0", strict_params=True, strict_return=True)
     def run_scenario(
         self,
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
         price_data_monthly_closes: pd.DataFrame,
         price_data_daily_ohlc: pd.DataFrame,
         rets_daily: Optional[pd.DataFrame] = None,
@@ -73,7 +77,7 @@ class BacktestRunner:
         This method is protected by the @api_stable decorator to ensure its signature remains stable for critical workflows.
 
         Args:
-            scenario_config: Configuration for the scenario to run
+            scenario_config: Configuration for the scenario to run (raw dict or canonical object)
             price_data_monthly_closes: Monthly closing price data
             price_data_daily_ohlc: Daily OHLC price data
             rets_daily: Optional daily returns data
@@ -82,29 +86,37 @@ class BacktestRunner:
         Returns:
             Portfolio returns as pandas Series, or None if scenario fails
         """
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config internally
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw scenario dictionary passed to BacktestRunner.run_scenario. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: %s", scenario_config.get('name', 'unnamed')
+            )
+            normalizer = ScenarioNormalizer()
+            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+        else:
+            canonical_config = scenario_config
+
         if verbose:
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Running scenario: {scenario_config['name']}")
+                logger.debug(f"Running scenario: {canonical_config.name}")
 
+        # Instantiate strategy using full canonical config to support new features
         strategy = self.strategy_manager.get_strategy(
-            scenario_config["strategy"], scenario_config["strategy_params"]
+            canonical_config.strategy, canonical_config
         )
 
         # Resolve universe tickers
-        if "universe" in scenario_config:
-            if isinstance(scenario_config["universe"], list):
-                universe_tickers = scenario_config["universe"]
-            else:
-                # Always use strategy's universe provider - no direct universe resolution
-                universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
-        elif "universe_config" in scenario_config:
-            # Always use strategy's universe provider - no direct universe resolution
-            universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
-        else:
-            universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
+        # Use strategy's universe provider - no direct universe resolution
+        universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
 
-        # Persist resolved universe list back into scenario_config for downstream consistency
-        scenario_config["universe"] = universe_tickers
+        # Note: We NO LONGER persist resolved universe back into scenario_config mid-run
+        # as per requirement 2.3 to prevent mid-run mutation.
+        # If downstream components need it, it should be passed explicitly.
 
         missing_cols = [t for t in universe_tickers if t not in price_data_monthly_closes.columns]
         if missing_cols:
@@ -129,7 +141,7 @@ class BacktestRunner:
         # Pass a callable to lazily check timeout status during signal generation
         signals = generate_signals(
             strategy,
-            scenario_config,
+            canonical_config,
             price_data_daily_ohlc,
             universe_tickers,
             benchmark_ticker,
@@ -138,7 +150,7 @@ class BacktestRunner:
 
         sized_signals = size_positions(
             signals,
-            scenario_config,
+            canonical_config,
             price_data_monthly_closes,
             price_data_daily_ohlc,
             universe_tickers,
@@ -149,7 +161,7 @@ class BacktestRunner:
         # Calculate portfolio returns (no trade tracking for optimization)
         portfolio_rets_net, _ = calculate_portfolio_returns(
             sized_signals,
-            scenario_config,
+            canonical_config,
             price_data_daily_ohlc,
             rets_daily,
             universe_tickers,
@@ -160,7 +172,7 @@ class BacktestRunner:
 
         if verbose:
             if logger.isEnabledFor(logging.DEBUG):
-                scenario_name = scenario_config["name"]
+                scenario_name = canonical_config.name
                 logger.debug(
                     f"Portfolio net returns calculated for {scenario_name}. First few net returns: {portfolio_rets_net.head().to_dict()}"
                 )
@@ -174,7 +186,7 @@ class BacktestRunner:
 
     def run_backtest_mode(
         self,
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
@@ -186,7 +198,7 @@ class BacktestRunner:
         This method uses the pure StrategyBacktester directly for backtesting.
 
         Args:
-            scenario_config: Scenario configuration
+            scenario_config: Scenario configuration (raw dict or canonical object)
             monthly_data: Monthly price data
             daily_data: Daily OHLC data
             rets_full: Full period returns data
@@ -197,10 +209,24 @@ class BacktestRunner:
         """
         from ..backtesting.strategy_backtester import StrategyBacktester
         from ..data_sources.base_data_source import BaseDataSource
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw scenario dictionary passed to BacktestRunner.run_backtest_mode. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: %s", scenario_config.get('name', 'unnamed')
+            )
+            normalizer = ScenarioNormalizer()
+            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+        else:
+            canonical_config = scenario_config
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"Running backtest using new architecture for scenario: {scenario_config['name']}"
+                f"Running backtest using new architecture for scenario: {canonical_config.name}"
             )
 
         # Load optimal parameters from Optuna study if specified
@@ -212,16 +238,24 @@ class BacktestRunner:
                     study_name=study_name,
                     storage=self._get_default_optuna_storage_url(),
                 )
-                optimal_params = scenario_config["strategy_params"].copy()
-                optimal_params.update(study.best_params)
-                scenario_config["strategy_params"] = optimal_params
+                
+                # Convert to dict to update parameters
+                params_dict = dict(canonical_config.strategy_params)
+                params_dict.update(study.best_params)
+                
+                # Re-normalize
+                scen_dict = canonical_config.to_dict()
+                scen_dict["strategy_params"] = params_dict
+                normalizer = ScenarioNormalizer()
+                canonical_config = normalizer.normalize(scenario=scen_dict, global_config=self.global_config)
+
                 if self.logger.isEnabledFor(logging.DEBUG):
                     self.logger.debug(
-                        f"Loaded best parameters from study '{study_name}': {optimal_params}"
+                        f"Loaded best parameters from study '{study_name}': {canonical_config.strategy_params}"
                     )
             except KeyError:
                 self.logger.warning(
-                    f"Study '{study_name}' not found. Using default parameters for scenario '{scenario_config['name']}'."
+                    f"Study '{study_name}' not found. Using default parameters for scenario '{canonical_config.name}'."
                 )
             except Exception as e:
                 self.logger.error(f"Error loading Optuna study: {e}. Using default parameters.")
@@ -235,14 +269,16 @@ class BacktestRunner:
         dummy_data_source = DummyDataSource()
         strategy_backtester = StrategyBacktester(self.global_config, dummy_data_source)
         backtest_result = strategy_backtester.backtest_strategy(
-            scenario_config, monthly_data, daily_data, rets_full, track_trades=False
+            canonical_config, monthly_data, daily_data, rets_full, track_trades=False
         )
 
-        train_end_date = pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
+        # CanonicalScenarioConfig might have train_end_date in extras
+        train_end_date_str = canonical_config.extras.get("train_end_date", "2018-12-31")
+        train_end_date = pd.to_datetime(train_end_date_str)
 
         result = {
             "returns": backtest_result.returns,
-            "display_name": scenario_config["name"],
+            "display_name": canonical_config.name,
             "train_end_date": train_end_date,
             "trade_stats": backtest_result.trade_stats,
             "trade_history": backtest_result.trade_history,
@@ -251,6 +287,6 @@ class BacktestRunner:
         }
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Backtest completed for scenario: {scenario_config['name']}")
+            logger.debug(f"Backtest completed for scenario: {canonical_config.name}")
 
         return result

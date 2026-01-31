@@ -5,9 +5,9 @@
       "errors": []
     },
     "state": {
-      "timestamp": 1769856655.7523215,
+      "timestamp": 1769892248.3493204,
       "file_counts": {
-        "scenarios": 53,
+        "scenarios": 54,
         "strategies": 73,
         "parameters": 1
       },
@@ -15,8 +15,8 @@
         "parameters": [
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\parameters.yaml",
-            "mtime": 1769856641.3808222,
-            "size": 15189
+            "mtime": 1769869354.0028205,
+            "size": 15188
           }
         ],
         "scenarios": [
@@ -67,8 +67,13 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy\\default.yaml",
-            "mtime": 1769856253.0368211,
-            "size": 749
+            "mtime": 1769885426.1703215,
+            "size": 891
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy\\test_2020_2025.yaml",
+            "mtime": 1769892239.677321,
+            "size": 681
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\default.yaml",
@@ -334,8 +339,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy.py",
-            "mtime": 1769853814.402321,
-            "size": 6887
+            "mtime": 1769885677.5683198,
+            "size": 9396
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy.py",
@@ -544,8 +549,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\strategy_factory_impl.py",
-            "mtime": 1755122488.3397434,
-            "size": 6158
+            "mtime": 1769882202.694821,
+            "size": 7425
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\__init__.py",
@@ -579,8 +584,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\base\\base\\base_strategy.py",
-            "mtime": 1768736440.6022556,
-            "size": 48984
+            "mtime": 1769868749.0888214,
+            "size": 45395
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\base\\base\\meta_reporting.py",

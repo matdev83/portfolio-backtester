@@ -5,13 +5,18 @@ This module implements the OptimizationOrchestrator class that handles all optim
 operations including parameter space conversion, optimization setup, and result processing.
 """
 
+from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional, Union, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from ..canonical_config import CanonicalScenarioConfig
+
 
 from ..optimization.results import OptimizationData, OptimizationResult
 from ..interfaces.attribute_accessor_interface import (
@@ -68,9 +73,16 @@ class OptimizationOrchestrator:
 
         return DEFAULT_OPTUNA_STORAGE_URL
 
-    def _get_wfo_mode(self, scenario_config: Dict[str, Any]) -> str:
+    def _get_wfo_mode(self, scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig]) -> str:
         """Resolve the walk-forward mode with a realistic default."""
-        raw_mode = scenario_config.get("wfo_mode") or self.global_config.get("wfo_mode")
+        from ..canonical_config import CanonicalScenarioConfig
+        
+        if isinstance(scenario_config, CanonicalScenarioConfig):
+            raw_mode = scenario_config.wfo_config.get("wfo_mode") or scenario_config.extras.get("wfo_mode")
+        else:
+            raw_mode = scenario_config.get("wfo_mode")
+            
+        raw_mode = raw_mode or self.global_config.get("wfo_mode")
         mode = str(raw_mode or "reoptimize").strip().lower()
         if mode in {
             "reoptimize",
@@ -120,7 +132,7 @@ class OptimizationOrchestrator:
 
     def _run_reoptimized_wfo(
         self,
-        scenario_config: Dict[str, Any],
+        scenario_config: CanonicalScenarioConfig,
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
@@ -139,6 +151,7 @@ class OptimizationOrchestrator:
         from ..optimization.wfo_window import WFOWindow
         from ..backtesting.strategy_backtester import StrategyBacktester
         from ..reporting.performance_metrics import calculate_metrics
+        from ..scenario_normalizer import ScenarioNormalizer
 
         if not windows:
             raise ValueError("No WFO windows available for re-optimization.")
@@ -199,7 +212,7 @@ class OptimizationOrchestrator:
                 )
             else:
                 window_opt_config["study_name"] = (
-                    f"{scenario_config.get('name', 'wfo')}_{window_suffix}"
+                    f"{scenario_config.name}_{window_suffix}"
                 )
 
             orchestrator = create_orchestrator(
@@ -244,10 +257,14 @@ class OptimizationOrchestrator:
             best_params = optimization_result.best_parameters or {}
             window_params.append(best_params)
 
-            eval_config = dict(scenario_config)
-            base_params = eval_config.get("strategy_params", {}).copy()
-            base_params.update(best_params)
-            eval_config["strategy_params"] = base_params
+            # Create a modified canonical config for evaluation
+            params_dict = dict(scenario_config.strategy_params)
+            params_dict.update(best_params)
+            scen_dict = scenario_config.to_dict()
+            scen_dict["strategy_params"] = params_dict
+            
+            normalizer = ScenarioNormalizer()
+            eval_config = normalizer.normalize(scenario=scen_dict, global_config=self.global_config)
 
             test_result = strategy_backtester.evaluate_window(
                 eval_config, window, monthly_data, daily_data, rets_full
@@ -315,7 +332,7 @@ class OptimizationOrchestrator:
 
     def run_optimization(
         self,
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
@@ -330,7 +347,7 @@ class OptimizationOrchestrator:
         parameter generators, and BacktestEvaluator to perform optimization.
 
         Args:
-            scenario_config: Scenario configuration
+            scenario_config: Scenario configuration (raw dict or canonical object)
             monthly_data: Monthly price data
             daily_data: Daily OHLC data
             rets_full: Full period returns data
@@ -344,10 +361,24 @@ class OptimizationOrchestrator:
         from ..optimization.evaluator import BacktestEvaluator
         from ..backtesting.strategy_backtester import StrategyBacktester
         from ..utils import generate_enhanced_wfo_windows
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw scenario dictionary passed to OptimizationOrchestrator.run_optimization. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: %s", scenario_config.get('name', 'unnamed')
+            )
+            normalizer = ScenarioNormalizer()
+            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+        else:
+            canonical_config = scenario_config
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"Running optimization using new architecture for scenario: {scenario_config['name']}"
+                f"Running optimization using new architecture for scenario: {canonical_config.name}"
             )
 
         # Get optimizer type from CLI args (this is the key integration point)
@@ -378,16 +409,17 @@ class OptimizationOrchestrator:
             # Coerce to pandas DatetimeIndex from the monthly_data index values
             monthly_idx: pd.DatetimeIndex = pd.DatetimeIndex(pd.to_datetime(monthly_data.index))
             windows = generate_enhanced_wfo_windows(
-                monthly_idx, scenario_config, self.global_config, self.rng
+                monthly_idx, canonical_config, self.global_config, self.rng
             )
 
             if not windows:
                 raise ValueError("Not enough data for the requested walk-forward windows.")
 
             # Determine optimization targets and metrics
-            optimization_targets_config = scenario_config.get("optimization_targets", [])
+            # Optimization targets might be in extras if they are not core
+            optimization_targets_config = canonical_config.extras.get("optimization_targets", [])
             metrics_to_optimize = [t["name"] for t in optimization_targets_config] or [
-                scenario_config.get("optimization_metric", "Calmar")
+                canonical_config.optimization_metric or "Calmar"
             ]
             is_multi_objective = len(metrics_to_optimize) > 1
 
@@ -426,7 +458,7 @@ class OptimizationOrchestrator:
             optimization_data.tickers_list = tickers_list  # type: ignore[attr-defined]
 
             # Convert scenario optimization specs to parameter space format
-            parameter_space = self.convert_optimization_specs_to_parameter_space(scenario_config)
+            parameter_space = self.convert_optimization_specs_to_parameter_space(canonical_config)
 
             # Create optimization config from CLI args and scenario config
             optimization_config = {
@@ -503,13 +535,14 @@ class OptimizationOrchestrator:
                 ),
             }
 
-            wfo_mode = self._get_wfo_mode(scenario_config)
-            if not scenario_config.get("is_wfo", True):
+            wfo_mode = self._get_wfo_mode(canonical_config)
+            is_wfo = canonical_config.extras.get("is_wfo", True)
+            if not is_wfo:
                 wfo_mode = "cv"
 
             if wfo_mode == "reoptimize":
                 return self._run_reoptimized_wfo(
-                    scenario_config=scenario_config,
+                    scenario_config=canonical_config,
                     monthly_data=monthly_data,
                     daily_data=daily_data,
                     rets_full=rets_full,
@@ -520,6 +553,7 @@ class OptimizationOrchestrator:
                     optimizer_type=optimizer_type,
                     optimizer_args=optimizer_args,
                 )
+
 
             # Create BacktestEvaluator
             # For population-based optimizers, disable window-level parallelism to avoid
@@ -658,7 +692,7 @@ class OptimizationOrchestrator:
             raise
 
     def convert_optimization_specs_to_parameter_space(
-        self, scenario_config: Dict[str, Any]
+        self, scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig]
     ) -> Dict[str, Any]:
         """
         Convert scenario optimization specs to parameter space format.
@@ -673,10 +707,67 @@ class OptimizationOrchestrator:
         Returns:
             Dictionary defining the parameter space for optimization
         """
+        from ..canonical_config import CanonicalScenarioConfig
+        
         parameter_space = {}
+
+        # 1. Handle CanonicalScenarioConfig (Modern format via normalizer)
+        if isinstance(scenario_config, CanonicalScenarioConfig):
+            # Normalizer already processed legacy 'optimize' into 'optimize' attribute
+            legacy_optimization_specs = scenario_config.optimize or []
+            for spec in legacy_optimization_specs:
+                param_name = spec["parameter"]
+                param_type = spec.get("type")
+                if not param_type:
+                    if "min_value" in spec and "max_value" in spec:
+                        if isinstance(spec["min_value"], int) and isinstance(spec["max_value"], int):
+                            param_type = "int"
+                        else:
+                            param_type = "float"
+                    else:
+                        param_type = (
+                            self.global_config.get("optimizer_parameter_defaults", {})
+                            .get(param_name, {})
+                            .get("type", "float")
+                        )
+
+                if param_type == "int":
+                    parameter_space[param_name] = {
+                        "type": "int",
+                        "low": spec["min_value"],
+                        "high": spec["max_value"],
+                        "step": spec.get("step", 1),
+                    }
+                elif param_type == "float":
+                    parameter_space[param_name] = {
+                        "type": "float",
+                        "low": spec["min_value"],
+                        "high": spec.get("max_value"),
+                        "step": spec.get("step", None),
+                    }
+                elif param_type == "categorical":
+                    choices = spec.get("choices") or spec.get("values")
+                    if choices:
+                        parameter_space[param_name] = {
+                            "type": "categorical",
+                            "choices": choices,
+                        }
+                elif param_type == "multi-categorical":
+                    choices = spec.get("choices") or spec.get("values")
+                    if choices:
+                        parameter_space[param_name] = {
+                            "type": "multi-categorical",
+                            "values": choices,
+                        }
+            
+            # The modern format (strategy.params.param_name.optimization) should also be handled
+            # but usually the normalizer would have flattened it or preserved it in extras if it was non-standard.
+            # In our current design, the normalizer handles the conversion of legacy shapes.
+            return parameter_space
 
         # Handle legacy format: top-level 'optimize' section
         legacy_optimization_specs = scenario_config.get("optimize", [])
+
         for spec in legacy_optimization_specs:
             param_name = spec["parameter"]
 

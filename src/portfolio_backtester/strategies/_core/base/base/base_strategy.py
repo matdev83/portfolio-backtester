@@ -2,16 +2,30 @@ from __future__ import annotations
 
 import logging
 from abc import ABC
-from typing import Optional, TYPE_CHECKING, Dict, Any, List, Tuple
+from typing import Optional, TYPE_CHECKING, Dict, Any, List, Tuple, Mapping, Union, cast
 
 import numpy as np
 import pandas as pd
 
-# Removed BaseSignalGenerator as it's being phased out
-# from ..signal_generators import BaseSignalGenerator
+# Try to import njit for performance, fallback to no-op decorator
+try:
+    from numba import njit
+except ImportError:
+
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+
 from .....risk_off_signals import IRiskOffSignalGenerator
 from .....risk_management.stop_loss_handlers import BaseStopLoss, NoStopLoss
 from .....risk_management.take_profit_handlers import BaseTakeProfit, NoTakeProfit
+
+if TYPE_CHECKING:
+    from .....canonical_config import CanonicalScenarioConfig
+    from .....timing.timing_controller import TimingController
 
 
 # Custom exception classes for trade direction validation
@@ -47,9 +61,6 @@ class TradeDirectionViolationError(ValueError):
         super().__init__(message)
 
 
-if TYPE_CHECKING:
-    from .....timing.timing_controller import TimingController
-
 logger = logging.getLogger(__name__)
 
 
@@ -63,21 +74,39 @@ class BaseStrategy(ABC):
     that check parameter values.
     """
 
-    # Removed signal_generator_class as signal generation is now internal
-    # signal_generator_class: type[BaseSignalGenerator] | None = None
-
-    #: class attribute specifying which Risk-off signal generator to use
-    #: None means use the default NoRiskOffSignalGenerator via provider
+    # class attribute specifying which Risk-off signal generator to use
+    # None means use the default NoRiskOffSignalGenerator via provider
     risk_off_signal_generator_class: type[IRiskOffSignalGenerator] | None = None
-    #: class attribute specifying which Stop Loss handler to use by default
+    # class attribute specifying which Stop Loss handler to use by default
     stop_loss_handler_class: type[BaseStopLoss] = NoStopLoss
-    #: class attribute specifying which Take Profit handler to use by default
+    # class attribute specifying which Take Profit handler to use by default
     take_profit_handler_class: type[BaseTakeProfit] = NoTakeProfit
 
-    def __init__(self, strategy_params: Dict[str, Any]):
-        self.strategy_params = strategy_params
+    def __init__(self, strategy_params: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
+        from .....canonical_config import CanonicalScenarioConfig
+
+        # 1. Store the canonical config if provided
+        self.canonical_config: Optional[CanonicalScenarioConfig] = None
+        if isinstance(strategy_params, CanonicalScenarioConfig):
+            self.canonical_config = strategy_params
+            # Extract effective strategy parameters
+            effective_params = dict(strategy_params.strategy_params)
+        else:
+            # Traditional dict-based init
+            effective_params = dict(strategy_params)
+
+        # Ensure we have a mutable dictionary for normalization
+        # Some strategies (and base class) expect to write back into strategy_params
+        self.strategy_params = effective_params
+
+        # If there's a nested strategy_params dict, unfreeze that too
+        if "strategy_params" in self.strategy_params and not isinstance(
+            self.strategy_params["strategy_params"], dict
+        ):
+            self.strategy_params["strategy_params"] = dict(self.strategy_params["strategy_params"])
+
         # For backward compatibility, also set strategy_config
-        self.strategy_config = strategy_params
+        self.strategy_config = self.strategy_params
         self._risk_off_signal_generator_instance: IRiskOffSignalGenerator | None = None
         self._stop_loss_handler_instance: BaseStopLoss | None = None
         self._take_profit_handler_instance: BaseTakeProfit | None = None
@@ -106,8 +135,12 @@ class BaseStrategy(ABC):
         """Initialize the appropriate timing controller based on configuration."""
 
         try:
-            # Get timing configuration - require explicit timing_config in Alpha
-            timing_config = self.strategy_params.get("timing_config")
+            # Prefer timing_config from canonical object if available
+            if self.canonical_config and self.canonical_config.timing_config:
+                timing_config = dict(self.canonical_config.timing_config)
+            else:
+                # Fallback to strategy_params (legacy/test path)
+                timing_config = self.strategy_params.get("timing_config")
 
             # If no timing_config provided, create a simple default based on strategy type
             if timing_config is None:
@@ -315,41 +348,44 @@ class BaseStrategy(ABC):
     # Hooks to override in subclasses
     # ------------------------------------------------------------------ #
 
-    # Removed get_signal_generator as it's no longer needed
-    # def get_signal_generator(self) -> BaseSignalGenerator:
-    #     if self.signal_generator_class is None:
-    #         raise NotImplementedError("signal_generator_class must be set")
-    #     return self.signal_generator_class(self.strategy_params)
-
     def get_risk_off_signal_generator(self) -> IRiskOffSignalGenerator:
         """Get the risk-off signal generator using the risk-off signal provider."""
         if self._risk_off_signal_generator_instance is None:
             risk_off_provider = self.get_risk_off_signal_provider()
-            self._risk_off_signal_generator_instance = (
-                risk_off_provider.get_risk_off_signal_generator()
-            )
+            instance = risk_off_provider.get_risk_off_signal_generator()
+            if instance is None:
+                from .....risk_off_signals import NoRiskOffSignalGenerator
+
+                instance = NoRiskOffSignalGenerator()
+            self._risk_off_signal_generator_instance = instance
+        
+        # We ensure it's not None and return the correct type
+        assert self._risk_off_signal_generator_instance is not None
         return self._risk_off_signal_generator_instance
 
     def get_stop_loss_handler(self) -> BaseStopLoss:
         """Get the stop loss handler using the stop loss provider."""
         if self._stop_loss_handler_instance is None:
             stop_loss_provider = self.get_stop_loss_provider()
-            self._stop_loss_handler_instance = stop_loss_provider.get_stop_loss_handler()
+            instance = stop_loss_provider.get_stop_loss_handler()
+            if instance is None:
+                instance = NoStopLoss(self.strategy_params, {})
+            self._stop_loss_handler_instance = instance
+            
+        assert self._stop_loss_handler_instance is not None
         return self._stop_loss_handler_instance
 
     def get_take_profit_handler(self) -> BaseTakeProfit:
         """Get the take profit handler using the take profit provider."""
         if self._take_profit_handler_instance is None:
             take_profit_provider = self.get_take_profit_provider()
-            self._take_profit_handler_instance = take_profit_provider.get_take_profit_handler()
+            instance = take_profit_provider.get_take_profit_handler()
+            if instance is None:
+                instance = NoTakeProfit(self.strategy_params, {})
+            self._take_profit_handler_instance = instance
+            
+        assert self._take_profit_handler_instance is not None
         return self._take_profit_handler_instance
-
-    # Removed get_required_features as features are now internal to strategies
-    # @classmethod
-    # def get_required_features(cls, strategy_params: dict) -> Set[Feature]:
-    #     features: Set[Feature] = set()
-    #     # ... (old logic removed) ...
-    #     return features
 
     # ------------------------------------------------------------------ #
     # Provider Interface Accessors
@@ -496,23 +532,6 @@ class BaseStrategy(ABC):
             },
         }
 
-    # ------------------------------------------------------------------ #
-    # Shared helpers
-    # ------------------------------------------------------------------ #
-
-    # ------------------------------------------------------------------ #
-    # Default signal generation pipeline (Abstract method to be implemented by subclasses)
-    # ------------------------------------------------------------------ #
-    try:
-        from numba import njit
-    except ImportError:
-
-        def njit(*args, **kwargs):
-            def decorator(func):
-                return func
-
-            return decorator
-
     def get_roro_signal(self):
         return None
 
@@ -538,38 +557,6 @@ class BaseStrategy(ABC):
 
         The validate_data_sufficiency() method includes defensive type checking to handle
         these cases gracefully, but it's better to update calling code to use the correct signature.
-        """
-        """
-        Generates trading signals based on historical data and current date.
-        Subclasses must implement this method.
-
-        Args:
-            all_historical_data: DataFrame with historical OHLCV data for all assets
-                                 in the strategy's universe, up to and including current_date.
-            benchmark_historical_data: DataFrame with historical OHLCV data for the benchmark,
-                                       up to and including current_date.
-            non_universe_historical_data: DataFrame with historical OHLCV data for non-universe assets.
-            current_date: The specific date for which signals are to be generated.
-                          Calculations should not use data beyond this date.
-            start_date: If provided, signals should only be generated on or after this date.
-            end_date: If provided, signals should only be generated on or before this date.
-
-        Returns:
-            A DataFrame indexed by date, with columns for each asset, containing
-            the target weights. Should typically contain a single row for current_date
-            if generating signals for one date at a time, or multiple rows if the
-            strategy generates signals for a range and then filters.
-            The weights should adhere to the start_date and end_date if provided.
-            
-        TESTING PITFALLS FOR FUTURE DEVELOPERS:
-        ======================================
-        1. Always use the current 6-parameter signature when writing new tests
-        2. If you see tests calling generate_signals(prices, features, benchmark),
-           they need to be updated to the current interface
-        3. Mock data should use proper MultiIndex OHLCV format, not simple price DataFrames
-        4. Always pass current_date as pd.Timestamp, never as Series or numpy array
-        5. The validate_data_sufficiency() method will catch type mismatches, but 
-           it's better to fix the test interface than rely on defensive coding
         """
         # Default implementation returns empty DataFrame - should be overridden by subclasses
         return pd.DataFrame()
@@ -624,7 +611,7 @@ class BaseStrategy(ABC):
         # Ensure entry prices exist
         entry_prices_series: pd.Series
         if isinstance(getattr(self, "entry_prices", None), pd.Series):
-            entry_prices_series = self.entry_prices  # type: ignore[assignment]
+            entry_prices_series = cast(pd.Series, self.entry_prices)
         else:
             entry_prices_series = pd.Series(index=weights.index, dtype=float)
 
@@ -642,7 +629,7 @@ class BaseStrategy(ABC):
                 entry_prices=entry_prices_series,
                 stop_levels=stop_levels,
             )
-            return adjusted if isinstance(adjusted, pd.Series) else pd.Series(adjusted)
+            return cast(pd.Series, adjusted) if isinstance(adjusted, pd.Series) else pd.Series(adjusted)
         except Exception:
             return weights
 
@@ -669,7 +656,7 @@ class BaseStrategy(ABC):
         # Ensure entry prices exist
         entry_prices_series: pd.Series
         if isinstance(getattr(self, "entry_prices", None), pd.Series):
-            entry_prices_series = self.entry_prices  # type: ignore[assignment]
+            entry_prices_series = cast(pd.Series, self.entry_prices)
         else:
             entry_prices_series = pd.Series(index=weights.index, dtype=float)
 
@@ -687,7 +674,7 @@ class BaseStrategy(ABC):
                 entry_prices=entry_prices_series,
                 take_profit_levels=take_profit_levels,
             )
-            return adjusted if isinstance(adjusted, pd.Series) else pd.Series(adjusted)
+            return cast(pd.Series, adjusted) if isinstance(adjusted, pd.Series) else pd.Series(adjusted)
         except Exception:
             return weights
 
@@ -758,12 +745,6 @@ class BaseStrategy(ABC):
 
     # --- Helper methods that might be used by subclasses ---
 
-    # _calculate_candidate_weights and _apply_leverage_and_smoothing remain as they are useful general helpers.
-    # The SMA-based risk filter and RoRo signal logic will be moved into concrete strategies
-    # or handled by updated RoRo/StopLoss handlers that take full historical data.
-
-    # _calculate_derisk_flags might still be useful if strategies reimplement SMA logic.
-    # It will need access to benchmark_historical_data passed to generate_signals.
     def _calculate_benchmark_sma(
         self,
         benchmark_historical_data: pd.DataFrame,
@@ -818,7 +799,7 @@ class BaseStrategy(ABC):
                 else pd.Series(dtype=float, index=result.index)
             )
 
-        return result
+        return cast(pd.Series, result)
 
     def _calculate_derisk_flags(
         self,
@@ -864,8 +845,6 @@ class BaseStrategy(ABC):
 
         if consecutive_periods_under_sma > derisk_periods:
             current_derisk_flag = True
-
-        # If it was derisked and now price is above SMA, it's handled by consecutive_periods_under_sma = 0 and current_derisk_flag = False
 
         return current_derisk_flag, consecutive_periods_under_sma
 
@@ -969,17 +948,7 @@ class BaseStrategy(ABC):
         current_date: pd.Timestamp,
         min_periods_override: Optional[int] = None,
     ) -> List[str]:
-        """Filter the universe to assets with sufficient data as of current_date.
-
-        Performance note:
-        The previous implementation performed an expensive per-asset slice (xs/column
-        selection) inside a Python loop, repeated for every evaluation date.
-        That becomes prohibitively slow for large survivorship-bias-free universes.
-
-        This implementation vectorizes the key checks and caches per-date results:
-        - **Recency**: asset has at least one non-NaN close in [current_date-30d, current_date]
-        - **History**: asset's first valid close is at least min_periods_required months before current_date
-        """
+        """Filter the universe to assets with sufficient data as of current_date."""
         min_periods_required = min_periods_override or self.get_minimum_required_periods()
 
         if all_historical_data.empty:
@@ -1027,14 +996,6 @@ class BaseStrategy(ABC):
         has_recent = recent_window.notna().any(axis=0)
 
         # 2) First-valid date per asset (cached across WFO windows)
-        #
-        # In WFO evaluation we often pass a *slice* of the full daily data into
-        # `generate_signals()`. Using `id(all_historical_data)` as part of the cache key
-        # defeats caching because each slice is a new object, causing an expensive
-        # per-column scan (first_valid_index) to repeat for every window and trial.
-        #
-        # Instead, cache by column set and keep the earliest observed start date;
-        # if we later see an earlier slice, recompute once.
         bounds_key = tuple(str(c) for c in close_df.columns)
         bounds_cache = getattr(self, "_data_availability_bounds", None)
         if bounds_cache is None:
@@ -1070,7 +1031,11 @@ class BaseStrategy(ABC):
 
         enough_history = available_months >= int(min_periods_required)
 
-        valid_mask = has_recent & enough_history
+        # Use ensure they are both Series to satisfy type checker for bitwise &
+        s_recent = has_recent if isinstance(has_recent, pd.Series) else pd.Series(has_recent, index=close_df.columns)
+        s_history = enough_history if isinstance(enough_history, pd.Series) else pd.Series(enough_history, index=close_df.columns)
+        
+        valid_mask = s_recent & s_history
         valid_assets = [str(t) for t, ok in valid_mask.items() if bool(ok)]
 
         total_assets = int(valid_mask.shape[0])

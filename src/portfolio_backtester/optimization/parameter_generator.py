@@ -12,8 +12,11 @@ ensures consistent behavior across all optimization backends.
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 import numpy as np
+
+if TYPE_CHECKING:
+    from ..canonical_config import CanonicalScenarioConfig
 
 from .results import EvaluationResult, OptimizationResult
 
@@ -39,7 +42,7 @@ class ParameterGenerator(ABC):
     """
 
     def initialize(
-        self, scenario_config: Dict[str, Any], optimization_config: Dict[str, Any]
+        self, scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"], optimization_config: Dict[str, Any]
     ) -> None:
         """Initialize the parameter generator with configuration.
 

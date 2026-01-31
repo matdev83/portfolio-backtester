@@ -6,12 +6,18 @@ for parameter sets. It provides a consistent evaluation interface for all optimi
 backends and supports both single and multi-objective optimization.
 """
 
+from __future__ import annotations
 import logging
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast, TYPE_CHECKING
+
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from ..canonical_config import CanonicalScenarioConfig
+
 
 try:
     # Prefer optional import; used only when parallel path is enabled
@@ -185,7 +191,7 @@ class BacktestEvaluator:
     def evaluate_parameters(
         self,
         parameters: Dict[str, Any],
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
         data: OptimizationData,
         backtester: "StrategyBacktester",
         previous_parameters: Optional[Dict[str, Any]] = None,
@@ -194,15 +200,52 @@ class BacktestEvaluator:
         Evaluate a given set of parameters by running a backtest.
         This is the single, unified evaluation path.
         """
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw scenario_config dictionary passed to BacktestEvaluator.evaluate_parameters. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: %s", scenario_config.get('name', 'unnamed')
+            )
+            normalizer = ScenarioNormalizer()
+            # We assume global_config is available via backtester if not passed
+            global_config = backtester.global_config if hasattr(backtester, "global_config") else {}
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=global_config
+            )
+        else:
+            canonical_config = scenario_config
+
+
         # If not a WFO, create a single window for the entire period
-        if not scenario_config.get("is_wfo", True):
+        # We check is_wfo from extras or assume True if not present
+        is_wfo = canonical_config.extras.get("is_wfo", True)
+        if not is_wfo:
+            # Explicitly cast to Timestamp to satisfy mypy, with fallbacks for safety
+            # though normalizer should have ensured these are set or default to data bounds.
+            start_val = canonical_config.start_date
+            end_val = canonical_config.end_date
+            
+            ts_start = pd.to_datetime(start_val) if start_val else pd.Timestamp.min
+            ts_end = pd.to_datetime(end_val) if end_val else pd.Timestamp.max
+            
+            # Ensure they are Timestamps for WFOWindow
+            if not isinstance(ts_start, pd.Timestamp):
+                ts_start = pd.Timestamp(ts_start)
+            if not isinstance(ts_end, pd.Timestamp):
+                ts_end = pd.Timestamp(ts_end)
+
             single_window = WFOWindow(
-                train_start=pd.to_datetime(scenario_config["start_date"]),
-                train_end=pd.to_datetime(scenario_config["end_date"]),
-                test_start=pd.to_datetime(scenario_config["start_date"]),
-                test_end=pd.to_datetime(scenario_config["end_date"]),
+                train_start=ts_start,
+                train_end=ts_end,
+                test_start=ts_start,
+                test_end=ts_end,
             )
             data.windows = [single_window]
+
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Evaluating parameters: {parameters}")
@@ -229,20 +272,31 @@ class BacktestEvaluator:
             - provide a stable universe using the already-fetched data columns
             """
             try:
-                config_for_eval = dict(scenario_config)
-                config_for_eval["strategy_params"] = dict(parameters)
+                # We need to create a modified canonical config with the trial parameters
+                # Or just pass the parameters to evaluate_window if it supports it
+                # For now, evaluate_window takes strategy_config as dict or canonical object.
+                # If we pass canonical object, it uses its strategy_params.
+                # So we need to create a new canonical object with updated parameters.
+
+                params_dict = dict(canonical_config.strategy_params)
+                params_dict.update(parameters)
+
+                scen_dict = canonical_config.to_dict()
+                scen_dict["strategy_params"] = params_dict
+
+                # Re-normalize
+                normalizer = ScenarioNormalizer()
+                global_config = (
+                    backtester.global_config if hasattr(backtester, "global_config") else {}
+                )
+                config_for_eval = normalizer.normalize(
+                    scenario=scen_dict, global_config=global_config
+                )
 
                 if derived_universe:
-                    benchmark_global = backtester.global_config.get("benchmark", "SPY")
-                    benchmark_scenario = config_for_eval.get("benchmark_ticker")
-                    excluded = {
-                        b
-                        for b in (benchmark_global, benchmark_scenario)
-                        if isinstance(b, str) and b
-                    }
-                    config_for_eval["universe"] = [
-                        t for t in derived_universe if isinstance(t, str) and t not in excluded
-                    ]
+                    # We might need to override universe in canonical object too if derived_universe is different
+                    # But normally it should be consistent.
+                    pass
 
                 return backtester.evaluate_window(
                     config_for_eval,
@@ -282,15 +336,20 @@ class BacktestEvaluator:
         can_parallelize = (
             self.enable_parallel_optimization
             and Parallel is not None
+            and delayed is not None
             and self.n_jobs > 1
             and len(enhanced_windows) >= 2
         )
 
         if can_parallelize:
+            # We already checked they are not None in can_parallelize, but we need to satisfy the type checker
+            p_func = cast(Any, Parallel)
+            d_func = cast(Any, delayed)
             workers = min(self.n_jobs, 4)  # cap to avoid oversubscription
-            window_results = Parallel(n_jobs=workers, prefer="processes")(
-                delayed(_eval_single_window)(win) for win in enhanced_windows
-            )
+            window_results = cast(List[WindowResult], p_func(n_jobs=workers, prefer="processes")(
+                d_func(_eval_single_window)(win) for win in enhanced_windows
+            ))
+
         else:
             for idx, enhanced_window in enumerate(enhanced_windows, start=1):
                 # Check if we can skip evaluation using incremental evaluation

@@ -6,7 +6,7 @@ including strategy creation, management, and validation.
 """
 
 import logging
-from typing import Any, Dict, Type
+from typing import Any, Dict, Type, Union, Optional
 
 from ..strategies._core.base.base_strategy import BaseStrategy
 from ..strategies._core.registry import get_strategy_registry
@@ -37,13 +37,17 @@ class StrategyManager:
         """Get strategy mapping for backward compatibility."""
         return self._registry.get_all_strategies()
 
-    def get_strategy(self, strategy_spec: Any, params: Dict[str, Any]) -> BaseStrategy:
+    def get_strategy(
+        self,
+        strategy_spec: Any,
+        params: Union[Dict[str, Any], "CanonicalScenarioConfig"],
+    ) -> BaseStrategy:
         """
         Create a strategy instance from specification and parameters.
 
         Args:
             strategy_spec: Strategy specification (string name or dict with strategy info)
-            params: Strategy parameters dictionary
+            params: Strategy parameters dictionary or full canonical config
 
         Returns:
             BaseStrategy instance
@@ -52,6 +56,8 @@ class StrategyManager:
             ValueError: If strategy specification is invalid or strategy not found
             TypeError: If strategy class doesn't return BaseStrategy instance
         """
+        from ..canonical_config import CanonicalScenarioConfig
+
         # Support both string and dict specifications
         if isinstance(strategy_spec, dict):
             strategy_name = (
@@ -67,6 +73,7 @@ class StrategyManager:
             raise ValueError(f"Invalid strategy specification: {strategy_spec!r}")
 
         # Use factory to instantiate strategy (single-path)
+        # Passing params which could be a dict or CanonicalScenarioConfig
         return StrategyFactory.create_strategy(str(strategy_name), params)
 
     def get_strategy_class(self, strategy_name: str) -> type:

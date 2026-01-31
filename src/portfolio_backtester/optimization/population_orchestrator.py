@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, Optional, cast, Union
 
 from loguru import logger
 from tqdm import tqdm
@@ -12,6 +12,8 @@ from .results import OptimizationResult
 if TYPE_CHECKING:
     from .population_evaluator import PopulationEvaluator
     from .parameter_generator import PopulationBasedParameterGenerator
+    from ..canonical_config import CanonicalScenarioConfig
+
 
 
 class PopulationOrchestrator(OptimizationOrchestrator):
@@ -37,22 +39,43 @@ class PopulationOrchestrator(OptimizationOrchestrator):
 
     def optimize(
         self,
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
         optimization_config: Dict[str, Any],
         data: Any,
         backtester: "Backtester",
     ) -> "OptimizationResult":
+
         """Run the population-based optimization process with a progress bar."""
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config internally
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw scenario dictionary passed to PopulationOrchestrator.optimize. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: {}", scenario_config.get('name', 'unnamed')
+            )
+            normalizer = ScenarioNormalizer()
+            # Assuming global_config is available via backtester or something
+            global_config = getattr(backtester, "global_config", {})
+            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+        else:
+            canonical_config = scenario_config
+
         logger.info("Starting population-based optimization...")
-        self.parameter_generator.initialize(scenario_config, optimization_config)
+        self.parameter_generator.initialize(canonical_config, optimization_config)
         strategy_backtester = cast(StrategyBacktester, backtester)
 
         # Assuming max_generations is available for GA, otherwise needs a more general approach
-        ga_settings = scenario_config.get("ga_settings", {})
+        ga_settings = canonical_config.extras.get("ga_settings", {})
+
+            
         max_generations = ga_settings.get(
             "max_generations",
             optimization_config.get("ga_settings", {}).get("max_generations", 100),
         )
+
 
         with tqdm(total=max_generations, desc="Genetic Optimization", unit="gen") as pbar:
             while (

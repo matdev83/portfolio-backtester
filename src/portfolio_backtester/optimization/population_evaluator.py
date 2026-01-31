@@ -1,7 +1,7 @@
 import os
 import sys
 import uuid
-from typing import Any, Dict, List, TYPE_CHECKING, Tuple, Optional
+from typing import Any, Dict, List, TYPE_CHECKING, Tuple, Optional, Union
 from joblib import Parallel, delayed  # type: ignore
 from loguru import logger
 
@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from portfolio_backtester.backtesting.strategy_backtester import (
         StrategyBacktester,
     )
+    from ..canonical_config import CanonicalScenarioConfig
+
 
 # logger = logging.getLogger(__name__)
 
@@ -131,7 +133,7 @@ class PopulationEvaluator:
     def evaluate_population(
         self,
         population: List[Dict[str, Any]],
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
         data: "OptimizationData",
         backtester: "StrategyBacktester",
     ) -> List["EvaluationResult"]:
@@ -140,14 +142,28 @@ class PopulationEvaluator:
 
         Args:
             population: A list of parameter dictionaries to evaluate.
-            scenario_config: The configuration for the backtesting scenario.
+            scenario_config: The configuration for the backtesting scenario (raw dict or canonical object)
             data: The market data for the backtest.
             backtester: The backtester instance.
 
         Returns:
             A list of EvaluationResult objects.
         """
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            normalizer = ScenarioNormalizer()
+            # Assuming global_config is available via backtester or something
+            # For GA, we might need a better way to get global_config if it's not on backtester
+            global_config = getattr(backtester, "global_config", {})
+            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+        else:
+            canonical_config = scenario_config
+            
         # Ensure vectorized trade tracking is enabled for the backtester
+
         if hasattr(backtester, "use_vectorized_tracking") and self._performance_optimizer:
             backtester.use_vectorized_tracking = True
             logger.debug("Enabled vectorized trade tracking for backtester")
@@ -201,12 +217,13 @@ class PopulationEvaluator:
                         self._using_memmap = False
 
                 evaluated = self._evaluate_parallel(
-                    to_eval_params, scenario_config, data, backtester
+                    to_eval_params, canonical_config, data, backtester
                 )
             else:
                 evaluated = self._evaluate_sequential(
-                    to_eval_params, scenario_config, data, backtester
+                    to_eval_params, canonical_config, data, backtester
                 )
+
 
             # Update unique results and cache
             for params, key, result in zip(to_eval_params, to_eval_keys, evaluated):
@@ -286,7 +303,7 @@ class PopulationEvaluator:
     def _evaluate_sequential(
         self,
         population: List[Dict[str, Any]],
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
         data: "OptimizationData",
         backtester: "StrategyBacktester",
     ) -> List["EvaluationResult"]:
@@ -315,7 +332,7 @@ class PopulationEvaluator:
     def _evaluate_parallel(
         self,
         population: List[Dict[str, Any]],
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
         data: "OptimizationData",
         backtester: "StrategyBacktester",
     ) -> List["EvaluationResult"]:
@@ -325,24 +342,42 @@ class PopulationEvaluator:
         and reused across evaluations.
         """
         import time
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            normalizer = ScenarioNormalizer()
+            global_config = getattr(backtester, "global_config", {})
+            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+        else:
+            canonical_config = scenario_config
 
         start_time = time.time()
 
         try:
-            # Get parameter space from scenario config if available
-            parameter_space = scenario_config.get(
-                "parameter_space", scenario_config.get("optimize", {})
-            )
+            # Get parameter space from canonical config
+            # AdaptiveBatchSizer expects a Dict[str, Any] mapping param names to their config
+            # But canonical_config.optimize is a List[Mapping[str, Any]]
+            # We should reconstruct the dict format if possible, or skip adaptive sizing if not easily mapable.
+            
+            # Reconstruct legacy-style parameter space for the batch sizer
+            parameter_space_dict = {}
+            if canonical_config.optimize:
+                for spec in canonical_config.optimize:
+                    if "parameter" in spec:
+                        parameter_space_dict[spec["parameter"]] = dict(spec)
 
             # Adapt batch size if enabled
-            if self._enable_adaptive_batch_sizing and parameter_space:
+            if self._enable_adaptive_batch_sizing and parameter_space_dict:
 
                 # Update batch size based on population and parameter space
                 batch_config = self._batch_sizer.update_batch_size(
-                    parameter_space=parameter_space,
+                    parameter_space=parameter_space_dict,
                     population=population,
                     execution_time_ms=self._last_evaluation_time,
                 )
+
 
                 # Use adaptive batch size or fall back to provided/default
                 batch_size = self._joblib_batch_size or batch_config["batch_size"]

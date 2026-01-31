@@ -22,7 +22,7 @@ GLOBAL_CONFIG:
     cache_max_age_seconds: 14400
 
     # If true, only use cached MDMP data and skip downloads.
-    cache_only: false
+    cache_only: true
   
   # Portfolio capital configuration
   portfolio_value: 1000000.0  # Starting capital: $1M for compounding

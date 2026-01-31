@@ -8,7 +8,7 @@ while internally delegating to specialized classes following SOLID principles.
 import argparse
 import logging
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -19,7 +19,9 @@ from .evaluation_engine import EvaluationEngine
 from .backtest_runner import BacktestRunner
 from .optimization_orchestrator import OptimizationOrchestrator
 
-from ..config_initializer import populate_default_optimizations
+from ..scenario_normalizer import ScenarioNormalizer
+from ..canonical_config import CanonicalScenarioConfig
+
 from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
 
 from ..utils import INTERRUPTED as CENTRAL_INTERRUPTED_FLAG
@@ -43,7 +45,7 @@ class Backtester:
     def __init__(
         self,
         global_config: Dict[str, Any],
-        scenarios: List[Dict[str, Any]],
+        scenarios: Sequence[Union[Dict[str, Any], CanonicalScenarioConfig]],
         args: argparse.Namespace,
         backtest_runner=None,
         random_state: Optional[int] = None,
@@ -52,7 +54,7 @@ class Backtester:
         Initialize Backtester with configuration and scenarios.
         Args:
             global_config: Global configuration dictionary
-            scenarios: List of scenario configurations
+            scenarios: List of scenario configurations (raw dicts or canonical objects)
             args: Command line arguments namespace
             backtest_runner: Optional BacktestRunner instance
             random_state: Optional random seed for reproducibility
@@ -60,15 +62,32 @@ class Backtester:
         # Store original interface parameters
         self.global_config: Dict[str, Any] = global_config
         self.global_config["optimizer_parameter_defaults"] = OPTIMIZER_PARAMETER_DEFAULTS
-        self.scenarios: List[Dict[str, Any]] = scenarios
         self.args: argparse.Namespace = args
+
+        # Normalize scenarios if they are still raw dicts
+        self.scenarios: List[CanonicalScenarioConfig] = []
+        normalizer = ScenarioNormalizer()
+        for s in scenarios:
+            if isinstance(s, CanonicalScenarioConfig):
+                self.scenarios.append(s)
+            else:
+                # Guard against unnormalized scenarios leaking in
+                logger.info(f"Normalizing programmatic scenario: {s.get('name', 'unnamed')}")
+                self.scenarios.append(normalizer.normalize(scenario=s, global_config=global_config))
+
+        for scen in self.scenarios:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Canonical scenario '{scen.name}': {scen.to_dict()}")
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"Backtester initialized with scenario strategy_params: {self.scenarios[0].get('strategy_params')}"
+                f"Backtester initialized with scenario strategy_params: {self.scenarios[0].strategy_params}"
             )
 
-        populate_default_optimizations(self.scenarios, OPTIMIZER_PARAMETER_DEFAULTS)
+        # Legacy compatibility: populate_default_optimizations expects dicts
+        # We should ideally move this into the normalizer or update it to handle CanonicalScenarioConfig
+        # For now, we've already normalized them, so this might be redundant or needs adaptation.
+        # populate_default_optimizations(self.scenarios, OPTIMIZER_PARAMETER_DEFAULTS)
 
         # Initialize timing and timeout management using DIP
         self._timeout_start_time: float = time.time()
@@ -154,12 +173,25 @@ class Backtester:
         """Check if the operation has timed out."""
         return self.timeout_manager.check_timeout()
 
-    def _select_scenarios_to_run(self) -> List[Dict[str, Any]]:
+    def get_canonical_scenario(self, name: str) -> Optional[CanonicalScenarioConfig]:
+        """
+        Get a canonical scenario configuration by name.
+
+        Args:
+            name: Name of the scenario to retrieve
+
+        Returns:
+            CanonicalScenarioConfig if found, None otherwise
+        """
+        for s in self.scenarios:
+            if s.name == name:
+                return s
+        return None
+
+    def _select_scenarios_to_run(self) -> List[CanonicalScenarioConfig]:
         """Select scenarios based on CLI args; returns empty list if named scenario missing."""
         if getattr(self.args, "scenario_name", None):
-            scenarios_to_run = [
-                s for s in self.scenarios if s.get("name") == self.args.scenario_name
-            ]
+            scenarios_to_run = [s for s in self.scenarios if s.name == self.args.scenario_name]
             if not scenarios_to_run:
                 self.logger.error(
                     f"Scenario '{self.args.scenario_name}' not found in the loaded scenarios."
@@ -170,7 +202,7 @@ class Backtester:
 
     def run_scenario(
         self,
-        scenario_config: Dict[str, Any],
+        scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
         price_data_monthly_closes: pd.DataFrame,
         price_data_daily_ohlc: pd.DataFrame,
         rets_daily: Optional[pd.DataFrame] = None,
@@ -183,7 +215,7 @@ class Backtester:
         This method maintains the exact same signature as the original Backtester class.
 
         Args:
-            scenario_config: Configuration for the scenario to run
+            scenario_config: Configuration for the scenario to run (raw dict or canonical object)
             price_data_monthly_closes: Monthly closing price data
             price_data_daily_ohlc: Daily OHLC price data
             rets_daily: Optional daily returns data
@@ -202,13 +234,15 @@ class Backtester:
         return result
 
     def evaluate_trial_parameters(
-        self, scenario_config: Dict[str, Any], params: Dict[str, Any]
+        self,
+        scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
+        params: Dict[str, Any],
     ) -> Dict[str, float]:
         """
         Evaluates a single set of parameters and returns performance metrics.
 
         Args:
-            scenario_config: Base scenario configuration
+            scenario_config: Base scenario configuration (raw dict or canonical object)
             params: Parameters to evaluate
 
         Returns:
@@ -366,7 +400,7 @@ class Backtester:
     def _run_backtest_mode(
         self,
         backtester,
-        scenario_config: Dict[str, Any],
+        scenario_config: CanonicalScenarioConfig,
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
@@ -376,12 +410,12 @@ class Backtester:
         result = backtester.backtest_runner.run_backtest_mode(
             scenario_config, monthly_data, daily_data, rets_full, study_name
         )
-        self.results[scenario_config["name"]] = result
+        self.results[scenario_config.name] = result
 
     def _run_optimize_mode(
         self,
         optimization_orchestrator,
-        scenario_config: Dict[str, Any],
+        scenario_config: CanonicalScenarioConfig,
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
@@ -434,8 +468,10 @@ class Backtester:
             )
 
             optimal_params = optimization_result.best_parameters
-            optimized_name = f"{scenario_config['name']}_Optimized"
-            train_end_date = pd.to_datetime(scenario_config.get("train_end_date", "2018-12-31"))
+            optimized_name = f"{scenario_config.name}_Optimized"
+            # CanonicalScenarioConfig might have train_end_date in extras if it was there
+            train_end_date_str = scenario_config.extras.get("train_end_date", "2018-12-31")
+            train_end_date = pd.to_datetime(train_end_date_str)
 
             final_backtest_results = {
                 "returns": stitched_returns,
@@ -455,15 +491,28 @@ class Backtester:
             }
 
             self.results[optimized_name] = final_backtest_results
-            self.results[scenario_config["name"]] = final_backtest_results
+            self.results[scenario_config.name] = final_backtest_results
             return
 
         # Run a final backtest using the best parameters found
         optimal_params = optimization_result.best_parameters
-        optimized_scenario = scenario_config.copy()
-        base_strategy_params = optimized_scenario.get("strategy_params", {}).copy()
+        # We need to create a modified scenario config with optimal params.
+        # Since CanonicalScenarioConfig is frozen, we might need a way to create a copy with changes,
+        # or convert it back to dict, update, and re-normalize (though it might be overkill).
+        # Actually, for the final backtest, we can pass the canonical config and the optimal params separately
+        # if the runner supports it, or create a new canonical config.
+
+        # Let's convert to dict for now to update params, then re-normalize
+        optimized_scen_dict = scenario_config.to_dict()
+        base_strategy_params = dict(optimized_scen_dict.get("strategy_params", {}))
         base_strategy_params.update(optimal_params or {})
-        optimized_scenario["strategy_params"] = base_strategy_params
+        optimized_scen_dict["strategy_params"] = base_strategy_params
+
+        # Re-normalize to get a new CanonicalScenarioConfig
+        normalizer = ScenarioNormalizer()
+        optimized_scenario = normalizer.normalize(
+            scenario=optimized_scen_dict, global_config=self.global_config
+        )
 
         # The run_backtest_mode will use the StrategyBacktester internally
         # and return a dictionary of results.
@@ -472,7 +521,7 @@ class Backtester:
         )
 
         # Store the final backtest results, enriched with optimization info
-        optimized_name = f"{scenario_config['name']}_Optimized"
+        optimized_name = f"{scenario_config.name}_Optimized"
 
         # Merge the optimization results into the final backtest results dict
         final_backtest_results.update(
@@ -486,7 +535,7 @@ class Backtester:
         )
 
         self.results[optimized_name] = final_backtest_results
-        self.results[scenario_config["name"]] = final_backtest_results
+        self.results[scenario_config.name] = final_backtest_results
 
     def _display_results(self) -> None:
         """Display results using the original reporting system."""

@@ -5,13 +5,18 @@ This module implements the DataFetcher class that handles all data-related opera
 including ticker collection, data fetching, normalization, and preprocessing.
 """
 
+from __future__ import annotations
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import pandas as pd
 
+if TYPE_CHECKING:
+    from ..canonical_config import CanonicalScenarioConfig
+
 logger = logging.getLogger(__name__)
+
 
 # --- Universe perf helpers -------------------------------------------------
 
@@ -82,13 +87,13 @@ class DataFetcher:
         self.logger = logger
 
     def collect_required_tickers(
-        self, scenarios_to_run: List[Dict[str, Any]], strategy_getter
+        self, scenarios_to_run: List[CanonicalScenarioConfig], strategy_getter
     ) -> Tuple[set, bool]:
         """
         Collect all tickers needed across scenarios.
 
         Args:
-            scenarios_to_run: List of scenario configurations
+            scenarios_to_run: List of canonical scenario configurations
             strategy_getter: Function to get strategy instance from config
 
         Returns:
@@ -100,82 +105,69 @@ class DataFetcher:
 
         for scenario_config in scenarios_to_run:
             # Universe handling
-            if "universe" in scenario_config or "universe_config" in scenario_config:
+            if scenario_config.universe_definition:
                 scenario_has_universe = True
-                if "universe" in scenario_config:
-                    try:
-                        from portfolio_backtester.interfaces.ticker_collector import (
-                            TickerCollectorFactory,
+                try:
+                    # Special-case: dynamic SP500 historical universe is huge; reduce tickers up-front.
+                    ucfg = scenario_config.universe_definition
+                    if (
+                        isinstance(ucfg, dict)
+                        and ucfg.get("type") == "method"
+                        and ucfg.get("method_name")
+                        in {
+                            # Survivorship-bias-aware: the strategy uses Top-N SP500 by weight
+                            # over time. Prefetching the union over month-ends avoids fetching
+                            # ~1000 historical tickers up-front.
+                            "get_all_historical_sp500_components",
+                            "get_top_weight_sp500_components",
+                        }
+                    ):
+                        start_s = _coerce_date_str(
+                            scenario_config.start_date
+                        ) or _coerce_date_str(self.global_config.get("start_date"))
+                        end_s = _coerce_date_str(
+                            scenario_config.end_date
+                        ) or _coerce_date_str(self.global_config.get("end_date"))
+                        reduced = _collect_sp500_top_components_over_range(
+                            start_date=start_s,
+                            end_date=end_s,
+                            n_holdings=int(ucfg.get("n_holdings", 50)),
+                            exact=bool(ucfg.get("exact", False)),
                         )
-
-                        collector = TickerCollectorFactory.create_collector(
-                            scenario_config["universe"]
-                        )
-                        universe_tickers = collector.collect_tickers(scenario_config["universe"])
-                        all_tickers.update(universe_tickers)
-                    except Exception as e:
-                        logger.error(f"Failed to collect universe tickers: {e}")
-                elif "universe_config" in scenario_config:
-                    try:
-                        # Special-case: dynamic SP500 historical universe is huge; reduce tickers up-front.
-                        ucfg = scenario_config["universe_config"]
-                        if (
-                            isinstance(ucfg, dict)
-                            and ucfg.get("type") == "method"
-                            and ucfg.get("method_name")
-                            in {
-                                # Survivorship-bias-aware: the strategy uses Top-N SP500 by weight
-                                # over time. Prefetching the union over month-ends avoids fetching
-                                # ~1000 historical tickers up-front.
-                                "get_all_historical_sp500_components",
-                                "get_top_weight_sp500_components",
-                            }
-                        ):
-                            start_s = _coerce_date_str(
-                                scenario_config.get("start_date")
-                            ) or _coerce_date_str(self.global_config.get("start_date"))
-                            end_s = _coerce_date_str(
-                                scenario_config.get("end_date")
-                            ) or _coerce_date_str(self.global_config.get("end_date"))
-                            reduced = _collect_sp500_top_components_over_range(
-                                start_date=start_s,
-                                end_date=end_s,
-                                n_holdings=int(ucfg.get("n_holdings", 50)),
-                                exact=bool(ucfg.get("exact", False)),
+                        if reduced:
+                            logger.info(
+                                "Reduced SP500 universe to %d tickers (Top-%d union over %s..%s).",
+                                len(reduced),
+                                int(ucfg.get("n_holdings", 50)),
+                                start_s,
+                                end_s,
                             )
-                            if reduced:
-                                logger.info(
-                                    "Reduced SP500 universe to %d tickers (Top-%d union over %s..%s).",
-                                    len(reduced),
-                                    int(ucfg.get("n_holdings", 50)),
-                                    start_s,
-                                    end_s,
-                                )
-                                all_tickers.update(reduced)
-                                continue
+                            all_tickers.update(reduced)
+                            continue
 
-                        from portfolio_backtester.interfaces.ticker_collector import (
-                            TickerCollectorFactory,
-                        )
+                    from portfolio_backtester.interfaces.ticker_collector import (
+                        TickerCollectorFactory,
+                    )
 
-                        collector = TickerCollectorFactory.create_collector(
-                            scenario_config["universe_config"]
-                        )
-                        universe_tickers = collector.collect_tickers(
-                            scenario_config["universe_config"]
-                        )
-                        all_tickers.update(universe_tickers)
-                    except Exception as e:
-                        logger.error(f"Failed to collect universe config tickers: {e}")
+                    collector = TickerCollectorFactory.create_collector(
+                        scenario_config.universe_definition
+                    )
+                    universe_tickers = collector.collect_tickers(
+                        scenario_config.universe_definition
+                    )
+                    all_tickers.update(universe_tickers)
+                except Exception as e:
+                    logger.error(f"Failed to collect universe tickers: {e}")
 
             # Strategy-specific non-universe data
             strategy = strategy_getter(
-                scenario_config["strategy"], scenario_config["strategy_params"]
+                scenario_config.strategy, scenario_config.strategy_params
             )
             non_universe_tickers = strategy.get_non_universe_data_requirements()
             all_tickers.update(non_universe_tickers)
 
         return all_tickers, scenario_has_universe
+
 
     def fetch_daily_data(self, all_tickers: set, start_date: str) -> pd.DataFrame:
         """
@@ -442,7 +434,7 @@ class DataFetcher:
 
     def prepare_data_for_backtesting(
         self,
-        scenarios_to_run: List[Dict[str, Any]],
+        scenarios_to_run: List[CanonicalScenarioConfig],
         strategy_getter,
         scenario_has_universe: Optional[bool] = None,
     ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -452,7 +444,7 @@ class DataFetcher:
         This method orchestrates the entire data fetching and preprocessing workflow.
 
         Args:
-            scenarios_to_run: List of scenario configurations
+            scenarios_to_run: List of canonical scenario configurations
             strategy_getter: Function to get strategy instance from config
             scenario_has_universe: Optional flag if universe detection already done
 
@@ -478,7 +470,7 @@ class DataFetcher:
         # Determine optimal start date and fetch data
         coverage_candidates = []
         for scenario in scenarios_to_run:
-            coverage_value = scenario.get("min_universe_coverage")
+            coverage_value = scenario.extras.get("min_universe_coverage")
             if coverage_value is None:
                 continue
             try:
@@ -487,6 +479,7 @@ class DataFetcher:
                 continue
 
         min_coverage = max(coverage_candidates) if coverage_candidates else None
+
         start_date = self.determine_optimal_start_date(
             all_tickers, min_universe_coverage=min_coverage
         )

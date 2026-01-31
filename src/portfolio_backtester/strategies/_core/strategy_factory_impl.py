@@ -22,7 +22,7 @@ TO CREATE A NEW STRATEGY:
 The system will AUTOMATICALLY find and register your strategy. No manual steps needed!
 """
 
-from typing import Dict, Any, Type, Set, Optional, cast
+from typing import Dict, Any, Type, Set, Optional, cast, Mapping, Union
 import logging
 
 from .base.base.base_strategy import BaseStrategy
@@ -79,7 +79,7 @@ class StrategyFactory:
     def create_strategy(
         cls,
         strategy_class: str,
-        strategy_params: Dict[str, Any],
+        strategy_params: Union[Mapping[str, Any], "CanonicalScenarioConfig"],
         global_config: Optional[Dict[str, Any]] = None,
     ) -> BaseStrategy:
         """
@@ -87,7 +87,7 @@ class StrategyFactory:
 
         Args:
             strategy_class: Name of the strategy class
-            strategy_params: Parameters for strategy initialization
+            strategy_params: Parameters for strategy initialization or full canonical config
             global_config: Global configuration (for meta strategies)
 
         Returns:
@@ -96,6 +96,9 @@ class StrategyFactory:
         Raises:
             ValueError: If strategy class is unknown or circular dependency detected
         """
+        from .base.base.base_strategy import BaseStrategy
+        from ...canonical_config import CanonicalScenarioConfig
+
         registry = cls._get_registry()
 
         # Check for circular dependencies in meta strategies
@@ -113,11 +116,21 @@ class StrategyFactory:
         if strategy_class.endswith("MetaStrategy"):
             cls._circular_detection.add(strategy_class)
 
-        # Process strategy_params to remove prefixes if present
+        # Process strategy_params
+        if isinstance(strategy_params, CanonicalScenarioConfig):
+            # If passed canonical config, we use it directly for instantiation
+            # but for processed_params (if we still need it for some reason) we use strategy_params
+            init_arg: Union[Mapping[str, Any], CanonicalScenarioConfig] = strategy_params
+            # Extract params for prefix processing if we were to pass dict
+            params_to_process = strategy_params.strategy_params
+        else:
+            init_arg = strategy_params
+            params_to_process = strategy_params
+
         processed_params = {}
-        if strategy_params:
+        if params_to_process:
             # Handle both prefixed and non-prefixed parameters
-            for key, value in strategy_params.items():
+            for key, value in params_to_process.items():
                 if "." in key:
                     # Remove the prefix (everything before the first dot)
                     param_name = key.split(".", 1)[1]
@@ -126,13 +139,23 @@ class StrategyFactory:
                     # Keep non-prefixed params as is
                     processed_params[key] = value
 
+        # Note: If init_arg was CanonicalScenarioConfig, we might want to pass 
+        # processed_params instead if the strategy doesn't handle the canonical object yet.
+        # But BaseStrategy does handle it. 
+        # However, some strategies might override __init__ and expect a dict.
+        # So we should probably pass the processed dict if it's not a canonical object,
+        # or find a way to merge them.
+        
+        if not isinstance(init_arg, CanonicalScenarioConfig):
+            init_arg = processed_params
+
         try:
             # Check if this is a meta strategy that accepts global_config
             if strategy_class.endswith("MetaStrategy") and global_config is not None:
                 # Meta strategies accept global_config as second parameter
-                instance = strategy_cls(processed_params, global_config=global_config)
+                instance = strategy_cls(init_arg, global_config=global_config)
             else:
-                instance = strategy_cls(processed_params)
+                instance = strategy_cls(init_arg)
 
             return cast(BaseStrategy, instance)
         finally:

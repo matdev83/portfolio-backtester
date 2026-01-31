@@ -1,9 +1,14 @@
+from __future__ import annotations
 import logging  # Assuming logger might be useful here or for other utils
 import signal
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from ..canonical_config import CanonicalScenarioConfig
+
 
 
 # Get a logger for this module (or use a more general one if available)
@@ -325,7 +330,7 @@ def generate_randomized_wfo_windows(
 
 def generate_enhanced_wfo_windows(
     monthly_data_index: pd.DatetimeIndex,
-    scenario_config: dict,
+    scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
     global_config: dict,
     rng: np.random.Generator,
 ) -> List:
@@ -333,29 +338,40 @@ def generate_enhanced_wfo_windows(
 
     Args:
         monthly_data_index: DatetimeIndex of monthly data (assumed to be month-end dates)
-        scenario_config: Scenario configuration dictionary
+        scenario_config: Scenario configuration (raw dict or canonical object)
         global_config: Global configuration dictionary
         rng: Random number generator instance for reproducibility
 
     Returns:
         List of WFOWindow objects with appropriate evaluation frequency
     """
+    from ..canonical_config import CanonicalScenarioConfig
+    from ..scenario_normalizer import ScenarioNormalizer
+
+    # Ensure we are working with a canonical config
+    if not isinstance(scenario_config, CanonicalScenarioConfig):
+        normalizer = ScenarioNormalizer()
+        canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+    else:
+        canonical_config = scenario_config
+
     # Import here to avoid circular imports
     try:
         from ..optimization.wfo_window import WFOWindow
     except ImportError:
         # Fallback to regular window generation if WFOWindow not available
         return generate_randomized_wfo_windows(
-            monthly_data_index, scenario_config, global_config, rng
+            monthly_data_index, canonical_config.to_dict(), global_config, rng
         )
 
     # Generate base windows using existing logic
+    # generate_randomized_wfo_windows expects a dict
     base_windows = generate_randomized_wfo_windows(
-        monthly_data_index, scenario_config, global_config, rng
+        monthly_data_index, canonical_config.to_dict(), global_config, rng
     )
 
     # Determine evaluation frequency
-    evaluation_frequency = _determine_evaluation_frequency(scenario_config)
+    evaluation_frequency = _determine_evaluation_frequency(canonical_config)
 
     # Convert to enhanced windows
     enhanced_windows = []
@@ -367,25 +383,34 @@ def generate_enhanced_wfo_windows(
                 test_start=window[2],
                 test_end=window[3],
                 evaluation_frequency=evaluation_frequency,
-                strategy_name=scenario_config.get("name", "unknown"),
+                strategy_name=canonical_config.name,
             )
         )
 
     return enhanced_windows
 
 
-def _determine_evaluation_frequency(scenario_config: dict) -> str:
+def _determine_evaluation_frequency(scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig]) -> str:
     """Determine required evaluation frequency based on strategy configuration.
 
     Args:
-        scenario_config: Scenario configuration dictionary
+        scenario_config: Scenario configuration (raw dict or canonical object)
 
     Returns:
         Evaluation frequency ('D', 'W', or 'M')
     """
-    strategy_class = scenario_config.get("strategy_class", "")
-    strategy_name = scenario_config.get("strategy", "")
-    timing_config = scenario_config.get("timing_config", {})
+    from ..canonical_config import CanonicalScenarioConfig
+    
+    if isinstance(scenario_config, CanonicalScenarioConfig):
+        strategy_class = scenario_config.extras.get("strategy_class", "")
+        strategy_name = scenario_config.strategy
+        timing_config = scenario_config.timing_config
+        rebalance_freq = timing_config.get("rebalance_frequency", "M")
+    else:
+        strategy_class = scenario_config.get("strategy_class", "")
+        strategy_name = scenario_config.get("strategy", "")
+        timing_config = scenario_config.get("timing_config", {})
+        rebalance_freq = scenario_config.get("rebalance_frequency", "M")
 
     # Intramonth and seasonal strategies need daily evaluation
     if (
@@ -403,12 +428,12 @@ def _determine_evaluation_frequency(scenario_config: dict) -> str:
             return "D"
 
     # Check rebalance frequency
-    rebalance_freq = scenario_config.get("rebalance_frequency", "M")
     if rebalance_freq == "D":
         return "D"
 
     # Default to monthly for backward compatibility
     return "M"
+
 
 
 def calculate_stability_metrics(metric_values_per_objective, metrics_to_optimize, global_config):

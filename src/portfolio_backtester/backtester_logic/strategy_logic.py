@@ -19,12 +19,29 @@ def generate_signals(
     benchmark_ticker,
     has_timed_out,
 ):
+    from ..canonical_config import CanonicalScenarioConfig
+    from ..scenario_normalizer import ScenarioNormalizer
+
+    # Ensure we are working with a canonical config internally
+    if not isinstance(scenario_config, CanonicalScenarioConfig):
+        logger.warning(
+            "ACCIDENTAL BYPASS: Raw scenario dictionary passed to strategy_logic.generate_signals. "
+            "All scenarios should be canonicalized at the boundary. "
+            "Scenario: %s", scenario_config.get('name', 'unnamed')
+        )
+        normalizer = ScenarioNormalizer()
+        # Fallback global_config
+        global_config = getattr(strategy, "global_config", {})
+        canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+    else:
+        canonical_config = scenario_config
+
     # Check if this is a meta strategy - if so, use trade-based approach
     strategy_resolver = StrategyResolverFactory.create()
     if strategy_resolver.is_meta_strategy(type(strategy)):
         return _generate_meta_strategy_signals(
             strategy,
-            scenario_config,
+            canonical_config,
             price_data_daily_ohlc,
             universe_tickers,
             benchmark_ticker,
@@ -38,10 +55,11 @@ def generate_signals(
     start_date = price_data_daily_ohlc.index.min()
     end_date = price_data_daily_ohlc.index.max()
 
-    scenario_start_raw = scenario_config.get("start_date")
-    scenario_end_raw = scenario_config.get("end_date")
-    wfo_start_raw = scenario_config.get("wfo_start_date")
-    wfo_end_raw = scenario_config.get("wfo_end_date")
+    scenario_start_raw = canonical_config.get("start_date")
+    scenario_end_raw = canonical_config.get("end_date")
+    wfo_start_raw = canonical_config.get("wfo_start_date")
+    wfo_end_raw = canonical_config.get("wfo_end_date")
+
 
     def _align_ts(ts: Optional[pd.Timestamp]) -> Optional[pd.Timestamp]:
         if ts is None:
@@ -82,11 +100,7 @@ def generate_signals(
 
     # Honor scenario-configured daily rebalance for meta strategies in single-path architecture
     try:
-        configured_freq = (
-            scenario_config.get("timing_config", {}).get("rebalance_frequency")
-            if isinstance(scenario_config, dict)
-            else None
-        )
+        configured_freq = scenario_config.get("timing_config", {}).get("rebalance_frequency")
         if configured_freq == "D":
             rebalance_dates = price_data_daily_ohlc.index
     except Exception:
@@ -376,11 +390,7 @@ def _generate_meta_strategy_signals(
 
     # Honor scenario-configured rebalance frequency if present
     try:
-        configured_freq = (
-            scenario_config.get("timing_config", {}).get("rebalance_frequency")
-            if isinstance(scenario_config, dict)
-            else None
-        )
+        configured_freq = scenario_config.get("timing_config", {}).get("rebalance_frequency")
         if configured_freq:
             # Use the configured frequency to resample the price data index
             if configured_freq != "D":  # Daily is already the default
@@ -488,8 +498,10 @@ def _generate_meta_strategy_signals(
             non_universe_historical_data_for_strat = non_universe_data_view.loc[date_mask]
 
         # Generate signals for the current date
+        current_weights_df = None
         try:
             # Call the meta strategy's generate_signals method
+
             current_weights = strategy.generate_signals(
                 all_historical_data=all_historical_data_for_strat,
                 benchmark_historical_data=benchmark_historical_data_for_strat,

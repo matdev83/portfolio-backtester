@@ -20,6 +20,8 @@ from portfolio_backtester.scenario_validator import (
     validate_scenario_semantics,
     YamlValidator,
 )
+from portfolio_backtester.scenario_normalizer import ScenarioNormalizer, ScenarioNormalizationError
+
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -376,32 +378,40 @@ def main(args: Optional[List[str]] = None) -> None:
     else:
         selected_scenarios = BACKTEST_SCENARIOS_RELOADED
 
-    if parsed_args.mode == "optimize":
-        # The original code had config_loader_module.load_globals_only() here,
-        # but config_loader_module is no longer imported.
-        # Assuming the intent was to load globals if they were loaded globally.
-        # Since load_config is now global, this line is effectively a no-op.
-        # For now, I'm removing it as it's not directly related to the new_code.
-        pass  # config_loader_module.load_globals_only()
-        for scen in selected_scenarios:
-            errors = validate_scenario_semantics(
-                scen,
-                GLOBAL_CONFIG_RELOADED.get("optimizer", {}).get("parameter_defaults", {}),
+    # Normalize scenarios into canonical form
+    normalizer = ScenarioNormalizer()
+    canonical_scenarios = []
+    for scen in selected_scenarios:
+        try:
+            # Source can be filename or scenario name
+            source = parsed_args.scenario_filename or scen.get("name")
+            canonical = normalizer.normalize(
+                scenario=scen,
+                global_config=GLOBAL_CONFIG_RELOADED,
+                source=source
             )
-            if errors:
-                formatted = YamlValidator().format_errors(errors)
-                formatted += "\nActionable Suggestions:\n- Verify param names match strategy.tunable_parameters()\n- Check types (int/float) and ranges\n- Add missing required params\n- See docs for more."
-                print(formatted, file=sys.stderr)
-                raise ConfigurationError("Optimization config invalid")
+            canonical_scenarios.append(canonical)
+            logger.debug(f"Canonicalized scenario '{canonical.name}'")
+        except ScenarioNormalizationError as e:
+            logger.error(f"Normalization failed for scenario: {e}")
+            print(f"\n❌ Scenario normalization error: {e}", file=sys.stderr)
+            if e.errors:
+                for error in e.errors:
+                    print(f"  - {error}", file=sys.stderr)
+            sys.exit(1)
 
     # Start timing the backtester run
     start_time = time.time()
 
+    from typing import cast, Sequence, Any, Union, Dict
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
+
     backtester = Backtester(
         GLOBAL_CONFIG_RELOADED,
-        selected_scenarios,
+        cast(Sequence[Union[Dict[str, Any], CanonicalScenarioConfig]], canonical_scenarios),
         parsed_args,
     )
+
     try:
         backtester.run()
         # Log execution time

@@ -6,10 +6,14 @@ trading strategies and calculating performance metrics, completely separated fro
 optimization concerns.
 """
 
+from __future__ import annotations
 import logging
 import pandas as pd
 import numpy as np
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING, Union, cast, Mapping
+
+if TYPE_CHECKING:
+    from ..canonical_config import CanonicalScenarioConfig
 
 from .results import BacktestResult, WindowResult
 from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
@@ -59,7 +63,7 @@ class StrategyBacktester:
 
     def backtest_strategy(
         self,
-        strategy_config: Dict[str, Any],
+        strategy_config: Union[Dict[str, Any], CanonicalScenarioConfig],
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
@@ -73,7 +77,7 @@ class StrategyBacktester:
         and returns structured results with metrics, trades, and P&L data.
 
         Args:
-            strategy_config: Strategy configuration including name and parameters
+            strategy_config: Strategy configuration including name and parameters (raw dict or canonical object)
             monthly_data: Monthly price data
             daily_data: Daily OHLC price data
             rets_full: Daily returns data
@@ -81,8 +85,23 @@ class StrategyBacktester:
         Returns:
             BacktestResult: Complete backtest results with all performance data
         """
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config
+        if not isinstance(strategy_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw strategy_config dictionary passed to StrategyBacktester.backtest_strategy. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: %s", strategy_config.get('name', 'unnamed')
+            )
+            normalizer = ScenarioNormalizer()
+            canonical_config = normalizer.normalize(scenario=strategy_config, global_config=self.global_config)
+        else:
+            canonical_config = strategy_config
+
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Running backtest for strategy: {strategy_config.get('name', 'Unknown')}")
+            logger.debug(f"Running backtest for strategy: {canonical_config.name}")
 
         # Filter data based on the window if start_date and end_date are provided
         if start_date and end_date:
@@ -92,35 +111,14 @@ class StrategyBacktester:
 
         # Get strategy instance
         strategy = self._get_strategy(
-            strategy_config["strategy"],
-            strategy_config["strategy_params"],
-            strategy_config,
+            canonical_config.strategy,
+            canonical_config.strategy_params,
+            canonical_config,
         )
 
         # Determine universe
-        if "universe" in strategy_config:
-            try:
-                from ..interfaces.ticker_collector import TickerCollectorFactory
-
-                collector = TickerCollectorFactory.create_collector(strategy_config["universe"])
-                universe_tickers = collector.collect_tickers(strategy_config["universe"])
-            except Exception as e:
-                logger.error(f"Failed to collect universe tickers: {e}")
-                universe_tickers = []
-        elif "universe_config" in strategy_config:
-            try:
-                from ..interfaces.ticker_collector import TickerCollectorFactory
-
-                collector = TickerCollectorFactory.create_collector(
-                    strategy_config["universe_config"]
-                )
-                universe_tickers = collector.collect_tickers(strategy_config["universe_config"])
-            except Exception as e:
-                logger.error(f"Failed to collect universe config tickers: {e}")
-                universe_tickers = []
-        else:
-            # Only use strategy.get_universe as last resort, not global config universe
-            universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
+        # Use strategy's universe provider
+        universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
 
         # Filter out missing tickers
         missing_cols = [t for t in universe_tickers if t not in monthly_data.columns]
@@ -143,7 +141,7 @@ class StrategyBacktester:
         # Generate signals
         signals = generate_signals(
             strategy,
-            strategy_config,
+            canonical_config,
             daily_data,
             universe_tickers,
             benchmark_ticker,
@@ -153,7 +151,7 @@ class StrategyBacktester:
         # Size positions
         sized_signals = size_positions(
             signals,
-            strategy_config,
+            canonical_config,
             monthly_closes,
             daily_data,
             universe_tickers,
@@ -164,7 +162,7 @@ class StrategyBacktester:
         # Calculate portfolio returns (optionally with trade tracking)
         portfolio_returns, trade_tracker = calculate_portfolio_returns(
             sized_signals,
-            strategy_config,
+            canonical_config,
             daily_data,
             rets_daily,
             universe_tickers,
@@ -223,7 +221,7 @@ class StrategyBacktester:
 
     def evaluate_window(
         self,
-        strategy_config: Dict[str, Any],
+        strategy_config: Union[Dict[str, Any], CanonicalScenarioConfig],
         window: WFOWindow,
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
@@ -266,8 +264,6 @@ class StrategyBacktester:
         test_end = _drop_tz(test_end)
 
         if isinstance(monthly_data.index, pd.DatetimeIndex) and monthly_data.index.tz is not None:
-            from typing import cast
-
             monthly_data = monthly_data.copy()
             monthly_index = cast(pd.DatetimeIndex, monthly_data.index)
             monthly_data.index = monthly_index.tz_localize(None)
@@ -329,7 +325,7 @@ class StrategyBacktester:
         )
 
     def _get_strategy(
-        self, strategy_spec, params: Dict[str, Any], strategy_config: Dict[str, Any]
+        self, strategy_spec, params: Mapping[str, Any], strategy_config: Union[Dict[str, Any], CanonicalScenarioConfig]
     ) -> BaseStrategy:
         """Get a strategy instance by name and parameters.
 
@@ -389,8 +385,10 @@ class StrategyBacktester:
             except Exception:
                 pass
 
-        instance = strategy_class(params)
-        instance.config = strategy_config  # Attach the full config
+        # Prefer passing the canonical config if available to support new features
+        # BaseStrategy.__init__ handles both dict and CanonicalScenarioConfig
+        instance = strategy_class(strategy_config)
+        instance.config = strategy_config  # Attach for backward compatibility
 
         if not isinstance(instance, BaseStrategy):
             if logger.isEnabledFor(logging.DEBUG):
@@ -411,7 +409,7 @@ class StrategyBacktester:
 
     def _run_scenario_for_window(
         self,
-        strategy_config: Dict[str, Any],
+        strategy_config: Union[Dict[str, Any], CanonicalScenarioConfig],
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_daily: Optional[pd.DataFrame] = None,
@@ -419,7 +417,7 @@ class StrategyBacktester:
         """Run a scenario for a specific window (extracted from core.py run_scenario).
 
         Args:
-            strategy_config: Strategy configuration
+            strategy_config: Strategy configuration (raw dict or canonical object)
             monthly_data: Monthly price data for the window
             daily_data: Daily OHLC data for the window
             rets_daily: Daily returns data
@@ -427,40 +425,35 @@ class StrategyBacktester:
         Returns:
             Portfolio returns series or None if failed
         """
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        # Ensure we are working with a canonical config
+        if not isinstance(strategy_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw strategy_config dictionary passed to StrategyBacktester._run_scenario_for_window. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: %s", strategy_config.get('name', 'unnamed')
+            )
+            normalizer = ScenarioNormalizer()
+            canonical_config = normalizer.normalize(scenario=strategy_config, global_config=self.global_config)
+        else:
+            canonical_config = strategy_config
+
         strategy = self._get_strategy(
-            strategy_config["strategy"],
-            strategy_config["strategy_params"],
-            strategy_config,
+            canonical_config.strategy,
+            canonical_config.strategy_params,
+            canonical_config,
         )
 
-        if "universe" in strategy_config:
-            try:
-                from ..interfaces.ticker_collector import TickerCollectorFactory
-
-                collector = TickerCollectorFactory.create_collector(strategy_config["universe"])
-                universe_tickers = collector.collect_tickers(strategy_config["universe"])
-            except Exception as e:
-                logger.error(f"Failed to collect universe tickers: {e}")
-                universe_tickers = []
-        elif "universe_config" in strategy_config:
-            try:
-                from ..interfaces.ticker_collector import TickerCollectorFactory
-
-                collector = TickerCollectorFactory.create_collector(
-                    strategy_config["universe_config"]
-                )
-                universe_tickers = collector.collect_tickers(strategy_config["universe_config"])
-            except Exception as e:
-                logger.error(f"Failed to collect universe config tickers: {e}")
-                universe_tickers = []
-        else:
-            universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
+        # Use strategy's universe provider
+        universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
 
         # Filter missing tickers using daily_data (more reliable for presence)
         from ..interfaces.ohlc_normalizer import OHLCNormalizerFactory
 
-        normalizer = OHLCNormalizerFactory.create_normalizer(daily_data)
-        available_tickers = normalizer.get_available_tickers(daily_data)
+        normalizer_ohlc = OHLCNormalizerFactory.create_normalizer(daily_data)
+        available_tickers = normalizer_ohlc.get_available_tickers(daily_data)
 
         missing_cols = [t for t in universe_tickers if t not in available_tickers]
         if missing_cols:
@@ -483,7 +476,7 @@ class StrategyBacktester:
         # Generate signals
         signals = generate_signals(
             strategy,
-            strategy_config,
+            canonical_config,
             daily_data,
             universe_tickers,
             benchmark_ticker,
@@ -493,7 +486,7 @@ class StrategyBacktester:
         # Size positions
         sized_signals = size_positions(
             signals,
-            strategy_config,
+            canonical_config,
             monthly_closes,
             daily_data,
             universe_tickers,
@@ -504,7 +497,7 @@ class StrategyBacktester:
         # Calculate portfolio returns (no trade tracking for window evaluation)
         result = calculate_portfolio_returns(
             sized_signals,
-            strategy_config,
+            canonical_config,
             daily_data,
             rets_daily,
             universe_tickers,
@@ -551,38 +544,49 @@ class StrategyBacktester:
     def _create_trade_history(
         self, sized_signals: pd.DataFrame, daily_data: pd.DataFrame
     ) -> pd.DataFrame:
-        """Create trade history from sized signals (simplified implementation)."""
-        # This is a simplified implementation - in a full implementation,
-        # this would track actual trades, entry/exit prices, etc.
-        trades = []
+        """Create a history of trades from signal weights using vectorized operations."""
+        if sized_signals.empty:
+            return pd.DataFrame()
 
-        for date in sized_signals.index:
-            for ticker in sized_signals.columns:
-                position = sized_signals.loc[date, ticker]
-                try:
-                    # Convert position to float for comparison
-                    if pd.notna(position) and isinstance(position, (int, float, np.number)):
-                        position_value = float(position)
-                    else:
-                        position_value = 0.0
-                    if abs(position_value) > 1e-6:  # Non-zero position
-                        trades.append(
-                            {
-                                "date": date,
-                                "ticker": ticker,
-                                "position": position_value,
-                                "price": (
-                                    daily_data.loc[date, ticker]
-                                    if ticker in daily_data.columns
-                                    else np.nan
-                                ),
-                            }
-                        )
-                except (TypeError, ValueError):
-                    # Skip positions that can't be converted to float
-                    continue
+        # PERFORMANCE: Avoid nested loops over large universes (e.g. R2K)
+        # Use stack() to get non-zero positions efficiently
+        stacked_signals = sized_signals.stack()
+        non_zero_mask = stacked_signals.abs() > 1e-6
+        non_zero_signals = stacked_signals[non_zero_mask]
 
-        return pd.DataFrame(trades)
+        if non_zero_signals.empty:
+            return pd.DataFrame()
+
+        # Extract close prices if MultiIndex (standard for MDMP)
+        if isinstance(daily_data.columns, pd.MultiIndex):
+            field_level = "Field" if "Field" in daily_data.columns.names else -1
+            if "Close" in daily_data.columns.get_level_values(field_level):
+                prices_df = daily_data.xs("Close", level=field_level, axis=1)
+            else:
+                # Fallback to the first available field for each ticker
+                first_field = daily_data.columns.get_level_values(field_level)[0]
+                prices_df = daily_data.xs(first_field, level=field_level, axis=1)
+        else:
+            prices_df = daily_data
+
+        # Align prices to signals and stack
+        # This ensures we have a price for every position date/ticker
+        # Limit to relevant tickers to speed up reindex
+        relevant_tickers = sized_signals.columns
+        aligned_prices = prices_df.reindex(index=sized_signals.index, columns=relevant_tickers)
+        stacked_prices = aligned_prices.stack()
+        
+        # Create the result DataFrame
+        trade_history = non_zero_signals.to_frame()
+        trade_history.reset_index(inplace=True)
+        # Signals stacked index names might be [None, None] or [DateName, TickerName]
+        # We force standard names for the output
+        trade_history.columns = ["date", "ticker", "position"]
+        
+        # Add prices via mapping from the stacked price series (fast lookup)
+        trade_history["price"] = non_zero_signals.index.map(stacked_prices)
+
+        return trade_history
 
     def _create_performance_stats(
         self, returns: pd.Series, metrics: Dict[str, float]
