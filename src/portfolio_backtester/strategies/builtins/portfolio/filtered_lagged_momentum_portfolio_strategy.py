@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Dict, Any, Union, Mapping, TYPE_CHECKING
 
 import pandas as pd
 
 from .base_momentum_portfolio_strategy import BaseMomentumPortfolioStrategy
+
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 
 
 class FilteredLaggedMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
@@ -14,8 +17,9 @@ class FilteredLaggedMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
     momentum window.
     """
 
-    def __init__(self, strategy_config: Dict[str, Any]):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
+
         params = self.strategy_config.get("strategy_params", {})
         params.setdefault("lookback_months", 6)
         params.setdefault("skip_months", 1)

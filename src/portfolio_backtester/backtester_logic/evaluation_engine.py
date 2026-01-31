@@ -7,7 +7,7 @@ evaluation operations including fast evaluation, walk-forward analysis, and para
 
 from __future__ import annotations
 import logging
-from typing import Any, Dict, Optional, Union, cast, Protocol, TYPE_CHECKING, Mapping
+from typing import Any, Dict, Optional, Union, cast, Protocol, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -117,10 +117,13 @@ class EvaluationEngine:
             logger.warning(
                 "ACCIDENTAL BYPASS: Raw scenario dictionary passed to EvaluationEngine.evaluate_walk_forward_fast. "
                 "All scenarios should be canonicalized at the boundary. "
-                "Scenario: %s", scenario_config.get('name', 'unnamed')
+                "Scenario: %s",
+                scenario_config.get("name", "unnamed"),
             )
             normalizer = ScenarioNormalizer()
-            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=self.global_config
+            )
         else:
             canonical_config = scenario_config
 
@@ -191,10 +194,13 @@ class EvaluationEngine:
             logger.warning(
                 "ACCIDENTAL BYPASS: Raw scenario dictionary passed to EvaluationEngine.evaluate_fast. "
                 "All scenarios should be canonicalized at the boundary. "
-                "Scenario: %s", scenario_config.get('name', 'unnamed')
+                "Scenario: %s",
+                scenario_config.get("name", "unnamed"),
             )
             normalizer = ScenarioNormalizer()
-            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=self.global_config
+            )
         else:
             canonical_config = scenario_config
 
@@ -266,7 +272,7 @@ class EvaluationEngine:
 
             strategy_instance = StrategyFactory.create_strategy(
                 str(canonical_config.strategy),
-                dict(canonical_config.strategy_params),
+                canonical_config,
                 global_config=self.global_config,
             )
 
@@ -454,8 +460,16 @@ class EvaluationEngine:
             prices_np = self._daily_prices_np_cache
 
             strategy_instance = StrategyFactory.create_strategy(
-                str(scenario_config["strategy"]),
-                scenario_config["strategy_params"],
+                (
+                    str(scenario_config.strategy)
+                    if isinstance(scenario_config, CanonicalScenarioConfig)
+                    else str(scenario_config["strategy"])
+                ),
+                (
+                    scenario_config
+                    if isinstance(scenario_config, CanonicalScenarioConfig)
+                    else scenario_config["strategy_params"]
+                ),
                 global_config=self.global_config,
             )
 
@@ -585,23 +599,28 @@ class EvaluationEngine:
             logger.warning(
                 "ACCIDENTAL BYPASS: Raw scenario dictionary passed to EvaluationEngine.evaluate_trial_parameters. "
                 "All scenarios should be canonicalized at the boundary. "
-                "Scenario: %s", scenario_config.get('name', 'unnamed')
+                "Scenario: %s",
+                scenario_config.get("name", "unnamed"),
             )
             normalizer = ScenarioNormalizer()
-            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=self.global_config
+            )
         else:
             canonical_config = scenario_config
 
         # Create a modified canonical config with updated parameters
         params_dict = dict(canonical_config.strategy_params)
         params_dict.update(params)
-        
+
         scen_dict = canonical_config.to_dict()
         scen_dict["strategy_params"] = params_dict
-        
+
         # Re-normalize
         normalizer = ScenarioNormalizer()
-        temp_scenario_config = normalizer.normalize(scenario=scen_dict, global_config=self.global_config)
+        temp_scenario_config = normalizer.normalize(
+            scenario=scen_dict, global_config=self.global_config
+        )
 
         returns = run_scenario_func(
             temp_scenario_config,

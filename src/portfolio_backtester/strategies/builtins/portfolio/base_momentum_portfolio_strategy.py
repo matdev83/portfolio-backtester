@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional, cast, Union, Mapping, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -11,6 +11,9 @@ from portfolio_backtester.strategies._core.base import PortfolioStrategy
 from portfolio_backtester.utils.portfolio_utils import default_candidate_weights
 from portfolio_backtester.utils.portfolio_utils import apply_leverage_and_smoothing
 from portfolio_backtester.utils.price_data_utils import extract_current_prices
+
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +27,7 @@ class BaseMomentumPortfolioStrategy(PortfolioStrategy):
     method to define their specific momentum scoring logic.
     """
 
-    def __init__(self, strategy_config: Dict[str, Any]):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
         self.w_prev: Optional[pd.Series] = None
         self.current_derisk_flag: bool = False
@@ -35,7 +38,11 @@ class BaseMomentumPortfolioStrategy(PortfolioStrategy):
         if "strategy_params" in self.strategy_config:
             if self.strategy_config["strategy_params"] is None:
                 self.strategy_config["strategy_params"] = {}
+            # Ensure it's a mutable dict for setdefault calls
+            if not isinstance(self.strategy_config["strategy_params"], dict):
+                self.strategy_config["strategy_params"] = dict(self.strategy_config["strategy_params"])
             params_dict_to_update = self.strategy_config["strategy_params"]
+
 
         defaults = {
             "num_holdings": None,

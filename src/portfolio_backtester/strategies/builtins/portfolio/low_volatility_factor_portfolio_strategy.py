@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Dict, Any, cast
+from typing import Dict, Any, cast, Union, Mapping, TYPE_CHECKING
 
 import pandas as pd
 
 from .base_momentum_portfolio_strategy import BaseMomentumPortfolioStrategy
+
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 
 
 class LowVolatilityFactorPortfolioStrategy(BaseMomentumPortfolioStrategy):
@@ -14,8 +17,9 @@ class LowVolatilityFactorPortfolioStrategy(BaseMomentumPortfolioStrategy):
     and selects the top cohort per standard momentum template.
     """
 
-    def __init__(self, strategy_config: Dict[str, Any]):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
+
         params = self.strategy_config.get("strategy_params", {})
         params.setdefault("vol_lookback_days", 63)  # ~ 3 months of trading days
 

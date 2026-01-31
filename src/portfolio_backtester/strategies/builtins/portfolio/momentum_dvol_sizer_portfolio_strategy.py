@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Dict, Any, Union, Mapping, TYPE_CHECKING
 
 import pandas as pd
 
 from .base_momentum_portfolio_strategy import BaseMomentumPortfolioStrategy
+
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 
 
 class MomentumDvolSizerPortfolioStrategy(BaseMomentumPortfolioStrategy):
@@ -14,8 +17,9 @@ class MomentumDvolSizerPortfolioStrategy(BaseMomentumPortfolioStrategy):
     of recent volatility as a minimal sizer.
     """
 
-    def __init__(self, strategy_config: Dict[str, Any]):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
+
         params = self.strategy_config.get("strategy_params", {})
         params.setdefault("vol_lookback_days", 63)
 

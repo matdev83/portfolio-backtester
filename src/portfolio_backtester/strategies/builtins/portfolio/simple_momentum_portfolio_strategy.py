@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, final
+from typing import Any, Dict, final, Union, Mapping, TYPE_CHECKING
 
 import pandas as pd
 from .base_momentum_portfolio_strategy import BaseMomentumPortfolioStrategy
+
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +24,9 @@ class SimpleMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
     Uses sensible defaults and minimal configuration for demonstration purposes.
     """
 
-    def __init__(self, strategy_config: Dict[str, Any]):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
+
 
         # Add simple momentum-specific defaults
         params_dict_to_update = self.strategy_config.get("strategy_params", {})

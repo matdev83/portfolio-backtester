@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, cast
+from typing import Any, Dict, Iterable, List, Optional, cast, Union, Mapping, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -11,6 +11,9 @@ from scipy.optimize import minimize
 
 from portfolio_backtester.numba_optimized import rolling_sortino_batch
 from portfolio_backtester.strategies._core.base import PortfolioStrategy
+
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +27,9 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
     optionally scaled by volatility targeting (allowing gross exposure to drift).
     """
 
-    def __init__(self, strategy_config: Dict[str, Any]) -> None:
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]) -> None:
         super().__init__(strategy_config)
+
         params = self._get_params_dict()
 
         defaults = {

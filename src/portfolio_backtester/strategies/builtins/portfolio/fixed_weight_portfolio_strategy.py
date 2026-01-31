@@ -1,22 +1,25 @@
 from __future__ import annotations
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union, Mapping, TYPE_CHECKING
 
 import pandas as pd
 
 from ..._core.base.base.portfolio_strategy import PortfolioStrategy
 
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
+
 
 class FixedWeightPortfolioStrategy(PortfolioStrategy):
     """Simple fixed-weight portfolio strategy.
-
-    Distributes equal weights across the current universe at each call.
+...
     This minimal implementation serves as a framework-provided baseline
     that users may extend in `strategies/user/**`.
     """
 
-    def __init__(self, strategy_config: Dict[str, Any]):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
+
 
     @classmethod
     def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:

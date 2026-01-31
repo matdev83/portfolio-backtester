@@ -6,11 +6,13 @@ This interface provides clear abstractions for take profit configuration
 and instantiation, working alongside the stop loss system.
 """
 
+from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING, Union, Mapping
 
 if TYPE_CHECKING:
     from ..risk_management.take_profit_handlers import BaseTakeProfit
+    from ..canonical_config import CanonicalScenarioConfig
 
 
 class ITakeProfitProvider(ABC):
@@ -84,23 +86,40 @@ class ConfigBasedTakeProfitProvider(ITakeProfitProvider):
     working alongside the existing stop loss system.
     """
 
-    def __init__(self, strategy_config: Dict[str, Any]):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig]):
         """
-        Initialize provider with strategy configuration.
+        Initialize provider with strategy configuration or canonical config.
 
         Args:
-            strategy_config: Strategy configuration dictionary
+            strategy_config: Strategy configuration dictionary or canonical config
         """
+        from ..canonical_config import CanonicalScenarioConfig
+
         self.strategy_config = strategy_config
-        self.take_profit_config = strategy_config.get("take_profit_config", {})
+        self.take_profit_config: Dict[str, Any] = {}
+
+        if isinstance(strategy_config, CanonicalScenarioConfig):
+            tp_cfg = strategy_config.strategy_params.get("take_profit_config")
+            if tp_cfg is not None:
+                self.take_profit_config = dict(tp_cfg)
+        else:
+            tp_raw = strategy_config.get("take_profit_config")
+            # Legacy support: look inside strategy_params
+            if tp_raw is None and isinstance(strategy_config, Mapping):
+                sp = strategy_config.get("strategy_params", {})
+                if isinstance(sp, Mapping):
+                    tp_raw = sp.get("take_profit_config")
+
+            if tp_raw is not None:
+                self.take_profit_config = dict(tp_raw)
 
     def get_take_profit_handler(self) -> "BaseTakeProfit":
         """Get take profit handler instance using configuration."""
         from ..risk_management.take_profit_handlers import (
-            BaseTakeProfit,
             NoTakeProfit,
             AtrBasedTakeProfit,
         )
+        from ..canonical_config import CanonicalScenarioConfig
 
         tp_type_name = self.take_profit_config.get("type", "NoTakeProfit")
 
@@ -117,7 +136,13 @@ class ConfigBasedTakeProfitProvider(ITakeProfitProvider):
             # Try to get from registry if we implement one later
             raise ValueError(f"Unknown take profit type: {tp_type_name}")
 
-        return handler_class(self.strategy_config, self.take_profit_config)
+        # Ensure we pass a dict to the handler
+        if isinstance(self.strategy_config, CanonicalScenarioConfig):
+            strategy_config_dict = self.strategy_config.to_dict()
+        else:
+            strategy_config_dict = dict(self.strategy_config)
+
+        return handler_class(strategy_config_dict, self.take_profit_config)
 
     def get_take_profit_config(self) -> Dict[str, Any]:
         """Get take profit configuration parameters."""
@@ -249,7 +274,6 @@ class FixedTakeProfitProvider(ITakeProfitProvider):
     def get_take_profit_handler(self) -> "BaseTakeProfit":
         """Get the configured take profit handler instance."""
         from ..risk_management.take_profit_handlers import (
-            BaseTakeProfit,
             NoTakeProfit,
             AtrBasedTakeProfit,
         )
@@ -294,13 +318,14 @@ class TakeProfitProviderFactory:
 
     @staticmethod
     def create_provider(
-        strategy_config: Dict[str, Any], provider_type: str = "config"
+        strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig],
+        provider_type: str = "config",
     ) -> ITakeProfitProvider:
         """
         Create a take profit provider instance.
 
         Args:
-            strategy_config: Strategy configuration dictionary
+            strategy_config: Strategy configuration dictionary or canonical config
             provider_type: Type of provider to create ("config", "fixed")
 
         Returns:
@@ -309,10 +334,18 @@ class TakeProfitProviderFactory:
         Raises:
             ValueError: If provider_type is unknown
         """
+        from ..canonical_config import CanonicalScenarioConfig
+
         if provider_type == "config":
             return ConfigBasedTakeProfitProvider(strategy_config)
         elif provider_type == "fixed":
-            take_profit_config = strategy_config.get("take_profit_config", {})
+            if isinstance(strategy_config, CanonicalScenarioConfig):
+                take_profit_config = dict(
+                    strategy_config.strategy_params.get("take_profit_config", {})
+                )
+            else:
+                take_profit_config = strategy_config.get("take_profit_config", {})
+
             take_profit_type = take_profit_config.get("type", "NoTakeProfit")
             return FixedTakeProfitProvider(take_profit_type, take_profit_config)
         else:
@@ -320,7 +353,7 @@ class TakeProfitProviderFactory:
 
     @staticmethod
     def create_config_provider(
-        strategy_config: Dict[str, Any],
+        strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig],
     ) -> ConfigBasedTakeProfitProvider:
         """Create a configuration-based take profit provider."""
         return ConfigBasedTakeProfitProvider(strategy_config)
@@ -333,20 +366,28 @@ class TakeProfitProviderFactory:
         return FixedTakeProfitProvider(take_profit_type, take_profit_params)
 
     @staticmethod
-    def get_default_provider(strategy_config: Dict[str, Any]) -> ITakeProfitProvider:
+    def get_default_provider(
+        strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig],
+    ) -> ITakeProfitProvider:
         """
         Get a default take profit provider for backward compatibility.
 
         Args:
-            strategy_config: Strategy configuration dictionary
+            strategy_config: Strategy configuration dictionary or canonical config
 
         Returns:
             ITakeProfitProvider instance with NoTakeProfit as default
         """
+        from ..canonical_config import CanonicalScenarioConfig
+
         # Ensure default take profit config if none specified
+        if isinstance(strategy_config, CanonicalScenarioConfig):
+            return ConfigBasedTakeProfitProvider(strategy_config)
+
         if "take_profit_config" not in strategy_config:
-            strategy_config = strategy_config.copy()
-            strategy_config["take_profit_config"] = {"type": "NoTakeProfit"}
+            new_config = dict(strategy_config)
+            new_config["take_profit_config"] = {"type": "NoTakeProfit"}
+            return ConfigBasedTakeProfitProvider(new_config)
 
         return ConfigBasedTakeProfitProvider(strategy_config)
 

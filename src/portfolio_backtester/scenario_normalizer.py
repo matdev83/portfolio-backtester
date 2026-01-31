@@ -185,8 +185,8 @@ class ScenarioNormalizer:
                 )
             normalized_params[param_name] = v
 
-        # 2. Flatten legacy top-level params if unambiguous
-        # Known non-param top-level keys
+        # 2. Flatten legacy top-level params if they are valid strategy parameters
+        # Known non-param top-level keys (metadata/config structure keys)
         known_top_level = {
             "name",
             "strategy",
@@ -214,10 +214,19 @@ class ScenarioNormalizer:
             "extras",
         }
 
+        # Get valid parameter names for this strategy to distinguish params from unknown keys
+        valid_param_names = self._get_valid_strategy_param_names(strategy_name)
+
         consumed_top_level = set()
         flat_params = {k: v for k, v in scenario.items() if k not in known_top_level}
 
         for k, v in flat_params.items():
+            # Only flatten if this is a known valid strategy parameter
+            # If strategy is unknown (valid_param_names is empty), don't flatten anything
+            if not valid_param_names or k not in valid_param_names:
+                # Unknown key or unknown strategy - don't consume it, let it go to extras
+                continue
+
             # Check for conflict with existing strategy_params
             if k in normalized_params:
                 if normalized_params[k] != v:
@@ -236,6 +245,53 @@ class ScenarioNormalizer:
             consumed_top_level.add(k)
 
         return normalized_params, consumed_top_level
+
+    def _get_valid_strategy_param_names(self, strategy_name: str) -> set[str]:
+        """Get the set of valid parameter names for a strategy.
+        
+        Returns an empty set if the strategy is unknown (allowing all keys to be flattened
+        for backward compatibility with legacy scenarios).
+        """
+        registry = get_strategy_registry()
+        strategy_class = registry.get_strategy_class(strategy_name)
+
+        if strategy_class is None:
+            # Unknown strategy - return empty set to allow all params (backward compat)
+            return set()
+
+        valid_names: set[str] = set()
+
+        # Check for tunable_parameters (modern interface)
+        if hasattr(strategy_class, "tunable_parameters"):
+            try:
+                tunables = strategy_class.tunable_parameters()
+                valid_names.update(tunables.keys())
+            except Exception as e:
+                logger.debug(
+                    f"Could not get tunable_parameters for '{strategy_name}': {e}"
+                )
+
+        # Check for get_default_params (common interface)
+        if hasattr(strategy_class, "get_default_params"):
+            try:
+                defaults = strategy_class.get_default_params()
+                valid_names.update(defaults.keys())
+            except Exception as e:
+                logger.debug(
+                    f"Could not get get_default_params for '{strategy_name}': {e}"
+                )
+
+        # Check for get_params_space (older interface)
+        if hasattr(strategy_class, "get_params_space"):
+            try:
+                params_space = strategy_class.get_params_space()
+                valid_names.update(params_space.keys())
+            except Exception as e:
+                logger.debug(
+                    f"Could not get get_params_space for '{strategy_name}': {e}"
+                )
+
+        return valid_names
 
     def _normalize_optimizer_config(
         self, scenario: Mapping[str, Any], global_config: Mapping[str, Any]

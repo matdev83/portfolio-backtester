@@ -1,8 +1,11 @@
 from __future__ import annotations
+from typing import Dict, Any, Optional, Union, Mapping, TYPE_CHECKING
 
-from typing import Dict, Any, Optional
+if TYPE_CHECKING:
+    from ....canonical_config import CanonicalScenarioConfig
 
 import pandas as pd
+
 
 from ..._core.base.base.signal_strategy import SignalStrategy
 
@@ -13,11 +16,18 @@ class EmaCrossoverSignalStrategy(SignalStrategy):
     Provides tunable parameters: fast_ema_days, slow_ema_days, leverage.
     """
 
-    def __init__(self, strategy_config: dict):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig]):
         super().__init__(strategy_config)
-        params = strategy_config if strategy_config is not None else {}
-        # Some callers nest under strategy_params; support both
-        sp = params.get("strategy_params", params)
+
+        from ....canonical_config import CanonicalScenarioConfig
+
+        if isinstance(strategy_config, CanonicalScenarioConfig):
+            sp = dict(strategy_config.strategy_params)
+        else:
+            params = strategy_config if strategy_config is not None else {}
+            # Some callers nest under strategy_params; support both
+            sp = params.get("strategy_params", params)
+
         self.fast_ema_days: int = int(sp.get("fast_ema_days", 20))
         self.slow_ema_days: int = int(sp.get("slow_ema_days", 64))
         self.leverage: float = float(sp.get("leverage", 1.0))

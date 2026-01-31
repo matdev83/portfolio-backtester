@@ -1,22 +1,24 @@
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Any, Union, Mapping, TYPE_CHECKING
 
 import pandas as pd
 
 from ..._core.base.base.signal_strategy import SignalStrategy
 
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
+
 
 class UvxyRsiSignalStrategy(SignalStrategy):
     """UVXY strategy using SPY RSI(2) signal. Simplified for tests.
-
-    - Universe: UVXY only (weights distributed equally across all columns if present)
-    - Non-universe data requirement: ["SPY"] for RSI calculation
+...
     - Tunable params: rsi_period, rsi_threshold
     """
 
-    def __init__(self, strategy_config: Dict):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
+
         params = strategy_config.get("strategy_params", {}) if strategy_config else {}
         self.rsi_period: int = int(params.get("rsi_period", 2))
         self.rsi_threshold: float = float(params.get("rsi_threshold", 30.0))

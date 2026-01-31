@@ -197,32 +197,37 @@ class BaseStrategy(ABC):
             TakeProfitProviderFactory,
         )
 
+        # Use canonical config if available for provider initialization to ensure consistency
+        provider_init_arg: Union[Mapping[str, Any], CanonicalScenarioConfig] = (
+            self.canonical_config if self.canonical_config else self.strategy_params
+        )
+
         try:
             # Initialize universe provider - REQUIRED
             self._universe_provider = UniverseProviderFactory.create_config_provider(
-                self.strategy_params
+                provider_init_arg
             )
 
             # Initialize position sizer provider - REQUIRED
             self._position_sizer_provider = PositionSizerProviderFactory.get_default_provider(
-                self.strategy_params
+                provider_init_arg
             )
 
             # Initialize stop loss provider - REQUIRED
             self._stop_loss_provider = StopLossProviderFactory.get_default_provider(
-                self.strategy_params
+                provider_init_arg
             )
 
             # Initialize take profit provider - REQUIRED
             self._take_profit_provider = TakeProfitProviderFactory.get_default_provider(
-                self.strategy_params
+                provider_init_arg
             )
 
             # Initialize risk-off signal provider - REQUIRED
             from .....risk_off_signals import RiskOffSignalProviderFactory
 
             self._risk_off_signal_provider = RiskOffSignalProviderFactory.get_default_provider(
-                self.strategy_params
+                provider_init_arg
             )
 
         except Exception as e:

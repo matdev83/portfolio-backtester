@@ -42,7 +42,7 @@ class TestEvaluationEngine:
         trial = Mock()
         trial.params = {}
         result = self.evaluation_engine.evaluate_walk_forward_fast(
-            trial, {}, [], None, None, None, ["sharpe"], False, None, Mock()
+            trial, {"strategy": "SimpleMomentumPortfolioStrategy"}, [], None, None, None, ["sharpe"], False, None, Mock()
         )
         assert result == 0.5
 
@@ -59,9 +59,10 @@ class TestEvaluationEngine:
         trial = Mock()
         trial.params = {}
         result = self.evaluation_engine.evaluate_walk_forward_fast(
-            trial, {}, [], None, None, None, ["sharpe", "calmar"], True, None, Mock()
+            trial, {"strategy": "SimpleMomentumPortfolioStrategy"}, [], None, None, None, ["sharpe", "calmar"], True, None, Mock()
         )
         assert result == (0.5, 0.6)
+
 
     @patch.dict("os.environ", {"ENABLE_NUMBA_WALKFORWARD": "1"})
     @patch(
@@ -94,7 +95,7 @@ class TestEvaluationEngine:
         trial.params = {}
         trial.user_attrs = {}
         result, _ = self.evaluation_engine.evaluate_fast(
-            trial, {}, [], pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), ["sharpe"], False
+            trial, {"strategy": "SimpleMomentumPortfolioStrategy"}, [], pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), ["sharpe"], False
         )
         assert result == 0.5
 
@@ -102,7 +103,7 @@ class TestEvaluationEngine:
         """Test evaluate_trial_parameters when returns is None."""
         run_scenario_func = Mock(return_value=None)
         result = self.evaluation_engine.evaluate_trial_parameters(
-            {}, {}, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), run_scenario_func
+            {"strategy": "SimpleMomentumPortfolioStrategy"}, {}, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), run_scenario_func
         )
         assert result == {"sharpe": 0.0}
 
@@ -110,6 +111,7 @@ class TestEvaluationEngine:
         """Test evaluate_trial_parameters when returns is empty."""
         run_scenario_func = Mock(return_value=pd.Series(dtype=float))
         result = self.evaluation_engine.evaluate_trial_parameters(
-            {}, {}, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), run_scenario_func
+            {"strategy": "SimpleMomentumPortfolioStrategy"}, {}, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), run_scenario_func
         )
         assert result == {"sharpe": 0.0}
+

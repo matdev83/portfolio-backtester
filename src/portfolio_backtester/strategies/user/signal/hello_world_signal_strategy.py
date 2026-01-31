@@ -1,22 +1,24 @@
 from __future__ import annotations
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union, Mapping, TYPE_CHECKING
 
 import pandas as pd
 
 from ..._core.base.base.signal_strategy import SignalStrategy
 
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
+
 
 class HelloWorldSignalStrategy(SignalStrategy):
     """Minimal user example strategy.
-
-    - Selects all available tickers at each rebalance and allocates equal weights
-      scaled by optional ``leverage``.
+...
     - Intended to satisfy config validation and provide a simple runnable example.
     """
 
-    def __init__(self, strategy_config: dict):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
+
         params = strategy_config if strategy_config is not None else {}
         sp = params.get("strategy_params", params)
         self.leverage: float = float(sp.get("leverage", 1.0))

@@ -6,8 +6,12 @@ This interface enhances the existing universe management system by providing
 clear abstractions for different universe resolution strategies.
 """
 
+from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union, Mapping, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..canonical_config import CanonicalScenarioConfig
 
 import pandas as pd
 import warnings
@@ -142,15 +146,28 @@ class ConfigBasedUniverseProvider(IUniverseProvider, IUniverseWeightProvider):
     to provide flexible universe resolution based on strategy configuration.
     """
 
-    def __init__(self, strategy_config: Dict[str, Any]):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig]):
         """
-        Initialize provider with strategy configuration.
+        Initialize provider with strategy configuration or canonical config.
 
         Args:
-            strategy_config: Strategy configuration dictionary
+            strategy_config: Strategy configuration dictionary or canonical config
         """
+        from ..canonical_config import CanonicalScenarioConfig
+
         self.strategy_config = strategy_config
-        self.universe_config = strategy_config.get("universe_config")
+        if isinstance(strategy_config, CanonicalScenarioConfig):
+            self.universe_config = dict(strategy_config.universe_definition)
+        else:
+            raw_univ_cfg = strategy_config.get("universe_config")
+            self.universe_config = dict(raw_univ_cfg) if raw_univ_cfg is not None else {}
+            # Legacy support: look inside strategy_params if not at top level
+            if not self.universe_config and isinstance(strategy_config, Mapping):
+                strategy_params = strategy_config.get("strategy_params", {})
+                if isinstance(strategy_params, Mapping):
+                    raw_sp_univ_cfg = strategy_params.get("universe_config")
+                    if raw_sp_univ_cfg is not None:
+                        self.universe_config = dict(raw_sp_univ_cfg)
 
     def get_universe_symbols(self, global_config: Dict[str, Any]) -> List[str]:
         """Get universe symbols using configuration-based resolution."""
@@ -307,13 +324,14 @@ class UniverseProviderFactory:
 
     @staticmethod
     def create_provider(
-        strategy_config: Dict[str, Any], provider_type: str = "config"
+        strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig],
+        provider_type: str = "config",
     ) -> IUniverseProvider:
         """
         Create a universe provider instance.
 
         Args:
-            strategy_config: Strategy configuration dictionary
+            strategy_config: Strategy configuration dictionary or canonical config
             provider_type: Type of provider to create ("config", "fixed")
 
         Returns:
@@ -322,20 +340,28 @@ class UniverseProviderFactory:
         Raises:
             ValueError: If provider_type is unknown
         """
+        from ..canonical_config import CanonicalScenarioConfig
+
         if provider_type == "config":
             return ConfigBasedUniverseProvider(strategy_config)
         elif provider_type == "fixed":
             # Extract symbols from strategy config
-            symbols = strategy_config.get("universe", [])
+            if isinstance(strategy_config, CanonicalScenarioConfig):
+                symbols = list(strategy_config.universe_definition.get("tickers", []))
+            else:
+                symbols = strategy_config.get("universe", [])
+
             if not symbols:
-                raise ValueError("Fixed provider requires 'universe' in strategy config")
+                raise ValueError(
+                    "Fixed provider requires 'universe' or 'tickers' in strategy config"
+                )
             return FixedListUniverseProvider(symbols)
         else:
             raise ValueError(f"Unknown provider type: {provider_type}")
 
     @staticmethod
     def create_config_provider(
-        strategy_config: Dict[str, Any],
+        strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig],
     ) -> ConfigBasedUniverseProvider:
         """Create a configuration-based universe provider."""
         return ConfigBasedUniverseProvider(strategy_config)

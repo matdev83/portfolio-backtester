@@ -1,24 +1,25 @@
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Any, Union, Mapping, TYPE_CHECKING
 
 import pandas as pd
 from pandas.tseries.offsets import BDay
 
 from ..._core.base.base.signal_strategy import SignalStrategy
 
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
+
 
 class SeasonalSignalStrategy(SignalStrategy):
     """Intramonth seasonal strategy with simple entry/exit by business days.
-
-    - entry_day: Nth business day of the month (positive from start, negative from end)
-    - hold_days: number of business days to hold positions starting from entry_day
-    - trade_month_X flags (1..12): enable/disable trading for specific months
+...
     - direction: only 'long' is supported in tests; shorts treated as no-position
     """
 
-    def __init__(self, strategy_config: Dict):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
+
         params = strategy_config.get("strategy_params", {}) if strategy_config else {}
         self.direction: str = str(params.get("direction", "long"))
         self.entry_day: int = int(params.get("entry_day", 1))

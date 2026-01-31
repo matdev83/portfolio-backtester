@@ -1,0 +1,28 @@
+name: drift_regime_conditional_factor_portfolio_strategy_2020_2025_long_only
+strategy: DriftRegimeConditionalFactorPortfolioStrategy
+
+start_date: "2020-01-01"
+end_date: "2025-12-31"
+
+rebalance_frequency: D
+position_sizer: equal_weight
+timing_config:
+  mode: time_based
+  rebalance_frequency: D
+
+universe_config:
+  type: method
+  method_name: get_all_historical_russell_2000_components
+
+strategy_params:
+  universe_config:
+    type: method
+    method_name: get_all_historical_russell_2000_components
+  drift_window: 63
+  drift_threshold: 0.6
+  reversal_window: 10
+  num_holdings: 30
+  leverage: 1.0
+  trade_longs: True
+  trade_shorts: False
+  smoothing_lambda: 0.0

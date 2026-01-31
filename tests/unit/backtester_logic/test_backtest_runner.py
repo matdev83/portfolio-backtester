@@ -133,6 +133,7 @@ def test_run_backtest_mode(runner, mock_dependencies):
     
     scenario_config = {
         "name": "TestScenario",
+        "strategy": "TestStrategy",
         "strategy_params": {}
     }
     monthly_data = pd.DataFrame()
@@ -168,6 +169,7 @@ def test_run_backtest_mode_with_optuna(runner, mock_dependencies):
     
     scenario_config = {
         "name": "TestScenario",
+        "strategy": "TestStrategy",
         "strategy_params": {"a": 1}
     }
     

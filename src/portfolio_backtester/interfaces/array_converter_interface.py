@@ -244,9 +244,7 @@ class PolymorphicArrayConverter:
                 return processed_data.reshape(-1, 1).astype(np.float32), ["asset_0"]
             else:
                 n_assets = processed_data.shape[1] if processed_data.ndim > 1 else 1
-                return processed_data.astype(np.float32), [
-                    f"asset_{i}" for i in range(n_assets)
-                ]
+                return processed_data.astype(np.float32), [f"asset_{i}" for i in range(n_assets)]
         else:
             # For scalar values or other types, convert to array
             array_data = np.array(processed_data)
@@ -256,9 +254,7 @@ class PolymorphicArrayConverter:
                 return array_data.reshape(-1, 1).astype(np.float32), ["asset_0"]
             else:
                 n_assets = array_data.shape[1] if array_data.ndim > 1 else 1
-                return array_data.astype(np.float32), [
-                    f"asset_{i}" for i in range(n_assets)
-                ]
+                return array_data.astype(np.float32), [f"asset_{i}" for i in range(n_assets)]
 
     def create_converter(self) -> "PolymorphicArrayConverter":
         """Create a new converter instance."""

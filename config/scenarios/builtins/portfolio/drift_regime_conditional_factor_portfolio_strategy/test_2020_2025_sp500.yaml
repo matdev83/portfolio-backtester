@@ -1,0 +1,28 @@
+name: drift_regime_conditional_factor_portfolio_strategy_2020_2025_sp500
+strategy: DriftRegimeConditionalFactorPortfolioStrategy
+
+start_date: "2013-01-01"
+end_date: "2025-12-31"
+
+rebalance_frequency: D
+position_sizer: equal_weight
+timing_config:
+  mode: time_based
+  rebalance_frequency: D
+
+universe_config:
+  type: method
+  method_name: get_all_historical_sp500_components
+
+strategy_params:
+  universe_config:
+    type: method
+    method_name: get_all_historical_sp500_components
+  drift_window: 63
+  drift_threshold: 0.6
+  reversal_window: 10
+  num_holdings: 30
+  leverage: 1.0
+  trade_longs: True
+  trade_shorts: True
+  smoothing_lambda: 0.0

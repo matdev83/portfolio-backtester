@@ -1,8 +1,11 @@
 from __future__ import annotations
+from typing import Dict, Any, Union, Mapping, TYPE_CHECKING
 
-from typing import Dict, Any
+if TYPE_CHECKING:
+    from ....canonical_config import CanonicalScenarioConfig
 
 import pandas as pd
+
 
 from .ema_crossover_signal_strategy import EmaCrossoverSignalStrategy
 
@@ -13,10 +16,17 @@ class EmaRoroSignalStrategy(EmaCrossoverSignalStrategy):
     Exposes tunable_parameters including risk_off_leverage_multiplier as tests expect.
     """
 
-    def __init__(self, strategy_config: dict):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig]):
         super().__init__(strategy_config)
         self.base_leverage = self.leverage
-        params = strategy_config.get("strategy_params", {}) if strategy_config else {}
+
+        from ....canonical_config import CanonicalScenarioConfig
+
+        if isinstance(strategy_config, CanonicalScenarioConfig):
+            params = dict(strategy_config.strategy_params)
+        else:
+            params = strategy_config.get("strategy_params", {}) if strategy_config else {}
+
         self.risk_off_leverage_multiplier: float = float(
             params.get("risk_off_leverage_multiplier", 0.5)
         )

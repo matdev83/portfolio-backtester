@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from typing import Dict, Any, cast
+from typing import Dict, Any, cast, Union, Mapping, TYPE_CHECKING
 import pandas as pd
+
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 
 from .base_momentum_portfolio_strategy import BaseMomentumPortfolioStrategy
 
@@ -9,8 +12,9 @@ from .base_momentum_portfolio_strategy import BaseMomentumPortfolioStrategy
 class CalmarMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
     """Momentum strategy implementation using Calmar ratio for ranking."""
 
-    def __init__(self, strategy_config: Dict[str, Any]):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
+
 
         params_dict_to_update = self.strategy_config.get("strategy_params", {})
         calmar_defaults = {

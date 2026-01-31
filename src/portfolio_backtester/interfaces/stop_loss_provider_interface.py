@@ -6,11 +6,13 @@ This interface enhances the existing stop loss system by providing
 clear abstractions for stop loss configuration and instantiation.
 """
 
+from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING, Union, Mapping
 
 if TYPE_CHECKING:
     from ..risk_management.stop_loss_handlers import BaseStopLoss
+    from ..canonical_config import CanonicalScenarioConfig
 
 
 class IStopLossProvider(ABC):
@@ -84,23 +86,40 @@ class ConfigBasedStopLossProvider(IStopLossProvider):
     to provide flexible stop loss instantiation based on configuration.
     """
 
-    def __init__(self, strategy_config: Dict[str, Any]):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig]):
         """
-        Initialize provider with strategy configuration.
+        Initialize provider with strategy configuration or canonical config.
 
         Args:
-            strategy_config: Strategy configuration dictionary
+            strategy_config: Strategy configuration dictionary or canonical config
         """
+        from ..canonical_config import CanonicalScenarioConfig
+
         self.strategy_config = strategy_config
-        self.stop_loss_config = strategy_config.get("stop_loss_config", {})
+        self.stop_loss_config: Dict[str, Any] = {}
+
+        if isinstance(strategy_config, CanonicalScenarioConfig):
+            sl_cfg = strategy_config.strategy_params.get("stop_loss_config")
+            if sl_cfg is not None:
+                self.stop_loss_config = dict(sl_cfg)
+        else:
+            sl_config = strategy_config.get("stop_loss_config")
+            # Legacy support: look inside strategy_params
+            if sl_config is None and isinstance(strategy_config, Mapping):
+                sp = strategy_config.get("strategy_params", {})
+                if isinstance(sp, Mapping):
+                    sl_config = sp.get("stop_loss_config")
+
+            if sl_config is not None:
+                self.stop_loss_config = dict(sl_config)
 
     def get_stop_loss_handler(self) -> "BaseStopLoss":
         """Get stop loss handler instance using configuration."""
         from ..risk_management.stop_loss_handlers import (
-            BaseStopLoss,
             NoStopLoss,
             AtrBasedStopLoss,
         )
+        from ..canonical_config import CanonicalScenarioConfig
 
         sl_type_name = self.stop_loss_config.get("type", "NoStopLoss")
 
@@ -117,7 +136,13 @@ class ConfigBasedStopLossProvider(IStopLossProvider):
             # Try to get from registry if we implement one later
             raise ValueError(f"Unknown stop loss type: {sl_type_name}")
 
-        return handler_class(self.strategy_config, self.stop_loss_config)
+        # Ensure we pass a dict to the handler
+        if isinstance(self.strategy_config, CanonicalScenarioConfig):
+            strategy_config_dict = self.strategy_config.to_dict()
+        else:
+            strategy_config_dict = dict(self.strategy_config)
+
+        return handler_class(strategy_config_dict, self.stop_loss_config)
 
     def get_stop_loss_config(self) -> Dict[str, Any]:
         """Get stop loss configuration parameters."""
@@ -246,7 +271,6 @@ class FixedStopLossProvider(IStopLossProvider):
     def get_stop_loss_handler(self) -> "BaseStopLoss":
         """Get the configured stop loss handler instance."""
         from ..risk_management.stop_loss_handlers import (
-            BaseStopLoss,
             NoStopLoss,
             AtrBasedStopLoss,
         )
@@ -289,13 +313,14 @@ class StopLossProviderFactory:
 
     @staticmethod
     def create_provider(
-        strategy_config: Dict[str, Any], provider_type: str = "config"
+        strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig],
+        provider_type: str = "config",
     ) -> IStopLossProvider:
         """
         Create a stop loss provider instance.
 
         Args:
-            strategy_config: Strategy configuration dictionary
+            strategy_config: Strategy configuration dictionary or canonical config
             provider_type: Type of provider to create ("config", "fixed")
 
         Returns:
@@ -304,10 +329,16 @@ class StopLossProviderFactory:
         Raises:
             ValueError: If provider_type is unknown
         """
+        from ..canonical_config import CanonicalScenarioConfig
+
         if provider_type == "config":
             return ConfigBasedStopLossProvider(strategy_config)
         elif provider_type == "fixed":
-            stop_loss_config = strategy_config.get("stop_loss_config", {})
+            if isinstance(strategy_config, CanonicalScenarioConfig):
+                stop_loss_config = dict(strategy_config.strategy_params.get("stop_loss_config", {}))
+            else:
+                stop_loss_config = strategy_config.get("stop_loss_config", {})
+
             stop_loss_type = stop_loss_config.get("type", "NoStopLoss")
             return FixedStopLossProvider(stop_loss_type, stop_loss_config)
         else:
@@ -315,7 +346,7 @@ class StopLossProviderFactory:
 
     @staticmethod
     def create_config_provider(
-        strategy_config: Dict[str, Any],
+        strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig],
     ) -> ConfigBasedStopLossProvider:
         """Create a configuration-based stop loss provider."""
         return ConfigBasedStopLossProvider(strategy_config)
@@ -328,25 +359,28 @@ class StopLossProviderFactory:
         return FixedStopLossProvider(stop_loss_type, stop_loss_params)
 
     @staticmethod
-    def get_default_provider(strategy_config: Dict[str, Any]) -> IStopLossProvider:
+    def get_default_provider(
+        strategy_config: Union[Mapping[str, Any], CanonicalScenarioConfig],
+    ) -> IStopLossProvider:
         """
         Get a default stop loss provider for backward compatibility.
 
         Args:
-            strategy_config: Strategy configuration dictionary
+            strategy_config: Strategy configuration dictionary or canonical config
 
         Returns:
             IStopLossProvider instance with NoStopLoss as default
         """
+        from ..canonical_config import CanonicalScenarioConfig
+
         # Ensure default stop loss config if none specified
+        if isinstance(strategy_config, CanonicalScenarioConfig):
+            # Canonical config always has stop loss config handled
+            return ConfigBasedStopLossProvider(strategy_config)
+
         if "stop_loss_config" not in strategy_config:
-            strategy_config = strategy_config.copy()
-            strategy_config["stop_loss_config"] = {"type": "NoStopLoss"}
+            new_config = dict(strategy_config)
+            new_config["stop_loss_config"] = {"type": "NoStopLoss"}
+            return ConfigBasedStopLossProvider(new_config)
 
         return ConfigBasedStopLossProvider(strategy_config)
-
-
-# Additional stop loss implementations will be added in future updates:
-# - PercentageStopLoss: Fixed percentage from entry price
-# - TrailingStopLoss: Trailing stop following high-water mark
-# - TimeBasedStopLoss: Exit after maximum holding period

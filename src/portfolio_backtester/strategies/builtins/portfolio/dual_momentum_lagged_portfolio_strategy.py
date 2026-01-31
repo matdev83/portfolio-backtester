@@ -18,7 +18,7 @@ This module implements a classical dual momentum strategy with the following fea
 from __future__ import annotations
 
 from collections import deque
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, Mapping, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -27,6 +27,9 @@ from portfolio_backtester.universe import get_top_weight_sp500_components
 
 from .base_momentum_portfolio_strategy import BaseMomentumPortfolioStrategy
 
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["DualMomentumLaggedPortfolioStrategy"]
@@ -34,59 +37,14 @@ __all__ = ["DualMomentumLaggedPortfolioStrategy"]
 
 class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
     """Dual Momentum strategy with lagged entries and exits.
-
-    This strategy implements the classical dual momentum approach:
-    1. Absolute Momentum: Stock must have positive momentum (price > price N months ago)
-    2. Relative Momentum: Stock must outperform the benchmark (SPX)
-
-    Additionally, entries and exits are lagged - a signal must persist for `lag_months`
-    before action is taken. This reduces whipsaws and trading costs.
-
-    Parameters (via strategy_params)
-    ---------------------------------
-    lookback_months : int
-        Lookback period for momentum calculation (default: 12 months)
-    lag_months : int
-        Number of months to wait before confirming entry/exit (default: 1)
-    max_holdings : int
-        Maximum number of stocks to hold at any time (default: 10)
-    use_200sma_filter : bool
-        If True, only enter new positions when SPX close > 200-day SMA (default: True)
-    min_absolute_momentum : float
-        Minimum absolute momentum threshold (default: 0.0, i.e., any positive)
-    ranking_method : str
-        How to rank candidates that pass dual momentum filtering (default: "excess_total_return").
-        Options:
-        - "excess_total_return": (asset total return - benchmark total return) over lookback
-        - "residual_momentum": beta-adjusted momentum using daily returns vs benchmark
-    absolute_exit_buffer : float
-        Hysteresis buffer for absolute momentum exits; held names are allowed to stay invested
-        until their absolute momentum drops below (min_absolute_momentum - buffer).
-    relative_exit_buffer : float
-        Hysteresis buffer for relative momentum exits; held names are allowed to stay invested
-        until their momentum drops below (benchmark_momentum - buffer).
-    vol_target_enabled : bool
-        If True, scale total gross exposure using trailing realized benchmark volatility.
-    target_vol_annual : float
-        Annualized volatility target for the overlay (e.g., 0.10 to 0.15).
-    vol_lookback_days : int
-        Trailing window length (in trading days) for realized vol estimation.
-    vol_max_gross_exposure : float
-        Maximum gross exposure after scaling (1.0 = fully invested long-only).
-    panic_overlay_enabled : bool
-        If True, apply a "panic-state" crash overlay based on benchmark drawdown + volatility.
-    panic_drawdown_lookback_days : int
-        Window (trading days) used to compute benchmark drawdown.
-    panic_drawdown_threshold : float
-        Trigger threshold for drawdown (negative value, e.g., -0.10 for -10%).
-    panic_vol_threshold : float
-        Trigger threshold for benchmark annualized vol (e.g., 0.25).
+...
     panic_exposure_multiplier : float
         Exposure multiplier applied when panic-state triggers (e.g., 0.25).
     """
 
-    def __init__(self, strategy_config: Dict[str, Any]) -> None:
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]) -> None:
         super().__init__(strategy_config)
+
 
         params = self.strategy_config.get("strategy_params", {})
         if params is None:

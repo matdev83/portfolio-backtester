@@ -3,12 +3,13 @@ from src.portfolio_backtester.scenario_normalizer import ScenarioNormalizer, Sce
 from src.portfolio_backtester.canonical_config import CanonicalScenarioConfig
 
 def test_scenario_normalizer_basic():
+    """Test basic normalization with valid strategy and parameters."""
     normalizer = ScenarioNormalizer()
     global_config = {"benchmark": "SPY", "start_date": "2020-01-01"}
     scenario = {
         "name": "test",
         "strategy": "SimpleMomentumPortfolioStrategy",
-        "lookback_period": 63,
+        "lookback_months": 6,  # Valid parameter name
         "rebalance_frequency": "M",
         "universe": ["AAPL", "MSFT"]
     }
@@ -17,17 +18,18 @@ def test_scenario_normalizer_basic():
     
     assert canonical.name == "test"
     assert canonical.strategy == "SimpleMomentumPortfolioStrategy"
-    assert canonical.strategy_params["lookback_period"] == 63
+    assert canonical.strategy_params["lookback_months"] == 6
     assert canonical.timing_config["rebalance_frequency"] == "M"
     assert canonical.universe_definition["type"] == "fixed"
     assert canonical.universe_definition["tickers"] == ("AAPL", "MSFT")
 
 def test_scenario_normalizer_conflicts():
+    """Test that conflicting universe definitions raise an error."""
     normalizer = ScenarioNormalizer()
     global_config = {"benchmark": "SPY"}
     scenario = {
         "name": "test",
-        "strategy": "SimpleStrategy",
+        "strategy": "SimpleMomentumPortfolioStrategy",
         "universe": ["AAPL"],
         "universe_config": {"type": "fixed", "tickers": ["MSFT"]}
     }
@@ -36,21 +38,45 @@ def test_scenario_normalizer_conflicts():
         normalizer.normalize(scenario=scenario, global_config=global_config)
 
 def test_scenario_normalizer_legacy_flattening():
+    """Test that valid legacy top-level params are flattened into strategy_params."""
     normalizer = ScenarioNormalizer()
     global_config = {"benchmark": "SPY"}
     scenario = {
         "name": "test",
-        "strategy": "SimpleStrategy",
-        "lookback": 10,
-        "strategy_params": {"other_param": 20}
+        "strategy": "SimpleMomentumPortfolioStrategy",
+        "lookback_months": 10,  # Valid parameter at top level
+        "strategy_params": {"num_holdings": 20}  # Another valid param
     }
     
     canonical = normalizer.normalize(scenario=scenario, global_config=global_config)
     
-    assert canonical.strategy_params["lookback"] == 10
-    assert canonical.strategy_params["other_param"] == 20
+    # Both should be in strategy_params
+    assert canonical.strategy_params["lookback_months"] == 10
+    assert canonical.strategy_params["num_holdings"] == 20
+
+def test_scenario_normalizer_unknown_keys_in_extras():
+    """Test that unknown keys are preserved in extras, not flattened."""
+    normalizer = ScenarioNormalizer()
+    global_config = {"benchmark": "SPY"}
+    scenario = {
+        "name": "test",
+        "strategy": "SimpleMomentumPortfolioStrategy",
+        "lookback_months": 6,  # Valid parameter
+        "unknown_custom_key": "custom_value",  # Unknown key
+        "strategy_params": {"num_holdings": 15}
+    }
+    
+    canonical = normalizer.normalize(scenario=scenario, global_config=global_config)
+    
+    # Valid params should be in strategy_params
+    assert canonical.strategy_params["lookback_months"] == 6
+    assert canonical.strategy_params["num_holdings"] == 15
+    
+    # Unknown key should be in extras
+    assert canonical.extras["unknown_custom_key"] == "custom_value"
 
 def test_scenario_normalizer_missing_strategy():
+    """Test that missing strategy raises an error."""
     normalizer = ScenarioNormalizer()
     with pytest.raises(ScenarioNormalizationError, match="missing required 'strategy' key"):
         normalizer.normalize(scenario={"name": "test"}, global_config={})

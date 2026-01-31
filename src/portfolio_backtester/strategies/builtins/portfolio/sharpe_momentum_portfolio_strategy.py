@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, cast, Union
+from typing import Any, Dict, Optional, cast, Union, Mapping, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -13,13 +13,16 @@ from portfolio_backtester.utils.price_data_utils import (
     extract_current_prices,
 )
 
+if TYPE_CHECKING:
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
+
 logger = logging.getLogger(__name__)
 
 
 class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
     """Strategy that uses Sharpe ratio for ranking assets."""
 
-    def __init__(self, strategy_config: Dict[str, Any]):
+    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
 
         params_dict_to_update = self.strategy_config.get("strategy_params", {})

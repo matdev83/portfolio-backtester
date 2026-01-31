@@ -41,9 +41,10 @@ def _resolve_method(config: Dict[str, Any], current_date: Optional[pd.Timestamp]
             return tickers
         except Exception as e:
             raise ValueError(f"Failed to get universe using method '{method_name}': {e}")
-            
+
     elif method_name == "get_all_historical_sp500_components":
         from .universe import get_all_historical_sp500_components
+
         try:
             tickers = get_all_historical_sp500_components()
             if logger.isEnabledFor(logging.DEBUG):
@@ -54,6 +55,7 @@ def _resolve_method(config: Dict[str, Any], current_date: Optional[pd.Timestamp]
 
     elif method_name == "get_all_historical_russell_1000_components":
         from .universe import get_all_historical_russell_1000_components
+
         try:
             tickers = get_all_historical_russell_1000_components()
             if logger.isEnabledFor(logging.DEBUG):
@@ -64,6 +66,7 @@ def _resolve_method(config: Dict[str, Any], current_date: Optional[pd.Timestamp]
 
     elif method_name == "get_all_historical_russell_2000_components":
         from .universe import get_all_historical_russell_2000_components
+
         try:
             tickers = get_all_historical_russell_2000_components()
             if logger.isEnabledFor(logging.DEBUG):
@@ -71,14 +74,14 @@ def _resolve_method(config: Dict[str, Any], current_date: Optional[pd.Timestamp]
             return tickers
         except Exception as e:
             raise ValueError(f"Failed to get universe using method '{method_name}': {e}")
-            
+
     raise ValueError(f"Unknown universe method: {method_name}")
 
 
 def _resolve_fixed(config: Dict[str, Any]) -> List[str]:
     tickers = config.get("tickers", [])
-    if not isinstance(tickers, list):
-        raise ValueError("universe_config.tickers must be a list")
+    if not isinstance(tickers, (list, tuple)):
+        raise ValueError("universe_config.tickers must be a list or tuple")
     if not tickers:
         raise ValueError("universe_config.tickers cannot be empty")
     normalized = [_normalize_ticker(t) for t in tickers]
@@ -108,11 +111,11 @@ def _resolve_named(config: Dict[str, Any]) -> List[str]:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Loaded named universe '{universe_name}' with {len(tickers)} tickers")
             return tickers
-        if not isinstance(universe_names, list):
-            raise ValueError("universe_names must be a list")
+        if not isinstance(universe_names, (list, tuple)):
+            raise ValueError("universe_names must be a list or tuple")
         if not universe_names:
             raise ValueError("universe_names cannot be empty")
-        tickers = load_multiple_named_universes(universe_names)
+        tickers = load_multiple_named_universes(list(universe_names))
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"Loaded {len(universe_names)} named universes with {len(tickers)} unique tickers"

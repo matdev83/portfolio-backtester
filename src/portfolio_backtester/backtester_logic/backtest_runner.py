@@ -253,6 +253,12 @@ class BacktestRunner:
                     self.logger.debug(
                         f"Loaded best parameters from study '{study_name}': {canonical_config.strategy_params}"
                     )
+                
+                # Legacy compatibility: update input dict if provided
+                if isinstance(scenario_config, dict):
+                    if "strategy_params" not in scenario_config:
+                        scenario_config["strategy_params"] = {}
+                    scenario_config["strategy_params"].update(study.best_params)
             except KeyError:
                 self.logger.warning(
                     f"Study '{study_name}' not found. Using default parameters for scenario '{canonical_config.name}'."
