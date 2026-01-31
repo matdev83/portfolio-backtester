@@ -12,12 +12,12 @@ has been split into smaller, maintainable pieces.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime
 from typing import Any, Dict
 
 import pandas as pd
 from rich.console import Console
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Import helpers from their new homes and expose them under the old names
@@ -45,6 +45,10 @@ from ..reporting.parameter_analysis import (
     _create_parameter_correlation_analysis,
     _create_parameter_importance_ranking,
     _create_parameter_robustness_analysis,
+)
+from ..reporting.report_directory_utils import (
+    create_report_directory,
+    generate_content_hash,
 )
 
 __all__ = [
@@ -180,7 +184,7 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
             scenario_name = self.args.scenario_name
             logger.info("Scenario name from args: %s", scenario_name)
         elif self.scenarios and len(self.scenarios) > 0:
-            # Use the first scenario's name
+            # Use first scenario's name
             scenario_name = self.scenarios[0].get("name", "unknown_scenario")
             logger.info("Scenario name from scenarios[0]: %s", scenario_name)
         elif self.results:
@@ -195,8 +199,48 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
         scenario_slug = (
             scenario_name.replace(" ", "_").replace("(", "").replace(")", "").replace('"', "")
         )
-        report_dir = os.path.join("data", "reports", f"{scenario_slug}_{timestamp}")
-        os.makedirs(report_dir, exist_ok=True)
+
+        # Generate content hash for version tracking
+        content_hash = None
+        scenario_path = None
+        strategy_class = None
+
+        # Try to get scenario filename from args (for hash generation)
+        if hasattr(self.args, "scenario_filename") and self.args.scenario_filename:
+            scenario_path = Path(self.args.scenario_filename)
+
+        # Try to get strategy class from scenario config
+        if self.scenarios and len(self.scenarios) > 0:
+            scenario_config = self.scenarios[0]
+            strategy_name = scenario_config.get("strategy")
+            if strategy_name:
+                try:
+                    from ..strategies._core.registry.registry.strategy_registry import (
+                        get_strategy_registry,
+                    )
+
+                    registry = get_strategy_registry()
+                    strategy_class = registry.get_strategy_class(strategy_name)
+                    if strategy_class:
+                        logger.debug(f"Found strategy class: {strategy_class.__name__}")
+                except Exception as e:
+                    logger.warning(f"Could not resolve strategy class for hash generation: {e}")
+
+        # Generate hash if both sources are available
+        if scenario_path or strategy_class:
+            try:
+                content_hash = generate_content_hash(
+                    strategy_class=strategy_class, config_file_path=scenario_path
+                )
+                if content_hash:
+                    logger.info(f"Generated content hash: {content_hash}")
+            except Exception as e:
+                logger.warning(f"Could not generate content hash: {e}")
+
+        # Create report directory with hash-based structure
+        report_dir = create_report_directory(
+            Path("data") / "reports", scenario_slug, content_hash, timestamp
+        )
 
         _generate_performance_table(
             self,
@@ -205,12 +249,12 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
             benchmark_rets,
             "Full-Period Performance",
             trials_map,
-            report_dir,
+            str(report_dir),
         )
-        _generate_transaction_history_csv(self.results, report_dir)
+        _generate_transaction_history_csv(self.results, str(report_dir))
 
-        plot_path = os.path.join(report_dir, "equity_curve.png")
-        _plot_performance_summary(self, benchmark_rets, secondary_save_path=plot_path)
+        plot_path = report_dir / "equity_curve.png"
+        _plot_performance_summary(self, benchmark_rets, secondary_save_path=str(plot_path))
 
         # --------------------------------------------------------------
         # 3) Price charts with trade markers for strategies trading ≤2 symbols
@@ -223,13 +267,13 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
             if len(unique_symbols) > 2:
                 continue  # Skip – too many symbols
             for sym in unique_symbols:
-                output_file = os.path.join(report_dir, f"price_with_trades_{name}_{sym}.png")
+                output_file = report_dir / f"price_with_trades_{name}_{sym}.png"
                 _plot_price_with_trades(
                     self,
                     daily_data_for_display,
                     trade_hist,
                     sym,
-                    output_file,
+                    str(output_file),
                     getattr(self.args, "interactive", False),
                 )
 

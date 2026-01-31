@@ -20,7 +20,8 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
 
     The model is trained on rolling Sortino, relative returns vs benchmark,
     and rolling correlation pair features. It predicts per-symbol weights
-    which are clipped to long-only and normalized to <= 100% exposure.
+    which are clipped to long-only, normalized to 100% exposure, and then
+    optionally scaled by volatility targeting (allowing gross exposure to drift).
     """
 
     def __init__(self, strategy_config: Dict[str, Any]) -> None:
@@ -36,11 +37,15 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
             "feature_windows": [21, 42, 63, 126],
             "correlation_window": 21,
             "label_lookback_days": 126,
+            "label_horizons_days": [21, 63, 126],
+            "label_horizon_weights": [1.0, 1.0, 1.0],
             "training_lookback_days": 504,
             "min_training_dates": 6,
             "min_label_observations": 63,
             "target_return": 0.0,
-            "exposure_penalty": 0.01,
+            "exposure_penalty": 0.0,
+            "pretrain_models": False,
+            "retrain_interval_years": 5,
             "vol_target_enabled": False,
             "target_vol_annual": 0.15,
             "vol_lookback_days": 63,
@@ -56,6 +61,7 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
             params.setdefault(key, value)
 
         self._predictor_cache: dict[str, Any] = {}
+        self._pretrained = False
 
     @classmethod
     def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
@@ -72,15 +78,19 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
             },
             "correlation_window": {"type": "int", "min": 5, "max": 63, "default": 21},
             "label_lookback_days": {"type": "int", "min": 21, "max": 252, "default": 126},
+            "label_horizons_days": {"type": "list", "default": [21, 63, 126]},
+            "label_horizon_weights": {"type": "list", "default": [1.0, 1.0, 1.0]},
             "training_lookback_days": {"type": "int", "min": 63, "max": 756, "default": 504},
             "min_training_dates": {"type": "int", "min": 1, "max": 36, "default": 6},
             "min_label_observations": {"type": "int", "min": 5, "max": 252, "default": 63},
             "target_return": {"type": "float", "min": -0.05, "max": 0.05, "default": 0.0},
-            "exposure_penalty": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.01},
+            "exposure_penalty": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.0},
+            "pretrain_models": {"type": "bool", "default": False},
+            "retrain_interval_years": {"type": "int", "min": 1, "max": 10, "default": 5},
             "vol_target_enabled": {"type": "bool", "default": False},
             "target_vol_annual": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.15},
             "vol_lookback_days": {"type": "int", "min": 10, "max": 252, "default": 63},
-            "vol_max_gross_exposure": {"type": "float", "min": 0.0, "max": 1.0, "default": 1.0},
+            "vol_max_gross_exposure": {"type": "float", "min": 0.0, "max": 2.0, "default": 1.0},
             "price_column_asset": {"type": "str", "default": "Close"},
             "price_column_benchmark": {"type": "str", "default": "Close"},
             "autogluon_presets": {
@@ -108,10 +118,14 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
         """Estimate minimum months required based on daily lookbacks."""
         params = self._get_params_dict()
         feature_windows = self._ensure_int_list(params.get("feature_windows", [126]))
+        label_horizons = self._ensure_int_list(params.get("label_horizons_days", []))
+        if not label_horizons:
+            label_horizons = [int(params.get("label_lookback_days", 126))]
         max_days = max(
             feature_windows
             + [
                 int(params.get("label_lookback_days", 126)),
+                max(label_horizons),
                 int(params.get("training_lookback_days", 504)),
                 int(params.get("vol_lookback_days", 63)),
             ]
@@ -148,37 +162,43 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
         if not valid_assets:
             return self._empty_weights(all_historical_data, current_date, original_assets)
 
-        close_df = self._extract_close_prices(
+        close_df_all = self._extract_close_prices(
             all_historical_data, params.get("price_column_asset", "Close")
         )
-        benchmark_close = self._extract_benchmark_close(
+        benchmark_close_all = self._extract_benchmark_close(
             benchmark_historical_data, params.get("price_column_benchmark", "Close")
         )
+        if benchmark_close_all.empty:
+            logger.warning("Benchmark data missing; using universe average close as proxy.")
+            if close_df_all.empty:
+                return self._empty_weights(all_historical_data, current_date, original_assets)
+            benchmark_close_all = close_df_all.mean(axis=1)
 
-        valid_assets = [asset for asset in valid_assets if asset in close_df.columns]
+        available_assets = [asset for asset in original_assets if asset in close_df_all.columns]
+        if not available_assets:
+            return self._empty_weights(all_historical_data, current_date, original_assets)
+
+        valid_assets = [asset for asset in valid_assets if asset in close_df_all.columns]
         if not valid_assets:
             return self._empty_weights(all_historical_data, current_date, original_assets)
 
-        close_df = close_df.loc[close_df.index <= current_date, valid_assets]
-        benchmark_close = benchmark_close.loc[benchmark_close.index <= current_date]
+        close_df_all = close_df_all.loc[:, available_assets]
+        returns_df_all = close_df_all.pct_change(fill_method=None).dropna(how="all")
+
+        close_df = close_df_all.loc[close_df_all.index <= current_date, valid_assets]
+        benchmark_close = benchmark_close_all.loc[benchmark_close_all.index <= current_date]
 
         if close_df.empty or benchmark_close.empty:
             return self._empty_weights(all_historical_data, current_date, original_assets)
 
-        returns_df = close_df.pct_change(fill_method=None)
-        returns_df = returns_df.dropna(how="all")
+        returns_df = close_df.pct_change(fill_method=None).dropna(how="all")
 
-        training_dates = self._get_training_dates(
-            current_date=current_date,
-            available_dates=pd.DatetimeIndex(close_df.index),
-            training_lookback_days=int(params.get("training_lookback_days", 504)),
-        )
-        if len(training_dates) < int(params.get("min_training_dates", 6)):
-            return self._empty_weights(all_historical_data, current_date, original_assets)
+        if bool(params.get("pretrain_models", False)) and not self._pretrained:
+            self._pretrain_models(close_df_all, benchmark_close_all, returns_df_all)
+            self._pretrained = True
 
-        feature_dates = training_dates + [current_date]
         feature_frame = self._build_feature_frame(
-            dates=feature_dates,
+            dates=[current_date],
             close_df=close_df,
             benchmark_close=benchmark_close,
             returns_df=returns_df,
@@ -186,30 +206,23 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
         if feature_frame.empty:
             return self._empty_weights(all_historical_data, current_date, original_assets)
 
-        labels = self._build_label_frame(
-            training_dates=training_dates,
-            returns_df=returns_df,
-            min_observations=int(params.get("min_label_observations", 63)),
-            label_lookback_days=int(params.get("label_lookback_days", 126)),
-            target_return=float(params.get("target_return", 0.0)),
-            exposure_penalty=float(params.get("exposure_penalty", 0.01)),
+        model_date = self._get_model_anchor_date(current_date, pd.DatetimeIndex(close_df_all.index))
+        feature_signature = self._get_feature_signature()
+        label_signature = self._get_label_signature()
+        universe_signature = self._get_universe_signature(close_df_all)
+        predictor = self._get_or_train_predictor(
+            model_date,
+            feature_signature,
+            label_signature,
+            universe_signature,
+            close_df_all,
+            benchmark_close_all,
+            returns_df_all,
         )
-        if labels.empty:
-            return self._empty_weights(all_historical_data, current_date, original_assets)
-
-        training_data = feature_frame.merge(
-            labels, on=["date", "symbol"], how="inner", validate="many_to_one"
-        )
-        if training_data.empty:
-            return self._empty_weights(all_historical_data, current_date, original_assets)
-
-        training_data = training_data.drop(columns=["date"], errors="ignore")
-        predictor = self._get_or_train_predictor(training_data, current_date)
         if predictor is None:
             return self._empty_weights(all_historical_data, current_date, original_assets)
 
-        inference_data = feature_frame.loc[feature_frame["date"] == current_date].copy()
-        inference_data = inference_data.drop(columns=["date", "target_weight"], errors="ignore")
+        inference_data = feature_frame.drop(columns=["date", "target_weight"], errors="ignore")
         predictions = predictor.predict(inference_data)
 
         predicted_weights = pd.Series(
@@ -280,6 +293,22 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
             return [int(v) for v in value]
         return [int(value)]
 
+    def _ensure_float_list(self, value: Any) -> List[float]:
+        if isinstance(value, list):
+            return [float(v) for v in value]
+        return [float(value)]
+
+    def _normalize_label_weights(self, horizons: List[int], weights: List[float]) -> List[float]:
+        if not horizons:
+            return []
+        if len(weights) != len(horizons):
+            weights = [1.0] * len(horizons)
+        cleaned = [max(0.0, float(weight)) for weight in weights]
+        total = float(sum(cleaned))
+        if total <= 0.0:
+            return [1.0 / len(horizons)] * len(horizons)
+        return [weight / total for weight in cleaned]
+
     def _get_training_dates(
         self,
         current_date: pd.Timestamp,
@@ -333,28 +362,19 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
     ) -> pd.DataFrame:
         params = self._get_params_dict()
         feature_windows = self._ensure_int_list(params.get("feature_windows", [21, 42, 63, 126]))
-        correlation_window = int(params.get("correlation_window", 21))
         target_return = float(params.get("target_return", 0.0))
 
         symbols = list(close_df.columns)
-        sanitized = {symbol: self._sanitize_symbol(symbol) for symbol in symbols}
 
         sortino_frames = self._calculate_sortino_frames(returns_df, feature_windows, target_return)
         return_diff_frames = self._calculate_return_diff_frames(
             close_df, benchmark_close, feature_windows
         )
-        corr_columns = [
-            f"corr_{correlation_window}d_{sanitized[base]}_{sanitized[other]}"
-            for base in symbols
-            for other in symbols
-            if other != base
-        ]
 
         records: List[Dict[str, Any]] = []
         for date in dates:
             if date not in close_df.index:
                 continue
-            corr_matrix = self._calculate_corr_matrix(returns_df, date, correlation_window)
             for symbol in symbols:
                 row: Dict[str, Any] = {"date": date, "symbol": symbol}
                 for window in feature_windows:
@@ -364,27 +384,12 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
                     row[f"ret_diff_{window}d"] = float(
                         return_diff_frames[window].get(symbol, pd.Series()).get(date, 0.0)
                     )
-                for other in symbols:
-                    if other == symbol:
-                        continue
-                    column = f"corr_{correlation_window}d_{sanitized[symbol]}_{sanitized[other]}"
-                    corr_value = 0.0
-                    if (
-                        corr_matrix is not None
-                        and symbol in corr_matrix.index
-                        and other in corr_matrix.columns
-                    ):
-                        corr_value = float(corr_matrix.at[symbol, other])
-                    row[column] = corr_value
                 records.append(row)
 
         if not records:
             return pd.DataFrame()
 
         feature_frame = pd.DataFrame.from_records(records)
-        for column in corr_columns:
-            if column not in feature_frame.columns:
-                feature_frame[column] = 0.0
         return feature_frame.fillna(0.0)
 
     def _calculate_sortino_frames(
@@ -442,19 +447,41 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
         training_dates: List[pd.Timestamp],
         returns_df: pd.DataFrame,
         min_observations: int,
-        label_lookback_days: int,
+        label_horizons_days: List[int],
+        label_horizon_weights: List[float],
         target_return: float,
         exposure_penalty: float,
     ) -> pd.DataFrame:
+        horizons = [int(h) for h in label_horizons_days if int(h) > 0]
+        if not horizons:
+            return pd.DataFrame()
+        normalized_weights = self._normalize_label_weights(horizons, label_horizon_weights)
+
         records: List[Dict[str, Any]] = []
         for date in training_dates:
-            returns_window = returns_df.loc[:date].tail(label_lookback_days)
-            if len(returns_window) < min_observations:
+            combined = pd.Series(0.0, index=returns_df.columns, dtype=float)
+            valid_any = False
+            for horizon, weight in zip(horizons, normalized_weights):
+                if weight <= 0.0:
+                    continue
+                forward_window = returns_df.loc[returns_df.index > date].head(horizon)
+                required_obs = min(min_observations, horizon)
+                if len(forward_window) < required_obs:
+                    continue
+                horizon_weights = self._optimize_sortino_weights(
+                    forward_window, target_return=target_return, exposure_penalty=exposure_penalty
+                )
+                combined = combined.add(horizon_weights * weight, fill_value=0.0)
+                valid_any = True
+
+            if not valid_any:
                 continue
-            weights = self._optimize_sortino_weights(
-                returns_window, target_return=target_return, exposure_penalty=exposure_penalty
-            )
-            for symbol, weight in weights.items():
+
+            combined = combined.fillna(0.0).clip(lower=0.0)
+            total = float(combined.sum())
+            if total > 0.0:
+                combined = combined / total
+            for symbol, weight in combined.items():
                 records.append({"date": date, "symbol": symbol, "target_weight": float(weight)})
 
         if not records:
@@ -476,9 +503,6 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
         bounds = [(0.0, 1.0) for _ in range(n_assets)]
 
         def objective(weights: np.ndarray) -> float:
-            exposure = float(np.sum(weights))
-            if exposure <= 1e-8:
-                return 0.0
             portfolio_returns = returns_np @ weights
             mean_ret = float(np.mean(portfolio_returns))
             downside = portfolio_returns[portfolio_returns < target_return]
@@ -487,10 +511,9 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
             else:
                 downside_dev = float(np.sqrt(np.mean((downside - target_return) ** 2)))
             sortino = (mean_ret - target_return) / (downside_dev + 1e-8)
-            penalty = exposure_penalty * max(0.0, 1.0 - exposure)
-            return -(sortino - penalty)
+            return -sortino
 
-        constraints = [{"type": "ineq", "fun": lambda w: 1.0 - np.sum(w)}]
+        constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
         result = minimize(
             objective,
             initial,
@@ -506,16 +529,191 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
         weights = np.clip(result.x, 0.0, 1.0)
         return pd.Series(weights, index=returns_window.columns, dtype=float)
 
-    def _get_or_train_predictor(self, training_data: pd.DataFrame, current_date: pd.Timestamp):
+    def _get_feature_signature(self) -> str:
         params = self._get_params_dict()
-        feature_cols = [str(col) for col in training_data.columns if col != "target_weight"]
-        feature_signature = hashlib.sha1(
-            "|".join(sorted(feature_cols)).encode("utf-8")
-        ).hexdigest()[:10]
+        feature_windows = self._ensure_int_list(params.get("feature_windows", [21, 42, 63, 126]))
+        target_return = float(params.get("target_return", 0.0))
+        payload = f"sortino:{feature_windows}|ret_diff:{feature_windows}|target:{target_return}"
+        return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:10]
+
+    def _get_label_signature(self) -> str:
+        params = self._get_params_dict()
+        horizons = self._ensure_int_list(params.get("label_horizons_days", []))
+        if not horizons:
+            horizons = [int(params.get("label_lookback_days", 126))]
+        weights = self._ensure_float_list(params.get("label_horizon_weights", []))
+        normalized = self._normalize_label_weights(horizons, weights)
+        payload = (
+            f"horizons:{horizons}|weights:{normalized}|minobs:{params.get('min_label_observations', 63)}|"
+            f"target:{params.get('target_return', 0.0)}|constraint:sum_eq_1"
+        )
+        return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:10]
+
+    def _get_universe_signature(self, close_df: pd.DataFrame) -> str:
+        columns = [str(col) for col in close_df.columns]
+        payload = "|".join(sorted(columns))
+        return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:10]
+
+    def _get_model_cache_key(
+        self,
+        model_date: pd.Timestamp,
+        feature_signature: str,
+        label_signature: str,
+        universe_signature: str,
+    ) -> str:
+        params = self._get_params_dict()
         preset = str(params.get("autogluon_presets", "medium_quality"))
         time_limit = str(params.get("autogluon_time_limit_sec", 60))
-        config_signature = hashlib.sha1(f"{preset}|{time_limit}".encode("utf-8")).hexdigest()[:6]
-        cache_key = f"{current_date.strftime('%Y-%m-%d')}_{config_signature}_{feature_signature}"
+        retrain_years = str(params.get("retrain_interval_years", 5))
+        config_signature = hashlib.sha1(
+            f"{preset}|{time_limit}|{retrain_years}".encode("utf-8")
+        ).hexdigest()[:6]
+        return (
+            f"{model_date.strftime('%Y-%m-%d')}_{config_signature}_"
+            f"{feature_signature}_{label_signature}_{universe_signature}"
+        )
+
+    def _get_model_anchor_date(
+        self, current_date: pd.Timestamp, available_dates: pd.DatetimeIndex
+    ) -> pd.Timestamp:
+        params = self._get_params_dict()
+        interval_years = int(params.get("retrain_interval_years", 5))
+        if interval_years <= 0 or available_dates.empty:
+            return current_date
+
+        start_date = pd.Timestamp(available_dates.min())
+        min_history_days = int(params.get("training_lookback_days", 504))
+        min_history_idx = min(max(min_history_days, 0), len(available_dates) - 1)
+        min_history_date = pd.Timestamp(available_dates[min_history_idx])
+        start_year = start_date.year
+        block_index = max(0, (current_date.year - start_year) // interval_years)
+        block_start_year = start_year + block_index * interval_years
+        anchor = pd.Timestamp(year=block_start_year, month=1, day=1)
+        if available_dates.tz is not None:
+            anchor = anchor.tz_localize(available_dates.tz)
+
+        if anchor < min_history_date:
+            anchor = min_history_date
+
+        candidates = available_dates[
+            (available_dates >= anchor) & (available_dates <= current_date)
+        ]
+        if candidates.empty:
+            candidates = available_dates[available_dates <= current_date]
+        return pd.Timestamp(candidates[0]) if not candidates.empty else current_date
+
+    def _compute_model_dates(self, available_dates: pd.DatetimeIndex) -> List[pd.Timestamp]:
+        params = self._get_params_dict()
+        interval_years = int(params.get("retrain_interval_years", 5))
+        if interval_years <= 0 or available_dates.empty:
+            return []
+
+        start_date = pd.Timestamp(available_dates.min())
+        min_history_days = int(params.get("training_lookback_days", 504))
+        min_history_idx = min(max(min_history_days, 0), len(available_dates) - 1)
+        min_history_date = pd.Timestamp(available_dates[min_history_idx])
+        end_date = pd.Timestamp(available_dates.max())
+        dates: List[pd.Timestamp] = []
+        for year in range(start_date.year, end_date.year + 1, interval_years):
+            anchor = pd.Timestamp(year=year, month=1, day=1)
+            if available_dates.tz is not None:
+                anchor = anchor.tz_localize(available_dates.tz)
+            if anchor < min_history_date:
+                continue
+            candidates = available_dates[available_dates >= anchor]
+            if candidates.empty:
+                continue
+            dates.append(pd.Timestamp(candidates[0]))
+
+        unique_dates = sorted(set(dates))
+        return unique_dates
+
+    def _build_training_data_for_date(
+        self,
+        model_date: pd.Timestamp,
+        close_df: pd.DataFrame,
+        benchmark_close: pd.Series,
+        returns_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        params = self._get_params_dict()
+        close_df = close_df.loc[close_df.index <= model_date]
+        benchmark_close = benchmark_close.loc[benchmark_close.index <= model_date]
+        returns_df = returns_df.loc[returns_df.index <= model_date]
+        training_dates = self._get_training_dates(
+            current_date=model_date,
+            available_dates=pd.DatetimeIndex(close_df.index),
+            training_lookback_days=int(params.get("training_lookback_days", 504)),
+        )
+        if len(training_dates) < int(params.get("min_training_dates", 6)):
+            return pd.DataFrame()
+
+        feature_dates = training_dates + [model_date]
+        feature_frame = self._build_feature_frame(
+            dates=feature_dates,
+            close_df=close_df,
+            benchmark_close=benchmark_close,
+            returns_df=returns_df,
+        )
+        if feature_frame.empty:
+            return pd.DataFrame()
+
+        labels = self._build_label_frame(
+            training_dates=training_dates,
+            returns_df=returns_df,
+            min_observations=int(params.get("min_label_observations", 63)),
+            label_horizons_days=self._ensure_int_list(
+                params.get("label_horizons_days", [int(params.get("label_lookback_days", 126))])
+            ),
+            label_horizon_weights=self._ensure_float_list(params.get("label_horizon_weights", [])),
+            target_return=float(params.get("target_return", 0.0)),
+            exposure_penalty=float(params.get("exposure_penalty", 0.01)),
+        )
+        if labels.empty:
+            return pd.DataFrame()
+
+        training_data = feature_frame.merge(
+            labels, on=["date", "symbol"], how="inner", validate="many_to_one"
+        )
+        if training_data.empty:
+            return pd.DataFrame()
+
+        return training_data.drop(columns=["date"], errors="ignore")
+
+    def _pretrain_models(
+        self,
+        close_df: pd.DataFrame,
+        benchmark_close: pd.Series,
+        returns_df: pd.DataFrame,
+    ) -> None:
+        feature_signature = self._get_feature_signature()
+        label_signature = self._get_label_signature()
+        universe_signature = self._get_universe_signature(close_df)
+        model_dates = self._compute_model_dates(pd.DatetimeIndex(close_df.index))
+        for model_date in model_dates:
+            self._get_or_train_predictor(
+                model_date,
+                feature_signature,
+                label_signature,
+                universe_signature,
+                close_df,
+                benchmark_close,
+                returns_df,
+            )
+
+    def _get_or_train_predictor(
+        self,
+        model_date: pd.Timestamp,
+        feature_signature: str,
+        label_signature: str,
+        universe_signature: str,
+        close_df: pd.DataFrame,
+        benchmark_close: pd.Series,
+        returns_df: pd.DataFrame,
+    ):
+        params = self._get_params_dict()
+        cache_key = self._get_model_cache_key(
+            model_date, feature_signature, label_signature, universe_signature
+        )
         if cache_key in self._predictor_cache:
             return self._predictor_cache[cache_key]
 
@@ -525,6 +723,12 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
             if predictor is not None:
                 self._predictor_cache[cache_key] = predictor
                 return predictor
+
+        training_data = self._build_training_data_for_date(
+            model_date, close_df, benchmark_close, returns_df
+        )
+        if training_data.empty:
+            return None
 
         try:
             predictor = self._train_predictor(training_data, model_path)
@@ -596,10 +800,10 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
         if cleaned.empty:
             return cleaned
 
-        cleaned = self._apply_vol_target(cleaned, returns_df, current_date)
         total = float(cleaned.sum())
-        if total > 1.0:
+        if total > 0.0:
             cleaned = cleaned / total
+        cleaned = self._apply_vol_target(cleaned, returns_df, current_date)
         return cleaned
 
     def _apply_vol_target(

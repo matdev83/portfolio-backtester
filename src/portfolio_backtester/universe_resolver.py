@@ -51,6 +51,26 @@ def _resolve_method(config: Dict[str, Any], current_date: Optional[pd.Timestamp]
             return tickers
         except Exception as e:
             raise ValueError(f"Failed to get universe using method '{method_name}': {e}")
+
+    elif method_name == "get_all_historical_russell_1000_components":
+        from .universe import get_all_historical_russell_1000_components
+        try:
+            tickers = get_all_historical_russell_1000_components()
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Loaded {len(tickers)} tickers using method '{method_name}'")
+            return tickers
+        except Exception as e:
+            raise ValueError(f"Failed to get universe using method '{method_name}': {e}")
+
+    elif method_name == "get_all_historical_russell_2000_components":
+        from .universe import get_all_historical_russell_2000_components
+        try:
+            tickers = get_all_historical_russell_2000_components()
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Loaded {len(tickers)} tickers using method '{method_name}'")
+            return tickers
+        except Exception as e:
+            raise ValueError(f"Failed to get universe using method '{method_name}': {e}")
             
     raise ValueError(f"Unknown universe method: {method_name}")
 

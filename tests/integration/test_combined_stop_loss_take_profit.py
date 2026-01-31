@@ -194,15 +194,17 @@ class TestCombinedStopLossTakeProfit:
         interfering with each other.
         """
         mock_backtester = Mock()
-        
+
         # Configure mock to return proper data structures
         mock_result = Mock()
         mock_result.returns = pd.Series([0.01, 0.02], index=pd.date_range("2023-02-01", periods=2))
         mock_result.metrics = {"total_return": 0.03, "sharpe_ratio": 1.5, "volatility": 0.1}
         mock_result.trade_history = pd.DataFrame()
-        mock_result.performance_stats = {"final_weights": {"AAPL": 0.25, "MSFT": 0.25, "GOOGL": 0.25, "AMZN": 0.25}}
+        mock_result.performance_stats = {
+            "final_weights": {"AAPL": 0.25, "MSFT": 0.25, "GOOGL": 0.25, "AMZN": 0.25}
+        }
         mock_backtester.backtest_strategy.return_value = mock_result
-        
+
         evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Verify both handlers are configured correctly
@@ -276,6 +278,12 @@ class TestCombinedStopLossTakeProfit:
         }
 
         mock_backtester = Mock()
+        mock_result = Mock()
+        mock_result.returns = pd.Series([0.01, 0.02], index=pd.date_range("2023-02-01", periods=2))
+        mock_result.metrics = {"total_return": 0.03, "sharpe_ratio": 1.5, "volatility": 0.1}
+        mock_result.trade_history = pd.DataFrame()
+        mock_result.performance_stats = {"final_weights": {"AAPL": 0.5, "MSFT": 0.5}}
+        mock_backtester.backtest_strategy.return_value = mock_result
         evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Run all three scenarios
@@ -293,6 +301,8 @@ class TestCombinedStopLossTakeProfit:
                 window=test_window,
                 strategy=strategy,
                 daily_data=daily_ohlc_data,
+                full_monthly_data=daily_ohlc_data.resample("ME").last(),
+                full_rets_daily=daily_ohlc_data.pct_change().fillna(0),
                 benchmark_data=benchmark_data,
                 universe_tickers=["AAPL", "MSFT"],
                 benchmark_ticker="SPY",
@@ -467,6 +477,12 @@ class TestCombinedStopLossTakeProfit:
 
         strategy = DummySignalStrategy(config)
         mock_backtester = Mock()
+        mock_result = Mock()
+        mock_result.returns = pd.Series([0.01, 0.02], index=pd.date_range("2023-02-01", periods=2))
+        mock_result.metrics = {"total_return": 0.03, "sharpe_ratio": 1.5, "volatility": 0.1}
+        mock_result.trade_history = pd.DataFrame()
+        mock_result.performance_stats = {"final_weights": {"AAPL": 0.5, "MSFT": 0.5}}
+        mock_backtester.backtest_strategy.return_value = mock_result
         evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Verify different parameters are set correctly
@@ -485,6 +501,8 @@ class TestCombinedStopLossTakeProfit:
             window=test_window,
             strategy=strategy,
             daily_data=daily_ohlc_data,
+            full_monthly_data=daily_ohlc_data.resample("ME").last(),
+            full_rets_daily=daily_ohlc_data.pct_change().fillna(0),
             benchmark_data=benchmark_data,
             universe_tickers=["AAPL", "MSFT", "GOOGL"],
             benchmark_ticker="SPY",
@@ -627,6 +645,12 @@ class TestCombinedStopLossTakeProfit:
         Compare performance when using both systems vs individual systems.
         """
         mock_backtester = Mock()
+        mock_result = Mock()
+        mock_result.returns = pd.Series([0.01, 0.02], index=pd.date_range("2023-02-01", periods=2))
+        mock_result.metrics = {"total_return": 0.03, "sharpe_ratio": 1.5, "volatility": 0.1}
+        mock_result.trade_history = pd.DataFrame()
+        mock_result.performance_stats = {"final_weights": {"AAPL": 0.5, "MSFT": 0.5}}
+        mock_backtester.backtest_strategy.return_value = mock_result
         evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Base configuration
@@ -683,6 +707,8 @@ class TestCombinedStopLossTakeProfit:
                 window=test_window,
                 strategy=strategy,
                 daily_data=daily_ohlc_data,
+                full_monthly_data=daily_ohlc_data.resample("ME").last(),
+                full_rets_daily=daily_ohlc_data.pct_change().fillna(0),
                 benchmark_data=benchmark_data,
                 universe_tickers=["AAPL", "MSFT", "GOOGL"],
                 benchmark_ticker="SPY",
@@ -741,6 +767,12 @@ class TestCombinedStopLossTakeProfit:
 
         strategy = DummyPortfolioStrategy(config)
         mock_backtester = Mock()
+        mock_result = Mock()
+        mock_result.returns = pd.Series([0.01, 0.02], index=pd.date_range("2023-02-01", periods=2))
+        mock_result.metrics = {"total_return": 0.03, "sharpe_ratio": 1.5, "volatility": 0.1}
+        mock_result.trade_history = pd.DataFrame()
+        mock_result.performance_stats = {"final_weights": {"AAPL": 0.5, "MSFT": 0.5}}
+        mock_backtester.backtest_strategy.return_value = mock_result
         evaluator = WindowEvaluator(backtester=mock_backtester)
 
         # Verify both systems are configured
@@ -755,6 +787,8 @@ class TestCombinedStopLossTakeProfit:
             window=test_window,
             strategy=strategy,
             daily_data=daily_ohlc_data,
+            full_monthly_data=daily_ohlc_data.resample("ME").last(),
+            full_rets_daily=daily_ohlc_data.pct_change().fillna(0),
             benchmark_data=benchmark_data,
             universe_tickers=["AAPL", "MSFT", "GOOGL", "AMZN"],
             benchmark_ticker="SPY",

@@ -115,8 +115,11 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
         Raises:
             ImportError: If market-data-multi-provider is not installed
         """
+        # Filter out invalid empty tickers
+        tickers = [t for t in tickers if t and t.strip()]
+
         if not tickers:
-            logger.warning("No tickers provided")
+            logger.warning("No valid tickers provided after filtering empty strings")
             return pd.DataFrame()
 
         logger.info(f"Fetching {len(tickers)} tickers from {start_date} to {end_date} via MDMP")

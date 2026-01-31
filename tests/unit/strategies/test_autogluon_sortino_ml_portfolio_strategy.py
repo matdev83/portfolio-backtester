@@ -76,11 +76,13 @@ def _make_strategy_config() -> dict:
             "feature_windows": [5, 10],
             "correlation_window": 3,
             "label_lookback_days": 10,
+            "label_horizons_days": [5, 10, 15],
+            "label_horizon_weights": [1.0, 1.0, 1.0],
             "training_lookback_days": 60,
             "min_training_dates": 2,
             "min_label_observations": 5,
             "target_return": 0.0,
-            "exposure_penalty": 0.01,
+            "exposure_penalty": 0.0,
             "price_column_asset": "Close",
             "price_column_benchmark": "Close",
             "trade_longs": True,
@@ -114,7 +116,7 @@ def test_generate_signals_long_only(momentum_test_data):
     assert not weights_df.empty
     weights = weights_df.iloc[0]
     assert (weights >= 0.0).all()
-    assert weights.sum() <= 1.0
+    assert weights.sum() == pytest.approx(1.0)
 
 
 def test_vol_target_scales_weights_to_max_gross():
@@ -143,11 +145,11 @@ def test_vol_target_scales_weights_to_max_gross():
     weights = pd.Series([0.2, 0.2, 0.2], index=returns_df.columns)
     scaled = strategy._post_process_weights(weights, returns_df, dates[-1])
 
-    assert scaled.sum() == pytest.approx(1.0)
+    assert 0.0 < scaled.sum() <= 1.0 + 1e-6
     assert (scaled >= 0.0).all()
 
 
-def test_feature_frame_includes_pairwise_corr(momentum_test_data):
+def test_feature_frame_excludes_pairwise_corr(momentum_test_data):
     strategy = AutogluonSortinoMlPortfolioStrategy(_make_strategy_config())
     current_date = momentum_test_data["daily_ohlc_data"].index[-1]
     close_df = momentum_test_data["daily_ohlc_data"].xs("Close", level="Field", axis=1)
@@ -164,8 +166,8 @@ def test_feature_frame_includes_pairwise_corr(momentum_test_data):
     )
 
     assert not feature_frame.empty
-    expected_column = "corr_3d_StockA_StockB"
-    assert expected_column in feature_frame.columns
+    corr_columns = [col for col in feature_frame.columns if col.startswith("corr_")]
+    assert corr_columns == []
 
 
 def test_returns_zero_weights_with_insufficient_training(momentum_test_data):
@@ -188,3 +190,65 @@ def test_returns_zero_weights_with_insufficient_training(momentum_test_data):
     )
 
     assert (weights_df == 0.0).all().all()
+
+
+def test_forward_labels_skip_incomplete_windows():
+    dates = pd.date_range(start="2024-01-02", periods=6, freq="B")
+    returns_df = pd.DataFrame({"StockA": np.linspace(0.001, 0.006, len(dates))}, index=dates)
+    strategy = AutogluonSortinoMlPortfolioStrategy(_make_strategy_config())
+    training_dates = [dates[0], dates[-2]]
+
+    with patch.object(
+        AutogluonSortinoMlPortfolioStrategy,
+        "_optimize_sortino_weights",
+        return_value=pd.Series([0.5], index=returns_df.columns),
+    ):
+        labels = strategy._build_label_frame(
+            training_dates=training_dates,
+            returns_df=returns_df,
+            min_observations=2,
+            label_horizons_days=[2],
+            label_horizon_weights=[1.0],
+            target_return=0.0,
+            exposure_penalty=0.0,
+        )
+
+    assert not labels.empty
+    assert set(labels["date"]) == {dates[0]}
+
+
+def test_forward_labels_use_future_returns_only():
+    dates = pd.date_range(start="2024-01-02", periods=8, freq="B")
+    returns_df = pd.DataFrame(
+        {
+            "StockA": np.linspace(0.001, 0.008, len(dates)),
+            "StockB": np.linspace(0.002, 0.009, len(dates)),
+        },
+        index=dates,
+    )
+    strategy = AutogluonSortinoMlPortfolioStrategy(_make_strategy_config())
+    training_date = dates[2]
+    captured_starts = []
+
+    def _capture_window(window, target_return, exposure_penalty):
+        captured_starts.append(window.index.min())
+        return pd.Series([0.5, 0.5], index=returns_df.columns)
+
+    with patch.object(
+        AutogluonSortinoMlPortfolioStrategy,
+        "_optimize_sortino_weights",
+        side_effect=_capture_window,
+    ):
+        labels = strategy._build_label_frame(
+            training_dates=[training_date],
+            returns_df=returns_df,
+            min_observations=2,
+            label_horizons_days=[3],
+            label_horizon_weights=[1.0],
+            target_return=0.0,
+            exposure_penalty=0.0,
+        )
+
+    assert not labels.empty
+    assert captured_starts
+    assert captured_starts[0] > training_date

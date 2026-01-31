@@ -199,6 +199,34 @@ Note: the default AutoGluon scenario starts at the first date when all
 universe tickers have data (`min_universe_coverage: 1.0`). Add explicit
 `start_date`/`end_date` if you want shorter runs.
 
+AutoGluon models are pre-trained on a 5-year schedule by default
+(`pretrain_models: true`, `retrain_interval_years: 5`) and reused across
+rebalance dates to keep backtests and optimization runs practical. The
+default feature set omits pairwise correlation features to reduce model
+complexity and training time.
+
+Labels for the AutoGluon model are generated from forward Sortino-optimized
+weights. Use `label_horizons_days` and `label_horizon_weights` in the scenario
+to adjust horizon selection. The current default scenario uses a single
+3-month horizon and normalizes labels to 100% exposure. Volatility targeting
+can then scale weights up or down (gross exposure can drift). Exposure penalty
+is disabled by default.
+
+### Universe Search (Approximate)
+
+For quick universe experiments without retraining the model for each
+combination, you can sample random subsets using the baseline model weights:
+
+```bash
+.venv\Scripts\python.exe scripts/universe_search.py \
+  --scenario-filename "config/scenarios/builtins/portfolio/autogluon_sortino_ml_portfolio_strategy/default.yaml" \
+  --subset-size 12 \
+  --n-samples 25 \
+  --metric Sortino
+```
+
+Results are saved under `data/reports/universe_search_<timestamp>/`.
+
 The backtest will:
 
 1. Load historical data for the configured universe

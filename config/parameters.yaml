@@ -8,15 +8,15 @@ GLOBAL_CONFIG:
 
   # MDMP fetch configuration (used when data_source == "mdmp")
   data_source_config:
-    # Prefer yfinance because some environments may block stooq.com.
-    preferred_provider: "yfinance"
+    # Use stooq for better historical coverage of Russell tickers.
+    preferred_provider: "stooq"
 
     # Disable fallbacks to providers that may require auth (e.g., tradingview)
     # to prevent "provider not available" failures from zeroing out otherwise-fine symbols.
     allow_fallbacks: false
 
-    # Limit per-call parallelism inside MDMP to reduce provider throttling / deadlocks.
-    max_workers: 2
+    # Increase parallelism for R2K scale while staying safe for the system.
+    max_workers: 5
 
     # Cache max-age (seconds) for MDMP reads; 14400 = 4 hours.
     cache_max_age_seconds: 14400

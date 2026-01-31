@@ -24,6 +24,8 @@ This document provides comprehensive instructions for AI coding agents working o
 14. [API Stability & Protected Signatures](#api-stability--protected-signatures)
 15. [Agent Development Principles](#agent-development-principles)
 16. [Pull Request Workflow](#pull-request-workflow)
+17. [Kiro-style SDD Workflows](#kiro-style-sdd-workflows)
+18. [Project Steering Management](#project-steering-management)
 
 ---
 
@@ -785,6 +787,62 @@ Before marking any task complete, you **MUST**:
 - [ ] Tests for new functionality
 - [ ] No hardcoded configuration
 - [ ] Provider interfaces used (no legacy patterns)
+
+---
+
+## Kiro-style SDD Workflows
+
+The project implements **Spec-Driven Development (SDD)** using the Kiro framework. This ensures that features are well-defined before implementation begins.
+
+### Usage Context & Detection
+
+**Agents must not force the use of Kiro-based SDD.** 
+
+- **Check User Intent**: Before starting a task, determine if it is part of a Kiro workflow.
+- **SDD Mode**: Only use Kiro workflows if the user explicitly uses `/kiro` commands, mentions "Kiro", "specification", or asks for the SDD process.
+- **Direct Mode**: If the user provides direct instructions without mentioning Kiro, follow the standard workflow (Understand → Plan → Implement → Verify) without creating Kiro spec files.
+
+### Lifecycle of a Specification
+
+Specifications follow a strict phase-separated lifecycle in `.kiro/specs/[feature-name]/`:
+
+1.  **Init**: Initialize the spec directory and metadata.
+2.  **Requirements**: Define "what" needs to be built (using EARS format).
+3.  **Design**: Define "how" it will be built (architecture, components).
+4.  **Tasks**: Break down the design into actionable, parallelizable tasks.
+5.  **Implementation**: Execute the tasks and verify against requirements.
+
+### Using Kiro Slash Commands
+
+Agents should use the following slash commands (via `Task` or direct invocation if supported) to manage the SDD lifecycle:
+
+- `/kiro:spec-init <description>`: Start a new feature spec.
+- `/kiro:spec-requirements <feature>`: Generate/update requirements.
+- `/kiro:spec-design <feature>`: Create/update technical design.
+- `/kiro:spec-tasks <feature>`: Generate implementation task list.
+- `/kiro:spec-impl <feature>`: Execute implementation based on tasks.
+- `/kiro:spec-status <feature>`: Check progress of a specification.
+
+---
+
+## Project Steering Management
+
+**Steering files** in `.kiro/steering/` serve as persistent project memory. They capture patterns and principles that guide development.
+
+### Core Steering Files
+
+| File | Purpose |
+|------|---------|
+| `product.md` | Core purpose, value proposition, and high-level capabilities. |
+| `tech.md` | Frameworks, technology decisions, and coding standards. |
+| `structure.md` | Project organization, naming conventions, and import patterns. |
+
+### Steering Principles for Agents
+
+- **Patterns over Lists**: Document architectural patterns, not exhaustive file listings.
+- **Golden Rule**: If new code follows existing patterns, steering shouldn't need updating.
+- **Preservation**: User customizations in steering files are sacred; updates should be additive.
+- **Syncing**: Use `/kiro:steering` to sync codebase changes back to steering files to prevent "knowledge drift".
 
 ---
 

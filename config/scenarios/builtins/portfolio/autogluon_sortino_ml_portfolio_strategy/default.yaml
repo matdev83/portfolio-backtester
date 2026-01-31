@@ -16,53 +16,52 @@ benchmark_ticker: AMEX:SPY
 universe_config:
   type: fixed
   tickers:
-    - AMEX:SPY
-    - AMEX:IWM
-    - AMEX:XLK
-    - AMEX:XLE
-    - AMEX:XLF
-    - AMEX:XLI
-    - AMEX:XLV
-    - AMEX:VNQ
+    - AMEX:SPXL
+    - AMEX:TZA
+    - AMEX:TECL
+    - AMEX:DIG
+    - AMEX:FAS
+    - AMEX:UDOW
+    - AMEX:CURE
+    - AMEX:DRN
     - AMEX:XLB
     - AMEX:SCHD
     - CBOE:ITA
     - AMEX:EEM
-    - AMEX:USO
-    - AMEX:GLD
-    - NASDAQ:TLT
-    - NASDAQ:SHY
+    - AMEX:UGL
+    - AMEX:TMV
     - AMEX:TIP
-    - AMEX:HYG
-    - NASDAQ:EMB
-    - AMEX:CEW
-    - AMEX:FXY
-    - AMEX:UUP
+    - AMEX:YCL
+    - AMEX:YCS
     - CBOE:IEFA
+    - AMEX:LABD
 
 strategy_params:
   rebalance_frequency: ME
   feature_windows: [21, 42, 63, 126]
   correlation_window: 21
-  label_lookback_days: 126
-  training_lookback_days: 252
+  label_lookback_days: 63
+  label_horizons_days: [63]
+  label_horizon_weights: [1.0]
+  training_lookback_days: 756
   min_training_dates: 6
   min_label_observations: 63
   target_return: 0.0
-  exposure_penalty: 0.01
+  exposure_penalty: 0.0
   vol_target_enabled: true
   target_vol_annual: 0.15
   vol_lookback_days: 63
-  vol_max_gross_exposure: 1.0
+  vol_max_gross_exposure: 1.5
   price_column_asset: Close
   price_column_benchmark: Close
   autogluon_presets: medium_quality
-  autogluon_time_limit_sec: 45
+  autogluon_time_limit_sec: 120
   autogluon_eval_metric: mean_squared_error
   autogluon_num_bag_folds: 0
   autogluon_num_stack_levels: 0
   autogluon_cache_models: true
-  retrain_frequency: 12
+  pretrain_models: true
+  retrain_interval_years: 5
   trade_longs: true
   trade_shorts: false
 

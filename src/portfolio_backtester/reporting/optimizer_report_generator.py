@@ -14,6 +14,8 @@ from typing import Dict, Any, List, Optional, Tuple, Union
 from pathlib import Path
 import logging
 
+from .report_directory_utils import create_report_directory
+
 logger = logging.getLogger(__name__)
 
 
@@ -283,23 +285,32 @@ class OptimizerReportGenerator:
         self.base_reports_dir = Path(base_reports_dir)
         self.base_reports_dir.mkdir(parents=True, exist_ok=True)
 
-    def create_unique_run_directory(self, strategy_name: str, run_id: Optional[str] = None) -> Path:
-        """Create a unique directory for this optimization run."""
+    def create_unique_run_directory(
+        self,
+        strategy_name: str,
+        run_id: Optional[str] = None,
+        content_hash: Optional[str] = None,
+    ) -> Path:
+        """Create a unique directory for this optimization run.
+
+        Directory structure: <base_reports_dir>/<strategy_name>_<hash>/<YYYYMMDD_HHmmSS>
+
+        Args:
+            strategy_name: Name of the strategy.
+            run_id: Optional run ID for additional differentiation.
+            content_hash: Optional pre-computed content hash for version tracking.
+
+        Returns:
+            Path to the created run directory.
+        """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         if run_id:
-            dir_name = f"{strategy_name}_{run_id}_{timestamp}"
+            name = f"{strategy_name}_{run_id}"
         else:
-            dir_name = f"{strategy_name}_{timestamp}"
+            name = strategy_name
 
-        run_dir = self.base_reports_dir / dir_name
-        run_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create subdirectories for different types of outputs
-        (run_dir / "plots").mkdir(exist_ok=True)
-        (run_dir / "data").mkdir(exist_ok=True)
-
-        return run_dir
+        return create_report_directory(self.base_reports_dir, name, content_hash, timestamp)
 
     def interpret_metric(self, metric_name: str, value: float | str) -> Tuple[str, str]:
         """Interpret a performance metric value and provide explanation."""
@@ -992,6 +1003,7 @@ def create_optimization_report(
     plots_source_dir: str = "plots",
     run_id: Optional[str] = None,
     additional_info: Optional[Dict[str, Any]] = None,
+    content_hash: Optional[str] = None,
 ) -> str:
     """
     Main function to create a comprehensive optimization report.
@@ -1004,6 +1016,7 @@ def create_optimization_report(
         plots_source_dir: Directory containing generated plots
         run_id: Optional unique identifier for this run
         additional_info: Additional information to include in the report
+        content_hash: Optional pre-computed content hash for version tracking
 
     Returns:
         Path to the generated report file
@@ -1011,7 +1024,7 @@ def create_optimization_report(
     generator = OptimizerReportGenerator()
 
     # Create unique run directory
-    run_dir = generator.create_unique_run_directory(strategy_name, run_id)
+    run_dir = generator.create_unique_run_directory(strategy_name, run_id, content_hash)
 
     # Save optimization data
     generator.save_optimization_data(run_dir, optimization_results)

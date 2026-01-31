@@ -98,13 +98,29 @@ def get_top_weight_sp500_components(
 
 
 def get_all_historical_sp500_components() -> List[str]:
-    """Return a list of ALL unique tickers that have ever been in the S&P 500 history.
-    
-    This is useful for defining a survivorship-bias-free universe where the strategy
-    selects the active components dynamically.
-    """
+    """Return a list of ALL unique tickers that have ever been in the S&P 500 history."""
     from .universe_data.spy_holdings import get_all_historical_tickers
     return get_all_historical_tickers()
 
+def get_all_historical_russell_1000_components() -> List[str]:
+    """Return a list of ALL unique tickers that have ever been in the Russell 1000 history."""
+    try:
+        from market_data_multi_provider.russell import get_constituents
+        return get_constituents("russell_1000")
+    except ImportError:
+        return []
 
-__all__ = ["get_top_weight_sp500_components", "get_all_historical_sp500_components"]
+def get_all_historical_russell_2000_components() -> List[str]:
+    """Return a list of ALL unique tickers that have ever been in the Russell 2000 history."""
+    try:
+        from market_data_multi_provider.russell import get_constituents
+        return get_constituents("russell_2000")
+    except ImportError:
+        return []
+
+__all__ = [
+    "get_top_weight_sp500_components", 
+    "get_all_historical_sp500_components",
+    "get_all_historical_russell_1000_components",
+    "get_all_historical_russell_2000_components"
+]
