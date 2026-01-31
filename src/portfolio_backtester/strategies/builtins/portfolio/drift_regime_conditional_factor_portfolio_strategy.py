@@ -103,8 +103,6 @@ class DriftRegimeConditionalFactorPortfolioStrategy(PortfolioStrategy):
             prices = all_historical_data
             
         # Filter to data up to current_date and only keep what's needed for windows
-        # To calculate 63-day drift + 1-day return, we need about 65 rows. 
-        # Using a bit more (e.g. 2x window) for safety with NaNs.
         lookback_needed = max(params["drift_window"], params["reversal_window"]) + 5
         prices = prices[prices.index <= current_date].tail(lookback_needed)
         
@@ -112,88 +110,86 @@ class DriftRegimeConditionalFactorPortfolioStrategy(PortfolioStrategy):
             return self._empty_weights(all_historical_data, current_date)
 
         # 2. Calculate Drift Regime
-        # Handle gaps in R2K data: calculate fraction based on non-NaN returns
         daily_returns = prices.pct_change(fill_method=None)
         is_positive = (daily_returns > 0)
         is_valid = daily_returns.notna()
 
-        # We need enough history for a meaningful drift check
         drift_window = params["drift_window"]
-        # Only use the window ending at current_date
         positive_days = is_positive.tail(drift_window).sum()
         valid_days = is_valid.tail(drift_window).sum()
         
-        # Current drift regime flags (Series indexed by Ticker)
         drift_fraction = (positive_days / valid_days).fillna(0)
         current_drift_regime = (drift_fraction > params["drift_threshold"])
         
-        # 3. Calculate Factors across the WHOLE universe first (Global Ranking)
-        
-        # Short-Term Reversal Factor (STR) - trailing 10-day negated
+        # 3. Calculate Raw Factor Signals (Global)
         reversal_window = params.get("reversal_window", 10)
         if len(prices) > reversal_window:
-            current_prices = prices.iloc[-1]
-            past_prices = prices.iloc[-reversal_window-1]
-            str_return = (current_prices / past_prices) - 1
+            str_return = (prices.iloc[-1] / prices.iloc[-reversal_window-1]) - 1
         else:
             str_return = prices.pct_change(periods=reversal_window).loc[current_date]
         
-        # FIX: Ensure factor variables are defined
-        str_signal_global = -str_return # Reversal: losers get high score
+        str_signal_global = -str_return
         
-        # Value Factor (Paper uses Inverse Price 1/P as proxy)
         current_prices = prices.loc[current_date]
-        valid_price_mask = (current_prices >= 1.0) # Standard filter
+        valid_price_mask = (current_prices >= 1.0)
         value_signal_global = (1.0 / current_prices).where(valid_price_mask)
 
-        # 4. Standardize Factors (Percentile Ranks for both for stability)
-        def get_percentile(series: pd.Series) -> pd.Series:
-            if series.empty:
-                return series
-            return series.rank(pct=True).fillna(0.5)
+        # 4. Standardize Factors locally WITHIN the Drift Regime
+        # This is likely the secret to the early session's performance.
+        dr_mask = current_drift_regime & value_signal_global.notna()
+        
+        if not dr_mask.any():
+            return self._empty_weights(all_historical_data, current_date)
 
-        value_norm = get_percentile(value_signal_global)
-        reversal_norm = get_percentile(str_signal_global)
-        
-        # Combined Signal: 70% Value + 30% Reversal (Global)
-        base_signal = 0.7 * value_norm + 0.3 * reversal_norm
-        
-        # 5. Selection: Trade WITHIN the Drift Regime
-        # Research shows 'relative value within persistence' is the core edge.
-        candidates = base_signal[current_drift_regime]
-        
-        if candidates.empty:
-             return self._empty_weights(all_historical_data, current_date)
+        def get_local_percentile(series: pd.Series, mask: pd.Series) -> pd.Series:
+            subset = series[mask]
+            if subset.empty:
+                return pd.Series(0.5, index=series.index)
+            ranks = subset.rank(pct=True)
+            return ranks.reindex(series.index).fillna(0.0)
 
-        num_in_regime = len(candidates)
-        num_holdings = params.get("num_holdings", 30) # Default to 30 for S&P 500
+        value_rank_local = get_local_percentile(value_signal_global, dr_mask)
+        str_rank_local = get_local_percentile(str_signal_global, dr_mask)
+        
+        # Combined Signal (Local)
+        # Weighting: 70% Value, 30% Reversal
+        combined_signal = 0.7 * value_rank_local + 0.3 * str_rank_local
+        
+        # 5. Portfolio Construction
+        num_holdings = params.get("num_holdings", 10)
         leverage = params.get("leverage", 1.0)
+        
         weight_indices = all_historical_data.columns.get_level_values("Ticker").unique() if isinstance(all_historical_data.columns, pd.MultiIndex) else all_historical_data.columns
         weights = pd.Series(0.0, index=weight_indices)
 
-        # Log diagnostics
+        # Candidates are drifting stocks only
+        candidates = combined_signal[dr_mask]
+        num_candidates = len(candidates)
+
+        if num_candidates > 0:
+            if params.get("trade_shorts", True):
+                # Long/Short Split
+                actual_n = min(num_holdings, num_candidates // 2)
+                if actual_n > 0:
+                    sorted_cand = candidates.sort_values(ascending=False)
+                    top_assets = sorted_cand.head(actual_n)
+                    bottom_assets = sorted_cand.tail(actual_n)
+                    
+                    weights[top_assets.index] = (leverage / actual_n)
+                    weights[bottom_assets.index] -= (leverage / actual_n)
+            else:
+                # Long Only
+                actual_n = min(num_holdings, num_candidates)
+                if actual_n > 0:
+                    top_assets = candidates.sort_values(ascending=False).head(actual_n)
+                    weights[top_assets.index] = (leverage / actual_n)
+
+        # Diagnostics
         if logger.isEnabledFor(logging.INFO):
-            msg = f"Date: {current_date} | Candidates in Drift: {num_in_regime}"
+            msg = f"Date: {current_date} | Drift: {num_candidates} | N: {actual_n if 'actual_n' in locals() else 0}"
             logger.info(msg)
             print(msg)
-
-        # Ensure we have enough candidates to split into Long/Short
-        # If we have very few, we reduce num_holdings to avoid overlap
-        actual_n = min(num_holdings, num_in_regime // 2) if num_in_regime > 1 else 0
-        
-        if actual_n > 0:
-            sorted_candidates = candidates.sort_values(ascending=False)
             
-            # Long Side: Best combined signal (Value + Reversal) within Trend
-            top_assets = sorted_candidates.head(actual_n)
-            weights[top_assets.index] = (leverage / actual_n)
-
-            # Short Side: Worst combined signal (Expensive + Momentum) within Trend
-            if params.get("trade_shorts", True):
-                bottom_assets = sorted_candidates.tail(actual_n)
-                weights[bottom_assets.index] -= (leverage / actual_n)
-        
-        # Convert to DataFrame
         output = pd.DataFrame(weights).T
         output.index = [current_date]
         

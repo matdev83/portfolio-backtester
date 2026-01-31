@@ -22,8 +22,12 @@ TO CREATE A NEW STRATEGY:
 The system will AUTOMATICALLY find and register your strategy. No manual steps needed!
 """
 
-from typing import Dict, Any, Type, Set, Optional, cast, Mapping, Union
+from __future__ import annotations
+from typing import Dict, Any, Type, Set, Optional, cast, Mapping, Union, TYPE_CHECKING
 import logging
+
+if TYPE_CHECKING:
+    from ...canonical_config import CanonicalScenarioConfig
 
 from .base.base.base_strategy import BaseStrategy
 from .registry import get_strategy_registry
@@ -79,7 +83,7 @@ class StrategyFactory:
     def create_strategy(
         cls,
         strategy_class: str,
-        strategy_params: Union[Mapping[str, Any], "CanonicalScenarioConfig"],
+        strategy_params: Union[Mapping[str, Any], CanonicalScenarioConfig],
         global_config: Optional[Dict[str, Any]] = None,
     ) -> BaseStrategy:
         """

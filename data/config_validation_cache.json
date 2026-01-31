@@ -5,7 +5,7 @@
       "errors": []
     },
     "state": {
-      "timestamp": 1769899089.78982,
+      "timestamp": 1769901438.7833204,
       "file_counts": {
         "scenarios": 56,
         "strategies": 73,
@@ -82,8 +82,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy\\test_2020_2025_sp500.yaml",
-            "mtime": 1769895793.3478198,
-            "size": 673
+            "mtime": 1769901426.063321,
+            "size": 819
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\default.yaml",
@@ -349,8 +349,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy.py",
-            "mtime": 1769899078.3238213,
-            "size": 9425
+            "mtime": 1769900334.3208196,
+            "size": 8988
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy.py",

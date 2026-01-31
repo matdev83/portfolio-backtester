@@ -5,8 +5,12 @@ This module implements the StrategyManager class that handles all strategy-relat
 including strategy creation, management, and validation.
 """
 
+from __future__ import annotations
 import logging
-from typing import Any, Dict, Type, Union, Optional
+from typing import Any, Dict, Type, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..canonical_config import CanonicalScenarioConfig
 
 from ..strategies._core.base.base_strategy import BaseStrategy
 from ..strategies._core.registry import get_strategy_registry
@@ -40,7 +44,7 @@ class StrategyManager:
     def get_strategy(
         self,
         strategy_spec: Any,
-        params: Union[Dict[str, Any], "CanonicalScenarioConfig"],
+        params: Union[Dict[str, Any], CanonicalScenarioConfig],
     ) -> BaseStrategy:
         """
         Create a strategy instance from specification and parameters.

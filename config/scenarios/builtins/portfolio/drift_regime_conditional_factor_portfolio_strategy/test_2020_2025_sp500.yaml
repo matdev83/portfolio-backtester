@@ -21,8 +21,14 @@ strategy_params:
   drift_window: 63
   drift_threshold: 0.6
   reversal_window: 10
-  num_holdings: 30
+  num_holdings: 10
   leverage: 1.0
   trade_longs: True
-  trade_shorts: True
+  trade_shorts: False
   smoothing_lambda: 0.0
+
+# Using baseline costs
+commission_per_share: 0.005
+commission_min_per_order: 1.0
+slippage_bps: 2.5
+commission_max_percent_of_trade: 0.005

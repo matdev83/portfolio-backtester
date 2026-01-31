@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. Establish canonical scenario contract and normalization rules
+- [x] 1. Establish canonical scenario contract and normalization rules
 - [x] 1.1 Define the canonical scenario configuration object (typed core + immutable pass-through extras)
   - Identify the full set of scenario inputs consumed by any runtime path (execution, evaluation, optimization, reporting, and data prefetch)
   - Define an explicit canonical schema for those inputs and an explicit container for preserved unknown keys

@@ -140,7 +140,8 @@ class BaseStrategy(ABC):
                 timing_config = dict(self.canonical_config.timing_config)
             else:
                 # Fallback to strategy_params (legacy/test path)
-                timing_config = self.strategy_params.get("timing_config")
+                timing_config_val = self.strategy_params.get("timing_config")
+                timing_config = cast(Dict[str, Any], timing_config_val) if timing_config_val is not None else None
 
             # If no timing_config provided, create a simple default based on strategy type
             if timing_config is None:
@@ -634,7 +635,7 @@ class BaseStrategy(ABC):
                 entry_prices=entry_prices_series,
                 stop_levels=stop_levels,
             )
-            return cast(pd.Series, adjusted) if isinstance(adjusted, pd.Series) else pd.Series(adjusted)
+            return adjusted
         except Exception:
             return weights
 
@@ -679,7 +680,7 @@ class BaseStrategy(ABC):
                 entry_prices=entry_prices_series,
                 take_profit_levels=take_profit_levels,
             )
-            return cast(pd.Series, adjusted) if isinstance(adjusted, pd.Series) else pd.Series(adjusted)
+            return adjusted
         except Exception:
             return weights
 
@@ -1036,14 +1037,16 @@ class BaseStrategy(ABC):
 
         enough_history = available_months >= int(min_periods_required)
 
-        # Use ensure they are both Series to satisfy type checker for bitwise &
-        s_recent = has_recent if isinstance(has_recent, pd.Series) else pd.Series(has_recent, index=close_df.columns)
-        s_history = enough_history if isinstance(enough_history, pd.Series) else pd.Series(enough_history, index=close_df.columns)
-        
-        valid_mask = s_recent & s_history
-        valid_assets = [str(t) for t, ok in valid_mask.items() if bool(ok)]
+        # Bitwise & handles both Series (aligned) and scalar cases
+        valid_mask = has_recent & enough_history
 
-        total_assets = int(valid_mask.shape[0])
+        if isinstance(valid_mask, pd.Series):
+            valid_assets = [str(t) for t, ok in valid_mask.items() if bool(ok)]
+            total_assets = int(valid_mask.shape[0])
+        else:
+            # Single asset scalar case
+            valid_assets = [str(close_df.name)] if bool(valid_mask) else []
+            total_assets = 1
         if len(valid_assets) == 0:
             if logger.isEnabledFor(logging.ERROR):
                 logger.error(
