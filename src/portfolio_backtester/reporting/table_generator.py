@@ -1,10 +1,67 @@
 import logging
 import os
+from typing import Mapping, Optional
 from rich.console import Console
 from rich.table import Table
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_benchmark_name(backtester) -> str:
+    try:
+        if hasattr(backtester, "scenarios") and len(backtester.scenarios) == 1:
+            scenario = backtester.scenarios[0]
+            bench = getattr(scenario, "benchmark_ticker", None)
+            if bench:
+                return str(bench)
+    except Exception:
+        pass
+    return str(backtester.global_config.get("benchmark", "SPY"))
+
+
+def _resolve_metrics_window_mask(backtester, index: pd.Index) -> Optional[pd.Series]:
+    try:
+        if not hasattr(backtester, "scenarios") or len(backtester.scenarios) != 1:
+            return None
+        scenario = backtester.scenarios[0]
+        overlay_config = None
+        if hasattr(scenario, "get"):
+            overlay_config = scenario.get("risk_overlay_config")
+        elif isinstance(scenario, dict):
+            overlay_config = scenario.get("risk_overlay_config")
+        if (
+            isinstance(overlay_config, Mapping)
+            and overlay_config.get("metrics_window") == "wfo_test"
+        ):
+            from ..backtester_logic.strategy_overlays import build_wfo_test_mask
+
+            return build_wfo_test_mask(index, overlay_config)
+    except Exception:
+        return None
+    return None
+
+
+def _apply_metrics_window(
+    backtester,
+    period_returns: dict,
+    bench_period_rets: pd.Series,
+) -> tuple[dict, pd.Series]:
+    mask = _resolve_metrics_window_mask(backtester, bench_period_rets.index)
+    if mask is None:
+        return period_returns, bench_period_rets
+
+    mask = mask.reindex(bench_period_rets.index, fill_value=False)
+    if not mask.any():
+        return period_returns, bench_period_rets
+
+    masked_bench = bench_period_rets.loc[mask]
+    masked_period_returns: dict = {}
+    for name, rets in period_returns.items():
+        rets_mask = mask.reindex(rets.index, fill_value=False)
+        masked_period_returns[name] = rets.loc[rets_mask]
+
+    return masked_period_returns, masked_bench
 
 
 def _format_metric_value(metric_name: str, value):
@@ -95,7 +152,11 @@ def _collect_metrics(
     """
     from ..reporting.performance_metrics import calculate_metrics
 
-    bench_name = backtester.global_config["benchmark"]
+    period_returns, bench_period_rets = _apply_metrics_window(
+        backtester, period_returns, bench_period_rets
+    )
+
+    bench_name = _resolve_benchmark_name(backtester)
     bench_metrics = calculate_metrics(
         bench_period_rets, bench_period_rets, bench_name, name=bench_name, num_trials=1
     )
@@ -207,8 +268,9 @@ def generate_performance_table(
             ordered_names.append((name, display_name))
     for _, display_name in ordered_names:
         table.add_column(display_name, style="magenta")
-    table.add_column(backtester.global_config["benchmark"], style="green")
-    bench_metrics = all_period_metrics[backtester.global_config["benchmark"]]
+    bench_name = _resolve_benchmark_name(backtester)
+    table.add_column(bench_name, style="green")
+    bench_metrics = all_period_metrics[bench_name]
     _add_metrics_rows(table, bench_metrics, dict(ordered_names), backtester, all_period_metrics)
     console.print(table)
     for name, display_name in ordered_names:
@@ -334,24 +396,28 @@ def generate_enhanced_performance_table(
 
     """Enhanced version that separates main performance metrics from trade statistics."""
     os.makedirs(report_dir, exist_ok=True)
+    period_returns, bench_period_rets = _apply_metrics_window(
+        backtester, period_returns, bench_period_rets
+    )
     # Generate main performance table (excluding trade metrics)
     table = Table(title=title)
     table.add_column("Metric", style="cyan", no_wrap=True)
 
+    bench_name = _resolve_benchmark_name(backtester)
     bench_metrics = calculate_metrics(
         bench_period_rets,
         bench_period_rets,
-        backtester.global_config["benchmark"],
-        name=backtester.global_config["benchmark"],
+        bench_name,
+        name=bench_name,
         num_trials=1,
     )
 
-    all_period_metrics = {backtester.global_config["benchmark"]: bench_metrics}
+    all_period_metrics = {bench_name: bench_metrics}
 
     for name in period_returns.keys():
         display_name = backtester.results[name]["display_name"]
         table.add_column(display_name, style="magenta")
-    table.add_column(backtester.global_config["benchmark"], style="green")
+    table.add_column(bench_name, style="green")
 
     for name, rets in period_returns.items():
         display_name = backtester.results[name]["display_name"]
@@ -365,7 +431,7 @@ def generate_enhanced_performance_table(
         metrics = calculate_metrics(
             rets,
             bench_period_rets,
-            backtester.global_config["benchmark"],
+            bench_name,
             name=display_name,
             num_trials=strategy_num_trials,
             trade_stats=trade_stats,

@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Optional, cast
+from typing import Optional, cast, Union, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..canonical_config import CanonicalScenarioConfig
+
+
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -122,7 +127,7 @@ def _apply_synthetic_prices(
 def _plot_monte_carlo_robustness_analysis(
     self,
     scenario_name: str,
-    scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
+    scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
     optimal_params: dict,
     monthly_data,
     daily_data,
@@ -166,7 +171,7 @@ def _plot_monte_carlo_robustness_analysis(
                     current_date = None
                     if isinstance(daily_data, pd.DataFrame) and not daily_data.empty:
                         current_date = pd.Timestamp(daily_data.index.max())
-                    universe = resolve_universe_config(u_def, current_date=current_date)
+                    universe = resolve_universe_config(dict(u_def), current_date=current_date)
                 except Exception as exc:
                     logger.warning(f"Stage 2 MC: failed to resolve canonical universe_definition: {exc}")
         else:
@@ -225,7 +230,10 @@ def _plot_monte_carlo_robustness_analysis(
         num_simulations_per_level = monte_carlo_config.get("num_simulations_per_level", 10)
         colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
 
-        optimized_scenario = scenario_config.copy()
+        if isinstance(scenario_config, CanonicalScenarioConfig):
+            optimized_scenario = scenario_config.to_dict()
+        else:
+            optimized_scenario = scenario_config.copy()
         optimized_scenario["strategy_params"] = optimal_params
         if available_tickers:
             optimized_scenario["universe"] = list(available_tickers)

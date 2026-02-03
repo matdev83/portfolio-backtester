@@ -60,7 +60,6 @@ class StrategyManager:
             ValueError: If strategy specification is invalid or strategy not found
             TypeError: If strategy class doesn't return BaseStrategy instance
         """
-        from ..canonical_config import CanonicalScenarioConfig
 
         # Support both string and dict specifications
         if isinstance(strategy_spec, dict):

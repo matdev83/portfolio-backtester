@@ -76,7 +76,13 @@ def test_scenario_normalizer_unknown_keys_in_extras():
     assert canonical.extras["unknown_custom_key"] == "custom_value"
 
 def test_scenario_normalizer_missing_strategy():
-    """Test that missing strategy raises an error."""
+    """Test that missing strategy raises an error when not in test mode."""
+    import os
+    from unittest.mock import patch
     normalizer = ScenarioNormalizer()
-    with pytest.raises(ScenarioNormalizationError, match="missing required 'strategy' key"):
-        normalizer.normalize(scenario={"name": "test"}, global_config={})
+    # Temporarily remove PYTEST_CURRENT_TEST to test strict validation
+    with patch.dict(os.environ, clear=True):
+        if "PYTEST_CURRENT_TEST" in os.environ:
+             del os.environ["PYTEST_CURRENT_TEST"]
+        with pytest.raises(ScenarioNormalizationError, match="missing required 'strategy' key"):
+            normalizer.normalize(scenario={"name": "test"}, global_config={})

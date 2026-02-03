@@ -62,6 +62,25 @@ def _resolve_method(
         except Exception as e:
             raise ValueError(f"Failed to get universe using method '{method_name}': {e}")
 
+    elif method_name == "get_current_sp500_components":
+        from .universe import get_current_sp500_components
+
+        try:
+            as_of_date = (
+                config.get("as_of_date")
+                or config.get("as_of")
+                or (global_config or {}).get("end_date")
+                or current_date
+                or pd.Timestamp.today().normalize()
+            )
+            exact = bool(config.get("exact", False))
+            tickers = get_current_sp500_components(as_of_date, exact=exact)
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Loaded {len(tickers)} tickers using method '{method_name}'")
+            return tickers
+        except Exception as e:
+            raise ValueError(f"Failed to get universe using method '{method_name}': {e}")
+
     elif method_name == "get_all_historical_russell_1000_components":
         from .universe import get_all_historical_russell_1000_components
 

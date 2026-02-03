@@ -27,7 +27,6 @@ try:
     from market_data_multi_provider.sp500 import (  # type: ignore[import-untyped]
         build_history as mdmp_build_history,
         get_holdings as mdmp_get_holdings,
-        get_top_components as mdmp_get_top_components,
         reset_cache as mdmp_reset_cache,
     )
 except ImportError:
@@ -35,7 +34,6 @@ except ImportError:
     # This ensures the module is at least importable
     mdmp_build_history = None
     mdmp_get_holdings = None
-    mdmp_get_top_components = None
     mdmp_reset_cache = None
 
 
@@ -52,8 +50,7 @@ _HISTORY_SLICES: dict[np.datetime64, tuple[int, int]] | None = None  # date -> (
 
 
 # Constants preserved for compatibility
-TICKER = "SPY"
-CIK = "0000884394"
+
 
 
 def _normalize_holdings_date(date: Union[str, dt.date, pd.Timestamp]) -> pd.Timestamp:

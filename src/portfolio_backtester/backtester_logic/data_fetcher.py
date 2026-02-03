@@ -8,7 +8,7 @@ including ticker collection, data fetching, normalization, and preprocessing.
 from __future__ import annotations
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Iterable
 
 import pandas as pd
 
@@ -16,6 +16,25 @@ if TYPE_CHECKING:
     from ..canonical_config import CanonicalScenarioConfig
 
 logger = logging.getLogger(__name__)
+
+_SYNTHETIC_BENCHMARKS = {"SP500_EQUAL_WEIGHT"}
+
+
+def _is_synthetic_benchmark_ticker(ticker: Any) -> bool:
+    if ticker is None:
+        return False
+    return str(ticker).strip().upper() in _SYNTHETIC_BENCHMARKS
+
+
+def _build_equal_weight_benchmark(daily_closes: pd.DataFrame, tickers: Iterable[str]) -> pd.Series:
+    available = [t for t in tickers if t in daily_closes.columns]
+    if not available:
+        return pd.Series(0.0, index=daily_closes.index, dtype=float)
+
+    returns = daily_closes[available].pct_change(fill_method=None)
+    daily_ret = returns.mean(axis=1, skipna=True).fillna(0.0)
+    bench_price: pd.Series = (1.0 + daily_ret).cumprod()
+    return bench_price.astype(float)
 
 
 # --- Universe perf helpers -------------------------------------------------
@@ -103,15 +122,22 @@ class DataFetcher:
 
         # Add global benchmark to the fetch list
         global_benchmark = self.global_config.get("benchmark")
-        if global_benchmark:
+        if global_benchmark and not _is_synthetic_benchmark_ticker(global_benchmark):
             all_tickers.add(global_benchmark)
 
         scenario_has_universe = False
 
-        for scenario_config in scenarios_to_run:
+        from ..scenario_normalizer import ScenarioNormalizer
+        normalizer = ScenarioNormalizer()
+        for scenario in scenarios_to_run:
+            if isinstance(scenario, dict) or not hasattr(scenario, "benchmark_ticker"):
+                scenario_config = normalizer.normalize(scenario=scenario, global_config=self.global_config)
+            else:
+                scenario_config = scenario
             # Add scenario-specific benchmark if it exists
             if scenario_config.benchmark_ticker:
-                all_tickers.add(scenario_config.benchmark_ticker)
+                if not _is_synthetic_benchmark_ticker(scenario_config.benchmark_ticker):
+                    all_tickers.add(scenario_config.benchmark_ticker)
 
             # Universe handling
             if scenario_config.universe_definition:
@@ -282,6 +308,7 @@ class DataFetcher:
         self,
         all_tickers: set,
         min_universe_coverage: float | None = None,
+        start_floor: str | None = None,
     ) -> str:
         """
         Determine optimal start date based on data availability rules:
@@ -301,6 +328,16 @@ class DataFetcher:
 
         # Default fallback
         default_start_date = self.global_config["start_date"]
+        if start_floor is not None:
+            floor_str = _coerce_date_str(start_floor)
+            if floor_str is not None:
+                default_start_date = floor_str
+            else:
+                logger.warning(
+                    "Invalid auto_start_floor '%s'; falling back to global start_date %s",
+                    start_floor,
+                    default_start_date,
+                )
 
         if len(universe_tickers) == 0:
             logger.warning("No universe tickers found, using default start date")
@@ -439,6 +476,84 @@ class DataFetcher:
                 )
                 return str(default_start_date)
 
+    def _add_synthetic_benchmarks(
+        self,
+        scenarios_to_run: List[CanonicalScenarioConfig],
+        daily_ohlc: pd.DataFrame,
+        daily_closes: pd.DataFrame,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        synthetic = set()
+        global_benchmark = self.global_config.get("benchmark")
+        if _is_synthetic_benchmark_ticker(global_benchmark):
+            synthetic.add(str(global_benchmark).strip().upper())
+
+        from ..scenario_normalizer import ScenarioNormalizer
+        normalizer = ScenarioNormalizer()
+        for scenario in scenarios_to_run:
+            if isinstance(scenario, dict) or not hasattr(scenario, "benchmark_ticker"):
+                scenario_config = normalizer.normalize(scenario=scenario, global_config=self.global_config)
+            else:
+                scenario_config = scenario
+
+            bench = scenario_config.benchmark_ticker
+            if _is_synthetic_benchmark_ticker(bench):
+                synthetic.add(str(bench).strip().upper())
+
+        if not synthetic:
+            return daily_ohlc, daily_closes
+
+        # Resolve benchmark universe from scenarios (fallback to global universe)
+        benchmark_universe: set[str] = set()
+        try:
+            from portfolio_backtester.interfaces.ticker_collector import (
+                TickerCollectorFactory,
+            )
+
+            for scenario in scenarios_to_run:
+                bench = scenario.benchmark_ticker
+                if not _is_synthetic_benchmark_ticker(bench):
+                    continue
+                ucfg = scenario.universe_definition
+                if ucfg:
+                    collector = TickerCollectorFactory.create_collector(ucfg)
+                    benchmark_universe.update(collector.collect_tickers(ucfg))
+        except Exception as e:
+            logger.warning("Failed to resolve benchmark universe from scenario: %s", e)
+
+        if not benchmark_universe:
+            benchmark_universe.update(self.global_config.get("universe", []))
+
+        benchmark_universe = {
+            t for t in benchmark_universe if not _is_synthetic_benchmark_ticker(t)
+        }
+
+        for bench in sorted(synthetic):
+            if bench == "SP500_EQUAL_WEIGHT":
+                bench_series = _build_equal_weight_benchmark(
+                    daily_closes, sorted(benchmark_universe)
+                )
+            else:
+                logger.warning("Unknown synthetic benchmark '%s' requested", bench)
+                continue
+
+            # Align index
+            bench_series = bench_series.reindex(daily_closes.index).fillna(0.0)
+
+            if bench not in daily_closes.columns:
+                daily_closes = pd.concat([daily_closes, bench_series.rename(bench)], axis=1)
+
+            if isinstance(daily_ohlc.columns, pd.MultiIndex):
+                bench_df = pd.DataFrame({(bench, "Close"): bench_series})
+                bench_df.columns = pd.MultiIndex.from_tuples(
+                    [(bench, "Close")], names=daily_ohlc.columns.names
+                )
+                daily_ohlc = pd.concat([daily_ohlc, bench_df], axis=1)
+            else:
+                if bench not in daily_ohlc.columns:
+                    daily_ohlc = pd.concat([daily_ohlc, bench_series.rename(bench)], axis=1)
+
+        return daily_ohlc, daily_closes
+
     def prepare_data_for_backtesting(
         self,
         scenarios_to_run: List[CanonicalScenarioConfig],
@@ -475,9 +590,29 @@ class DataFetcher:
             )
 
         # Determine optimal start date and fetch data
+        explicit_start_candidates: list[str] = []
+        from ..scenario_normalizer import ScenarioNormalizer
+        normalizer = ScenarioNormalizer()
+        for scenario in scenarios_to_run:
+            if isinstance(scenario, dict) or not hasattr(scenario, "benchmark_ticker"):
+                scenario_config = normalizer.normalize(scenario=scenario, global_config=self.global_config)
+            else:
+                scenario_config = scenario
+
+            if scenario_config.start_date:
+                start_str = _coerce_date_str(scenario.start_date)
+                if start_str is not None:
+                    explicit_start_candidates.append(start_str)
+
         coverage_candidates = []
         for scenario in scenarios_to_run:
-            coverage_value = scenario.extras.get("min_universe_coverage")
+            # Ensure we have a canonical config
+            if isinstance(scenario, dict) or not hasattr(scenario, "benchmark_ticker"):
+                scenario_config = normalizer.normalize(scenario=scenario, global_config=self.global_config)
+            else:
+                scenario_config = scenario
+
+            coverage_value = scenario_config.extras.get("min_universe_coverage")
             if coverage_value is None:
                 continue
             try:
@@ -487,14 +622,46 @@ class DataFetcher:
 
         min_coverage = max(coverage_candidates) if coverage_candidates else None
 
-        start_date = self.determine_optimal_start_date(
-            all_tickers, min_universe_coverage=min_coverage
-        )
+        if explicit_start_candidates:
+            start_date = min(explicit_start_candidates)
+            logger.info(
+                "Explicit scenario start_date detected: %s (earliest). Skipping coverage-based auto start.",
+                start_date,
+            )
+        else:
+            auto_floor_candidates: list[str] = []
+            for scenario in scenarios_to_run:
+                # Ensure we have a canonical config
+                if isinstance(scenario, dict) or not hasattr(scenario, "benchmark_ticker"):
+                    scenario_config = normalizer.normalize(scenario=scenario, global_config=self.global_config)
+                else:
+                    scenario_config = scenario
+
+                if scenario_config.start_date is None:
+                    floor_raw = scenario_config.extras.get("auto_start_floor")
+                    if floor_raw is not None:
+                        floor_str = _coerce_date_str(floor_raw)
+                        if floor_str is not None:
+                            auto_floor_candidates.append(floor_str)
+
+            auto_start_floor = min(auto_floor_candidates) if auto_floor_candidates else None
+            if auto_start_floor is not None:
+                logger.info("Auto start floor enabled: %s", auto_start_floor)
+
+            start_date = self.determine_optimal_start_date(
+                all_tickers,
+                min_universe_coverage=min_coverage,
+                start_floor=auto_start_floor,
+            )
         daily_data = self.fetch_daily_data(all_tickers, start_date)
         daily_ohlc = self.normalize_ohlc_format(daily_data)
 
         # Extract close prices and create monthly data
         daily_closes = self.extract_close_prices(daily_ohlc)
+
+        daily_ohlc, daily_closes = self._add_synthetic_benchmarks(
+            scenarios_to_run, daily_ohlc, daily_closes
+        )
         monthly_closes = daily_closes.resample("BME").last()
 
         # Ensure DataFrame types

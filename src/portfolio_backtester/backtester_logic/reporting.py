@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 import pandas as pd
 from rich.console import Console
@@ -74,6 +74,22 @@ __all__ = [
 # ---------------------------------------------------------------------------
 # Thin facade – identical external behaviour, minimal internal code
 # ---------------------------------------------------------------------------
+
+
+def _resolve_benchmark_ticker(backtester: Any) -> str:
+    try:
+        if hasattr(backtester, "scenarios") and len(backtester.scenarios) == 1:
+            scenario = backtester.scenarios[0]
+            bench = getattr(scenario, "benchmark_ticker", None)
+            if bench:
+                return str(bench)
+            if hasattr(scenario, "get"):
+                bench = scenario.get("benchmark_ticker")
+                if bench:
+                    return str(bench)
+    except Exception:
+        pass
+    return str(backtester.global_config.get("benchmark", "SPY"))
 
 
 def _benchmark_returns(daily_data_for_display: pd.DataFrame, benchmark_ticker: str) -> pd.Series:
@@ -172,7 +188,8 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
     try:
         logger.info("--- Generating Basic Performance Table & Plots ---")
         period_returns = {n: d["returns"] for n, d in self.results.items()}
-        benchmark_rets = _benchmark_returns(daily_data_for_display, self.global_config["benchmark"])
+        benchmark_ticker = _resolve_benchmark_ticker(self)
+        benchmark_rets = _benchmark_returns(daily_data_for_display, benchmark_ticker)
         trials_map = {n: d.get("num_trials_for_dsr", 1) for n, d in self.results.items()}
 
         # unique report directory per run
@@ -242,12 +259,23 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
             Path("data") / "reports", scenario_slug, content_hash, timestamp
         )
 
+        perf_title = "Full-Period Performance"
+        if hasattr(self, "scenarios") and len(self.scenarios) == 1:
+            scenario_cfg = self.scenarios[0]
+            overlay_cfg = None
+            if hasattr(scenario_cfg, "get"):
+                overlay_cfg = scenario_cfg.get("risk_overlay_config")
+            elif isinstance(scenario_cfg, dict):
+                overlay_cfg = scenario_cfg.get("risk_overlay_config")
+            if isinstance(overlay_cfg, Mapping) and overlay_cfg.get("metrics_window") == "wfo_test":
+                perf_title = "WFO Test-Window Performance"
+
         _generate_performance_table(
             self,
             console,
             period_returns,
             benchmark_rets,
-            "Full-Period Performance",
+            perf_title,
             trials_map,
             str(report_dir),
         )

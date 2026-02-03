@@ -1,0 +1,74 @@
+name: drift_regime_long_only_roro
+strategy: DriftRegimeConditionalFactorPortfolioStrategy
+
+start_date: "2013-01-01"
+end_date: "2025-01-31"
+
+timing_config:
+  mode: time_based
+  rebalance_frequency: D
+
+universe:
+  - "AAPL"
+  - "AMZN"
+  - "MSFT"
+  - "GOOGL"
+  - "NVDA"
+  - "TSLA"
+  - "V"
+  - "MCD"
+  - "AVGO"
+  - "AMD"
+  - "WMT"
+  - "COST"
+  - "JPM"
+  - "MA"
+  - "MU"
+  - "LLY"
+  - "TGT"
+  - "META"
+  - "ORCL"
+  - "PG"
+  - "HD"
+  - "JNJ"
+  - "BAC"
+  - "ABBV"
+  - "XOM"
+  - "CVX"
+  - "WFC"
+  - "CRM"
+  - "GE"
+  - "BA"
+  - "ABT"
+  - "MS"
+  - "GS"
+  - "DIS"
+  - "LIN"
+  - "MRK"
+  - "RTX"
+  - "BKNG"
+  - "CAT"
+  - "PEP"
+  - "KO"
+  - "INTU"
+  - "TMUS"
+  - "ACN"
+  - "SCHW"
+  - "TMO"
+  - "SYK"
+  - "AMGN"
+  - "HON"
+  - "AMAT"
+  - "DHR"
+  - "NEE"
+  - "PLTR"
+  - "UNH"
+
+strategy_params:
+  drift_window: 63
+  drift_threshold: 0.60
+  num_holdings: 10
+  trade_shorts: false
+  risk_off_signal_config:
+    type: "BenchmarkWeeklySmaRiskOffSignalGenerator"
+    sma_window_weeks: 40

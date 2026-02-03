@@ -81,6 +81,7 @@ class FixedGeneticParameterGenerator(PopulationBasedParameterGenerator):
             "min_diversity_ratio", 0.7
         )
         self.diversity_manager.enforce_diversity = diversity_config.get("enforce_diversity", True)
+        self.diversity_manager.set_parameter_space(self.parameter_space)
 
         self.population = self._create_initial_population()
 

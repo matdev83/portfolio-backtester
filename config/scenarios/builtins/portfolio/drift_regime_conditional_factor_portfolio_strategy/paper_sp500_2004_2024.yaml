@@ -1,0 +1,60 @@
+name: drift_regime_conditional_factor_paper_sp500_2004_2024
+strategy: DriftRegimeConditionalFactorPortfolioStrategy
+
+start_date: "2004-01-01"
+end_date: "2024-12-31"
+
+benchmark_ticker: "SP500_EQUAL_WEIGHT"
+
+rebalance_frequency: D
+position_sizer: equal_weight
+timing_config:
+  mode: time_based
+  rebalance_frequency: D
+
+data_source_config:
+  preferred_provider: "yfinance"
+  allow_fallbacks: true
+  cache_max_age_seconds: 0
+
+universe_config:
+  type: method
+  method_name: get_current_sp500_components
+  as_of_date: "2024-12-31"
+
+strategy_params:
+  universe_config:
+    type: method
+    method_name: get_current_sp500_components
+    as_of_date: "2024-12-31"
+  drift_window: 63
+  drift_threshold: 0.6
+  reversal_window: 10
+  num_holdings: 30
+  leverage: 1.0
+  trade_longs: True
+  trade_shorts: True
+  selection_mode: all
+  weighting_mode: proportional
+  value_weight: 0.7
+  price_min: 0.0
+  min_history_days: 0
+
+risk_overlay_config:
+  type: drift_regime_wfo
+  train_years: 5
+  test_years: 1
+  step_years: 5
+  window_start_date: "2005-01-01"
+  target_vol_annual: 0.12
+  target_max_drawdown: 0.15
+  max_gross_exposure: 2.0
+  allow_leverage: true
+  kill_switch_enabled: true
+  kill_switch_drawdown: 0.30
+  kill_switch_rolling_days: 63
+  kill_switch_min_return: 0.0
+  metrics_window: "wfo_test"
+
+costs_config:
+  transaction_costs_bps: 0.6

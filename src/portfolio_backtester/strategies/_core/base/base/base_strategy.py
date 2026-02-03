@@ -136,6 +136,7 @@ class BaseStrategy(ABC):
 
         try:
             # Prefer timing_config from canonical object if available
+            timing_config: Optional[Dict[str, Any]] = None
             if self.canonical_config and self.canonical_config.timing_config:
                 timing_config = dict(self.canonical_config.timing_config)
             else:
@@ -805,7 +806,7 @@ class BaseStrategy(ABC):
                 else pd.Series(dtype=float, index=result.index)
             )
 
-        return cast(pd.Series, result)
+        return result
 
     def _calculate_derisk_flags(
         self,

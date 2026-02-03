@@ -100,27 +100,63 @@ def get_top_weight_sp500_components(
 def get_all_historical_sp500_components() -> List[str]:
     """Return a list of ALL unique tickers that have ever been in the S&P 500 history."""
     from .universe_data.spy_holdings import get_all_historical_tickers
+
     return get_all_historical_tickers()
+
+
+@lru_cache(maxsize=64)
+def _cached_current_sp500_components(date_key: str, exact: bool) -> tuple[str, ...]:
+    from .universe_data.spy_holdings import get_spy_holdings
+
+    df = get_spy_holdings(date_key, exact=exact)
+    if "ticker" not in df.columns:
+        raise ValueError("SPY holdings missing 'ticker' column")
+    tickers = df["ticker"].dropna().astype(str).tolist()
+    return tuple(tickers)
+
+
+def get_current_sp500_components(
+    as_of_date: Union[str, dt.date, pd.Timestamp, None] = None,
+    *,
+    exact: bool = False,
+) -> List[str]:
+    """Return current S&P 500 constituents as of a given date (default: latest available).
+
+    This mirrors the paper's survivorship-biased universe (current constituents).
+    """
+    if as_of_date is None:
+        as_of_date = pd.Timestamp.today().normalize()
+
+    date_key = _normalize_date(as_of_date).strftime("%Y-%m-%d")
+    return list(_cached_current_sp500_components(date_key, exact))
+
 
 def get_all_historical_russell_1000_components() -> List[str]:
     """Return a list of ALL unique tickers that have ever been in the Russell 1000 history."""
     try:
-        from market_data_multi_provider.russell import get_constituents
-        return get_constituents("russell_1000")
+        from market_data_multi_provider.russell import get_constituents  # type: ignore[import-untyped]
+
+        result = get_constituents("russell_1000")
+        return list(result) if result is not None else []
     except ImportError:
         return []
+
 
 def get_all_historical_russell_2000_components() -> List[str]:
     """Return a list of ALL unique tickers that have ever been in the Russell 2000 history."""
     try:
         from market_data_multi_provider.russell import get_constituents
-        return get_constituents("russell_2000")
+
+        result = get_constituents("russell_2000")
+        return list(result) if result is not None else []
     except ImportError:
         return []
 
+
 __all__ = [
-    "get_top_weight_sp500_components", 
+    "get_top_weight_sp500_components",
     "get_all_historical_sp500_components",
+    "get_current_sp500_components",
     "get_all_historical_russell_1000_components",
-    "get_all_historical_russell_2000_components"
+    "get_all_historical_russell_2000_components",
 ]

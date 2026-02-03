@@ -10,7 +10,7 @@ from portfolio_backtester.core import Backtester
 def test_dummy_strategy_single_trial_optimizer_fast():
     """Fast variant of the optimizer integration test using much smaller data."""
     rng = np.random.default_rng(11)
-    dates = pd.date_range("2019-01-01", periods=180, freq="D")  # small dataset for fast test
+    dates = pd.date_range("2019-01-01", periods=1000, freq="D")  # enough data for fast test
     prices = 100 * np.cumprod(1 + rng.normal(0.00025, 0.011, len(dates)))
     volumes = rng.integers(1000, 8000, len(dates))
 

@@ -202,8 +202,9 @@ def run_universe_search(args: argparse.Namespace) -> Path:
     strategy_manager = StrategyManager()
     data_source = create_data_source(global_config)
     data_fetcher = DataFetcher(global_config=global_config, data_source=data_source)
+    from portfolio_backtester.canonical_config import CanonicalScenarioConfig
     daily_ohlc, monthly_data, daily_closes = data_fetcher.prepare_data_for_backtesting(
-        [scenario_for_fetch], strategy_manager.get_strategy
+        [CanonicalScenarioConfig.from_dict(scenario_for_fetch)], strategy_manager.get_strategy
     )
 
     data_cache = create_cache_manager()

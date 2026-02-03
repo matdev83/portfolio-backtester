@@ -5,9 +5,9 @@
       "errors": []
     },
     "state": {
-      "timestamp": 1769901438.7833204,
+      "timestamp": 1770057966.6788218,
       "file_counts": {
-        "scenarios": 56,
+        "scenarios": 62,
         "strategies": 73,
         "parameters": 1
       },
@@ -15,11 +15,36 @@
         "parameters": [
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\parameters.yaml",
-            "mtime": 1769869354.0028205,
-            "size": 15188
+            "mtime": 1769985397.7658205,
+            "size": 15186
           }
         ],
         "scenarios": [
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\drift_regime_long_only_roro.yaml",
+            "mtime": 1769901962.3658218,
+            "size": 1038
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\drift_regime_no_ro.yaml",
+            "mtime": 1769964149.750321,
+            "size": 1021
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\drift_regime_vix_opt.yaml",
+            "mtime": 1769951446.9948232,
+            "size": 1549
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\drift_regime_vix_opt_v11.yaml",
+            "mtime": 1769952540.18182,
+            "size": 1654
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\drift_regime_vix_opt_v12.yaml",
+            "mtime": 1769963092.2823205,
+            "size": 1845
+          },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\diagnostic\\default.yaml",
             "mtime": 1754671563.0392878,
@@ -69,6 +94,11 @@
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy\\default.yaml",
             "mtime": 1769885426.1703215,
             "size": 891
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy\\paper_sp500_2004_2024.yaml",
+            "mtime": 1770043331.3938205,
+            "size": 1331
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy\\test_2020_2025.yaml",
@@ -339,8 +369,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\base_momentum_portfolio_strategy.py",
-            "mtime": 1769896760.6228194,
-            "size": 12707
+            "mtime": 1769990238.4538224,
+            "size": 12701
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\calmar_momentum_portfolio_strategy.py",
@@ -349,8 +379,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy.py",
-            "mtime": 1769900334.3208196,
-            "size": 8988
+            "mtime": 1770042203.8483198,
+            "size": 15204
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy.py",
@@ -559,8 +589,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\strategy_factory_impl.py",
-            "mtime": 1769882202.694821,
-            "size": 7425
+            "mtime": 1769901634.5663197,
+            "size": 7552
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\__init__.py",
@@ -594,8 +624,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\base\\base\\base_strategy.py",
-            "mtime": 1769896045.6123197,
-            "size": 45651
+            "mtime": 1770057848.0803216,
+            "size": 45606
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\base\\base\\meta_reporting.py",

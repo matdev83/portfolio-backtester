@@ -13,9 +13,21 @@ logger = logging.getLogger(__name__)
 # ---------------- helper functions to reduce complexity ----------------
 
 
+def _resolve_benchmark_ticker(backtester) -> str:
+    try:
+        if hasattr(backtester, "scenarios") and len(backtester.scenarios) == 1:
+            scenario = backtester.scenarios[0]
+            bench = getattr(scenario, "benchmark_ticker", None)
+            if bench:
+                return str(bench)
+    except Exception:
+        pass
+    return str(backtester.global_config.get("benchmark", "SPY"))
+
+
 def _get_benchmark_returns(backtester, full_rets):
     """Return a Series of benchmark daily returns aligned to full_rets.index."""
-    benchmark_ticker = backtester.global_config["benchmark"]
+    benchmark_ticker = _resolve_benchmark_ticker(backtester)
     if hasattr(backtester, "daily_data_ohlc") and backtester.daily_data_ohlc is not None:
         if isinstance(backtester.daily_data_ohlc.columns, pd.MultiIndex):
             benchmark_data = backtester.daily_data_ohlc.xs(
@@ -137,7 +149,7 @@ def generate_optimization_report(
 
     # Compute metrics if returns available
     if full_rets is not None and not full_rets.empty:
-        benchmark_ticker = backtester.global_config["benchmark"]
+        benchmark_ticker = _resolve_benchmark_ticker(backtester)
         benchmark_returns = _get_benchmark_returns(backtester, full_rets)
         performance_metrics = calculate_metrics(full_rets, benchmark_returns, benchmark_ticker)
     else:

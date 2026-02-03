@@ -1,0 +1,51 @@
+{
+  "date": "2026-02-02",
+  "call_count": 9,
+  "calls": [
+    {
+      "timestamp": "2026-02-02T12:26:23",
+      "symbol": "MSFT",
+      "success": false
+    },
+    {
+      "timestamp": "2026-02-02T12:26:35",
+      "symbol": "TSLA",
+      "success": false
+    },
+    {
+      "timestamp": "2026-02-02T12:26:47",
+      "symbol": "GOOG",
+      "success": false
+    },
+    {
+      "timestamp": "2026-02-02T12:26:59",
+      "symbol": "NVDA",
+      "success": false
+    },
+    {
+      "timestamp": "2026-02-02T12:27:10",
+      "symbol": "META",
+      "success": false
+    },
+    {
+      "timestamp": "2026-02-02T12:27:22",
+      "symbol": "GOOGL",
+      "success": false
+    },
+    {
+      "timestamp": "2026-02-02T12:27:46",
+      "symbol": "AMZN",
+      "success": false
+    },
+    {
+      "timestamp": "2026-02-02T12:27:58",
+      "symbol": "AAPL",
+      "success": false
+    },
+    {
+      "timestamp": "2026-02-02T12:28:09",
+      "symbol": "BRK-B",
+      "success": false
+    }
+  ]
+}

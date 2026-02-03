@@ -34,10 +34,10 @@ def test_run_optimization_uses_reoptimize_mode():
         "strategy_params": {},
         "optimize": [
             {
-                "parameter": "lookback",
-                "type": "int",
-                "min_value": 5,
-                "max_value": 10,
+                "parameter": "open_long_prob",
+                "type": "float",
+                "min_value": 0.05,
+                "max_value": 0.15,
             }
         ],
         "train_window_months": 6,

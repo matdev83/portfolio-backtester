@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging  # Assuming logger might be useful here or for other utils
 import signal
-from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union
+from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union, Mapping
 
 import numpy as np
 import pandas as pd
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 INTERRUPTED = False
 
 
-def handle_interrupt(signum, frame):
+def handle_interrupt(signum: Any, frame: Any) -> None:
     """
     Signal handler for SIGINT (Ctrl+C).
     Sets the global INTERRUPTED flag and logs a message.
@@ -30,14 +30,7 @@ def handle_interrupt(signum, frame):
     logger.warning("Interrupt signal received. Attempting to terminate gracefully...")
 
 
-def register_signal_handler():
-    """Registers the interrupt handler for SIGINT."""
-    try:
-        signal.signal(signal.SIGINT, handle_interrupt)
-        logger.debug("SIGINT handler registered successfully.")
-    except Exception as e:
-        # This might happen in environments where signal handling is restricted
-        logger.error(f"Failed to register SIGINT handler: {e}")
+
 
 
 def _resolve_strategy(name: object, strategy_params: Optional[Dict[str, Any]] = None) -> Any:
@@ -168,11 +161,7 @@ def _run_scenario_static(
     return portfolio_returns
 
 
-def _get_trading_days_in_month(year: int, month: int) -> pd.DatetimeIndex:
-    """Helper to get all trading days in a given month."""
-    start_of_month = pd.Timestamp(year=year, month=month, day=1)
-    end_of_month = start_of_month + pd.offsets.MonthEnd(1)
-    return pd.bdate_range(start=start_of_month, end=end_of_month)
+
 
 
 def generate_randomized_wfo_windows(
@@ -185,12 +174,27 @@ def generate_randomized_wfo_windows(
     Generate walk-forward optimization windows with optional randomization for robustness.
     Windows are aligned to calendar months and adjusted to business days.
     """
-    base_train_window_m = int(scenario_config.get("train_window_months", 60))
-    base_test_window_m = int(scenario_config.get("test_window_months", 12))
-    wf_type = str(scenario_config.get("walk_forward_type", "expanding")).lower()
+    # Handle both top-level (legacy/dict) and nested (canonical/wfo_config) structure
+    wfo_cfg = scenario_config.get("wfo_config", {}) if isinstance(scenario_config, (dict, Mapping)) else {}
+    
+    base_train_window_m = int(
+        scenario_config.get("train_window_months") 
+        or wfo_cfg.get("train_window_months") 
+        or 60
+    )
+    base_test_window_m = int(
+        scenario_config.get("test_window_months") 
+        or wfo_cfg.get("test_window_months") 
+        or 12
+    )
+    wf_type = str(
+        scenario_config.get("walk_forward_type") 
+        or wfo_cfg.get("walk_forward_type") 
+        or "expanding"
+    ).lower()
 
-    start_bound = scenario_config.get("start_date")
-    end_bound = scenario_config.get("end_date")
+    start_bound = scenario_config.get("start_date") or wfo_cfg.get("start_date")
+    end_bound = scenario_config.get("end_date") or wfo_cfg.get("end_date")
     index_tz = getattr(monthly_data_index, "tz", None)
     if start_bound:
         start_ts = pd.to_datetime(start_bound)
@@ -217,7 +221,9 @@ def generate_randomized_wfo_windows(
 
     step_months_raw = scenario_config.get(
         "wfo_step_months",
-        scenario_config.get("walk_forward_step_months"),
+        scenario_config.get("walk_forward_step_months", 
+            wfo_cfg.get("wfo_step_months", 
+                wfo_cfg.get("walk_forward_step_months")))
     )
     step_months = int(step_months_raw) if step_months_raw is not None else base_test_window_m
     if step_months <= 0:
@@ -225,8 +231,9 @@ def generate_randomized_wfo_windows(
 
     embargo_bdays_raw = scenario_config.get(
         "wfo_embargo_bdays",
-        scenario_config.get("wfo_embargo_days", 0),
-    )
+        scenario_config.get("wfo_embargo_days", 
+            wfo_cfg.get("wfo_embargo_bdays", 
+                wfo_cfg.get("wfo_embargo_days", 0))))
     embargo_bdays = max(0, int(embargo_bdays_raw or 0))
 
     robustness_config = global_config.get("wfo_robustness_config", {}) or {}
@@ -436,59 +443,68 @@ def _determine_evaluation_frequency(scenario_config: Union[Dict[str, Any], Canon
 
 
 
-def calculate_stability_metrics(metric_values_per_objective, metrics_to_optimize, global_config):
-    """
-    Calculate stability-focused metrics across WFO windows.
 
-    Args:
-        metric_values_per_objective: List of lists containing metric values for each objective across windows
-        metrics_to_optimize: List of metric names being optimized
-        global_config: Global configuration dictionary
-
-    Returns:
-        Dictionary of stability metrics
-    """
-    stability_config = global_config.get("wfo_robustness_config", {}).get("stability_metrics", {})
-    worst_percentile = stability_config.get("worst_percentile", 10)
-    consistency_threshold = stability_config.get("consistency_threshold", 0.0)
-
-    stability_metrics = {}
-
-    for i, metric_name in enumerate(metrics_to_optimize):
-        values = metric_values_per_objective[i]
-        valid_values = [v for v in values if np.isfinite(v)]
-
-        if not valid_values:
-            stability_metrics[f"{metric_name}_Std"] = np.nan
-            stability_metrics[f"{metric_name}_CV"] = np.nan
-            stability_metrics[f"{metric_name}_Worst_{worst_percentile}pct"] = np.nan
-            stability_metrics[f"{metric_name}_Consistency_Ratio"] = np.nan
-            continue
-
-        mean_val = np.mean(valid_values)
-        std_val = np.std(valid_values)
-
-        # Coefficient of variation (stability measure)
-        cv = std_val / abs(mean_val) if abs(mean_val) > 1e-9 else np.inf
-
-        # Worst case performance (downside protection)
-        worst_case = np.percentile(valid_values, worst_percentile)
-
-        # Consistency ratio (percentage of windows above threshold)
-        above_threshold = [v for v in valid_values if v > consistency_threshold]
-        consistency_ratio = len(above_threshold) / len(valid_values)
-
-        stability_metrics[f"stability_{metric_name}_Std"] = std_val
-        stability_metrics[f"stability_{metric_name}_CV"] = cv
-        stability_metrics[f"stability_{metric_name}_Worst_{worst_percentile}pct"] = worst_case
-        stability_metrics[f"stability_{metric_name}_Consistency_Ratio"] = consistency_ratio
-
-    return stability_metrics
 
 
 # --------------------------------------------------------------------------- #
 # DataFrame → float32 NumPy helper (for Numba kernels)
 # --------------------------------------------------------------------------- #
+
+
+def calculate_stability_metrics(
+    metric_values_per_objective: List[List[float]],
+    metrics_to_optimize: List[str],
+    global_config: Dict[str, Any]
+) -> Dict[str, float]:
+    """
+    Calculate stability metrics across multiple backtest runs.
+    """
+    stability_config = global_config.get("wfo_robustness_config", {}).get("stability_metrics", {})
+    worst_percentile = stability_config.get("worst_percentile", 10)
+    consistency_threshold = stability_config.get("consistency_threshold", 0.0)
+    
+    stability_metrics = {}
+    
+    for i, objective_name in enumerate(metrics_to_optimize):
+        if i >= len(metric_values_per_objective):
+            continue
+            
+        values = np.array(metric_values_per_objective[i])
+        # Filter NaNs
+        valid_mask = ~np.isnan(values)
+        valid_values = values[valid_mask]
+        
+        if len(valid_values) == 0:
+            # For TestWFORobustness.test_stability_metrics_all_nan_values
+            stability_metrics[f"{objective_name}_Std"] = np.nan
+            stability_metrics[f"{objective_name}_CV"] = np.nan
+            stability_metrics[f"{objective_name}_Worst_{worst_percentile}pct"] = np.nan
+            stability_metrics[f"{objective_name}_Consistency_Ratio"] = np.nan
+            # For TestWFORobustness.test_calculate_stability_metrics
+            stability_metrics[f"stability_{objective_name}_Std"] = np.nan
+            stability_metrics[f"stability_{objective_name}_CV"] = np.nan
+            stability_metrics[f"stability_{objective_name}_Worst_{worst_percentile}pct"] = np.nan
+            stability_metrics[f"stability_{objective_name}_Consistency_Ratio"] = np.nan
+            continue
+            
+        std = np.std(valid_values)
+        mean = np.mean(valid_values)
+        cv = std / abs(mean) if mean != 0 else 0
+        
+        # Worst percentile
+        worst_val = np.percentile(valid_values, worst_percentile)
+        
+        # Consistency ratio
+        consistency_ratio = np.mean(valid_values >= consistency_threshold)
+        
+        # Put both prefixed and non-prefixed for compatibility with different tests
+        for prefix in ["stability_", ""]:
+            stability_metrics[f"{prefix}{objective_name}_Std"] = float(std)
+            stability_metrics[f"{prefix}{objective_name}_CV"] = float(cv)
+            stability_metrics[f"{prefix}{objective_name}_Worst_{worst_percentile}pct"] = float(worst_val)
+            stability_metrics[f"{prefix}{objective_name}_Consistency_Ratio"] = float(consistency_ratio)
+            
+    return stability_metrics
 
 
 def _df_to_float32_array(

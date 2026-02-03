@@ -96,52 +96,71 @@ def calculate_portfolio_returns(
         close_arr = close_prices_use.fillna(0.0).to_numpy(copy=True)
         price_mask_arr = price_mask.to_numpy(copy=True)
 
-        # Read commission params from global_config
-        commission_per_share = (
-            float(global_config.get("commission_per_share", 0.005))
-            if isinstance(global_config, dict)
-            else 0.005
-        )
-        commission_min_per_order = (
-            float(global_config.get("commission_min_per_order", 1.0))
-            if isinstance(global_config, dict)
-            else 1.0
-        )
-        commission_max_percent = (
-            float(global_config.get("commission_max_percent_of_trade", 0.005))
-            if isinstance(global_config, dict)
-            else 0.005
-        )
-        slippage_bps = (
-            float(global_config.get("slippage_bps", 2.5))
-            if isinstance(global_config, dict)
-            else 2.5
-        )
-        portfolio_value = (
-            float(global_config.get("portfolio_value", 100000.0))
-            if isinstance(global_config, dict)
-            else 100000.0
-        )
+        costs_config = scenario_config.get("costs_config") if scenario_config is not None else None
+        transaction_costs_bps = None
+        if isinstance(costs_config, dict):
+            raw_bps = costs_config.get("transaction_costs_bps")
+            if raw_bps is not None:
+                try:
+                    transaction_costs_bps = float(raw_bps)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Invalid transaction_costs_bps in costs_config: %s",
+                        raw_bps,
+                    )
 
         weights_current = (
             weights_daily.reindex(index=price_index, columns=valid_cols).fillna(0.0).to_numpy()
         )
 
-        tc_frac, tc_frac_detailed = detailed_commission_slippage_kernel(
-            weights_current=weights_current,
-            close_prices=close_arr,
-            portfolio_value=portfolio_value,
-            commission_per_share=commission_per_share,
-            commission_min_per_order=commission_min_per_order,
-            commission_max_percent=commission_max_percent,
-            slippage_bps=slippage_bps,
-            price_mask=price_mask_arr,
-        )
+        if transaction_costs_bps is not None:
+            weights_df = weights_daily.reindex(index=price_index, columns=valid_cols).fillna(0.0)
+            delta_weights = weights_df.diff().abs().fillna(0.0)
+            transaction_costs = delta_weights.sum(axis=1) * (transaction_costs_bps / 10000.0)
+            per_asset_transaction_costs = delta_weights * (transaction_costs_bps / 10000.0)
+        else:
+            # Read commission params from global_config
+            commission_per_share = (
+                float(global_config.get("commission_per_share", 0.005))
+                if isinstance(global_config, dict)
+                else 0.005
+            )
+            commission_min_per_order = (
+                float(global_config.get("commission_min_per_order", 1.0))
+                if isinstance(global_config, dict)
+                else 1.0
+            )
+            commission_max_percent = (
+                float(global_config.get("commission_max_percent_of_trade", 0.005))
+                if isinstance(global_config, dict)
+                else 0.005
+            )
+            slippage_bps = (
+                float(global_config.get("slippage_bps", 2.5))
+                if isinstance(global_config, dict)
+                else 2.5
+            )
+            portfolio_value = (
+                float(global_config.get("portfolio_value", 100000.0))
+                if isinstance(global_config, dict)
+                else 100000.0
+            )
 
-        transaction_costs = pd.Series(tc_frac, index=price_index, dtype=float)
-        per_asset_transaction_costs = pd.DataFrame(
-            tc_frac_detailed, index=price_index, columns=valid_cols
-        )
+            tc_frac, tc_frac_detailed = detailed_commission_slippage_kernel(
+                weights_current=weights_current,
+                close_prices=close_arr,
+                portfolio_value=portfolio_value,
+                commission_per_share=commission_per_share,
+                commission_min_per_order=commission_min_per_order,
+                commission_max_percent=commission_max_percent,
+                slippage_bps=slippage_bps,
+                price_mask=price_mask_arr,
+            )
+
+            transaction_costs = pd.Series(tc_frac, index=price_index, dtype=float)
+            per_asset_transaction_costs = pd.DataFrame(
+                tc_frac_detailed, index=price_index, columns=valid_cols
+            )
 
         # --- Return simulation (fast + realistic): drift weights between rebalances ---
         w_for_returns = (

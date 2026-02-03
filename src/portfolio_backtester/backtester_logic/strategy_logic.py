@@ -351,7 +351,10 @@ def generate_signals(
         if current_weights_df is not None:
             # Align with universe_tickers before assigning to numpy array
             aligned_weights = current_weights_df.reindex(columns=universe_tickers).fillna(0.0)
-            signals_arr[i, :] = aligned_weights.iloc[0].values.astype(np.float64)
+            if not aligned_weights.empty:
+                signals_arr[i, :] = aligned_weights.iloc[0].values.astype(np.float64)
+            else:
+                signals_arr[i, :] = 0.0
         else:
             signals_arr[i, :] = 0.0
 
@@ -634,7 +637,10 @@ def _generate_meta_strategy_signals(
 
             if current_weights_df is not None:
                 aligned_weights = current_weights_df.reindex(columns=universe_tickers).fillna(0.0)
-                signals_arr[i, :] = aligned_weights.iloc[0].values.astype(np.float64)
+                if not aligned_weights.empty:
+                    signals_arr[i, :] = aligned_weights.iloc[0].values.astype(np.float64)
+                else:
+                    signals_arr[i, :] = 0.0
             else:
                 signals_arr[i, :] = 0.0
 

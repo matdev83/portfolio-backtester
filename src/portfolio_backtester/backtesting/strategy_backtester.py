@@ -22,10 +22,36 @@ from ..interfaces import create_cache_manager
 from ..backtester_logic.strategy_logic import generate_signals, size_positions
 from ..backtester_logic.portfolio_logic import calculate_portfolio_returns
 from ..backtester_logic.data_manager import prepare_scenario_data
+from ..backtester_logic.strategy_overlays import apply_wfo_scaling_and_kill_switch
 from ..reporting.performance_metrics import calculate_metrics
 from ..optimization.wfo_window import WFOWindow
 
 logger = logging.getLogger(__name__)
+
+
+def _build_wfo_test_mask(overlay_diagnostics: Dict[str, Any], index: pd.Index) -> pd.Series:
+    windows = overlay_diagnostics.get("windows", []) if overlay_diagnostics else []
+    if not windows:
+        return pd.Series(False, index=index)
+
+    idx = pd.DatetimeIndex(index)
+    if idx.tz is not None:
+        idx = idx.tz_convert(None)
+
+    mask_vals = pd.Series(False, index=index)
+    for window in windows:
+        test_start = window.get("test_start")
+        test_end = window.get("test_end")
+        if not test_start or not test_end:
+            continue
+        try:
+            start_ts = pd.Timestamp(test_start)
+            end_ts = pd.Timestamp(test_end)
+        except Exception:
+            continue
+        mask_vals |= (idx >= start_ts) & (idx <= end_ts)
+
+    return mask_vals
 
 
 class StrategyBacktester:
@@ -164,6 +190,14 @@ class StrategyBacktester:
             strategy,
         )
 
+        overlay_config = canonical_config.get("risk_overlay_config")
+        overlay_diagnostics: Optional[Dict[str, Any]] = None
+        if isinstance(overlay_config, Mapping) and overlay_config.get("type") == "drift_regime_wfo":
+            asset_returns = rets_daily.reindex(columns=universe_tickers)
+            sized_signals, overlay_diagnostics = apply_wfo_scaling_and_kill_switch(
+                sized_signals, asset_returns, overlay_config
+            )
+
         # Calculate portfolio returns (optionally with trade tracking)
         portfolio_returns, trade_tracker = calculate_portfolio_returns(
             sized_signals,
@@ -191,10 +225,21 @@ class StrategyBacktester:
         else:
             benchmark_returns = pd.Series(0.0, index=portfolio_returns.index)
 
+        metrics_returns = portfolio_returns
+        benchmark_returns_for_metrics = benchmark_returns
+        if overlay_diagnostics and isinstance(overlay_config, Mapping):
+            if overlay_config.get("metrics_window") == "wfo_test":
+                test_mask = _build_wfo_test_mask(overlay_diagnostics, portfolio_returns.index)
+                if test_mask.any():
+                    metrics_returns = portfolio_returns.loc[test_mask]
+                    benchmark_returns_for_metrics = benchmark_returns.loc[test_mask]
+                else:
+                    logger.warning("WFO test window mask empty; using full-period returns.")
+
         # Calculate performance metrics with trade statistics
         metrics = calculate_metrics(
-            portfolio_returns,
-            benchmark_returns,
+            metrics_returns,
+            benchmark_returns_for_metrics,
             benchmark_ticker,
             trade_stats=trade_stats,
         )
@@ -247,6 +292,8 @@ class StrategyBacktester:
         Returns:
             WindowResult: Results for this specific window
         """
+        from ..canonical_config import CanonicalScenarioConfig
+
         train_start, train_end, test_start, test_end = (
             window.train_start,
             window.train_end,
@@ -565,9 +612,12 @@ class StrategyBacktester:
 
         # PERFORMANCE: Avoid nested loops over large universes (e.g. R2K)
         # Use stack() to get non-zero positions efficiently
-        stacked_signals = sized_signals.stack()
-        non_zero_mask = stacked_signals.abs() > 1e-6
-        non_zero_signals = stacked_signals[non_zero_mask]
+        stacked_signals = cast(pd.Series, sized_signals.stack())
+        
+        # Robustness: ensure numeric values before taking abs()
+        numeric_signals = pd.to_numeric(stacked_signals, errors="coerce")
+        non_zero_mask = numeric_signals.notna() & (numeric_signals.abs() > 1e-6)
+        non_zero_signals = stacked_signals.loc[non_zero_mask]
 
         if non_zero_signals.empty:
             return pd.DataFrame()
@@ -584,6 +634,9 @@ class StrategyBacktester:
         else:
             prices_df = daily_data
 
+        if isinstance(prices_df, pd.Series):
+            prices_df = prices_df.to_frame()
+
         # Align prices to signals and stack
         # This ensures we have a price for every position date/ticker
         # Limit to relevant tickers to speed up reindex
@@ -592,7 +645,7 @@ class StrategyBacktester:
         stacked_prices = aligned_prices.stack()
 
         # Create the result DataFrame
-        trade_history = non_zero_signals.to_frame()
+        trade_history = pd.DataFrame(non_zero_signals, columns=["position"])
         trade_history.reset_index(inplace=True)
         # Signals stacked index names might be [None, None] or [DateName, TickerName]
         # We force standard names for the output

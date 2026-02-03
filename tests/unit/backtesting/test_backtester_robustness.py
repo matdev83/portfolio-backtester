@@ -57,6 +57,7 @@ def test_backtest_with_corrupted_prices(robust_backtester, corrupted_data):
         
         # Mock strategy
         mock_strat = MagicMock()
+        mock_strat.get_universe.return_value = [("A", 1.0), ("B", 1.0)]
         mock_get_strat.return_value = mock_strat
         
         # Mock logic to proceed despite bad data
@@ -91,7 +92,9 @@ def test_backtest_with_misaligned_dates(robust_backtester):
     with patch.object(robust_backtester, "_get_strategy") as mock_get, \
          patch("portfolio_backtester.backtesting.strategy_backtester.calculate_portfolio_returns") as mock_calc:
         
-        mock_get.return_value = MagicMock()
+        mock_strat = MagicMock()
+        mock_strat.get_universe.return_value = [("A", 1.0)]
+        mock_get.return_value = mock_strat
         # Mock return to avoid 'None' crash if it gets that far
         mock_calc.return_value = (pd.Series(0.0, index=daily.index), None)
         
@@ -107,7 +110,9 @@ def test_universe_collection_failure(robust_backtester, corrupted_data):
     with patch.object(robust_backtester, "_get_strategy") as mock_get_strat, \
          patch("portfolio_backtester.interfaces.ticker_collector.TickerCollectorFactory.create_collector") as mock_factory:
         
-        mock_get_strat.return_value = MagicMock()
+        mock_strat = MagicMock()
+        mock_strat.get_universe.return_value = [] # Return empty universe to test the empty path
+        mock_get_strat.return_value = mock_strat
         mock_factory.side_effect = Exception("File Read Error")
         
         # Should catch exception and log error, then proceed with empty universe or handle gracefully
@@ -137,8 +142,12 @@ def test_signal_generation_failure(robust_backtester, corrupted_data):
     """Test resilience when signal generation crashes."""
     config = {"strategy": "Test", "strategy_params": {}, "universe": ["A"]}
     
-    with patch.object(robust_backtester, "_get_strategy"), \
+    with patch.object(robust_backtester, "_get_strategy") as mock_get_strat, \
          patch("portfolio_backtester.backtesting.strategy_backtester.generate_signals") as mock_sigs:
+        
+        mock_strat = MagicMock()
+        mock_strat.get_universe.return_value = [("A", 1.0)]
+        mock_get_strat.return_value = mock_strat
         
         mock_sigs.side_effect = ValueError("Strategy Logic Error")
         

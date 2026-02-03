@@ -126,9 +126,11 @@ class TestStrategyBacktester:
         strategy_config = self.strategy_config()
         strategy_config["universe"] = []
 
-        result = self.backtester.backtest_strategy(
-            strategy_config, monthly_df, daily_df, returns_df
-        )
+        # Force get_universe to return empty to trigger the no-tickers path
+        with patch("tests.unit.backtesting.test_strategy_backtester.MomentumSignalStrategy.get_universe", return_value=[]):
+            result = self.backtester.backtest_strategy(
+                strategy_config, monthly_df, daily_df, returns_df
+            )
 
         assert result is not None
         assert result.returns.empty
@@ -247,7 +249,7 @@ class TestStrategyBacktester:
             "strategy": "MomentumSignalStrategy",
             "strategy_params": {"lookback_period": 20, "num_holdings": 10},
             "universe": ["AAPL", "MSFT", "GOOGL"],
-            "rebalance_frequency": "monthly",
+            "rebalance_frequency": "ME",
         }
 
 

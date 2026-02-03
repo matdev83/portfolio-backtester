@@ -8,7 +8,7 @@ while internally delegating to specialized classes following SOLID principles.
 import argparse
 import logging
 import time
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -88,6 +88,26 @@ class Backtester:
         # We should ideally move this into the normalizer or update it to handle CanonicalScenarioConfig
         # For now, we've already normalized them, so this might be redundant or needs adaptation.
         # populate_default_optimizations(self.scenarios, OPTIMIZER_PARAMETER_DEFAULTS)
+
+        # Scenario-level data source overrides (single-scenario runs only)
+        try:
+            if len(self.scenarios) == 1:
+                scenario = self.scenarios[0]
+                override = None
+                if hasattr(scenario, "get"):
+                    override = scenario.get("data_source_config")
+                elif isinstance(scenario, dict):
+                    override = scenario.get("data_source_config")
+                if isinstance(override, Mapping):
+                    base_cfg = dict(self.global_config.get("data_source_config", {}) or {})
+                    base_cfg.update(dict(override))
+                    self.global_config["data_source_config"] = base_cfg
+                    logger.info(
+                        "Applying scenario data_source_config override: %s",
+                        self.global_config["data_source_config"],
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed applying scenario data_source_config override: %s", exc)
 
         # Initialize timing and timeout management using DIP
         self._timeout_start_time: float = time.time()

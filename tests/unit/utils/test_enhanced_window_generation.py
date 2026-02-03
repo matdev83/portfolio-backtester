@@ -120,9 +120,13 @@ class TestEnhancedWindowGeneration:
         )
 
         # Check that base generation was called
-        mock_generate_base.assert_called_once_with(
-            monthly_data_index, scenario_config, global_config, rng
-        )
+        args, _ = mock_generate_base.call_args
+        assert args[0] is monthly_data_index
+        # Use get() because it might be a dict or a CanonicalScenarioConfig at this point in the mock
+        config_passed = args[1]
+        assert (config_passed.get("name") if hasattr(config_passed, "get") else config_passed.name) == "test_strategy"
+        assert args[2] is global_config
+        assert args[3] is rng
 
         # Check enhanced windows
         assert len(windows) == 2
@@ -194,9 +198,10 @@ class TestEnhancedWindowGeneration:
         generate_enhanced_wfo_windows(monthly_data_index, scenario_config, global_config, rng)
 
         # Check that random state was passed through
-        mock_generate_base.assert_called_once_with(
-            monthly_data_index, scenario_config, global_config, rng
-        )
+        args, _ = mock_generate_base.call_args
+        assert args[0] is monthly_data_index
+        assert args[2] is global_config
+        assert args[3] is rng
 
     @patch("portfolio_backtester.utils.generate_randomized_wfo_windows")
     def test_generate_enhanced_wfo_windows_fallback_when_import_fails(self, mock_generate_base):

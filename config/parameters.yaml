@@ -13,7 +13,7 @@ GLOBAL_CONFIG:
 
     # Disable fallbacks to providers that may require auth (e.g., tradingview)
     # to prevent "provider not available" failures from zeroing out otherwise-fine symbols.
-    allow_fallbacks: false
+    allow_fallbacks: true
 
     # Increase parallelism for R2K scale while staying safe for the system.
     max_workers: 5
@@ -22,7 +22,7 @@ GLOBAL_CONFIG:
     cache_max_age_seconds: 14400
 
     # If true, only use cached MDMP data and skip downloads.
-    cache_only: true
+    cache_only: false
   
   # Portfolio capital configuration
   portfolio_value: 1000000.0  # Starting capital: $1M for compounding

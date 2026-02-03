@@ -16,10 +16,6 @@ from portfolio_backtester.config_loader import (
     ConfigurationError,
     load_scenario_from_file,
 )
-from portfolio_backtester.scenario_validator import (
-    validate_scenario_semantics,
-    YamlValidator,
-)
 from portfolio_backtester.scenario_normalizer import ScenarioNormalizer, ScenarioNormalizationError
 
 

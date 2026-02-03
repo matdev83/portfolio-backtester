@@ -73,7 +73,8 @@ class TestDriftRegimeConditionalFactorPortfolioStrategy:
                 "drift_threshold": 0.5, # Lower threshold to ensure we get signals
                 "num_holdings": 2,
                 "reversal_window": 21,
-                "value_window": 126
+                "value_window": 126,
+                "min_history_days": 0
             }
         }
         strategy = DriftRegimeConditionalFactorPortfolioStrategy(config)
@@ -90,7 +91,7 @@ class TestDriftRegimeConditionalFactorPortfolioStrategy:
         assert not signals.empty
         
     def test_insufficient_data(self, drift_test_data):
-        config = {"strategy_params": {"drift_window": 300, "value_window": 300}}
+        config = {"strategy_params": {"drift_window": 300, "value_window": 300, "min_history_days": 0}}
         strategy = DriftRegimeConditionalFactorPortfolioStrategy(config)
         
         # Only 300 days available, so 300-day windows might fail or be borderline
@@ -109,7 +110,8 @@ class TestDriftRegimeConditionalFactorPortfolioStrategy:
         config = {
             "strategy_params": {
                 "drift_threshold": 0.99,
-                "drift_window": 63
+                "drift_window": 63,
+                "min_history_days": 0
             }
         }
         strategy = DriftRegimeConditionalFactorPortfolioStrategy(config)
@@ -131,7 +133,8 @@ class TestDriftRegimeConditionalFactorPortfolioStrategy:
                 "drift_threshold": 0.4, # Lower to ensure enough candidates
                 "num_holdings": 1,
                 "trade_longs": True,
-                "trade_shorts": True
+                "trade_shorts": True,
+                "min_history_days": 0
             }
         }
         strategy_ls = DriftRegimeConditionalFactorPortfolioStrategy(config_ls)
@@ -155,7 +158,8 @@ class TestDriftRegimeConditionalFactorPortfolioStrategy:
                 "drift_threshold": 0.4,
                 "num_holdings": 1,
                 "trade_longs": True,
-                "trade_shorts": False
+                "trade_shorts": False,
+                "min_history_days": 0
             }
         }
         strategy_lo = DriftRegimeConditionalFactorPortfolioStrategy(config_lo)
@@ -173,7 +177,8 @@ class TestDriftRegimeConditionalFactorPortfolioStrategy:
                 "drift_threshold": 0.4,
                 "num_holdings": 1,
                 "trade_longs": False,
-                "trade_shorts": True
+                "trade_shorts": True,
+                "min_history_days": 0
             }
         }
         strategy_so = DriftRegimeConditionalFactorPortfolioStrategy(config_so)
