@@ -240,7 +240,28 @@ def calculate_portfolio_returns(
             .to_numpy()
         )
 
+        weights_arr = (
+            weights_daily.reindex(index=common_index, columns=valid_cols)
+            .fillna(0.0)
+            .astype(float)
+            .to_numpy()
+        )
+        prices_arr = (
+            close_prices_df.reindex(index=common_index, columns=valid_cols)
+            .fillna(0.0)
+            .astype(float)
+            .to_numpy()
+        )
+        commissions_arr = (
+            per_asset_transaction_costs.reindex(index=common_index, columns=valid_cols)
+            .fillna(0.0)
+            .astype(float)
+            .to_numpy()
+        )
+
+
         _track_trades_and_populate(
+
             trade_tracker=trade_tracker,
             weights_arr=weights_arr,
             prices_arr=prices_arr,

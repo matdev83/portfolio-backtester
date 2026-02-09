@@ -1,0 +1,24 @@
+name: donchian_pure
+strategy: DonchianAsriSignalStrategy
+
+start_date: 2019-03-04
+end_date: 2026-02-08
+rebalance_frequency: D
+position_sizer: equal_weight
+timing_config:
+  mode: signal_based
+  scan_frequency: D
+  min_holding_period: 1
+train_window_months: 36
+test_window_months: 12
+
+universe_config:
+  type: fixed
+  tickers: [CRYPTO:BTCUSD]
+
+strategy_params:
+  entry_lookback: 20
+  exit_lookback: 10
+  use_asri_filter: false
+  use_asri_sizing: false
+  leverage: 1.0

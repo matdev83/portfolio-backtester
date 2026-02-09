@@ -5,10 +5,10 @@
       "errors": []
     },
     "state": {
-      "timestamp": 1770057966.6788218,
+      "timestamp": 1770662811.1723197,
       "file_counts": {
-        "scenarios": 62,
-        "strategies": 73,
+        "scenarios": 67,
+        "strategies": 74,
         "parameters": 1
       },
       "files": {
@@ -291,6 +291,31 @@
             "size": 106
           },
           {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\asri_thr.yaml",
+            "mtime": 1770662411.7043202,
+            "size": 410
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_asri_filter.yaml",
+            "mtime": 1770660528.854323,
+            "size": 529
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_asri_filter_size.yaml",
+            "mtime": 1770660541.1333208,
+            "size": 589
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_asri_size_only.yaml",
+            "mtime": 1770660554.2978225,
+            "size": 557
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_pure.yaml",
+            "mtime": 1770660565.6103206,
+            "size": 465
+          },
+          {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\dummy_signal_strategy\\default.yaml",
             "mtime": 1754947662.577382,
             "size": 800
@@ -456,6 +481,11 @@
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\volatility_targeted_fixed_weight_portfolio_strategy.py",
             "mtime": 1769896876.5158212,
             "size": 1722
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\donchian_asri_signal_strategy.py",
+            "mtime": 1770662763.8443222,
+            "size": 13658
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\dummy_signal_strategy.py",
