@@ -1,6 +1,5 @@
 from __future__ import annotations
 import logging  # Assuming logger might be useful here or for other utils
-import signal
 from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union, Mapping
 
 import numpy as np
@@ -8,7 +7,6 @@ import pandas as pd
 
 if TYPE_CHECKING:
     from ..canonical_config import CanonicalScenarioConfig
-
 
 
 # Get a logger for this module (or use a more general one if available)
@@ -28,9 +26,6 @@ def handle_interrupt(signum: Any, frame: Any) -> None:
     # Using print as logger might not be configured when signal occurs early
     print("Interrupt signal received. Attempting to terminate gracefully...")
     logger.warning("Interrupt signal received. Attempting to terminate gracefully...")
-
-
-
 
 
 def _resolve_strategy(name: object, strategy_params: Optional[Dict[str, Any]] = None) -> Any:
@@ -161,9 +156,6 @@ def _run_scenario_static(
     return portfolio_returns
 
 
-
-
-
 def generate_randomized_wfo_windows(
     monthly_data_index: pd.DatetimeIndex,
     scenario_config: dict,
@@ -175,22 +167,20 @@ def generate_randomized_wfo_windows(
     Windows are aligned to calendar months and adjusted to business days.
     """
     # Handle both top-level (legacy/dict) and nested (canonical/wfo_config) structure
-    wfo_cfg = scenario_config.get("wfo_config", {}) if isinstance(scenario_config, (dict, Mapping)) else {}
-    
+    wfo_cfg = (
+        scenario_config.get("wfo_config", {})
+        if isinstance(scenario_config, (dict, Mapping))
+        else {}
+    )
+
     base_train_window_m = int(
-        scenario_config.get("train_window_months") 
-        or wfo_cfg.get("train_window_months") 
-        or 60
+        scenario_config.get("train_window_months") or wfo_cfg.get("train_window_months") or 60
     )
     base_test_window_m = int(
-        scenario_config.get("test_window_months") 
-        or wfo_cfg.get("test_window_months") 
-        or 12
+        scenario_config.get("test_window_months") or wfo_cfg.get("test_window_months") or 12
     )
     wf_type = str(
-        scenario_config.get("walk_forward_type") 
-        or wfo_cfg.get("walk_forward_type") 
-        or "expanding"
+        scenario_config.get("walk_forward_type") or wfo_cfg.get("walk_forward_type") or "expanding"
     ).lower()
 
     start_bound = scenario_config.get("start_date") or wfo_cfg.get("start_date")
@@ -221,9 +211,10 @@ def generate_randomized_wfo_windows(
 
     step_months_raw = scenario_config.get(
         "wfo_step_months",
-        scenario_config.get("walk_forward_step_months", 
-            wfo_cfg.get("wfo_step_months", 
-                wfo_cfg.get("walk_forward_step_months")))
+        scenario_config.get(
+            "walk_forward_step_months",
+            wfo_cfg.get("wfo_step_months", wfo_cfg.get("walk_forward_step_months")),
+        ),
     )
     step_months = int(step_months_raw) if step_months_raw is not None else base_test_window_m
     if step_months <= 0:
@@ -231,9 +222,10 @@ def generate_randomized_wfo_windows(
 
     embargo_bdays_raw = scenario_config.get(
         "wfo_embargo_bdays",
-        scenario_config.get("wfo_embargo_days", 
-            wfo_cfg.get("wfo_embargo_bdays", 
-                wfo_cfg.get("wfo_embargo_days", 0))))
+        scenario_config.get(
+            "wfo_embargo_days", wfo_cfg.get("wfo_embargo_bdays", wfo_cfg.get("wfo_embargo_days", 0))
+        ),
+    )
     embargo_bdays = max(0, int(embargo_bdays_raw or 0))
 
     robustness_config = global_config.get("wfo_robustness_config", {}) or {}
@@ -358,7 +350,9 @@ def generate_enhanced_wfo_windows(
     # Ensure we are working with a canonical config
     if not isinstance(scenario_config, CanonicalScenarioConfig):
         normalizer = ScenarioNormalizer()
-        canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+        canonical_config = normalizer.normalize(
+            scenario=scenario_config, global_config=global_config
+        )
     else:
         canonical_config = scenario_config
 
@@ -397,7 +391,9 @@ def generate_enhanced_wfo_windows(
     return enhanced_windows
 
 
-def _determine_evaluation_frequency(scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig]) -> str:
+def _determine_evaluation_frequency(
+    scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
+) -> str:
     """Determine required evaluation frequency based on strategy configuration.
 
     Args:
@@ -407,7 +403,7 @@ def _determine_evaluation_frequency(scenario_config: Union[Dict[str, Any], Canon
         Evaluation frequency ('D', 'W', or 'M')
     """
     from ..canonical_config import CanonicalScenarioConfig
-    
+
     if isinstance(scenario_config, CanonicalScenarioConfig):
         strategy_class = scenario_config.extras.get("strategy_class", "")
         strategy_name = scenario_config.strategy
@@ -442,10 +438,6 @@ def _determine_evaluation_frequency(scenario_config: Union[Dict[str, Any], Canon
     return "M"
 
 
-
-
-
-
 # --------------------------------------------------------------------------- #
 # DataFrame → float32 NumPy helper (for Numba kernels)
 # --------------------------------------------------------------------------- #
@@ -454,7 +446,7 @@ def _determine_evaluation_frequency(scenario_config: Union[Dict[str, Any], Canon
 def calculate_stability_metrics(
     metric_values_per_objective: List[List[float]],
     metrics_to_optimize: List[str],
-    global_config: Dict[str, Any]
+    global_config: Dict[str, Any],
 ) -> Dict[str, float]:
     """
     Calculate stability metrics across multiple backtest runs.
@@ -462,18 +454,18 @@ def calculate_stability_metrics(
     stability_config = global_config.get("wfo_robustness_config", {}).get("stability_metrics", {})
     worst_percentile = stability_config.get("worst_percentile", 10)
     consistency_threshold = stability_config.get("consistency_threshold", 0.0)
-    
+
     stability_metrics = {}
-    
+
     for i, objective_name in enumerate(metrics_to_optimize):
         if i >= len(metric_values_per_objective):
             continue
-            
+
         values = np.array(metric_values_per_objective[i])
         # Filter NaNs
         valid_mask = ~np.isnan(values)
         valid_values = values[valid_mask]
-        
+
         if len(valid_values) == 0:
             # For TestWFORobustness.test_stability_metrics_all_nan_values
             stability_metrics[f"{objective_name}_Std"] = np.nan
@@ -486,24 +478,28 @@ def calculate_stability_metrics(
             stability_metrics[f"stability_{objective_name}_Worst_{worst_percentile}pct"] = np.nan
             stability_metrics[f"stability_{objective_name}_Consistency_Ratio"] = np.nan
             continue
-            
+
         std = np.std(valid_values)
         mean = np.mean(valid_values)
         cv = std / abs(mean) if mean != 0 else 0
-        
+
         # Worst percentile
         worst_val = np.percentile(valid_values, worst_percentile)
-        
+
         # Consistency ratio
         consistency_ratio = np.mean(valid_values >= consistency_threshold)
-        
+
         # Put both prefixed and non-prefixed for compatibility with different tests
         for prefix in ["stability_", ""]:
             stability_metrics[f"{prefix}{objective_name}_Std"] = float(std)
             stability_metrics[f"{prefix}{objective_name}_CV"] = float(cv)
-            stability_metrics[f"{prefix}{objective_name}_Worst_{worst_percentile}pct"] = float(worst_val)
-            stability_metrics[f"{prefix}{objective_name}_Consistency_Ratio"] = float(consistency_ratio)
-            
+            stability_metrics[f"{prefix}{objective_name}_Worst_{worst_percentile}pct"] = float(
+                worst_val
+            )
+            stability_metrics[f"{prefix}{objective_name}_Consistency_Ratio"] = float(
+                consistency_ratio
+            )
+
     return stability_metrics
 
 

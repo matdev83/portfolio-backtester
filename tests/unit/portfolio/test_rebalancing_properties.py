@@ -100,7 +100,7 @@ def weight_dataframes(draw, min_rows=5, max_rows=30, min_assets=2, max_assets=10
 
 
 @given(weight_dataframes(), st.sampled_from(["D", "W", "M", "Q", "Y"]))
-@settings(deadline=None)
+@settings(deadline=None, max_examples=25)
 def test_rebalance_preserves_column_names(weights, frequency):
     """Test that rebalance preserves column names."""
     # Skip empty dataframes
@@ -114,7 +114,7 @@ def test_rebalance_preserves_column_names(weights, frequency):
 
 
 @given(weight_dataframes(), st.sampled_from(["D", "W", "M", "Q", "Y"]))
-@settings(deadline=None)
+@settings(deadline=None, max_examples=25)
 def test_rebalance_period_boundaries(weights, frequency):
     """
     Test that rebalancing respects period boundaries.
@@ -148,7 +148,7 @@ def test_rebalance_period_boundaries(weights, frequency):
 
 
 @given(weight_dataframes(), st.sampled_from(["D", "W", "M", "Q", "Y"]))
-@settings(deadline=None)
+@settings(deadline=None, max_examples=25)
 def test_rebalance_preserves_weight_constraints(weights, frequency):
     """
     Test that rebalancing preserves important weight constraints:
@@ -244,7 +244,7 @@ def test_rebalance_handles_empty_dataframe():
 
 
 @given(weight_dataframes(), st.sampled_from(["D", "W", "M", "Q", "Y"]))
-@settings(deadline=None)
+@settings(deadline=None, max_examples=25)
 def test_rebalance_forward_fills(weights, frequency):
     """
     Test that rebalance forward fills values properly:

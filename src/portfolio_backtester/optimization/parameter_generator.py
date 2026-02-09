@@ -12,7 +12,7 @@ ensures consistent behavior across all optimization backends.
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Mapping, Optional, Union, TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
@@ -42,7 +42,9 @@ class ParameterGenerator(ABC):
     """
 
     def initialize(
-        self, scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"], optimization_config: Dict[str, Any]
+        self,
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
+        optimization_config: Dict[str, Any],
     ) -> None:
         """Initialize the parameter generator with configuration.
 
@@ -338,7 +340,16 @@ def validate_parameter_space(parameter_space: Dict[str, Any]) -> bool:
         ... }
         >>> validate_parameter_space(parameter_space)  # Should not raise
     """
-    if not isinstance(parameter_space, dict):
+    # Accept both dict and frozendict (for thread-safety with xdist)
+    valid_types: tuple[type, ...]
+    try:
+        from frozendict import frozendict
+
+        valid_types = (Mapping, frozendict)
+    except ImportError:
+        valid_types = (Mapping,)
+
+    if not isinstance(parameter_space, valid_types):
         raise InvalidParameterSpaceError(
             f"Parameter space must be a dictionary, got {type(parameter_space)}"
         )
@@ -352,7 +363,7 @@ def validate_parameter_space(parameter_space: Dict[str, Any]) -> bool:
                 f"Parameter name must be a string, got {type(param_name)}"
             )
 
-        if not isinstance(param_config, dict):
+        if not isinstance(param_config, valid_types):
             raise InvalidParameterSpaceError(
                 f"Parameter configuration for '{param_name}' must be a dictionary, "
                 f"got {type(param_config)}"

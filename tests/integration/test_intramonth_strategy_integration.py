@@ -29,6 +29,9 @@ except ImportError:
     WFO_ENHANCEMENT_AVAILABLE = False
 
 
+pytestmark = [pytest.mark.slow, pytest.mark.integration]
+
+
 class TestIntramonthStrategyIntegration:
     """Integration tests for intramonth strategies with enhanced WFO."""
 
@@ -163,6 +166,16 @@ class TestIntramonthStrategyIntegration:
         """Create a mock intramonth strategy that generates realistic signals."""
         strategy = Mock()
         strategy.name = "SeasonalSignalStrategy"
+        strategy.get_universe = Mock(
+            return_value=[
+                ("AAPL", 1.0),
+                ("MSFT", 1.0),
+                ("GOOGL", 1.0),
+                ("AMZN", 1.0),
+                ("TSLA", 1.0),
+            ]
+        )
+
 
         def generate_signals(
             all_historical_data,
@@ -213,6 +226,16 @@ class TestIntramonthStrategyIntegration:
         """Create a mock monthly strategy for comparison."""
         strategy = Mock()
         strategy.name = "MonthlyStrategy"
+        strategy.get_universe = Mock(
+            return_value=[
+                ("AAPL", 1.0),
+                ("MSFT", 1.0),
+                ("GOOGL", 1.0),
+                ("AMZN", 1.0),
+                ("TSLA", 1.0),
+            ]
+        )
+
 
         def generate_signals(
             all_historical_data,
@@ -588,7 +611,9 @@ class TestIntramonthStrategyIntegration:
         # Test with strategy that raises exceptions
         failing_strategy = Mock()
         failing_strategy.name = "SeasonalSignalStrategy"
+        failing_strategy.get_universe = Mock(return_value=[("AAPL", 1.0), ("MSFT", 1.0)])
         failing_strategy.generate_signals = Mock(side_effect=Exception("Strategy failed"))
+
         failing_strategy.get_universe_tickers = Mock(return_value=["AAPL", "MSFT"])
 
         with patch.object(backtester, "_get_strategy", return_value=failing_strategy):

@@ -13,6 +13,9 @@ REPORTS_DIR = PROJECT_ROOT / "data" / "reports"
 PLOTS_DIR = PROJECT_ROOT / "plots"
 
 
+pytestmark = pytest.mark.slow  # Mark entire module as slow
+
+
 def run_cli_backtest(scenario_name: str, timeout_sec: int = 120) -> subprocess.CompletedProcess:
     """Helper to run the backtester CLI in a separate process."""
     command = [

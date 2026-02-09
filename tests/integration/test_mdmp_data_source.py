@@ -10,7 +10,7 @@ import pandas as pd
 from datetime import date, timedelta
 
 # Mark all tests in this module as integration tests
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 
 class TestSymbolMapper:

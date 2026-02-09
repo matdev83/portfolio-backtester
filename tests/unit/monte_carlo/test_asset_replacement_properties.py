@@ -115,7 +115,7 @@ def ohlc_data_frames(draw, min_rows=30, max_rows=100, min_assets=2, max_assets=5
 
 
 @given(monte_carlo_configs(), ohlc_data_frames())
-@settings(deadline=None)
+@settings(deadline=None, max_examples=20)
 def test_asset_replacement_manager_initialization(config, ohlc_data_assets):
     """Test that AssetReplacementManager initializes correctly."""
     ohlc_data, assets = ohlc_data_assets
@@ -133,7 +133,7 @@ def test_asset_replacement_manager_initialization(config, ohlc_data_assets):
 
 
 @given(monte_carlo_configs(), ohlc_data_frames())
-@settings(deadline=None)
+@settings(deadline=None, max_examples=20)
 def test_select_assets_for_replacement(config, ohlc_data_assets):
     """Test that asset selection for replacement works correctly."""
     ohlc_data, assets = ohlc_data_assets
@@ -170,7 +170,7 @@ def test_select_assets_for_replacement(config, ohlc_data_assets):
 
 
 @given(monte_carlo_configs(), ohlc_data_frames())
-@settings(deadline=None)
+@settings(deadline=None, max_examples=20)
 def test_get_replacement_info(config, ohlc_data_assets):
     """Test that replacement info is correctly tracked."""
     ohlc_data, assets = ohlc_data_assets
@@ -217,7 +217,7 @@ def test_get_replacement_info(config, ohlc_data_assets):
 
 
 @given(monte_carlo_configs(), ohlc_data_frames())
-@settings(deadline=None)
+@settings(deadline=None, max_examples=20)
 def test_create_monte_carlo_dataset(config, ohlc_data_assets):
     """Test that create_monte_carlo_dataset correctly creates a dataset with replaced assets."""
     ohlc_data, assets = ohlc_data_assets

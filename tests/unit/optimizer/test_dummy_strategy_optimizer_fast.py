@@ -10,7 +10,9 @@ from portfolio_backtester.core import Backtester
 def test_dummy_strategy_single_trial_optimizer_fast():
     """Fast variant of the optimizer integration test using much smaller data."""
     rng = np.random.default_rng(11)
-    dates = pd.date_range("2019-01-01", periods=1000, freq="D")  # enough data for fast test
+    # Reduced from 1000 to 252 days (~1 year) for faster test execution
+    # while still providing enough data for WFO with 6mo train / 1mo test
+    dates = pd.date_range("2019-01-01", periods=252, freq="D")
     prices = 100 * np.cumprod(1 + rng.normal(0.00025, 0.011, len(dates)))
     volumes = rng.integers(1000, 8000, len(dates))
 
@@ -92,5 +94,3 @@ def test_dummy_strategy_single_trial_optimizer_fast():
     if isinstance(result_series, pd.Series):
         objective = (1 + result_series).prod() - 1
         assert objective is not None
-
-

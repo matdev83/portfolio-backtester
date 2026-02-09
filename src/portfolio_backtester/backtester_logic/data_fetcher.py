@@ -8,7 +8,9 @@ including ticker collection, data fetching, normalization, and preprocessing.
 from __future__ import annotations
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Iterable
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Iterable, Union, Mapping
+from ..canonical_config import CanonicalScenarioConfig
+
 
 import pandas as pd
 
@@ -105,7 +107,22 @@ class DataFetcher:
         self.data_source = data_source
         self.logger = logger
 
+    def _ensure_canonical(
+        self, scenario: Union[Mapping[str, Any], CanonicalScenarioConfig]
+    ) -> CanonicalScenarioConfig:
+        """Ensure scenario is a CanonicalScenarioConfig object."""
+        if isinstance(scenario, CanonicalScenarioConfig):
+            return scenario
+
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        normalizer = ScenarioNormalizer()
+        return normalizer.normalize(
+            scenario=scenario, global_config=self.global_config
+        )
+
     def collect_required_tickers(
+
         self, scenarios_to_run: List[CanonicalScenarioConfig], strategy_getter
     ) -> Tuple[set, bool]:
         """
@@ -127,14 +144,10 @@ class DataFetcher:
 
         scenario_has_universe = False
 
-        from ..scenario_normalizer import ScenarioNormalizer
-        normalizer = ScenarioNormalizer()
         for scenario in scenarios_to_run:
-            if isinstance(scenario, dict) or not hasattr(scenario, "benchmark_ticker"):
-                scenario_config = normalizer.normalize(scenario=scenario, global_config=self.global_config)
-            else:
-                scenario_config = scenario
+            scenario_config = self._ensure_canonical(scenario)
             # Add scenario-specific benchmark if it exists
+
             if scenario_config.benchmark_ticker:
                 if not _is_synthetic_benchmark_ticker(scenario_config.benchmark_ticker):
                     all_tickers.add(scenario_config.benchmark_ticker)
@@ -487,15 +500,11 @@ class DataFetcher:
         if _is_synthetic_benchmark_ticker(global_benchmark):
             synthetic.add(str(global_benchmark).strip().upper())
 
-        from ..scenario_normalizer import ScenarioNormalizer
-        normalizer = ScenarioNormalizer()
         for scenario in scenarios_to_run:
-            if isinstance(scenario, dict) or not hasattr(scenario, "benchmark_ticker"):
-                scenario_config = normalizer.normalize(scenario=scenario, global_config=self.global_config)
-            else:
-                scenario_config = scenario
+            scenario_config = self._ensure_canonical(scenario)
 
             bench = scenario_config.benchmark_ticker
+
             if _is_synthetic_benchmark_ticker(bench):
                 synthetic.add(str(bench).strip().upper())
 
@@ -591,26 +600,18 @@ class DataFetcher:
 
         # Determine optimal start date and fetch data
         explicit_start_candidates: list[str] = []
-        from ..scenario_normalizer import ScenarioNormalizer
-        normalizer = ScenarioNormalizer()
         for scenario in scenarios_to_run:
-            if isinstance(scenario, dict) or not hasattr(scenario, "benchmark_ticker"):
-                scenario_config = normalizer.normalize(scenario=scenario, global_config=self.global_config)
-            else:
-                scenario_config = scenario
+            scenario_config = self._ensure_canonical(scenario)
 
             if scenario_config.start_date:
-                start_str = _coerce_date_str(scenario.start_date)
+                start_str = _coerce_date_str(scenario_config.start_date)
                 if start_str is not None:
                     explicit_start_candidates.append(start_str)
 
         coverage_candidates = []
         for scenario in scenarios_to_run:
             # Ensure we have a canonical config
-            if isinstance(scenario, dict) or not hasattr(scenario, "benchmark_ticker"):
-                scenario_config = normalizer.normalize(scenario=scenario, global_config=self.global_config)
-            else:
-                scenario_config = scenario
+            scenario_config = self._ensure_canonical(scenario)
 
             coverage_value = scenario_config.extras.get("min_universe_coverage")
             if coverage_value is None:
@@ -632,10 +633,7 @@ class DataFetcher:
             auto_floor_candidates: list[str] = []
             for scenario in scenarios_to_run:
                 # Ensure we have a canonical config
-                if isinstance(scenario, dict) or not hasattr(scenario, "benchmark_ticker"):
-                    scenario_config = normalizer.normalize(scenario=scenario, global_config=self.global_config)
-                else:
-                    scenario_config = scenario
+                scenario_config = self._ensure_canonical(scenario)
 
                 if scenario_config.start_date is None:
                     floor_raw = scenario_config.extras.get("auto_start_floor")
@@ -643,6 +641,7 @@ class DataFetcher:
                         floor_str = _coerce_date_str(floor_raw)
                         if floor_str is not None:
                             auto_floor_candidates.append(floor_str)
+
 
             auto_start_floor = min(auto_floor_candidates) if auto_floor_candidates else None
             if auto_start_floor is not None:

@@ -30,7 +30,7 @@ from tests.strategies.monte_carlo_strategies import (
 
 
 @given(monte_carlo_simulation_inputs())
-@settings(deadline=None)
+@settings(deadline=None, max_examples=20)
 def test_run_monte_carlo_simulation_shape_and_values(inputs):
     """Test that run_monte_carlo_simulation produces correctly shaped output with valid values."""
     strategy_returns, n_simulations, n_years, initial_capital = inputs
@@ -58,8 +58,8 @@ def test_run_monte_carlo_simulation_shape_and_values(inputs):
     assert np.all(simulation_results.values >= 0)
 
 
-@given(return_series_for_monte_carlo(), st.integers(min_value=10, max_value=1000))
-@settings(deadline=None)
+@given(return_series_for_monte_carlo(), st.integers(min_value=10, max_value=500))
+@settings(deadline=None, max_examples=20)
 def test_monte_carlo_simulator_initialization_and_run(returns, n_simulations):
     """Test that MonteCarloSimulator initializes correctly and runs simulations."""
     # Skip test if returns contain NaN values

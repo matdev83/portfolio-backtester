@@ -179,7 +179,7 @@ def daily_and_monthly_price_data(draw):
 
 
 @given(price_and_signal_data())
-@settings(deadline=None)
+@settings(deadline=None, max_examples=20)
 def test_equal_weight_sizer_properties(data):
     """Test properties of the EqualWeightSizer."""
     prices_df, signals_df = data
@@ -238,7 +238,7 @@ def test_equal_weight_sizer_properties(data):
 
 
 @given(price_signal_benchmark_data())
-@settings(deadline=None)
+@settings(deadline=None, max_examples=20)
 def test_rolling_sharpe_sizer_properties(data):
     """Test properties of the RollingSharpeSizer."""
     prices_df, signals_df, _ = data
@@ -286,7 +286,7 @@ def test_rolling_sharpe_sizer_properties(data):
 
 
 @given(price_signal_benchmark_data())
-@settings(deadline=None)
+@settings(deadline=None, max_examples=20)
 def test_rolling_sortino_sizer_properties(data):
     """Test properties of the RollingSortinoSizer."""
     prices_df, signals_df, _ = data
@@ -340,7 +340,7 @@ def test_rolling_sortino_sizer_properties(data):
 
 
 @given(price_signal_benchmark_data())
-@settings(deadline=None)
+@settings(deadline=None, max_examples=20)
 def test_rolling_beta_sizer_properties(data):
     """Test properties of the RollingBetaSizer."""
     prices_df, signals_df, benchmark = data

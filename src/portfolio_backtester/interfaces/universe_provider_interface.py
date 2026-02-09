@@ -160,14 +160,33 @@ class ConfigBasedUniverseProvider(IUniverseProvider, IUniverseWeightProvider):
             self.universe_config = dict(strategy_config.universe_definition)
         else:
             raw_univ_cfg = strategy_config.get("universe_config")
-            self.universe_config = dict(raw_univ_cfg) if raw_univ_cfg is not None else {}
+            if isinstance(raw_univ_cfg, Mapping):
+                self.universe_config = dict(raw_univ_cfg)
+            elif isinstance(raw_univ_cfg, list):
+                self.universe_config = {"type": "fixed", "tickers": raw_univ_cfg}
+            elif raw_univ_cfg is not None:
+                # Attempt to convert other non-None types, but handle errors gracefully
+                try:
+                    self.universe_config = dict(raw_univ_cfg)
+                except (ValueError, TypeError):
+                    self.universe_config = {}
+            else:
+                self.universe_config = {}
+
             # Legacy support: look inside strategy_params if not at top level
             if not self.universe_config and isinstance(strategy_config, Mapping):
                 strategy_params = strategy_config.get("strategy_params", {})
                 if isinstance(strategy_params, Mapping):
                     raw_sp_univ_cfg = strategy_params.get("universe_config")
-                    if raw_sp_univ_cfg is not None:
+                    if isinstance(raw_sp_univ_cfg, Mapping):
                         self.universe_config = dict(raw_sp_univ_cfg)
+                    elif isinstance(raw_sp_univ_cfg, list):
+                        self.universe_config = {"type": "fixed", "tickers": raw_sp_univ_cfg}
+                    elif raw_sp_univ_cfg is not None:
+                        try:
+                            self.universe_config = dict(raw_sp_univ_cfg)
+                        except (ValueError, TypeError):
+                            pass
 
     def get_universe_symbols(self, global_config: Dict[str, Any]) -> List[str]:
         """Get universe symbols using configuration-based resolution."""

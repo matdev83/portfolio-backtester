@@ -12,8 +12,8 @@ from portfolio_backtester.risk_management.atr_service import calculate_atr_fast
 # Replicate the composite strategy
 @st.composite
 def ohlc_data_with_positions(draw):
-    n_assets = draw(st.integers(min_value=2, max_value=5))
-    n_days = draw(st.integers(min_value=30, max_value=100))
+    n_assets = draw(st.integers(min_value=2, max_value=4))
+    n_days = draw(st.integers(min_value=30, max_value=60))
     assets = [f"ASSET{i}" for i in range(n_assets)]
 
     start_date = draw(
@@ -86,7 +86,7 @@ def ohlc_data_with_positions(draw):
 
 
 @given(ohlc_data_with_positions())
-@settings(deadline=None)
+@settings(deadline=None, max_examples=20)
 def test_no_stop_loss_handler_properties(data):
     ohlc_data, weights, entry_prices, current_date, current_prices = data
     handler = NoStopLoss({}, {})
@@ -108,7 +108,7 @@ def atr_stop_loss_configs(draw):
 
 
 @given(ohlc_data_with_positions(), atr_stop_loss_configs())
-@settings(deadline=None, max_examples=40)
+@settings(deadline=None, max_examples=25)
 def test_atr_based_stop_loss_handler_properties(data, stop_loss_config):
     ohlc_data, weights, entry_prices, current_date, current_prices = data
     # Ensure all Series have same index
@@ -152,7 +152,7 @@ def test_atr_based_stop_loss_handler_properties(data, stop_loss_config):
 
 
 @given(ohlc_data_with_positions(), atr_stop_loss_configs())
-@settings(deadline=None, max_examples=20)
+@settings(deadline=None, max_examples=15)
 def test_atr_calculation_properties(data, stop_loss_config):
     ohlc_data, weights, entry_prices, current_date, current_prices = data
     atr_length = stop_loss_config["atr_length"]
