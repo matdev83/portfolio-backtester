@@ -156,8 +156,10 @@ tests/universe/
 .dev/
 data/reports/
 data/reports/*
-.kiro/
-.cursor/
+.claude/
+.gemini/
+.kiro/hooks/
+.kiro/settings/
 GEMINI.md
 CRUSH.md
 .agent.md
@@ -166,3 +168,14 @@ CRUSH.md
 .aider*
 .crush
 *.db
+
+# Generated data/cache/report artifacts that should stay local.
+data/alphavantage_listings/
+data/alphavantage_usage.json
+data/canonical/
+data/diagnostics/
+data/processed/
+data/tmp_scenarios/
+data/yfinance/
+report_dir/
+signal_comparison.png

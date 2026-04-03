@@ -5,65 +5,30 @@
       "errors": []
     },
     "state": {
-      "timestamp": 1770662811.1723197,
+      "timestamp": 1755126203.0373943,
       "file_counts": {
-        "scenarios": 67,
-        "strategies": 74,
+        "scenarios": 25,
+        "strategies": 70,
         "parameters": 1
       },
       "files": {
         "parameters": [
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\parameters.yaml",
-            "mtime": 1769985397.7658205,
-            "size": 15186
+            "mtime": 1754944732.7033846,
+            "size": 13522
           }
         ],
         "scenarios": [
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\drift_regime_long_only_roro.yaml",
-            "mtime": 1769901962.3658218,
-            "size": 1038
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\drift_regime_no_ro.yaml",
-            "mtime": 1769964149.750321,
-            "size": 1021
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\drift_regime_vix_opt.yaml",
-            "mtime": 1769951446.9948232,
-            "size": 1549
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\drift_regime_vix_opt_v11.yaml",
-            "mtime": 1769952540.18182,
-            "size": 1654
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\drift_regime_vix_opt_v12.yaml",
-            "mtime": 1769963092.2823205,
-            "size": 1845
-          },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\diagnostic\\default.yaml",
             "mtime": 1754671563.0392878,
             "size": 527
           },
           {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\diagnostic\\dual_momentum_small_universe_opt.yaml",
-            "mtime": 1768669642.1384175,
-            "size": 1429
-          },
-          {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\diagnostic\\ga_fast_test.yaml",
             "mtime": 1754948616.1330407,
             "size": 740
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\diagnostic\\simple_momentum_small_universe_opt.yaml",
-            "mtime": 1768669642.1384175,
-            "size": 1015
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\diagnostic\\stop_loss_tester\\default.yaml",
@@ -72,168 +37,18 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\meta\\nested_meta_example.yaml",
-            "mtime": 1768752991.9772298,
+            "mtime": 1754570563.157104,
             "size": 1758
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\meta\\simple_meta_example.yaml",
-            "mtime": 1768752989.7854717,
+            "mtime": 1754570408.4011352,
             "size": 1147
           },
           {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\autogluon_sortino_ml_portfolio_strategy\\default.yaml",
-            "mtime": 1768838528.1858878,
-            "size": 1612
-          },
-          {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\calmar_momentum_portfolio_strategy\\default.yaml",
-            "mtime": 1768752978.927934,
-            "size": 729
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy\\default.yaml",
-            "mtime": 1769885426.1703215,
-            "size": 891
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy\\paper_sp500_2004_2024.yaml",
-            "mtime": 1770043331.3938205,
-            "size": 1331
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy\\test_2020_2025.yaml",
-            "mtime": 1769892239.677321,
-            "size": 681
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy\\test_2020_2025_long_only.yaml",
-            "mtime": 1769893137.5223203,
-            "size": 692
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy\\test_2020_2025_sp500.yaml",
-            "mtime": 1769901426.063321,
-            "size": 819
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\default.yaml",
-            "mtime": 1768750594.0698216,
-            "size": 2783
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\default_highest_sharpe_no_vol_targeting.yaml",
-            "mtime": 1768750602.538714,
-            "size": 921
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\optimization_dynamic.yaml",
-            "mtime": 1768693251.7370672,
-            "size": 1458
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\optimization_fixed.yaml",
-            "mtime": 1768662046.6689193,
-            "size": 1984
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\production_optimize_baseline.yaml",
-            "mtime": 1768698379.1693902,
-            "size": 1511
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\production_optimize_research.yaml",
-            "mtime": 1768734164.1413605,
-            "size": 2953
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\production_optimize_research_forced_vol_target.yaml",
-            "mtime": 1768740280.5763059,
-            "size": 2728
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\production_optimize_roro_control_no_risk_off.yaml",
-            "mtime": 1768763840.7647054,
-            "size": 2585
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\production_optimize_roro_spx_10m_sma.yaml",
-            "mtime": 1768763644.963826,
-            "size": 2812
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\research_enhanced.yaml",
-            "mtime": 1768695136.8398335,
-            "size": 1770
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\research_portfolio_vol_target.yaml",
-            "mtime": 1768698086.0898564,
-            "size": 1104
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\research_portfolio_vol_target_high_target.yaml",
-            "mtime": 1768699727.8479743,
-            "size": 1071
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\research_residual_portfolio_vol_target.yaml",
-            "mtime": 1768699727.851944,
-            "size": 1032
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\research_tuned.yaml",
-            "mtime": 1768697658.3791683,
-            "size": 1104
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\roro_optimize_default_benchmark_ema.yaml",
-            "mtime": 1768751985.8563354,
-            "size": 2453
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\roro_optimize_default_benchmark_monthly_sma_10m.yaml",
-            "mtime": 1768764473.709347,
-            "size": 2473
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\roro_optimize_default_benchmark_sma.yaml",
-            "mtime": 1768751985.8503344,
-            "size": 2416
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\roro_optimize_default_no_risk_off.yaml",
-            "mtime": 1768751985.8443356,
-            "size": 2543
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\roro_optimize_default_panic_drawdown_vol.yaml",
-            "mtime": 1768751985.8613386,
-            "size": 2511
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\roro_optimize_highest_sharpe_no_vol_targeting_benchmark_ema.yaml",
-            "mtime": 1768751985.8783367,
-            "size": 1414
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\roro_optimize_highest_sharpe_no_vol_targeting_benchmark_monthly_sma_10m.yaml",
-            "mtime": 1768764473.7159486,
-            "size": 1434
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\roro_optimize_highest_sharpe_no_vol_targeting_benchmark_sma.yaml",
-            "mtime": 1768751985.8733351,
-            "size": 1377
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\roro_optimize_highest_sharpe_no_vol_targeting_no_risk_off.yaml",
-            "mtime": 1768751985.866338,
-            "size": 1334
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy\\roro_optimize_highest_sharpe_no_vol_targeting_panic_drawdown_vol.yaml",
-            "mtime": 1768751985.8843398,
-            "size": 1472
+            "mtime": 1754774246.8856385,
+            "size": 695
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\filtered_lagged_momentum_portfolio_strategy\\default.yaml",
@@ -262,17 +77,17 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\sharpe_momentum_portfolio_strategy\\default.yaml",
-            "mtime": 1768752966.568331,
+            "mtime": 1754774405.544296,
             "size": 822
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\simple_momentum_strategy\\default.yaml",
-            "mtime": 1768765624.385822,
-            "size": 585
+            "mtime": 1754774940.454756,
+            "size": 657
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\sortino_momentum_portfolio_strategy\\default.yaml",
-            "mtime": 1768752974.3976593,
+            "mtime": 1754774940.454756,
             "size": 573
           },
           {
@@ -289,31 +104,6 @@
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\portfolio\\volatility_targeted_fixed_weight_portfolio_strategy\\default.yaml",
             "mtime": 1754848096.2461145,
             "size": 106
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\asri_thr.yaml",
-            "mtime": 1770662411.7043202,
-            "size": 410
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_asri_filter.yaml",
-            "mtime": 1770660528.854323,
-            "size": 529
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_asri_filter_size.yaml",
-            "mtime": 1770660541.1333208,
-            "size": 589
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_asri_size_only.yaml",
-            "mtime": 1770660554.2978225,
-            "size": 557
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_pure.yaml",
-            "mtime": 1770660565.6103206,
-            "size": 465
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\dummy_signal_strategy\\default.yaml",
@@ -337,7 +127,7 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\uvxy_rsi_signal_strategy\\default.yaml",
-            "mtime": 1768752983.143321,
+            "mtime": 1754774940.454756,
             "size": 586
           },
           {
@@ -388,29 +178,14 @@
             "size": 60
           },
           {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\autogluon_sortino_ml_portfolio_strategy.py",
-            "mtime": 1769896984.7633204,
-            "size": 37372
-          },
-          {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\base_momentum_portfolio_strategy.py",
-            "mtime": 1769990238.4538224,
-            "size": 12701
+            "mtime": 1755122488.7717445,
+            "size": 12332
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\calmar_momentum_portfolio_strategy.py",
-            "mtime": 1769896881.2843199,
-            "size": 3610
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\drift_regime_conditional_factor_portfolio_strategy.py",
-            "mtime": 1770042203.8483198,
-            "size": 15204
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy.py",
-            "mtime": 1769896829.9473207,
-            "size": 35193
+            "mtime": 1755122488.3342428,
+            "size": 3457
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\dvol_sizer_momentum_portfolio_strategy.py",
@@ -419,18 +194,18 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\filtered_lagged_momentum_portfolio_strategy.py",
-            "mtime": 1769896978.8958213,
-            "size": 2531
+            "mtime": 1754848057.6078098,
+            "size": 2383
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\fixed_weight_portfolio_strategy.py",
-            "mtime": 1769896953.0533202,
-            "size": 1806
+            "mtime": 1754848057.6078098,
+            "size": 1728
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\low_volatility_factor_portfolio_strategy.py",
-            "mtime": 1769896948.1363196,
-            "size": 1984
+            "mtime": 1754848057.608309,
+            "size": 1836
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\momentum_beta_filtered_portfolio_strategy.py",
@@ -439,28 +214,28 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\momentum_dvol_sizer_portfolio_strategy.py",
-            "mtime": 1769896943.5593202,
-            "size": 2488
+            "mtime": 1754848057.6093073,
+            "size": 2340
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\momentum_unfiltered_atr_portfolio_strategy.py",
-            "mtime": 1769896938.4083197,
-            "size": 2677
+            "mtime": 1754848057.6098084,
+            "size": 2529
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\sharpe_momentum_portfolio_strategy.py",
-            "mtime": 1769896835.1968205,
-            "size": 16572
+            "mtime": 1755122488.6427424,
+            "size": 15010
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\simple_momentum_portfolio_strategy.py",
-            "mtime": 1769896867.0713203,
-            "size": 5371
+            "mtime": 1755122488.4017432,
+            "size": 5228
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\sortino_momentum_portfolio_strategy.py",
-            "mtime": 1769896840.3438208,
-            "size": 3920
+            "mtime": 1755122488.4312434,
+            "size": 3769
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\unfiltered_atr_momentum_portfolio_strategy.py",
@@ -469,23 +244,18 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\vams_momentum_portfolio_strategy.py",
-            "mtime": 1769896892.8923223,
-            "size": 2526
+            "mtime": 1754848057.6113074,
+            "size": 2378
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\vams_no_downside_portfolio_strategy.py",
-            "mtime": 1769896885.2868197,
-            "size": 2414
+            "mtime": 1754848057.6113074,
+            "size": 2262
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\volatility_targeted_fixed_weight_portfolio_strategy.py",
-            "mtime": 1769896876.5158212,
-            "size": 1722
-          },
-          {
-            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\donchian_asri_signal_strategy.py",
-            "mtime": 1770662763.8443222,
-            "size": 13658
+            "mtime": 1755122488.393743,
+            "size": 1574
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\dummy_signal_strategy.py",
@@ -494,23 +264,23 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\ema_crossover_signal_strategy.py",
-            "mtime": 1769896425.8733225,
-            "size": 4653
+            "mtime": 1755122488.6977434,
+            "size": 4395
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\ema_roro_signal_strategy.py",
-            "mtime": 1769896426.074821,
-            "size": 2583
+            "mtime": 1754848057.6113074,
+            "size": 2286
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\seasonal_signal_strategy.py",
-            "mtime": 1769897336.3933218,
-            "size": 3934
+            "mtime": 1755122488.5197453,
+            "size": 4020
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\uvxy_rsi_signal_strategy.py",
-            "mtime": 1769897341.9108198,
-            "size": 2888
+            "mtime": 1755101079.5594573,
+            "size": 2874
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\__init__.py",
@@ -589,13 +359,13 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\user\\signal\\hello_world_signal_strategy.py",
-            "mtime": 1769897329.5153208,
-            "size": 2720
+            "mtime": 1755101079.5504568,
+            "size": 2662
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\user\\signal\\momentum_signal_strategy.py",
-            "mtime": 1769897324.648821,
-            "size": 560
+            "mtime": 1755125829.2840514,
+            "size": 365
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\user\\signal\\__init__.py",
@@ -619,8 +389,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\strategy_factory_impl.py",
-            "mtime": 1769901634.5663197,
-            "size": 7552
+            "mtime": 1755122488.3397434,
+            "size": 6158
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\__init__.py",
@@ -654,8 +424,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\base\\base\\base_strategy.py",
-            "mtime": 1770057848.0803216,
-            "size": 45606
+            "mtime": 1755122489.1222434,
+            "size": 48235
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\base\\base\\meta_reporting.py",

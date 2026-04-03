@@ -1,6 +1,0 @@
-{
-  "source": "https://www.alphavantage.co/query?function=LISTING_STATUS&state=delisted",
-  "snapshot_date": "2026-02-02",
-  "rows": 9259,
-  "min_refresh_seconds": 604800
-}
