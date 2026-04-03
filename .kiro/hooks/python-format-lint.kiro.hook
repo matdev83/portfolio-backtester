@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Python Format & Lint",
+  "description": "Automatically runs black formatter, ruff linter with fixes, and mypy type checker on modified Python files",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*.py"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run the following command on the modified Python file: ./.venv/Scripts/python.exe -m black <modified_filename> && ./.venv/Scripts/python.exe -m ruff check --fix <modified_filename> && ./.venv/Scripts/python.exe -m mypy <modified_filename>"
+  }
+}

@@ -158,8 +158,6 @@ data/reports/
 data/reports/*
 .claude/
 .gemini/
-.kiro/hooks/
-.kiro/settings/
 GEMINI.md
 CRUSH.md
 .agent.md
