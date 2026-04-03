@@ -168,6 +168,12 @@ CRUSH.md
 *.db
 
 # Generated data/cache/report artifacts that should stay local.
+data/cache/
+data/data/
+data/kaggle_sp500_weights/
+data/*.csv
+data/*.parquet
+!data/cusip_mappings.csv
 data/alphavantage_listings/
 data/alphavantage_usage.json
 data/canonical/
