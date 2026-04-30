@@ -31,7 +31,7 @@ class DiversityCalculator:
 
     The current implementation focuses on *genotypic* diversity computed as the
     average pair-wise Euclidean distance between chromosomes after normalising
-    every gene to the range \[0, 1].  This is fast to compute with NumPy and
+    every gene to the range [0, 1].  This is fast to compute with NumPy and
     provides a reasonable proxy for the overall search-space coverage.
     """
 
@@ -57,7 +57,7 @@ class DiversityCalculator:
         self._max_dist = np.sqrt(len(gene_space))
 
     def phenotypic_diversity(self, population: np.ndarray) -> float:
-        """Average pair-wise distance in \[0, 1] normalised gene space."""
+        """Average pair-wise distance in [0, 1] normalised gene space."""
         if population.size == 0:
             return 0.0
         # Normalise population into 0-1 cube.

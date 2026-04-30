@@ -10,7 +10,7 @@ This strategy is designed for testing purposes. It uses random chance to generat
 
 To run the optimizer on this strategy, use the following command:
 
-.venv\Scripts\python -m portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/builtins/signal/dummy_signal_strategy/default.yaml
+.venv/Scripts/python -m portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/builtins/signal/dummy_signal_strategy/default.yaml
 """
 
 from typing import Optional, Dict, Any
