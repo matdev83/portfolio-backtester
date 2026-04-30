@@ -81,7 +81,11 @@ class _BracketState:
 
 
 class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
-    """Daily long-only swing signals with calendar filters and ATR stop/limit brackets."""
+    """Daily long-only swing signals with calendar filters and ATR stop/limit brackets.
+
+    Scenarios should set ``timing_config.trade_execution_timing: bar_close`` (on bar close)
+    to match the Pine-style same-bar fill assumption; built-in YAMLs ship with that default.
+    """
 
     def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
@@ -96,8 +100,8 @@ class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
 
         self.leverage: float = float(sp.get("leverage", 1.0))
         self.ibs_ratio: float = float(sp.get("ibs_ratio", 0.6))
-        self.sl_atr_mult: float = float(sp.get("sl_atr_mult", 1.18))
-        self.tp_atr_mult: float = float(sp.get("tp_atr_mult", 2.15))
+        self.sl_atr_mult: float = float(sp.get("sl_atr_mult", 0.69))
+        self.tp_atr_mult: float = float(sp.get("tp_atr_mult", 1.19))
         self.di_length: int = int(sp.get("di_length", 7))
         self.adx_smoothing: int = int(sp.get("adx_smoothing", 14))
         self.adx_threshold: float = float(sp.get("adx_threshold", 20.0))
@@ -160,14 +164,14 @@ class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
                 },
                 "sl_atr_mult": {
                     "type": "float",
-                    "default": 1.18,
+                    "default": 0.69,
                     "min": 0.5,
                     "max": 6.0,
                     "step": 0.02,
                 },
                 "tp_atr_mult": {
                     "type": "float",
-                    "default": 2.15,
+                    "default": 1.19,
                     "min": 0.5,
                     "max": 8.0,
                     "step": 0.05,

@@ -11,6 +11,7 @@ timing_config:
   mode: signal_based
   scan_frequency: D
   min_holding_period: 1
+  trade_execution_timing: bar_close
 train_window_months: 36
 test_window_months: 12
 
@@ -41,8 +42,8 @@ strategy_params:
   trade_shorts: false
   leverage: 1.0
   ibs_ratio: 0.6
-  sl_atr_mult: 1.18
-  tp_atr_mult: 2.15
+  sl_atr_mult: 0.69
+  tp_atr_mult: 1.19
   di_length: 7
   adx_smoothing: 14
   adx_threshold: 20.0

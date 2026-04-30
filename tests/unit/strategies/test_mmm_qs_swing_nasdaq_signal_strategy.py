@@ -258,3 +258,38 @@ def test_compute_adx_series_finite_after_warmup() -> None:
     close = 99.5 + rng
     adx = _compute_adx_series(high, low, close, di_length=7, adx_smoothing=14)
     assert pd.notna(adx.iloc[-1])
+
+
+def test_trade_execution_timing_defaults_to_bar_close() -> None:
+    strat = MmmQsSwingNasdaqSignalStrategy({"strategy_params": {}})
+    assert strat.get_trade_execution_timing() == "bar_close"
+
+
+def test_trade_execution_timing_respects_explicit_override() -> None:
+    strat = MmmQsSwingNasdaqSignalStrategy(
+        {
+            "strategy_params": {
+                "timing_config": {"trade_execution_timing": "next_bar_open"},
+            }
+        }
+    )
+    assert strat.get_trade_execution_timing() == "next_bar_open"
+
+
+def test_builtin_default_yaml_declares_bar_close_execution() -> None:
+    from pathlib import Path
+
+    import yaml
+
+    root = Path(__file__).resolve().parents[3]
+    yaml_path = (
+        root
+        / "config"
+        / "scenarios"
+        / "builtins"
+        / "signal"
+        / "mmm_qs_swing_nasdaq_signal_strategy"
+        / "default.yaml"
+    )
+    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    assert data["timing_config"]["trade_execution_timing"] == "bar_close"
