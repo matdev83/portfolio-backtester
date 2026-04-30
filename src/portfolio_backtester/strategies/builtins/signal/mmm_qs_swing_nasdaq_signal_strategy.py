@@ -3,6 +3,11 @@
 EMA filter from the original Pine script is intentionally omitted. Stop-loss is evaluated
 before take-profit when both could hit the same daily bar (matches common broker fill
 priority for longs).
+
+Optional ATH drawdown gates (see ``drawdown_from_ath_pct``): ``drawdown_from_ath_min_pct``
+and ``drawdown_from_ath_max_dist_from_min_dd_pct``. Non-positive values disable the
+corresponding side; ``dist`` is measured in percentage points above the active minimum
+(or from zero when the minimum is disabled), so min/max cannot contradict.
 """
 
 from __future__ import annotations
@@ -21,6 +26,61 @@ if TYPE_CHECKING:
     from ....canonical_config import CanonicalScenarioConfig
 
 logger = logging.getLogger(__name__)
+
+
+def drawdown_from_ath_pct(high: pd.Series, close: pd.Series, as_of: pd.Timestamp) -> float:
+    """Drawdown of ``close`` at ``as_of`` versus expanding all-time high of ``high`` (percent).
+
+    Uses ``high`` and ``close`` only through ``as_of`` (inclusive). Defined as
+    ``100 * (1 - close / ATH)`` when ``ATH > 0``; otherwise returns ``nan``.
+
+    Args:
+        high: High prices indexed by time.
+        close: Close prices indexed by time.
+        as_of: Evaluation timestamp (must exist in ``close``).
+
+    Returns:
+        Drawdown in percent, or ``nan`` if undefined.
+    """
+    high_to = high.loc[:as_of]
+    if len(high_to) == 0 or as_of not in close.index:
+        return float("nan")
+    ath = float(high_to.max())
+    c = float(close.loc[as_of])
+    if ath <= 0.0 or not np.isfinite(ath) or not np.isfinite(c):
+        return float("nan")
+    return 100.0 * (1.0 - c / ath)
+
+
+def ath_drawdown_entry_allowed(dd_pct: float, min_pct: float, dist_pct: float) -> bool:
+    """Return whether ATH drawdown ``dd_pct`` passes entry band rules.
+
+    Semantics (``> 0`` enables each role; ``<= 0`` disables):
+
+    * ``min_pct > 0`` — require ``dd_pct >= min_pct``.
+    * ``dist_pct > 0`` — upper edge: if ``min_pct > 0``, require ``dd_pct <= min_pct + dist_pct``;
+      if ``min_pct <= 0``, require ``dd_pct <= dist_pct`` (ceiling-only).
+    * If both ``min_pct <= 0`` and ``dist_pct <= 0``, the ATH drawdown filter is off.
+
+    Args:
+        dd_pct: Current drawdown in percent (``drawdown_from_ath_pct``).
+        min_pct: Minimum drawdown from ATH in percent, or non-positive to disable.
+        dist_pct: Span in percentage points for the upper edge (see above).
+
+    Returns:
+        ``True`` if the observation is allowed for a new entry from the ATH perspective.
+    """
+    if not np.isfinite(dd_pct):
+        return False
+    has_lo = min_pct > 0.0
+    has_hi = dist_pct > 0.0
+    if not has_lo and not has_hi:
+        return True
+    if has_lo and has_hi:
+        return dd_pct >= min_pct and dd_pct <= (min_pct + dist_pct)
+    if has_lo and not has_hi:
+        return dd_pct >= min_pct
+    return dd_pct <= dist_pct
 
 
 def _wilder_smooth(series: pd.Series, period: int) -> pd.Series:
@@ -85,6 +145,9 @@ class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
 
     Scenarios should set ``timing_config.trade_execution_timing: bar_close`` (on bar close)
     to match the Pine-style same-bar fill assumption; built-in YAMLs ship with that default.
+
+    Optional ATH drawdown band uses ``drawdown_from_ath_min_pct`` and
+    ``drawdown_from_ath_max_dist_from_min_dd_pct`` (see ``ath_drawdown_entry_allowed``).
     """
 
     def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
@@ -107,6 +170,10 @@ class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
         self.adx_threshold: float = float(sp.get("adx_threshold", 20.0))
         self.atr_length: int = int(sp.get("atr_length", 20))
         self.hlc3_avg_lookback: int = int(sp.get("hlc3_avg_lookback", 10))
+        self.drawdown_from_ath_min_pct: float = float(sp.get("drawdown_from_ath_min_pct", 0.0))
+        self.drawdown_from_ath_max_dist_from_min_dd_pct: float = float(
+            sp.get("drawdown_from_ath_max_dist_from_min_dd_pct", 0.0)
+        )
 
         self._trade_day: Dict[int, bool] = {
             0: bool(sp.get("trade_day_mon", True)),
@@ -211,6 +278,20 @@ class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
                     "max": 30,
                     "step": 1,
                 },
+                "drawdown_from_ath_min_pct": {
+                    "type": "float",
+                    "default": 0.0,
+                    "min": 0.0,
+                    "max": 100.0,
+                    "step": 0.5,
+                },
+                "drawdown_from_ath_max_dist_from_min_dd_pct": {
+                    "type": "float",
+                    "default": 0.0,
+                    "min": 0.0,
+                    "max": 100.0,
+                    "step": 0.5,
+                },
             }
         )
         return base
@@ -255,6 +336,14 @@ class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
         if wd > 4:
             return False
         return bool(self._trade_day.get(wd, True))
+
+    def _drawdown_from_ath_entry_ok(self, dd_pct: float) -> bool:
+        """True if ATH drawdown passes optional band (see ``ath_drawdown_entry_allowed``)."""
+        return ath_drawdown_entry_allowed(
+            dd_pct,
+            self.drawdown_from_ath_min_pct,
+            self.drawdown_from_ath_max_dist_from_min_dd_pct,
+        )
 
     def generate_signals(
         self,
@@ -328,6 +417,9 @@ class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
 
         cal_ok = self._calendar_ok(current_date)
 
+        dd_ath_pct = drawdown_from_ath_pct(high, close, current_date)
+        ath_entry_ok = self._drawdown_from_ath_entry_ok(dd_ath_pct)
+
         st = self._bracket
         if st.in_long:
             exit_bar = False
@@ -349,6 +441,7 @@ class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
         if not st.in_long:
             long_cond = (
                 cal_ok
+                and ath_entry_ok
                 and np.isfinite(hlc3_thr)
                 and c < hlc3_thr
                 and ibs < self.ibs_ratio
@@ -370,4 +463,8 @@ class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
         return result
 
 
-__all__ = ["MmmQsSwingNasdaqSignalStrategy"]
+__all__ = [
+    "MmmQsSwingNasdaqSignalStrategy",
+    "ath_drawdown_entry_allowed",
+    "drawdown_from_ath_pct",
+]

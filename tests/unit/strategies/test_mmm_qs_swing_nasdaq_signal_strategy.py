@@ -9,6 +9,8 @@ import pytest
 from portfolio_backtester.strategies.builtins.signal.mmm_qs_swing_nasdaq_signal_strategy import (
     MmmQsSwingNasdaqSignalStrategy,
     _compute_adx_series,
+    ath_drawdown_entry_allowed,
+    drawdown_from_ath_pct,
 )
 
 
@@ -274,6 +276,152 @@ def test_trade_execution_timing_respects_explicit_override() -> None:
         }
     )
     assert strat.get_trade_execution_timing() == "next_bar_open"
+
+
+def _ohlc_ath_spike_then_deep_pullback() -> tuple[pd.DatetimeIndex, pd.DataFrame]:
+    """Series ending Monday with ~50% drawdown from expanding high ATH on third-last bar."""
+    idx = _idx_calendar_days_end_on(pd.Timestamp("2024-07-08"), 60)
+    close = [100.0 + i * 0.12 for i in range(len(idx) - 3)] + [200.0, 180.0, 100.0]
+    low = list(close)
+    high = [c + 2.0 for c in close]
+    high[-3] = 200.0
+    low[-3] = min(low[-3], 195.0)
+    close[-3] = 200.0
+    low[-1] = close[-1] - 0.05
+    high[-1] = close[-1] + 5.0
+    return idx, _ohlc_frame(idx, close, high=high, low=low)
+
+
+def test_ath_drawdown_entry_allowed_matrix() -> None:
+    assert ath_drawdown_entry_allowed(50.0, 0.0, 0.0) is True
+    assert ath_drawdown_entry_allowed(float("nan"), 0.0, 0.0) is False
+    assert ath_drawdown_entry_allowed(50.0, 45.0, 10.0) is True
+    assert ath_drawdown_entry_allowed(44.0, 45.0, 10.0) is False
+    assert ath_drawdown_entry_allowed(56.0, 45.0, 10.0) is False
+    assert ath_drawdown_entry_allowed(50.0, 45.0, 0.0) is True
+    assert ath_drawdown_entry_allowed(44.0, 45.0, 0.0) is False
+    assert ath_drawdown_entry_allowed(50.0, 0.0, 60.0) is True
+    assert ath_drawdown_entry_allowed(50.0, 0.0, 40.0) is False
+
+
+def test_drawdown_from_ath_pct_uses_expanding_high() -> None:
+    idx = pd.date_range("2024-01-01", periods=5, freq="D")
+    high = pd.Series([100.0, 110.0, 120.0, 100.0, 130.0], index=idx)
+    close = pd.Series([100.0, 105.0, 115.0, 100.0, 117.0], index=idx)
+    dd = drawdown_from_ath_pct(high, close, idx[-1])
+    assert dd == pytest.approx(100.0 * (1.0 - 117.0 / 130.0))
+
+
+def test_drawdown_min_max_filters_entry_around_fifty_pct_dd() -> None:
+    idx, ohlc = _ohlc_ath_spike_then_deep_pullback()
+    last = idx[-1]
+    dd = drawdown_from_ath_pct(
+        ohlc[("QQQ", "High")].astype(float),
+        ohlc[("QQQ", "Close")].astype(float),
+        last,
+    )
+    assert dd == pytest.approx(50.0)
+    bench = pd.DataFrame(index=idx)
+    with (
+        patch(
+            "portfolio_backtester.strategies.builtins.signal.mmm_qs_swing_nasdaq_signal_strategy._compute_adx_series",
+            return_value=pd.Series(35.0, index=idx),
+        ),
+        patch(
+            "portfolio_backtester.strategies.builtins.signal.mmm_qs_swing_nasdaq_signal_strategy.calculate_atr_fast",
+            return_value=pd.Series({"QQQ": 2.0}),
+        ),
+    ):
+        base = MmmQsSwingNasdaqSignalStrategy({"strategy_params": {}})
+        assert float(
+            base.generate_signals(ohlc, bench, None, current_date=last).at[last, "QQQ"]
+        ) == pytest.approx(1.0)
+
+        blocked_min = MmmQsSwingNasdaqSignalStrategy(
+            {"strategy_params": {"drawdown_from_ath_min_pct": 55.0}}
+        )
+        assert (
+            float(
+                blocked_min.generate_signals(ohlc, bench, None, current_date=last).at[last, "QQQ"]
+            )
+            == 0.0
+        )
+
+        ok_min = MmmQsSwingNasdaqSignalStrategy(
+            {"strategy_params": {"drawdown_from_ath_min_pct": 45.0}}
+        )
+        assert float(
+            ok_min.generate_signals(ohlc, bench, None, current_date=last).at[last, "QQQ"]
+        ) == pytest.approx(1.0)
+
+        blocked_max = MmmQsSwingNasdaqSignalStrategy(
+            {"strategy_params": {"drawdown_from_ath_max_dist_from_min_dd_pct": 40.0}}
+        )
+        assert (
+            float(
+                blocked_max.generate_signals(ohlc, bench, None, current_date=last).at[last, "QQQ"]
+            )
+            == 0.0
+        )
+
+        ok_max = MmmQsSwingNasdaqSignalStrategy(
+            {"strategy_params": {"drawdown_from_ath_max_dist_from_min_dd_pct": 60.0}}
+        )
+        assert float(
+            ok_max.generate_signals(ohlc, bench, None, current_date=last).at[last, "QQQ"]
+        ) == pytest.approx(1.0)
+
+        band_ok = MmmQsSwingNasdaqSignalStrategy(
+            {
+                "strategy_params": {
+                    "drawdown_from_ath_min_pct": 45.0,
+                    "drawdown_from_ath_max_dist_from_min_dd_pct": 10.0,
+                }
+            }
+        )
+        assert float(
+            band_ok.generate_signals(ohlc, bench, None, current_date=last).at[last, "QQQ"]
+        ) == pytest.approx(1.0)
+
+        band_fail = MmmQsSwingNasdaqSignalStrategy(
+            {
+                "strategy_params": {
+                    "drawdown_from_ath_min_pct": 30.0,
+                    "drawdown_from_ath_max_dist_from_min_dd_pct": 10.0,
+                }
+            }
+        )
+        assert (
+            float(band_fail.generate_signals(ohlc, bench, None, current_date=last).at[last, "QQQ"])
+            == 0.0
+        )
+
+
+def test_drawdown_filter_non_positive_thresholds_treated_as_disabled() -> None:
+    idx, ohlc = _ohlc_ath_spike_then_deep_pullback()
+    last = idx[-1]
+    bench = pd.DataFrame(index=idx)
+    with (
+        patch(
+            "portfolio_backtester.strategies.builtins.signal.mmm_qs_swing_nasdaq_signal_strategy._compute_adx_series",
+            return_value=pd.Series(35.0, index=idx),
+        ),
+        patch(
+            "portfolio_backtester.strategies.builtins.signal.mmm_qs_swing_nasdaq_signal_strategy.calculate_atr_fast",
+            return_value=pd.Series({"QQQ": 2.0}),
+        ),
+    ):
+        strat = MmmQsSwingNasdaqSignalStrategy(
+            {
+                "strategy_params": {
+                    "drawdown_from_ath_min_pct": -5.0,
+                    "drawdown_from_ath_max_dist_from_min_dd_pct": 0.0,
+                }
+            }
+        )
+        assert float(
+            strat.generate_signals(ohlc, bench, None, current_date=last).at[last, "QQQ"]
+        ) == pytest.approx(1.0)
 
 
 def test_builtin_default_yaml_declares_bar_close_execution() -> None:

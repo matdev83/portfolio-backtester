@@ -1,5 +1,8 @@
-name: mmm_qs_swing_nasdaq_signal_default
+name: mmm_qs_swing_optimize_ath_drawdown_sortino
 strategy: MmmQsSwingNasdaqSignalStrategy
+
+start_date: "2013-01-01"
+end_date: "2025-06-30"
 
 rebalance_frequency: D
 position_sizer: equal_weight
@@ -20,43 +23,18 @@ optimization_targets:
   - name: Sortino
     direction: maximize
 
+extras:
+  is_wfo: false
+
 optimize:
-  - parameter: sl_atr_mult
-    min_value: 0.5
-    max_value: 3.0
-    step: 0.05
-  - parameter: tp_atr_mult
-    min_value: 1.0
-    max_value: 5.0
-    step: 0.1
-  - parameter: ibs_ratio
-    min_value: 0.35
-    max_value: 0.85
-    step: 0.05
-  - parameter: di_length
-    min_value: 5
-    max_value: 14
-    step: 1
-  - parameter: adx_smoothing
-    min_value: 7
-    max_value: 21
-    step: 1
-  - parameter: adx_threshold
-    min_value: 15.0
-    max_value: 35.0
-    step: 1.0
-  - parameter: atr_length
-    min_value: 10
-    max_value: 30
-    step: 1
-  - parameter: hlc3_avg_lookback
-    min_value: 5
-    max_value: 20
-    step: 1
-  - parameter: leverage
-    min_value: 0.5
-    max_value: 1.5
-    step: 0.25
+  - parameter: drawdown_from_ath_min_pct
+    min_value: 0.0
+    max_value: 10.0
+    step: 0.5
+  - parameter: drawdown_from_ath_max_dist_from_min_dd_pct
+    min_value: 0.0
+    max_value: 40.0
+    step: 0.5
 
 strategy_params:
   trade_longs: true
@@ -71,7 +49,7 @@ strategy_params:
   atr_length: 20
   hlc3_avg_lookback: 10
   drawdown_from_ath_min_pct: 0.0
-  drawdown_from_ath_max_dist_from_min_dd_pct: 0.0
+  drawdown_from_ath_max_dist_from_min_dd_pct: 20.0
   trade_day_mon: true
   trade_day_tue: true
   trade_day_wed: false

@@ -49,6 +49,8 @@ strategy_params:
   adx_threshold: 20.0
   atr_length: 20
   hlc3_avg_lookback: 10
+  drawdown_from_ath_min_pct: 0.0
+  drawdown_from_ath_max_dist_from_min_dd_pct: 0.0
   trade_day_mon: true
   trade_day_tue: true
   trade_day_wed: false
