@@ -118,7 +118,7 @@ class DonchianAsriSignalStrategy(SignalStrategy):
         self.exit_lookback: int = int(sp.get("exit_lookback", 10))
         self.use_asri_filter: bool = bool(sp.get("use_asri_filter", True))
         self.use_asri_sizing: bool = bool(sp.get("use_asri_sizing", False))
-        self.asri_symbol: str = str(sp.get("asri_symbol", "ASRI:CRYPTO"))
+        self.asri_symbol: str = str(sp.get("asri_symbol", "MDMP:ASRI"))
         self.asri_threshold_quantile: float = float(sp.get("asri_threshold_quantile", 0.7))
         self.asri_size_center_quantile: float = float(sp.get("asri_size_center_quantile", 0.9))
         self.asri_size_slope: float = float(sp.get("asri_size_slope", 0.3))
@@ -131,7 +131,7 @@ class DonchianAsriSignalStrategy(SignalStrategy):
             "exit_lookback": {"type": "int", "default": 10, "min": 5, "max": 40, "step": 1},
             "use_asri_filter": {"type": "bool", "default": True},
             "use_asri_sizing": {"type": "bool", "default": False},
-            "asri_symbol": {"type": "str", "default": "ASRI:CRYPTO"},
+            "asri_symbol": {"type": "str", "default": "MDMP:ASRI"},
             "asri_threshold_quantile": {
                 "type": "float",
                 "default": 0.7,
@@ -268,14 +268,14 @@ class AsriThresholdSignalStrategy(SignalStrategy):
             params = strategy_config if strategy_config is not None else {}
             sp = params.get("strategy_params", params)
 
-        self.asri_symbol: str = str(sp.get("asri_symbol", "ASRI:CRYPTO"))
+        self.asri_symbol: str = str(sp.get("asri_symbol", "MDMP:ASRI"))
         self.asri_threshold_quantile: float = float(sp.get("asri_threshold_quantile", 0.7))
         self.leverage: float = float(sp.get("leverage", 1.0))
 
     @classmethod
     def tunable_parameters(_cls) -> Dict[str, Dict[str, Any]]:
         return {
-            "asri_symbol": {"type": "str", "default": "ASRI:CRYPTO"},
+            "asri_symbol": {"type": "str", "default": "MDMP:ASRI"},
             "asri_threshold_quantile": {
                 "type": "float",
                 "default": 0.7,

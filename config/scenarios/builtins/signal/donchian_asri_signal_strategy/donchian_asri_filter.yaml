@@ -21,6 +21,6 @@ strategy_params:
   exit_lookback: 10
   use_asri_filter: true
   use_asri_sizing: false
-  asri_symbol: ASRI:CRYPTO
+  asri_symbol: MDMP:ASRI
   asri_threshold_quantile: 0.7
   leverage: 1.0
