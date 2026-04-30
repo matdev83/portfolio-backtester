@@ -31,7 +31,9 @@ def _strategy_supports_method_dynamic_universe(strategy: Any) -> bool:
     if not callable(supports_fn):
         return False
     try:
-        return bool(supports_fn())
+        # Use `is True` (not just truthy) so MagicMock auto-returns don't
+        # accidentally activate the dynamic path in tests.
+        return supports_fn() is True
     except Exception:
         return False
 
@@ -96,10 +98,11 @@ def generate_signals(
             scenario_config.get("name", "unnamed"),
         )
         normalizer = ScenarioNormalizer()
-        if global_config is None:
-            global_config = getattr(strategy, "global_config", {})
+        effective_global = global_config if global_config is not None else (
+            getattr(strategy, "global_config", None) or {}
+        )
         canonical_config = normalizer.normalize(
-            scenario=scenario_config, global_config=global_config
+            scenario=scenario_config, global_config=effective_global
         )
     else:
         canonical_config = scenario_config

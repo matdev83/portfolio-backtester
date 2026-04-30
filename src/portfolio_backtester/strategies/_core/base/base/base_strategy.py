@@ -101,7 +101,7 @@ class BaseStrategy(ABC):
             and hasattr(strategy_params, "strategy_params")
         ):
             self.canonical_config = cast(CanonicalScenarioConfig, strategy_params)
-            effective_params = dict(strategy_params.strategy_params)
+            effective_params = dict(getattr(strategy_params, "strategy_params"))
         else:
             # Traditional dict-based init
             effective_params = dict(strategy_params)
@@ -1095,7 +1095,7 @@ class BaseStrategy(ABC):
         enough_history = available_months >= int(min_periods_required)
 
         # Bitwise & handles both Series (aligned) and scalar cases
-        valid_mask = has_recent & enough_history
+        valid_mask = has_recent & pd.Series(enough_history)
 
         if isinstance(valid_mask, pd.Series):
             valid_assets = [str(t) for t, ok in valid_mask.items() if bool(ok)]

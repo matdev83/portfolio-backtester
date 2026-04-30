@@ -34,7 +34,11 @@ def _build_wfo_test_mask(overlay_diagnostics: Dict[str, Any], index: pd.Index) -
     if not windows:
         return pd.Series(False, index=index)
 
-    idx = pd.DatetimeIndex(index)
+    try:
+        idx = pd.DatetimeIndex(index)
+    except Exception:
+        return pd.Series(False, index=index)
+
     if idx.tz is not None:
         idx = idx.tz_convert(None)
 
@@ -155,9 +159,30 @@ class StrategyBacktester:
             canonical_config,
         )
 
-        # Determine universe
-        # Use strategy's universe provider
-        universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
+        # Determine universe.
+        # For dynamic method universes (e.g. get_top_weight_sp500_components), DataFetcher has
+        # already prefetched the union of all tickers that can appear over the full date range.
+        # Using strategy.get_universe() here would snapshot the universe at global start_date,
+        # producing a stale single-date Top-N list instead of the full tradable set.
+        # We therefore derive universe_tickers from the already-fetched price data columns.
+        from ..backtester_logic.strategy_logic import _strategy_supports_method_dynamic_universe
+
+        benchmark_ticker = canonical_config.benchmark_ticker or self.global_config.get(
+            "benchmark", "SPY"
+        )
+
+        if _strategy_supports_method_dynamic_universe(strategy):
+            if isinstance(daily_data.columns, pd.MultiIndex):
+                all_fetched = list(daily_data.columns.get_level_values("Ticker").unique())
+            else:
+                all_fetched = list(daily_data.columns)
+            universe_tickers = [t for t in all_fetched if t != benchmark_ticker]
+            logger.info(
+                "Dynamic universe: derived %d universe_tickers from prefetched price data columns.",
+                len(universe_tickers),
+            )
+        else:
+            universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
 
         # Filter out missing tickers
         missing_cols = [t for t in universe_tickers if t not in monthly_data.columns]
@@ -171,10 +196,6 @@ class StrategyBacktester:
         if not universe_tickers:
             logger.warning("No universe tickers remain after filtering. Returning empty results.")
             return self._create_empty_backtest_result()
-
-        benchmark_ticker = canonical_config.benchmark_ticker or self.global_config.get(
-            "benchmark", "SPY"
-        )
 
         # Prepare data
         monthly_closes, rets_daily = prepare_scenario_data(daily_data, self.data_cache)

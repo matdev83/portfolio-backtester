@@ -111,9 +111,32 @@ class BacktestRunner:
         # Instantiate strategy using full canonical config to support new features
         strategy = self.strategy_manager.get_strategy(canonical_config.strategy, canonical_config)
 
-        # Resolve universe tickers
-        # Use strategy's universe provider - no direct universe resolution
-        universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
+        # Resolve universe tickers.
+        # For dynamic method universes (e.g. get_top_weight_sp500_components), DataFetcher has
+        # already prefetched the union of all tickers that can appear over the full date range.
+        # Using strategy.get_universe() here would snapshot the universe at global start_date,
+        # producing a stale single-date Top-N list instead of the full tradable set.
+        # We therefore derive universe_tickers from the already-fetched price data columns.
+        from ..backtester_logic.strategy_logic import _strategy_supports_method_dynamic_universe
+
+        if _strategy_supports_method_dynamic_universe(strategy):
+            if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
+                all_fetched = list(
+                    price_data_daily_ohlc.columns.get_level_values("Ticker").unique()
+                )
+            else:
+                all_fetched = list(price_data_daily_ohlc.columns)
+            # Exclude benchmark from universe_tickers
+            benchmark_ticker_tmp = canonical_config.benchmark_ticker or self.global_config.get(
+                "benchmark", "SPY"
+            )
+            universe_tickers = [t for t in all_fetched if t != benchmark_ticker_tmp]
+            logger.info(
+                "Dynamic universe: derived %d universe_tickers from prefetched price data columns.",
+                len(universe_tickers),
+            )
+        else:
+            universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
 
         # Note: We NO LONGER persist resolved universe back into scenario_config mid-run
         # as per requirement 2.3 to prevent mid-run mutation.
