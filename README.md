@@ -127,6 +127,13 @@ pip install -e .
 # AutoGluon models are cached under .strategy_cache/autogluon_models/
 ```
 
+**Market data (MDMP):** `market-data-multi-provider` is listed in `pyproject.toml` and installs with the project when published on the index your pip uses. If you develop against a **local clone** of MDMP (sibling directory), install it in the same environment first, then reinstall PB:
+
+```bash
+pip install -e ../market-data-multi-provider
+pip install -e .
+```
+
 ---
 
 ## Available Strategies
@@ -389,6 +396,41 @@ strategy_config:
   allocation_mode: "reinvestment"  # or "fixed_fractional"
 ```
 
+### Timing Configuration
+
+Control when signals are generated and when trades are executed:
+
+**Time-Based Rebalancing (default):**
+```yaml
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME  # Monthly end (see Rebalance Frequencies below)
+  trade_execution_timing: bar_close  # or next_bar_open
+```
+
+**Signal-Based Scanning:**
+```yaml
+timing_config:
+  mode: signal_based
+  scan_frequency: D        # Daily scan for signals
+  min_holding_period: 1    # Minimum bars to hold
+  trade_execution_timing: bar_close  # or next_bar_open
+```
+
+**Trade Execution Timing:**
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `bar_close` (default) | Target weights take effect at the close of the signal bar | Standard backtesting behavior |
+| `next_bar_open` | Target weights are deferred to the next trading session's open | More conservative execution modeling |
+
+The `trade_execution_timing` setting works for **both** time-based portfolio strategies and signal-based strategies. When using `next_bar_open`, the backtester shifts the effective target weight date by one trading session, which means:
+- The portfolio does not immediately gain exposure to the signal
+- Turnover and transaction costs are calculated on the deferred execution date
+- Returns from the signal bar are not captured until the next session
+
+This is useful when you want to model realistic execution delays where you cannot trade on the same bar that generates the signal.
+
 ---
 
 ## Rebalance Frequencies
@@ -472,9 +514,7 @@ Optimization produces:
 
 ## Documentation
 
-For detailed configuration guides, see:
-
-- [S&P 500 Universe Data Management](docs/sp500_universe_management.md)
+For MDMP boundaries and canonical data rules, see [Data Sources](#data-sources) below.
 
 Example configurations are available in:
 
@@ -485,12 +525,19 @@ Example configurations are available in:
 
 ## Data Sources
 
-Portfolio Backtester automatically fetches market data from multiple sources with failover:
+OHLCV and SPY holdings history are fetched through **market-data-multi-provider (MDMP)**. Provider selection, failover, and on-disk market-data caching live in MDMP; Portfolio Backtester does not write canonical OHLCV or holdings parquet itself.
 
-1. **Stooq** (primary) — Free historical data
-2. **yfinance** (fallback) — Yahoo Finance data
+Architectural tests under `tests/unit/architecture/` block new direct vendor imports (for example `yfinance`) and any `market_data_multi_provider` references outside `src/portfolio_backtester/data_sources/mdmp_facade.py`.
 
-Data is cached locally to speed up repeated backtests.
+**Strict local-storage checklist (PB repo)**
+
+| Area | Rule |
+|------|------|
+| Canonical OHLCV / SPY holdings history | MDMP only; no `to_parquet` / `read_parquet` under `src/portfolio_backtester/` |
+| Direct vendor fetch clients | Forbidden imports (see `tests/unit/architecture/test_mdmp_boundary.py`) |
+| `data/reports`, `data/pnl_charts`, `data/optuna/` | Run outputs / Optuna DB defaults only (gitignored); not canonical market-data roots |
+| `data/config_validation_cache.json` | Config validation cache only (not market series) |
+| `.gitignore` `data/*.parquet`, `data/yfinance/`, etc. | Safety net so local MDMP mirrors or legacy folders are never committed |
 
 ---
 

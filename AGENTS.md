@@ -141,3 +141,42 @@ Then commit the updated `api_stable_signatures.json` file.
 The system is designed to fail tests when signatures change unexpectedly. If tests fail with messages like "No reference signature stored for <method>" or "Signature mismatch", then you know it's time to update the signatures.
 
 DO NOT run the update command routinely - only when the API stability protection system requires it.
+
+---
+
+## Trade Execution Timing
+
+The backtester supports configurable trade execution timing via `timing_config.trade_execution_timing`. This applies to **both** signal-based and portfolio/rebalancing strategies.
+
+### Supported Values
+
+- **`bar_close`** (default): Target weights take effect on the close of the signal/decision bar. This preserves existing backtest behavior where returns start affecting the portfolio from the next close-to-close period.
+- **`next_bar_open`**: Target weights are deferred to the next trading session. The backtester remaps sparse target-weight events forward by one calendar day, which delays exposure and turnover.
+
+### How It Works
+
+1. **Signal generation** (`strategy_logic.py`): For signal-based strategies, skipped scan dates produce all-NaN rows (not zeros) so they are dropped by the mapper instead of becoming fake flatten events.
+2. **Portfolio simulation** (`portfolio_logic.py`): 
+   - For `time_based` mode: `rebalance_to_first_event_per_period()` collapses dense signals to the first observation per period while preserving the original timestamp.
+   - `map_sparse_target_weights_to_execution_dates()` applies the execution timing remap.
+   - `_sized_signals_to_weights_daily()` expands to daily via ffill.
+3. **Optimizer parity** (`evaluation_engine.py`): The same remap is applied in both fast-path blocks.
+
+### Resolution Order
+
+Strategy subclasses may override `get_trade_execution_timing()`. The base implementation resolves in this order:
+1. `canonical_config.timing_config["trade_execution_timing"]`
+2. `strategy_params["timing_config"]["trade_execution_timing"]`
+3. Legacy `strategy_params["trade_execution_timing"]`
+4. Default `"bar_close"`
+
+### Adding to Scenario YAML
+
+```yaml
+timing_config:
+  mode: time_based  # or signal_based
+  rebalance_frequency: ME
+  trade_execution_timing: bar_close  # or next_bar_open
+```
+
+When writing code that touches portfolio returns, signal generation, or optimizer evaluation paths, ensure the execution timing mapper is applied consistently.
