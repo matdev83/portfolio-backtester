@@ -1,0 +1,29 @@
+name: simple_momentum_default_opt_total_return
+strategy: SimpleMomentumPortfolioStrategy
+
+rebalance_frequency: ME
+position_sizer: equal_weight
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+train_window_months: 60
+test_window_months: 12
+universe_config:
+  type: named
+  universe_name: sp500_top50
+optimization_targets:
+  - name: total_return
+    direction: maximize
+optimize:
+- parameter: num_holdings
+  min_value: 10
+  max_value: 30
+  step: 1
+strategy_params:
+  lookback_months: 12
+  num_holdings: 10
+  top_decile_fraction: 0.1
+  smoothing_lambda: 0.5
+  leverage: 1.0
+mc_simulations: 500
+mc_years: 20

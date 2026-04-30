@@ -44,8 +44,15 @@ def calculate_portfolio_returns(
     logger.debug("sized_signals head:\n%s", sized_signals.head())
 
     # Standard portfolio return calculation
-    rebalance_frequency = scenario_config.get("timing_config", {}).get("rebalance_frequency", "M")
-    weights_monthly = rebalance(sized_signals, rebalance_frequency)
+    timing_config = scenario_config.get("timing_config", {}) if scenario_config else {}
+    timing_mode = timing_config.get("mode", "time_based")
+    rebalance_frequency = timing_config.get("rebalance_frequency", "M")
+
+    if timing_mode == "time_based":
+        weights_monthly = rebalance(sized_signals, rebalance_frequency)
+    else:
+        # Preserve event/signal timing as emitted by strategy sizing.
+        weights_monthly = sized_signals.copy()
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug("weights_monthly shape: %s", weights_monthly.shape)
@@ -115,7 +122,10 @@ def calculate_portfolio_returns(
 
         if transaction_costs_bps is not None:
             weights_df = weights_daily.reindex(index=price_index, columns=valid_cols).fillna(0.0)
-            delta_weights = weights_df.diff().abs().fillna(0.0)
+            delta_weights = weights_df.diff().abs()
+            if not delta_weights.empty:
+                delta_weights.iloc[0] = weights_df.iloc[0].abs()
+            delta_weights = delta_weights.fillna(0.0)
             transaction_costs = delta_weights.sum(axis=1) * (transaction_costs_bps / 10000.0)
             per_asset_transaction_costs = delta_weights * (transaction_costs_bps / 10000.0)
         else:
@@ -259,9 +269,7 @@ def calculate_portfolio_returns(
             .to_numpy()
         )
 
-
         _track_trades_and_populate(
-
             trade_tracker=trade_tracker,
             weights_arr=weights_arr,
             prices_arr=prices_arr,
@@ -273,7 +281,12 @@ def calculate_portfolio_returns(
         # If trade tracking was used, the portfolio value series is the source of truth for returns
         pv_series = trade_tracker.portfolio_value_tracker.daily_portfolio_value
         if isinstance(pv_series, pd.Series) and not pv_series.empty:
-            returns_net_of_costs = pv_series.pct_change(fill_method=None).fillna(0.0).astype(float)
+            returns_net_of_costs = (
+                pv_series.pct_change(fill_method=None)
+                .reindex(price_data_daily_ohlc.index)
+                .fillna(0.0)
+                .astype(float)
+            )
 
     return returns_net_of_costs, trade_tracker
 
@@ -573,11 +586,13 @@ def _track_trades_and_populate(
         ],
     )
 
+    commissions_dollars = commissions_arr * float(trade_tracker.initial_portfolio_value)
+
     trade_count = trade_lifecycle_kernel(
         positions=positions,
         prices=prices_arr,
         dates=dates,
-        commissions=commissions_arr,
+        commissions=commissions_dollars,
         initial_capital=trade_tracker.initial_portfolio_value,
         out_trades=completed_trades_buffer,
         out_open_pos=open_positions_buffer,

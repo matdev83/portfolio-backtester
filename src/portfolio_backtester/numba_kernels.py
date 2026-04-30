@@ -168,12 +168,8 @@ def detailed_commission_slippage_kernel(
     out: np.ndarray = np.zeros(T, dtype=weights_current.dtype)
     out_detailed: np.ndarray = np.zeros((T, N), dtype=weights_current.dtype)
 
-    # first day turnover = 0.0 (no prior holdings)
     for i in range(T):
         day_cost = 0.0
-        if i == 0:
-            out[i] = 0.0
-            continue
         for j in range(N):
             dw = abs(weights_current[i, j] - (weights_current[i - 1, j] if i > 0 else 0.0))
             if dw <= 0.0:
@@ -189,7 +185,7 @@ def detailed_commission_slippage_kernel(
 
             # Commission per trade with min and max caps
             commission_trade = 0.0
-            if (i > 0) and (shares > 0.0):
+            if shares > 0.0:
                 commission_trade = shares * commission_per_share
                 if commission_trade < commission_min_per_order:
                     commission_trade = commission_min_per_order
@@ -239,6 +235,8 @@ def trade_tracking_kernel(
     cash_values = np.zeros(T, dtype=np.float64)
     positions = np.zeros((T, N), dtype=np.float64)
 
+    last_valid_prices = np.zeros(N, dtype=np.float64)
+
     # --- Day 0: open initial positions from cash ---
     capital_base = initial_portfolio_value
     current_prices0 = prices[0]
@@ -250,8 +248,11 @@ def trade_tracking_kernel(
     target_positions0 = (target_dollar_values0 / safe_prices0) * current_mask0
 
     positions[0] = target_positions0
+    for j in range(N):
+        if current_mask0[j]:
+            last_valid_prices[j] = current_prices0[j]
 
-    holdings_value0 = np.sum(positions[0] * current_prices0 * current_mask0)
+    holdings_value0 = np.sum(positions[0] * last_valid_prices)
     total_commission_cost0 = np.sum(commissions[0] * capital_base * current_mask0)
     cash_values[0] = capital_base - holdings_value0 - total_commission_cost0
     portfolio_values[0] = cash_values[0] + holdings_value0
@@ -264,7 +265,13 @@ def trade_tracking_kernel(
         current_prices = prices[i]
         current_mask = price_mask[i]
 
-        holdings_value = np.sum(last_positions * current_prices * current_mask)
+        valuation_prices = np.empty(N, dtype=np.float64)
+        for j in range(N):
+            if current_mask[j]:
+                last_valid_prices[j] = current_prices[j]
+            valuation_prices[j] = last_valid_prices[j]
+
+        holdings_value = np.sum(last_positions * valuation_prices)
         portfolio_values[i] = cash_values[i - 1] + holdings_value
 
         # Default: no trades => positions and cash unchanged
@@ -287,12 +294,17 @@ def trade_tracking_kernel(
         # --- Rebalancing Stage (End of Day) ---
         target_weights = weights[i]
         target_dollar_values = target_weights * capital_base
-        safe_prices = np.where(current_prices > 0, current_prices, 1.0)
-        target_positions = (target_dollar_values / safe_prices) * current_mask
+        target_positions = np.empty(N, dtype=np.float64)
+        for j in range(N):
+            if current_mask[j]:
+                target_positions[j] = target_dollar_values[j] / current_prices[j]
+            else:
+                # Missing/invalid price: keep existing shares and value by last valid close.
+                target_positions[j] = last_positions[j]
 
         positions[i] = target_positions
 
-        new_holdings_value = np.sum(positions[i] * current_prices * current_mask)
+        new_holdings_value = np.sum(positions[i] * valuation_prices)
         total_commission_cost = np.sum(commissions[i] * capital_base * current_mask)
 
         cash_values[i] = portfolio_values[i] - new_holdings_value - total_commission_cost

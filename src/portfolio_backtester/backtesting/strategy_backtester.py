@@ -527,7 +527,9 @@ class StrategyBacktester:
             )
             return None
 
-        benchmark_ticker = self.global_config["benchmark"]
+        benchmark_ticker = canonical_config.benchmark_ticker or self.global_config.get(
+            "benchmark", "SPY"
+        )
 
         # Prepare scenario data if not provided
         if rets_daily is None:
@@ -613,7 +615,7 @@ class StrategyBacktester:
         # PERFORMANCE: Avoid nested loops over large universes (e.g. R2K)
         # Use stack() to get non-zero positions efficiently
         stacked_signals = cast(pd.Series, sized_signals.stack())
-        
+
         # Robustness: ensure numeric values before taking abs()
         numeric_signals = pd.to_numeric(stacked_signals, errors="coerce")
         non_zero_mask = numeric_signals.notna() & (numeric_signals.abs() > 1e-6)

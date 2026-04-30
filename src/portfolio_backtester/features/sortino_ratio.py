@@ -6,6 +6,12 @@ import pandas as pd
 from ..numba_optimized import sortino_fast_fixed
 
 
+_TRADING_DAYS_PER_MONTH = 21
+_DAILY_ANNUALIZATION = 252.0
+_MONTHLY_ANNUALIZATION = 12.0
+_MONTH_STYLE_WINDOW_MAX = 24
+
+
 class SortinoRatio(Feature):
     """Computes the Sortino ratio."""
 
@@ -31,21 +37,35 @@ class SortinoRatio(Feature):
         if rets.empty:
             return pd.DataFrame(index=data.index, columns=data.columns)
 
+        effective_window = int(self.rolling_window)
+        annualization_factor = _MONTHLY_ANNUALIZATION
+
+        # Interpret small strategy-style windows as months on daily-like data.
+        # Keep larger windows as direct periods for backward compatibility.
+        if (
+            len(rets.index) >= 2
+            and effective_window > 0
+            and effective_window <= _MONTH_STYLE_WINDOW_MAX
+            and rets.index.to_series().diff().dropna().dt.days.median() <= 3
+        ):
+            effective_window *= _TRADING_DAYS_PER_MONTH
+            annualization_factor = _DAILY_ANNUALIZATION
+
         # Use optimized batch calculation with proper ddof=1 handling
         returns_np = rets.to_numpy(dtype=np.float64)
         sortino_mat = sortino_fast_fixed(
             returns_np,
-            self.rolling_window,
+            effective_window,
             self.target_return,
-            annualization_factor=12.0,
+            annualization_factor=annualization_factor,
         )
         sortino_df = pd.DataFrame(sortino_mat, index=rets.index, columns=rets.columns)
 
         sortino_df = sortino_df.clip(-10.0, 10.0)
 
         # Only fill NaN values after the initial window period
-        # Keep the first (rolling_window - 1) values as NaN
-        mask = np.arange(len(sortino_df)) >= self.rolling_window - 1
+        # Keep the first (window - 1) values as NaN
+        mask = np.arange(len(sortino_df)) >= effective_window - 1
         mask_indices = np.where(mask)[0]
         sortino_df.iloc[mask_indices] = sortino_df.iloc[mask_indices].fillna(0)
         return sortino_df

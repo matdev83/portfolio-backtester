@@ -18,7 +18,7 @@ This module implements a classical dual momentum strategy with the following fea
 from __future__ import annotations
 
 from collections import deque
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, Mapping, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, Mapping, TYPE_CHECKING, cast
 
 import numpy as np
 import pandas as pd
@@ -37,14 +37,15 @@ __all__ = ["DualMomentumLaggedPortfolioStrategy"]
 
 class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
     """Dual Momentum strategy with lagged entries and exits.
-...
-    panic_exposure_multiplier : float
-        Exposure multiplier applied when panic-state triggers (e.g., 0.25).
+    ...
+        panic_exposure_multiplier : float
+            Exposure multiplier applied when panic-state triggers (e.g., 0.25).
     """
 
-    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]) -> None:
+    def __init__(
+        self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]
+    ) -> None:
         super().__init__(strategy_config)
-
 
         params = self.strategy_config.get("strategy_params", {})
         if params is None:
@@ -650,7 +651,7 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         if current_date is None:
             current_date = all_historical_data.index[-1]
 
-        current_date = pd.Timestamp(current_date)
+        current_date = pd.Timestamp(cast(pd.Timestamp, current_date))
 
         # Get parameters
         params = self.strategy_config.get("strategy_params", self.strategy_config)
@@ -680,10 +681,25 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         if not valid_assets:
             return pd.DataFrame(0.0, index=[current_date], columns=original_assets)
 
-        # --- Dynamic Universe Filtering (Top 50 S&P 500) ---
-        # Get the top 50 components for the current date to handle survivorship bias
+        # --- Dynamic Universe Filtering (Top-N S&P 500 from universe config) ---
+        universe_cfg = self.strategy_config.get("universe_config", {})
+        configured_n = universe_cfg.get("n_holdings", params.get("num_holdings", max_holdings))
         try:
-            top_components = get_top_weight_sp500_components(current_date, n=50, exact=False)
+            dynamic_universe_n = int(configured_n)
+        except (TypeError, ValueError):
+            dynamic_universe_n = 50
+        if dynamic_universe_n <= 0:
+            dynamic_universe_n = 50
+
+        dynamic_universe_exact = bool(universe_cfg.get("exact", False))
+
+        # Get top components for the current date to handle survivorship bias
+        try:
+            top_components = get_top_weight_sp500_components(
+                current_date,
+                n=dynamic_universe_n,
+                exact=dynamic_universe_exact,
+            )
 
             # IMPORTANT: `all_historical_data` tickers are the *local* tickers we requested
             # from the data source (e.g., "AAPL", "SPY"), not MDMP canonical IDs.

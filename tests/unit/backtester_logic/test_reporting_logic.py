@@ -1,10 +1,9 @@
 """
 Unit tests for the reporting_logic module.
 """
-import pytest
+
 from unittest.mock import Mock, patch
 import pandas as pd
-import sys
 
 from portfolio_backtester.backtester_logic.reporting_logic import (
     _get_benchmark_returns,
@@ -22,18 +21,20 @@ class TestReportingLogic:
         """Set up the test environment."""
         self.backtester = Mock()
         self.backtester.global_config = {"benchmark": "SPY"}
-        self.full_rets = pd.Series([0.1, 0.2, 0.3], index=pd.to_datetime(['2023-01-01', '2023-01-02', '2023-01-03']))
+        self.full_rets = pd.Series(
+            [0.1, 0.2, 0.3], index=pd.to_datetime(["2023-01-01", "2023-01-02", "2023-01-03"])
+        )
         self.scenario_config = {"name": "test_scenario"}
         self.optimal_params = {"param1": 1}
 
     def test_get_benchmark_returns_multiindex(self):
         """Test _get_benchmark_returns with MultiIndex columns."""
-        self.backtester.daily_data_ohlc = pd.DataFrame({
-            ('SPY', 'Close'): [100, 101, 102],
-            ('AAPL', 'Close'): [150, 151, 152]
-        }, index=self.full_rets.index)
+        self.backtester.daily_data_ohlc = pd.DataFrame(
+            {("SPY", "Close"): [100, 101, 102], ("AAPL", "Close"): [150, 151, 152]},
+            index=self.full_rets.index,
+        )
         self.backtester.daily_data_ohlc.columns = pd.MultiIndex.from_tuples(
-            self.backtester.daily_data_ohlc.columns, names=['Ticker', 'Field']
+            self.backtester.daily_data_ohlc.columns, names=["Ticker", "Field"]
         )
         returns = _get_benchmark_returns(self.backtester, self.full_rets)
         assert isinstance(returns, pd.Series)
@@ -41,10 +42,9 @@ class TestReportingLogic:
 
     def test_get_benchmark_returns_singleindex(self):
         """Test _get_benchmark_returns with a single index."""
-        self.backtester.daily_data_ohlc = pd.DataFrame({
-            'SPY': [100, 101, 102],
-            'AAPL': [150, 151, 152]
-        }, index=self.full_rets.index)
+        self.backtester.daily_data_ohlc = pd.DataFrame(
+            {"SPY": [100, 101, 102], "AAPL": [150, 151, 152]}, index=self.full_rets.index
+        )
         returns = _get_benchmark_returns(self.backtester, self.full_rets)
         assert isinstance(returns, pd.Series)
         assert not returns.empty
@@ -68,7 +68,9 @@ class TestReportingLogic:
         mock_optuna.importance = Mock()
         mock_optuna.importance.get_param_importances = Mock(return_value={"param": 0.9})
 
-        with patch.dict("sys.modules", {"optuna": mock_optuna, "optuna.importance": mock_optuna.importance}):
+        with patch.dict(
+            "sys.modules", {"optuna": mock_optuna, "optuna.importance": mock_optuna.importance}
+        ):
             mock_study = Mock()
             mock_trial = Mock()
             mock_trial.number = 1
@@ -105,9 +107,9 @@ class TestReportingLogic:
         mock_calculate_metrics.return_value = {}
         mock_create_report.return_value = "report_path"
         self.backtester.results = {"test_scenario": {}}
-        self.backtester.daily_data_ohlc = pd.DataFrame({
-            'SPY': [100, 101, 102]
-        }, index=self.full_rets.index)
+        self.backtester.daily_data_ohlc = pd.DataFrame(
+            {"SPY": [100, 101, 102]}, index=self.full_rets.index
+        )
 
         generate_optimization_report(
             self.backtester,
@@ -118,3 +120,31 @@ class TestReportingLogic:
             10,
         )
         mock_create_report.assert_called_once()
+
+    @patch("portfolio_backtester.backtester_logic.reporting_logic.create_optimization_report")
+    @patch("portfolio_backtester.backtester_logic.reporting_logic.calculate_metrics")
+    def test_generate_optimization_report_prefers_optimized_returns(
+        self, mock_calculate_metrics, mock_create_report
+    ):
+        mock_calculate_metrics.return_value = {}
+        mock_create_report.return_value = "report_path"
+        optimized_returns = pd.Series(
+            [0.05, -0.02], index=pd.to_datetime(["2023-01-02", "2023-01-03"])
+        )
+        self.backtester.results = {
+            "test_scenario_Optimized": {"returns": optimized_returns},
+        }
+        self.backtester.daily_data_ohlc = pd.DataFrame(
+            {"SPY": [100, 101, 102]}, index=self.full_rets.index
+        )
+
+        generate_optimization_report(
+            self.backtester,
+            self.scenario_config,
+            self.optimal_params,
+            self.full_rets,
+            None,
+            10,
+        )
+
+        assert mock_calculate_metrics.call_args.args[0].equals(optimized_returns)

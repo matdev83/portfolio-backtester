@@ -122,6 +122,32 @@ def _benchmark_returns(daily_data_for_display: pd.DataFrame, benchmark_ticker: s
     return rets.iloc[:, 0] if isinstance(rets, pd.DataFrame) else rets
 
 
+def _align_reporting_window(
+    period_returns: dict[str, pd.Series], benchmark_rets: pd.Series
+) -> tuple[dict[str, pd.Series], pd.Series]:
+    strategy_indexes = [
+        rets.index
+        for rets in period_returns.values()
+        if isinstance(rets, pd.Series) and not rets.empty
+    ]
+    if not strategy_indexes:
+        return period_returns, benchmark_rets
+
+    combined_index = strategy_indexes[0]
+    for idx in strategy_indexes[1:]:
+        combined_index = combined_index.union(idx)
+
+    combined_index = combined_index.intersection(benchmark_rets.index)
+    if combined_index.empty:
+        return period_returns, benchmark_rets
+
+    aligned_period_returns = {
+        name: rets.reindex(combined_index).dropna() for name, rets in period_returns.items()
+    }
+    aligned_benchmark = benchmark_rets.reindex(combined_index).fillna(0.0)
+    return aligned_period_returns, aligned_benchmark
+
+
 def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  # noqa: D401
     """Generate all textual & graphical reports for the finished backtest run."""
     logger = self.logger
@@ -190,6 +216,7 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
         period_returns = {n: d["returns"] for n, d in self.results.items()}
         benchmark_ticker = _resolve_benchmark_ticker(self)
         benchmark_rets = _benchmark_returns(daily_data_for_display, benchmark_ticker)
+        period_returns, benchmark_rets = _align_reporting_window(period_returns, benchmark_rets)
         trials_map = {n: d.get("num_trials_for_dsr", 1) for n, d in self.results.items()}
 
         # unique report directory per run

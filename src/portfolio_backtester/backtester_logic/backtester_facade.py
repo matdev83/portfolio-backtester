@@ -511,7 +511,6 @@ class Backtester:
             }
 
             self.results[optimized_name] = final_backtest_results
-            self.results[scenario_config.name] = final_backtest_results
             return
 
         # Run a final backtest using the best parameters found
@@ -555,7 +554,6 @@ class Backtester:
         )
 
         self.results[optimized_name] = final_backtest_results
-        self.results[scenario_config.name] = final_backtest_results
 
     def _display_results(self) -> None:
         """Display results using the original reporting system."""

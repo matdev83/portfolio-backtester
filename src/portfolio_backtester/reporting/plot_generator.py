@@ -28,6 +28,22 @@ def plot_performance_summary(
     plt.style.use("seaborn-v0_8-darkgrid")
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), gridspec_kw={"height_ratios": [3, 1]})
 
+    strategy_indexes = [
+        result_data["returns"].index
+        for result_data in backtester.results.values()
+        if isinstance(result_data.get("returns"), pd.Series) and not result_data["returns"].empty
+    ]
+    if bench_rets_full is not None and strategy_indexes:
+        combined_index = strategy_indexes[0]
+        for idx in strategy_indexes[1:]:
+            combined_index = combined_index.union(idx)
+        combined_index = combined_index.intersection(bench_rets_full.index)
+        if not combined_index.empty:
+            bench_rets_full = bench_rets_full.reindex(combined_index).fillna(0.0)
+
+    cumulative_bench_returns = None
+    bench_drawdown = None
+
     ax1.set_title("Cumulative Returns (Net of Costs)", fontsize=16)
     ax1.set_ylabel("Cumulative Returns (Log Scale)", fontsize=12)
     ax1.set_yscale("log")
@@ -44,12 +60,12 @@ def plot_performance_summary(
         ax1.scatter(ath_dates, ath_values, color="green", s=20, alpha=0.7, zorder=5)
 
         if bench_rets_full is not None:
-            cumulative_bench_returns: pd.Series = (1 + bench_rets_full).cumprod()
+            cumulative_bench_returns = (1 + bench_rets_full).cumprod()
             cumulative_bench_returns.plot(
                 ax=ax1, label=backtester.global_config["benchmark"], linestyle="--"
             )
 
-    if bench_rets_full is not None:
+    if cumulative_bench_returns is not None:
         all_cumulative_returns_plotting.append(cumulative_bench_returns)
 
         bench_ath_mask = cumulative_bench_returns.expanding().max() == cumulative_bench_returns
@@ -85,7 +101,7 @@ def plot_performance_summary(
 
     ax2.legend()
     ax2.grid(True, which="both", ls="-", alpha=0.5)
-    if bench_rets_full is not None:
+    if bench_drawdown is not None:
         ax2.fill_between(bench_drawdown.index, 0, bench_drawdown, color="gray", alpha=0.2)
 
     plt.tight_layout()

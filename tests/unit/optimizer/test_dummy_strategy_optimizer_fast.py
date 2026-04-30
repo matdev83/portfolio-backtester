@@ -74,6 +74,7 @@ def test_dummy_strategy_single_trial_optimizer_fast():
         scenario_name="dummy_opt",
         mode="optimize",
         timeout=30,
+        optuna_timeout_sec=30,
         n_jobs=1,
         early_stop_patience=1,
         optimizer="optuna",
@@ -88,7 +89,7 @@ def test_dummy_strategy_single_trial_optimizer_fast():
     )
     backtester.run()
 
-    result_series = backtester.results.get("dummy_opt", {}).get("returns")
+    result_series = backtester.results.get("dummy_opt_Optimized", {}).get("returns")
     assert result_series is not None
     # objective check
     if isinstance(result_series, pd.Series):

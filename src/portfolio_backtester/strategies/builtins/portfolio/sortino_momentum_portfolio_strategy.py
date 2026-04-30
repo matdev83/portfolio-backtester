@@ -17,7 +17,6 @@ class SortinoMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
     def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
 
-
         params_dict_to_update = self.strategy_config.get("strategy_params", {})
         sortino_defaults = {
             "rolling_window": 3,  # Default for Sortino
@@ -88,10 +87,24 @@ class SortinoMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
         current_date: pd.Timestamp,
     ) -> pd.Series:
         scores = self.sortino_feature.compute(asset_prices)
-        if current_date in scores.index:
-            return cast(pd.Series, scores.loc[current_date].squeeze())
-        else:
+        if scores.empty:
             return pd.Series(dtype=float)
+
+        idx_dates = scores.index
+        if isinstance(idx_dates, pd.DatetimeIndex) and idx_dates.tz is not None:
+            current_ts = pd.Timestamp(current_date)
+            if current_ts.tzinfo is None:
+                current_ts = current_ts.tz_localize(idx_dates.tz)
+            else:
+                current_ts = current_ts.tz_convert(idx_dates.tz)
+        else:
+            current_ts = pd.Timestamp(current_date)
+
+        valid_dates = idx_dates[idx_dates <= current_ts]
+        if len(valid_dates) == 0:
+            return pd.Series(dtype=float)
+
+        return cast(pd.Series, scores.loc[valid_dates[-1]].squeeze())
 
 
 __all__ = ["SortinoMomentumPortfolioStrategy"]

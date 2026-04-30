@@ -147,11 +147,15 @@ def generate_optimization_report(
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("📊 Generating full comprehensive report (may take longer)")
 
+    optimized_result_name = f"{strategy_name}_Optimized"
+    result_data = backtester.results.get(optimized_result_name, {})
+    report_returns = result_data.get("returns", full_rets)
+
     # Compute metrics if returns available
-    if full_rets is not None and not full_rets.empty:
+    if report_returns is not None and not report_returns.empty:
         benchmark_ticker = _resolve_benchmark_ticker(backtester)
-        benchmark_returns = _get_benchmark_returns(backtester, full_rets)
-        performance_metrics = calculate_metrics(full_rets, benchmark_returns, benchmark_ticker)
+        benchmark_returns = _get_benchmark_returns(backtester, report_returns)
+        performance_metrics = calculate_metrics(report_returns, benchmark_returns, benchmark_ticker)
     else:
         logger.warning("No returns data available for performance metrics calculation")
         performance_metrics = {}
@@ -173,9 +177,6 @@ def generate_optimization_report(
     elif defer_parameter_analysis:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("⚡ Parameter analysis deferred for performance")
-
-    optimized_result_name = list(backtester.results.keys())[-1]
-    result_data = backtester.results[optimized_result_name]
 
     additional_info = _build_additional_info(
         backtester,

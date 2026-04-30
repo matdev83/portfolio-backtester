@@ -1,0 +1,38 @@
+name: drift_regime_sp500_topn_2018_2025_backtest
+strategy: DriftRegimeConditionalFactorPortfolioStrategy
+
+start_date: "2018-01-01"
+end_date: "2025-06-30"
+rebalance_frequency: D
+position_sizer: equal_weight
+timing_config:
+  mode: time_based
+  rebalance_frequency: D
+universe_config:
+  type: method
+  method_name: get_top_weight_sp500_components
+  n_holdings: 50
+  exact: false
+benchmark_ticker: SPX
+optimization_metric: Sortino
+train_window_months: 60
+test_window_months: 12
+walk_forward_type: rolling
+strategy_params:
+  universe_config:
+    type: method
+    method_name: get_top_weight_sp500_components
+    n_holdings: 50
+    exact: false
+  drift_window: 63
+  drift_threshold: 0.6
+  reversal_window: 10
+  num_holdings: 10
+  leverage: 1.0
+  trade_longs: true
+  trade_shorts: false
+  smoothing_lambda: 0.0
+  selection_mode: "top_n"
+  weighting_mode: "proportional"
+mc_simulations: 500
+mc_years: 10

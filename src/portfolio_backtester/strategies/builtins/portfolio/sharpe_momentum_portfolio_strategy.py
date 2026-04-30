@@ -77,15 +77,54 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
         # Sharpe ratio rolling window requirement
         rolling_window = params.get("rolling_window", 6)
 
-        # SMA filter requirement (if enabled)
+        # SMA filter is configured in trading days; convert to month-equivalent
+        # because validate_data_sufficiency works in month units.
         sma_filter_window = params.get("sma_filter_window")
-        sma_requirement = sma_filter_window if sma_filter_window and sma_filter_window > 0 else 0
+        sma_requirement = (
+            int(np.ceil(float(sma_filter_window) / 21.0))
+            if sma_filter_window and sma_filter_window > 0
+            else 0
+        )
 
         # Take the maximum of all requirements plus buffer
         total_requirement = max(rolling_window, sma_requirement)
 
         # Add 2-month buffer for reliable calculations
         return int(total_requirement + 2)
+
+    def validate_data_sufficiency(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        current_date: pd.Timestamp,
+    ) -> tuple[bool, str]:
+        """Validate sufficiency while treating SMA window as trading days."""
+        params = self.strategy_config.get("strategy_params")
+        if not isinstance(params, dict):
+            return super().validate_data_sufficiency(
+                all_historical_data,
+                benchmark_historical_data,
+                current_date,
+            )
+
+        sma_filter_window = params.get("sma_filter_window")
+        if not sma_filter_window or sma_filter_window <= 0:
+            return super().validate_data_sufficiency(
+                all_historical_data,
+                benchmark_historical_data,
+                current_date,
+            )
+
+        original_sma_window = sma_filter_window
+        params["sma_filter_window"] = int(np.ceil(float(sma_filter_window) / 21.0))
+        try:
+            return super().validate_data_sufficiency(
+                all_historical_data,
+                benchmark_historical_data,
+                current_date,
+            )
+        finally:
+            params["sma_filter_window"] = original_sma_window
 
     # Removed get_required_features
 
@@ -130,13 +169,22 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
         )
 
         # Get the latest calculated Sharpe ratio (for the current_month_end)
-        if not sharpe_ratio_calculated.empty and current_month_end in sharpe_ratio_calculated.index:
-            latest_sharpe = sharpe_ratio_calculated.loc[current_month_end].fillna(0.0)
-            if isinstance(latest_sharpe, pd.DataFrame):
-                latest_sharpe = cast(pd.Series, latest_sharpe.squeeze())
-            return latest_sharpe
-        else:  # Not enough rolling data, or current_month_end not in index
-            return pd.Series(0.0, index=daily_closes.columns)
+        if not sharpe_ratio_calculated.empty:
+            # Use the last available trading date <= current_month_end
+            idx_dates = sharpe_ratio_calculated.index
+            # Handle timezone-aware index comparison
+            if isinstance(idx_dates, pd.DatetimeIndex) and idx_dates.tz is not None:
+                current_month_end_tz = pd.Timestamp(current_month_end, tz=idx_dates.tz)
+            else:
+                current_month_end_tz = pd.Timestamp(current_month_end)
+            valid_dates = idx_dates[idx_dates <= current_month_end_tz]
+            if len(valid_dates) > 0:
+                latest_date = valid_dates[-1]
+                latest_sharpe = sharpe_ratio_calculated.loc[latest_date].fillna(0.0)
+                if isinstance(latest_sharpe, pd.DataFrame):
+                    latest_sharpe = cast(pd.Series, latest_sharpe.squeeze())
+                return latest_sharpe
+        return pd.Series(0.0, index=daily_closes.columns)
 
     def generate_signals(
         self,
@@ -216,7 +264,7 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
         else:
             self.entry_prices = self.entry_prices.reindex(current_universe_tickers).fillna(np.nan)
 
-        scores_at_current_date = self._calculate_scores(all_historical_data, current_date)
+        scores_at_current_date = self._calculate_scores(asset_data_for_scores, current_date)
 
         if scores_at_current_date.isna().all() or scores_at_current_date.empty:
             weights_at_current_date = self.w_prev.copy()
@@ -356,18 +404,8 @@ class SharpeMomentumPortfolioStrategy(BaseMomentumPortfolioStrategy):
         # broadcasting/indexing issues when weights are Series/DataFrame/array.
         idx_final = list(current_universe_tickers)
 
-        prev_arr = (
-            pd.Series(weights_at_current_date)
-            .reindex(idx_final)
-            .fillna(0.0)
-            .to_numpy()
-        )
-        after_arr = (
-            pd.Series(final_weights)
-            .reindex(idx_final)
-            .fillna(0.0)
-            .to_numpy()
-        )
+        prev_arr = pd.Series(weights_at_current_date).reindex(idx_final).fillna(0.0).to_numpy()
+        after_arr = pd.Series(final_weights).reindex(idx_final).fillna(0.0).to_numpy()
         entry_arr = pd.Series(self.entry_prices).reindex(idx_final).to_numpy()
 
         exit_mask = (prev_arr != 0) & (after_arr == 0)

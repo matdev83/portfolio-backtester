@@ -5,90 +5,77 @@ from unittest.mock import MagicMock, patch
 
 from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
 
+
 @pytest.fixture
 def backtester():
     global_config = {"benchmark": "A"}
     data_source = MagicMock()
     return StrategyBacktester(global_config, data_source)
 
+
 @pytest.fixture
 def mock_data():
     dates = pd.date_range("2023-01-01", periods=10, freq="B")
-    data = pd.DataFrame(
-        100.0,
-        index=dates,
-        columns=["A", "B"]
-    )
-    return {
-        "daily": data,
-        "monthly": data,
-        "rets": data.pct_change().fillna(0.0)
-    }
+    data = pd.DataFrame(100.0, index=dates, columns=["A", "B"])
+    return {"daily": data, "monthly": data, "rets": data.pct_change().fillna(0.0)}
+
 
 def test_backtest_strategy_missing_universe(backtester, mock_data):
     # Strategy with no universe
-    config = {
-        "strategy": "TestStrategy",
-        "strategy_params": {},
-        "name": "Test"
-    }
-    
+    config = {"strategy": "TestStrategy", "strategy_params": {}, "name": "Test"}
+
     with patch.object(backtester, "_get_strategy") as mock_get_strat:
         mock_strat = MagicMock()
         # Returns empty universe list
         mock_strat.get_universe.return_value = []
         mock_get_strat.return_value = mock_strat
-        
+
         result = backtester.backtest_strategy(
-            config,
-            mock_data["monthly"],
-            mock_data["daily"],
-            mock_data["rets"]
+            config, mock_data["monthly"], mock_data["daily"], mock_data["rets"]
         )
-        
+
         # Should return empty result
         assert result.returns.empty
         assert result.metrics == {}
 
+
 def test_backtest_strategy_empty_returns(backtester, mock_data):
-    config = {
-        "strategy": "TestStrategy",
-        "strategy_params": {},
-        "name": "Test",
-        "universe": ["A"]
-    }
-    
-    with patch.object(backtester, "_get_strategy"), \
-         patch("portfolio_backtester.backtesting.strategy_backtester.generate_signals"), \
-         patch("portfolio_backtester.backtesting.strategy_backtester.size_positions"), \
-         patch("portfolio_backtester.backtesting.strategy_backtester.calculate_portfolio_returns") as mock_calc:
-        
+    config = {"strategy": "TestStrategy", "strategy_params": {}, "name": "Test", "universe": ["A"]}
+
+    with (
+        patch.object(backtester, "_get_strategy"),
+        patch("portfolio_backtester.backtesting.strategy_backtester.generate_signals"),
+        patch("portfolio_backtester.backtesting.strategy_backtester.size_positions"),
+        patch(
+            "portfolio_backtester.backtesting.strategy_backtester.calculate_portfolio_returns"
+        ) as mock_calc,
+    ):
+
         # Return empty/None returns
         mock_calc.return_value = (None, None)
-        
+
         result = backtester.backtest_strategy(
-            config,
-            mock_data["monthly"],
-            mock_data["daily"],
-            mock_data["rets"]
+            config, mock_data["monthly"], mock_data["daily"], mock_data["rets"]
         )
-        
+
         assert result.returns.empty
-        assert "Total Return" not in result.metrics # Empty metrics dict
+        assert "Total Return" not in result.metrics  # Empty metrics dict
+
 
 def test_create_trade_history_fallback(backtester):
     # Test _create_trade_history logic
     dates = pd.date_range("2023-01-01", periods=2)
     daily = pd.DataFrame(100.0, index=dates, columns=["A"])
-    
+
     sized = pd.DataFrame({"A": [0.5, 0.0]}, index=dates)
-    
+
     history = backtester._create_trade_history(sized, daily)
-    
+
     assert len(history) == 1
     assert history.iloc[0]["ticker"] == "A"
     assert history.iloc[0]["position"] == 0.5
     assert history.iloc[0]["price"] == 100.0
+
 
 def test_create_performance_stats_empty(backtester):
     # Empty returns
@@ -96,21 +83,23 @@ def test_create_performance_stats_empty(backtester):
     assert stats["total_return"] == 0.0
     assert stats["max_drawdown"] == 0.0
 
+
 def test_calculate_rolling_sharpe(backtester):
     dates = pd.date_range("2023-01-01", periods=300, freq="B")
     rets = pd.Series(np.random.normal(0.001, 0.01, 300), index=dates)
-    
+
     sharpe = backtester._calculate_rolling_sharpe(rets, window=252)
-    
+
     # First 251 should be 0/NaN (filled to 0)
     assert (sharpe.iloc[:251] == 0).all()
     # Last one should be calculated
     assert sharpe.iloc[-1] != 0
 
+
 def test_run_scenario_for_window_failure(backtester, mock_data):
     # Test window failure path
     config = {"strategy": "Test", "strategy_params": {}, "universe": ["MISSING"]}
-    
+
     with patch.object(backtester, "_get_strategy") as mock_get_strat:
         # Return a dummy strategy
         mock_get_strat.return_value = MagicMock()
@@ -118,9 +107,54 @@ def test_run_scenario_for_window_failure(backtester, mock_data):
 
         # Missing tickers -> returns None
         result = backtester._run_scenario_for_window(
-            config,
-            mock_data["monthly"],
-            mock_data["daily"]
+            config, mock_data["monthly"], mock_data["daily"]
         )
-        
+
         assert result is None
+
+
+def test_run_scenario_for_window_uses_scenario_reference_ticker(backtester):
+    dates = pd.bdate_range("2023-01-02", periods=5)
+    daily_data = pd.DataFrame(
+        {
+            "A": [100.0, 101.0, 102.0, 103.0, 104.0],
+            "GLOBAL": [200.0, 201.0, 202.0, 203.0, 204.0],
+            "SCENARIO": [300.0, 301.0, 302.0, 303.0, 304.0],
+        },
+        index=dates,
+    )
+    rets_daily = daily_data.pct_change(fill_method=None).fillna(0.0)
+
+    strategy_config = {
+        "name": "benchmark_regression",
+        "strategy": "TestStrategy",
+        "strategy_params": {},
+        "benchmark_ticker": "SCENARIO",
+    }
+
+    strategy = MagicMock()
+    strategy.get_universe.return_value = [("A", 1.0)]
+
+    with (
+        patch.object(backtester, "_get_strategy", return_value=strategy),
+        patch(
+            "portfolio_backtester.backtesting.strategy_backtester.generate_signals",
+            return_value=pd.DataFrame({"A": [1.0]}, index=[dates[0]]),
+        ) as mock_generate_signals,
+        patch(
+            "portfolio_backtester.backtesting.strategy_backtester.size_positions",
+            return_value=pd.DataFrame({"A": [1.0]}, index=[dates[0]]),
+        ),
+        patch(
+            "portfolio_backtester.backtesting.strategy_backtester.calculate_portfolio_returns",
+            return_value=(pd.Series(0.0, index=dates), None),
+        ),
+    ):
+        backtester._run_scenario_for_window(
+            strategy_config=strategy_config,
+            monthly_data=daily_data[["A"]],
+            daily_data=daily_data,
+            rets_daily=rets_daily,
+        )
+
+    assert mock_generate_signals.call_args.args[4] == "SCENARIO"

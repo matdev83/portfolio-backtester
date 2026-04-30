@@ -1,0 +1,75 @@
+# Drift Regime Conditional Factor Strategy - S&P 500 Top-N Optimization
+#
+# Trades the top-N largest S&P 500 companies by market cap using drift regime
+# detection combined with short-term reversal and value signals.
+
+name: drift_regime_sp500_topn_opt
+strategy: DriftRegimeConditionalFactorPortfolioStrategy
+
+start_date: "2013-01-01"
+end_date: "2025-06-30"
+
+rebalance_frequency: D
+position_sizer: equal_weight
+timing_config:
+  mode: time_based
+  rebalance_frequency: D
+
+# Universe: Top 50 S&P 500 components by weight (market-cap proxy)
+universe_config:
+  type: method
+  method_name: get_top_weight_sp500_components
+  n_holdings: 50
+  exact: false
+
+benchmark_ticker: SPX
+optimization_metric: Sortino
+
+train_window_months: 60
+test_window_months: 12
+walk_forward_type: rolling
+
+strategy_params:
+  universe_config:
+    type: method
+    method_name: get_top_weight_sp500_components
+    n_holdings: 50
+    exact: false
+  drift_window: 63
+  drift_threshold: 0.6
+  reversal_window: 10
+  num_holdings: 10
+  leverage: 1.0
+  trade_longs: true
+  trade_shorts: false
+  smoothing_lambda: 0.0
+  selection_mode: "top_n"
+  weighting_mode: "proportional"
+
+optimize:
+  - parameter: drift_threshold
+    type: float
+    min_value: 0.50
+    max_value: 0.75
+    step: 0.05
+  - parameter: num_holdings
+    type: int
+    min_value: 5
+    max_value: 30
+    step: 5
+  - parameter: reversal_window
+    type: int
+    min_value: 5
+    max_value: 20
+    step: 5
+  - parameter: drift_window
+    type: int
+    min_value: 40
+    max_value: 80
+    step: 10
+  - parameter: weighting_mode
+    type: categorical
+    choices: ["proportional", "equal"]
+
+mc_simulations: 500
+mc_years: 10

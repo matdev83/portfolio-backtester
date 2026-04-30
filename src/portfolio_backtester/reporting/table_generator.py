@@ -156,20 +156,39 @@ def _collect_metrics(
         backtester, period_returns, bench_period_rets
     )
 
+    # Keep benchmark metrics on a common window with reported strategy returns
+    # to avoid comparing stitched WFO windows to full-history benchmark metrics.
+    common_bench_rets = bench_period_rets
+    strategy_indexes = [
+        rets.index
+        for rets in period_returns.values()
+        if isinstance(rets, pd.Series) and not rets.empty
+    ]
+    if strategy_indexes:
+        common_index = strategy_indexes[0]
+        for idx in strategy_indexes[1:]:
+            common_index = common_index.intersection(idx)
+        common_index = common_index.intersection(bench_period_rets.index)
+        if not common_index.empty:
+            common_bench_rets = bench_period_rets.reindex(common_index).fillna(0.0)
+
     bench_name = _resolve_benchmark_name(backtester)
     bench_metrics = calculate_metrics(
-        bench_period_rets, bench_period_rets, bench_name, name=bench_name, num_trials=1
+        common_bench_rets, common_bench_rets, bench_name, name=bench_name, num_trials=1
     )
     all_period_metrics = {bench_name: bench_metrics}
+
     for name, rets in period_returns.items():
         display_name = backtester.results[name]["display_name"]
         strategy_num_trials = num_trials_map.get(name, 1)
         trade_stats = None
         if hasattr(backtester, "results") and name in backtester.results:
             trade_stats = backtester.results[name].get("trade_stats")
+
+        strategy_bench_rets = bench_period_rets.reindex(rets.index).fillna(0.0)
         metrics = calculate_metrics(
             rets,
-            bench_period_rets,
+            strategy_bench_rets,
             bench_name,
             name=display_name,
             num_trials=strategy_num_trials,

@@ -60,11 +60,10 @@ class PortfolioCommissionCalculator:
         price_extractor = PriceDataExtractorFactory.create_extractor(price_data)
         daily_closes = price_extractor.extract_close_prices(price_data)
 
-        # Calculate weight changes; first day should not incur costs
-        weight_changes = weights_daily.diff().abs()
+        # Align with detailed_commission_slippage_kernel: day 0 turnover is |w[0] - 0|.
+        weight_changes = weights_daily.diff().abs().fillna(0.0)
         if not weight_changes.empty:
-            weight_changes.iloc[0] = 0.0
-        weight_changes = weight_changes.fillna(0.0)
+            weight_changes.iloc[0] = weights_daily.iloc[0].abs()
 
         # Align columns
         aligned_weights, aligned_closes = weight_changes.align(
@@ -78,7 +77,6 @@ class PortfolioCommissionCalculator:
         detailed_trade_info: Dict[pd.Timestamp, Dict[str, TradeCommissionInfo]] = {}
 
         # Calculate costs for each date
-        first_date = aligned_weights.index[0] if not aligned_weights.empty else None
         for date in turnover.index:
             if date not in aligned_weights.index or date not in aligned_closes.index:
                 continue
@@ -94,9 +92,6 @@ class PortfolioCommissionCalculator:
             for asset in date_weights.index:
                 weight_change = date_weights[asset]
                 if abs(weight_change) < 1e-8:
-                    continue
-                # Skip first day entirely (no prior position)
-                if first_date is not None and date == first_date:
                     continue
 
                 price = date_prices[asset] if asset in date_prices.index else 0.0
@@ -129,9 +124,7 @@ class PortfolioCommissionCalculator:
                 # Use polymorphic turnover normalization
                 turnover_normalizer = TurnoverNormalizerFactory.create_normalizer(turnover_value)
                 turnover_value = turnover_normalizer.normalize_turnover_value(turnover_value)
-                if (first_date is not None and date == first_date) or (
-                    aligned_weights.loc[date].abs().sum() == 0.0
-                ):
+                if aligned_weights.loc[date].abs().sum() == 0.0:
                     turnover_value = 0.0
                 if turnover_value > 0 and date_slippage_total == 0:
                     date_slippage_total = (
