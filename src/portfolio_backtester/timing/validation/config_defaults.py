@@ -42,6 +42,7 @@ class ConfigDefaults:
             "mode": "time_based",
             "rebalance_frequency": "M",
             "rebalance_offset": 0,
+            "trade_execution_timing": "bar_close",
             **cls.BASE_CONFIG,
         }
 
@@ -53,6 +54,7 @@ class ConfigDefaults:
             "scan_frequency": "D",
             "min_holding_period": 1,
             "max_holding_period": None,
+            "trade_execution_timing": "bar_close",
             **cls.BASE_CONFIG,
         }
 

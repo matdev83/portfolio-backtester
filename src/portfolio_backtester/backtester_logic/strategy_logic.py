@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 import pandas as pd
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from ..interfaces.strategy_resolver import StrategyResolverFactory
 from ..interfaces.enforcement import enforce_strategy_parameter
@@ -11,6 +11,70 @@ from ..interfaces.enforcement import enforce_strategy_parameter
 logger = logging.getLogger(__name__)
 
 
+def _effective_global_config_for_universe(
+    strategy: Any, global_config: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    if global_config is not None:
+        return dict(global_config)
+    gc = getattr(strategy, "global_config", None)
+    if isinstance(gc, dict):
+        return dict(gc)
+    return {}
+
+
+def _strategy_supports_method_dynamic_universe(strategy: Any) -> bool:
+    try:
+        provider = strategy.get_universe_provider()
+    except Exception:
+        return False
+    supports_fn = getattr(provider, "supports_dynamic_universe", None)
+    if not callable(supports_fn):
+        return False
+    try:
+        return bool(supports_fn())
+    except Exception:
+        return False
+
+
+def _pit_symbols_for_rebalance_date(
+    strategy: Any, global_config: Dict[str, Any], current_date: pd.Timestamp
+) -> Optional[List[str]]:
+    try:
+        pairs = strategy.get_universe_method_with_date(global_config, current_date)
+    except Exception:
+        return None
+    out = [str(sym) for sym, _ in pairs]
+    return out if out else None
+
+
+def _slice_asset_hist_by_tickers(
+    asset_hist: pd.DataFrame, pit_tickers: List[str], is_multi_index: bool
+) -> pd.DataFrame:
+    if not pit_tickers:
+        return asset_hist
+    if is_multi_index:
+        tick_level = asset_hist.columns.get_level_values("Ticker")
+        mask = tick_level.isin(pit_tickers)
+        sub = asset_hist.loc[:, mask]
+        return sub if sub.shape[1] > 0 else asset_hist
+    present = [t for t in pit_tickers if t in asset_hist.columns]
+    if not present:
+        return asset_hist
+    return asset_hist[present]
+
+
+def _scenario_timing_mode(canonical_config: Any) -> str:
+    tc = getattr(canonical_config, "timing_config", None)
+    if tc is None and isinstance(canonical_config, dict):
+        tc = canonical_config.get("timing_config")
+    if tc is None:
+        return "time_based"
+    if hasattr(tc, "get"):
+        m = tc.get("mode")
+        return str(m) if m else "time_based"
+    return "time_based"
+
+
 def generate_signals(
     strategy,
     scenario_config,
@@ -18,6 +82,7 @@ def generate_signals(
     universe_tickers,
     benchmark_ticker,
     has_timed_out,
+    global_config: Optional[Dict[str, Any]] = None,
 ):
     from ..canonical_config import CanonicalScenarioConfig
     from ..scenario_normalizer import ScenarioNormalizer
@@ -27,12 +92,15 @@ def generate_signals(
         logger.warning(
             "ACCIDENTAL BYPASS: Raw scenario dictionary passed to strategy_logic.generate_signals. "
             "All scenarios should be canonicalized at the boundary. "
-            "Scenario: %s", scenario_config.get('name', 'unnamed')
+            "Scenario: %s",
+            scenario_config.get("name", "unnamed"),
         )
         normalizer = ScenarioNormalizer()
-        # Fallback global_config
-        global_config = getattr(strategy, "global_config", {})
-        canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+        if global_config is None:
+            global_config = getattr(strategy, "global_config", {})
+        canonical_config = normalizer.normalize(
+            scenario=scenario_config, global_config=global_config
+        )
     else:
         canonical_config = scenario_config
 
@@ -59,7 +127,6 @@ def generate_signals(
     scenario_end_raw = canonical_config.get("end_date")
     wfo_start_raw = canonical_config.get("wfo_start_date")
     wfo_end_raw = canonical_config.get("wfo_end_date")
-
 
     def _align_ts(ts: Optional[pd.Timestamp]) -> Optional[pd.Timestamp]:
         if ts is None:
@@ -97,6 +164,9 @@ def generate_signals(
         available_dates=price_data_daily_ohlc.index,
         strategy_context=strategy,
     )
+
+    timing_mode = _scenario_timing_mode(canonical_config)
+    use_sparse_nan_for_inactive_rows = timing_mode == "signal_based"
 
     # Honor scenario-configured daily rebalance for meta strategies in single-path architecture
     try:
@@ -146,6 +216,9 @@ def generate_signals(
         if non_universe_tickers:
             non_universe_data_view = price_data_daily_ohlc[non_universe_tickers]
 
+    effective_global_config = _effective_global_config_for_universe(strategy, global_config)
+    use_pit_universe_slice = _strategy_supports_method_dynamic_universe(strategy)
+
     # PERFORMANCE: Pre-compute signature inspection outside the loop
     import inspect
 
@@ -183,9 +256,12 @@ def generate_signals(
         strategy._cached_universe_prices = {}
     # --- END PERFORMANCE OPTIMIZATION ---
 
-    # OPTIMIZATION: Pre-allocate numpy array for signals instead of concatenating DataFrames
     num_assets = len(universe_tickers)
-    signals_arr = np.zeros((len(rebalance_dates), num_assets))
+    signals_arr = (
+        np.full((len(rebalance_dates), num_assets), np.nan, dtype=float)
+        if use_sparse_nan_for_inactive_rows
+        else np.zeros((len(rebalance_dates), num_assets))
+    )
 
     for i, current_rebalance_date in enumerate(rebalance_dates):
         if has_timed_out():
@@ -217,10 +293,20 @@ def generate_signals(
         if non_universe_data_view is not None:
             non_universe_historical_data_for_strat = non_universe_data_view.loc[date_mask]
 
+        strat_asset_hist = all_historical_data_for_strat
+        if use_pit_universe_slice:
+            pit_syms = _pit_symbols_for_rebalance_date(
+                strategy, effective_global_config, current_rebalance_date
+            )
+            if pit_syms:
+                strat_asset_hist = _slice_asset_hist_by_tickers(
+                    all_historical_data_for_strat, pit_syms, is_multi_index
+                )
+
         # PERFORMANCE: Use pre-computed signature check instead of inspect.signature in the loop
         if has_non_universe_param:
             current_weights_df = strategy.generate_signals(
-                all_historical_data=all_historical_data_for_strat,
+                all_historical_data=strat_asset_hist,
                 benchmark_historical_data=benchmark_historical_data_for_strat,
                 non_universe_historical_data=non_universe_historical_data_for_strat,
                 current_date=current_rebalance_date,
@@ -229,7 +315,7 @@ def generate_signals(
             )
         else:
             current_weights_df = strategy.generate_signals(
-                all_historical_data=all_historical_data_for_strat,
+                all_historical_data=strat_asset_hist,
                 benchmark_historical_data=benchmark_historical_data_for_strat,
                 current_date=current_rebalance_date,
                 start_date=wfo_start_date,
@@ -348,21 +434,26 @@ def generate_signals(
                             f"Could not update position state for {current_rebalance_date}: {e}"
                         )
 
-        if current_weights_df is not None:
-            # Align with universe_tickers before assigning to numpy array
-            aligned_weights = current_weights_df.reindex(columns=universe_tickers).fillna(0.0)
-            if not aligned_weights.empty:
-                signals_arr[i, :] = aligned_weights.iloc[0].values.astype(np.float64)
+        if use_sparse_nan_for_inactive_rows:
+            if current_weights_df is None or current_weights_df.empty:
+                continue
+            aligned_weights = current_weights_df.reindex(columns=universe_tickers)
+            if aligned_weights.empty:
+                continue
+            signals_arr[i, :] = aligned_weights.iloc[0].astype(np.float64).to_numpy()
+        else:
+            if current_weights_df is not None:
+                aligned_weights = current_weights_df.reindex(columns=universe_tickers).fillna(0.0)
+                if not aligned_weights.empty:
+                    signals_arr[i, :] = aligned_weights.iloc[0].values.astype(np.float64)
+                else:
+                    signals_arr[i, :] = 0.0
             else:
                 signals_arr[i, :] = 0.0
-        else:
-            signals_arr[i, :] = 0.0
 
-    # Create a single DataFrame from the numpy array at the end
     signals = pd.DataFrame(signals_arr, index=rebalance_dates, columns=universe_tickers)
-
-    # Fill any remaining NaNs, though the pre-allocation and alignment should prevent most.
-    signals.fillna(0.0, inplace=True)
+    if not use_sparse_nan_for_inactive_rows:
+        signals.fillna(0.0, inplace=True)
 
     # DEPRECATED: Framework-level trade direction filtering has been replaced
     # by strict enforcement at the strategy level. Strategies now throw

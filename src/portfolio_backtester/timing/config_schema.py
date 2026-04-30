@@ -56,6 +56,11 @@ class TimingConfigSchema:
                     "maximum": 30,
                     "description": "Days offset from standard rebalancing date (-30 to +30)",
                 },
+                "trade_execution_timing": {
+                    "type": "string",
+                    "enum": ["bar_close", "next_bar_open"],
+                    "description": "When sparse target-weight events take effect: close of signal bar vs next session open",
+                },
                 "scan_frequency": {
                     "type": "string",
                     "enum": VALID_SCAN_FREQUENCIES,
@@ -113,6 +118,20 @@ class TimingConfigSchema:
             return structure_errors
 
         timing_config = config["timing_config"]
+
+        tet = timing_config.get("trade_execution_timing")
+        if tet is not None:
+            from .config_validator import TimingConfigValidator
+
+            for err_msg in TimingConfigValidator.validate_trade_execution_timing(tet):
+                errors.append(
+                    ValidationError(
+                        field="trade_execution_timing",
+                        value=tet,
+                        message=err_msg,
+                        suggestion="Use bar_close or next_bar_open",
+                    )
+                )
 
         # Validate mode (required)
         errors.extend(cls._validate_mode(timing_config))

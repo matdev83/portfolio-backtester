@@ -85,6 +85,21 @@ class TestYAMLConfigurationSchema:
         assert errors[0].field == "rebalance_frequency"
         assert "Invalid rebalance frequency" in errors[0].message
 
+    def test_invalid_trade_execution_timing_reported_once(self) -> None:
+        config = {
+            "timing_config": {
+                "mode": "time_based",
+                "rebalance_frequency": "M",
+                "trade_execution_timing": "bogus",
+            }
+        }
+
+        errors = TimingConfigSchema.validate_config(config)
+        tet_errors = [e for e in errors if getattr(e, "field", "") == "trade_execution_timing"]
+        messages = sorted({getattr(e, "message", str(e)) for e in tet_errors})
+        assert len(messages) == 1
+        assert len(tet_errors) == 1
+
     def test_invalid_holding_periods(self):
         """Test validation of invalid holding periods."""
         config = {

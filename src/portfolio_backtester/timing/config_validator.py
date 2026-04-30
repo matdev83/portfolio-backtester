@@ -4,14 +4,36 @@ Configuration validation utilities for timing framework.
 
 from typing import Dict, List, Any
 
+from .trade_execution_timing import VALID_TRADE_EXECUTION_TIMINGS
+
 
 class TimingConfigValidator:
     """Validates timing configuration parameters."""
 
     @staticmethod
+    def validate_trade_execution_timing(value: Any) -> List[str]:
+        """Validate optional ``trade_execution_timing`` under ``timing_config``."""
+        if value is None:
+            return []
+        if not isinstance(value, str):
+            return [
+                f"trade_execution_timing must be a string, got {type(value).__name__}",
+            ]
+        if value not in VALID_TRADE_EXECUTION_TIMINGS:
+            return [
+                f"Invalid trade_execution_timing '{value}'. "
+                f"Must be one of {sorted(VALID_TRADE_EXECUTION_TIMINGS)}",
+            ]
+        return []
+
+    @staticmethod
     def validate_config(config: Dict[str, Any]) -> List[str]:
         """Validate timing configuration and return list of errors."""
-        errors = []
+        errors: List[str] = []
+
+        tet = config.get("trade_execution_timing")
+        if tet is not None:
+            errors.extend(TimingConfigValidator.validate_trade_execution_timing(tet))
 
         # Validate mode
         mode = config.get("mode", "time_based")

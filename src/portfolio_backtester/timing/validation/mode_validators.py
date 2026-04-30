@@ -33,7 +33,7 @@ class TimeBasedValidator(ModeValidator):
 
     def validate(self, config: Dict[str, Any]) -> List[ValidationError]:
         """Validate time-based timing configuration."""
-        errors = []
+        errors: List[ValidationError] = []
 
         # Validate rebalance_frequency
         frequency = config.get("rebalance_frequency", "M")
@@ -95,7 +95,7 @@ class SignalBasedValidator(ModeValidator):
 
     def validate(self, config: Dict[str, Any]) -> List[ValidationError]:
         """Validate signal-based timing configuration."""
-        errors = []
+        errors: List[ValidationError] = []
 
         # Validate scan_frequency
         scan_freq = config.get("scan_frequency", "D")

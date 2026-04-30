@@ -1,9 +1,16 @@
 import logging
+from typing import Any, Mapping, cast
+
 import pandas as pd
 import numpy as np
 
 from ..interfaces.strategy_resolver import StrategyResolverFactory
-from ..portfolio.rebalancing import rebalance
+from ..portfolio.rebalancing import rebalance_to_first_event_per_period
+from ..timing.config_validator import TimingConfigValidator
+from ..timing.trade_execution_timing import (
+    TRADE_EXECUTION_TIMING_DEFAULT,
+    map_sparse_target_weights_to_execution_dates,
+)
 from ..trading.trade_tracker import TradeTracker
 from ..trading.unified_commission_calculator import get_unified_commission_calculator
 from ..numba_kernels import (
@@ -15,6 +22,72 @@ from ..numba_kernels import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def _timing_config_as_mapping(scenario_config: object) -> Mapping[str, Any] | None:
+    if scenario_config is None:
+        return None
+    if isinstance(scenario_config, dict):
+        if "timing_config" not in scenario_config:
+            return None
+        tc = scenario_config["timing_config"]
+    else:
+        tc = getattr(scenario_config, "timing_config", None)
+    if tc is None:
+        return None
+    if isinstance(tc, dict):
+        return tc
+    if hasattr(tc, "get"):
+        return cast(Mapping[str, Any], tc)
+    return None
+
+
+def _sparse_targets_after_time_based_rebalance(
+    sized_signals: pd.DataFrame,
+    scenario_config: object,
+) -> pd.DataFrame:
+    tc = _timing_config_as_mapping(scenario_config)
+    if tc is None:
+        return sized_signals
+    mode_raw = tc.get("mode") if hasattr(tc, "get") else None
+    mode = str(mode_raw) if mode_raw else "time_based"
+    if mode != "time_based":
+        return sized_signals
+    freq_raw = tc.get("rebalance_frequency") if hasattr(tc, "get") else None
+    frequency = str(freq_raw) if freq_raw else "M"
+    return rebalance_to_first_event_per_period(sized_signals, frequency)
+
+
+def _resolve_trade_execution_timing_for_portfolio(scenario_config: object, strategy: Any) -> str:
+    if strategy is not None:
+        return str(strategy.get_trade_execution_timing())
+    if scenario_config is None:
+        return TRADE_EXECUTION_TIMING_DEFAULT
+    tc = None
+    if isinstance(scenario_config, dict):
+        tc = scenario_config.get("timing_config")
+    else:
+        tc = getattr(scenario_config, "timing_config", None)
+    raw = None
+    if isinstance(tc, dict):
+        raw = tc.get("trade_execution_timing")
+    elif tc is not None and hasattr(tc, "get"):
+        raw = tc.get("trade_execution_timing")
+    if raw is None:
+        return TRADE_EXECUTION_TIMING_DEFAULT
+    errs = TimingConfigValidator.validate_trade_execution_timing(raw)
+    if errs:
+        raise ValueError(errs[0])
+    return str(raw)
+
+
+def _sized_signals_to_weights_daily(
+    sized_signals: pd.DataFrame,
+    universe_tickers: list[str],
+    daily_index: pd.Index,
+) -> pd.DataFrame:
+    weights_monthly = sized_signals.copy().reindex(columns=universe_tickers).fillna(0.0)
+    return weights_monthly.reindex(daily_index, method="ffill")
 
 
 def calculate_portfolio_returns(
@@ -43,32 +116,33 @@ def calculate_portfolio_returns(
     logger.debug("sized_signals shape: %s", sized_signals.shape)
     logger.debug("sized_signals head:\n%s", sized_signals.head())
 
-    # Standard portfolio return calculation
-    timing_config = scenario_config.get("timing_config", {}) if scenario_config else {}
-    timing_mode = timing_config.get("mode", "time_based")
-    rebalance_frequency = timing_config.get("rebalance_frequency", "M")
-
-    if timing_mode == "time_based":
-        weights_monthly = rebalance(sized_signals, rebalance_frequency)
-    else:
-        # Preserve event/signal timing as emitted by strategy sizing.
-        weights_monthly = sized_signals.copy()
-
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("weights_monthly shape: %s", weights_monthly.shape)
-        logger.debug("weights_monthly head:\n%s", weights_monthly.head())
+        wm = sized_signals.copy().reindex(columns=universe_tickers).fillna(0.0)
+        logger.debug("sized weights (pre-daily ffill) shape: %s", wm.shape)
+        logger.debug("sized weights (pre-daily ffill) head:\n%s", wm.head())
 
-    weights_monthly = weights_monthly.reindex(columns=universe_tickers).fillna(0.0)
+    sized_for_timing = _sparse_targets_after_time_based_rebalance(sized_signals, scenario_config)
+    tet = _resolve_trade_execution_timing_for_portfolio(scenario_config, strategy)
+    execution_calendar = pd.DatetimeIndex(price_data_daily_ohlc.index)
+    sized_for_daily = map_sparse_target_weights_to_execution_dates(
+        sized_for_timing,
+        trade_execution_timing=tet,
+        calendar=execution_calendar,
+        logger=logger,
+    )
+
+    weights_daily = _sized_signals_to_weights_daily(
+        sized_for_daily, universe_tickers, price_data_daily_ohlc.index
+    )
 
     # NOTE: weights_daily is *target* weights. Realistic simulation holds shares constant
     # between rebalances and only trades when target weights change.
-    weights_daily = weights_monthly.reindex(price_data_daily_ohlc.index, method="ffill")
 
     if rets_daily is None:
         logger.error("rets_daily is None before reindexing in run_scenario.")
         return pd.Series(0.0, index=price_data_daily_ohlc.index), None
 
-    aligned_rets_daily = rets_daily.reindex(price_data_daily_ohlc.index).fillna(0.0)
+    aligned_rets_daily = rets_daily.reindex(price_data_daily_ohlc.index)
 
     # Fast path: ndarray/Numba kernel if enabled
     feature_flags = (
@@ -180,12 +254,10 @@ def calculate_portfolio_returns(
             .fillna(0.0)
             .to_numpy(dtype=np.float32)
         )
-        r = (
-            aligned_rets_daily.reindex(index=price_index, columns=valid_cols)
-            .fillna(0.0)
-            .to_numpy(dtype=np.float32)
-        )
-        m = ~np.isnan(r)
+        rets_kernel_df = aligned_rets_daily.reindex(index=price_index, columns=valid_cols)
+        r_known = rets_kernel_df.to_numpy(dtype=np.float64)
+        m = np.isfinite(r_known)
+        r = np.where(m, r_known, 0.0).astype(np.float32)
 
         gross_arr = drifting_weights_returns_kernel(w_for_returns, r, m)
         gross_returns_series = pd.Series(gross_arr, index=price_index, dtype=float)

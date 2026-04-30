@@ -19,6 +19,11 @@ except ImportError:
         return decorator
 
 
+from .....timing.config_validator import TimingConfigValidator
+from .....timing.trade_execution_timing import (
+    TRADE_EXECUTION_TIMING_DEFAULT,
+    TradeExecutionTimingName,
+)
 from .....risk_off_signals import IRiskOffSignalGenerator
 from .....risk_management.stop_loss_handlers import BaseStopLoss, NoStopLoss
 from .....risk_management.take_profit_handlers import BaseTakeProfit, NoTakeProfit
@@ -89,7 +94,13 @@ class BaseStrategy(ABC):
         self.canonical_config: Optional[CanonicalScenarioConfig] = None
         if isinstance(strategy_params, CanonicalScenarioConfig):
             self.canonical_config = strategy_params
-            # Extract effective strategy parameters
+            effective_params = dict(strategy_params.strategy_params)
+        elif (
+            type(strategy_params).__name__ == "CanonicalScenarioConfig"
+            and hasattr(strategy_params, "timing_config")
+            and hasattr(strategy_params, "strategy_params")
+        ):
+            self.canonical_config = cast(CanonicalScenarioConfig, strategy_params)
             effective_params = dict(strategy_params.strategy_params)
         else:
             # Traditional dict-based init
@@ -142,7 +153,11 @@ class BaseStrategy(ABC):
             else:
                 # Fallback to strategy_params (legacy/test path)
                 timing_config_val = self.strategy_params.get("timing_config")
-                timing_config = cast(Dict[str, Any], timing_config_val) if timing_config_val is not None else None
+                timing_config = (
+                    cast(Dict[str, Any], timing_config_val)
+                    if timing_config_val is not None
+                    else None
+                )
 
             # If no timing_config provided, create a simple default based on strategy type
             if timing_config is None:
@@ -186,6 +201,47 @@ class BaseStrategy(ABC):
         if self._timing_controller is None:
             self._initialize_timing_controller()
         return self._timing_controller
+
+    def get_trade_execution_timing(self) -> TradeExecutionTimingName | str:
+        """Resolve when sparse targets apply: ``bar_close`` vs ``next_bar_open``.
+
+        Subclasses may override. Resolution: canonical ``timing_config``, then nested
+        ``timing_config`` under parameters, then legacy top-level ``trade_execution_timing``.
+
+        Returns:
+            One of ``bar_close``, ``next_bar_open``.
+
+        Raises:
+            ValueError: If the configured value is invalid.
+        """
+        raw: Any = None
+        if self.canonical_config is not None:
+            tc = self.canonical_config.timing_config
+            if tc is not None and hasattr(tc, "get"):
+                raw = tc.get("trade_execution_timing")
+
+        if raw is None:
+            tc_outer = self.strategy_params.get("timing_config")
+            if tc_outer is not None and hasattr(tc_outer, "get"):
+                raw = tc_outer.get("trade_execution_timing")
+
+        if raw is None:
+            inner = self.strategy_params.get("strategy_params")
+            if isinstance(inner, dict):
+                tc_inner = inner.get("timing_config")
+                if tc_inner is not None and hasattr(tc_inner, "get"):
+                    raw = tc_inner.get("trade_execution_timing")
+
+        if raw is None:
+            raw = self.strategy_params.get("trade_execution_timing")
+
+        if raw is None:
+            return TRADE_EXECUTION_TIMING_DEFAULT
+
+        errs = TimingConfigValidator.validate_trade_execution_timing(raw)
+        if errs:
+            raise ValueError(errs[0])
+        return str(raw)
 
     def _initialize_providers(self) -> None:
         """Initialize provider interfaces - required for strategy functionality."""
@@ -365,7 +421,7 @@ class BaseStrategy(ABC):
 
                 instance = NoRiskOffSignalGenerator()
             self._risk_off_signal_generator_instance = instance
-        
+
         # We ensure it's not None and return the correct type
         assert self._risk_off_signal_generator_instance is not None
         return self._risk_off_signal_generator_instance
@@ -378,7 +434,7 @@ class BaseStrategy(ABC):
             if instance is None:
                 instance = NoStopLoss(self.strategy_params, {})
             self._stop_loss_handler_instance = instance
-            
+
         assert self._stop_loss_handler_instance is not None
         return self._stop_loss_handler_instance
 
@@ -390,7 +446,7 @@ class BaseStrategy(ABC):
             if instance is None:
                 instance = NoTakeProfit(self.strategy_params, {})
             self._take_profit_handler_instance = instance
-            
+
         assert self._take_profit_handler_instance is not None
         return self._take_profit_handler_instance
 

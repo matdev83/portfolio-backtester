@@ -69,6 +69,58 @@ class EvaluationEngine:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("EvaluationEngine initialized")
 
+    def _signals_from_windows_with_execution_timing(
+        self,
+        strategy_instance: BaseStrategy,
+        windows: list,
+        monthly_data: pd.DataFrame,
+        daily_data: pd.DataFrame,
+        rets_full: pd.DataFrame,
+        tickers: list[str],
+    ) -> pd.DataFrame:
+        from ..timing.trade_execution_timing import map_sparse_target_weights_to_execution_dates
+
+        event_parts: list[pd.DataFrame] = []
+        for _, _, te_start, _ in windows:
+            try:
+                w_sig = strategy_instance.generate_signals(
+                    monthly_data,
+                    daily_data,
+                    rets_full,
+                    te_start,
+                    None,
+                    None,
+                )
+                if w_sig is not None and not w_sig.empty:
+                    row = pd.DataFrame(np.nan, index=[te_start], columns=tickers, dtype=float)
+                    for col in w_sig.columns:
+                        if col in tickers:
+                            row.at[te_start, col] = float(w_sig.iloc[0][col])
+                    event_parts.append(row)
+            except Exception as sig_exc:
+                logger.error(
+                    "Signal generation failed for window start %s: %s",
+                    te_start,
+                    sig_exc,
+                )
+        if not event_parts:
+            return pd.DataFrame(
+                0.0,
+                index=daily_data.index,
+                columns=tickers,
+                dtype=np.float32,
+            )
+        sparse = pd.concat(event_parts)
+        sparse = sparse[~sparse.index.duplicated(keep="last")]
+        mapped = map_sparse_target_weights_to_execution_dates(
+            sparse,
+            trade_execution_timing=strategy_instance.get_trade_execution_timing(),
+            calendar=pd.DatetimeIndex(daily_data.index),
+            logger=self.logger,
+        )
+        out = mapped.reindex(columns=tickers).reindex(daily_data.index).ffill().fillna(0.0)
+        return out.astype(np.float32)
+
     def evaluate_walk_forward_fast(
         self,
         trial: Any,
@@ -284,36 +336,14 @@ class EvaluationEngine:
 
             tickers = list(price_df_for_cols.columns)
 
-            signals_df = pd.DataFrame(
-                data=np.nan,
-                index=daily_data.index,
-                columns=tickers,
-                dtype=np.float32,
+            signals_df = self._signals_from_windows_with_execution_timing(
+                strategy_instance,
+                windows,
+                monthly_data,
+                daily_data,
+                rets_full,
+                tickers,
             )
-
-            for _, _, te_start, _ in windows:
-                try:
-                    w_sig = strategy_instance.generate_signals(
-                        monthly_data,
-                        daily_data,
-                        rets_full,
-                        te_start,
-                        None,
-                        None,
-                    )
-                    if w_sig is not None and not w_sig.empty:
-                        for col in w_sig.columns:
-                            if col in signals_df.columns:
-                                signals_df.at[te_start, col] = w_sig.iloc[0][col]
-                except Exception as sig_exc:
-                    logger.error(
-                        "Signal generation failed for window start %s: %s",
-                        te_start,
-                        sig_exc,
-                    )
-
-            signals_df.ffill(inplace=True)
-            signals_df.fillna(0.0, inplace=True)
 
             signals = signals_df
 
@@ -483,51 +513,16 @@ class EvaluationEngine:
             tickers = list(price_df_for_cols.columns)
             logger.debug(f"Tickers for signal generation: {tickers}")
 
-            # Initialise signals DataFrame with NaNs
             logger.debug("Initializing signals DataFrame.")
-            signals_df = pd.DataFrame(
-                data=np.nan,
-                index=daily_data.index,
-                columns=tickers,
-                dtype=np.float32,
+            signals_df = self._signals_from_windows_with_execution_timing(
+                strategy_instance,
+                windows,
+                monthly_data,
+                daily_data,
+                rets_full,
+                tickers,
             )
             logger.debug("Successfully initialized signals DataFrame.")
-
-            # Generate signals only on each test window start date
-            logger.debug("Starting signal generation loop.")
-            for _, _, te_start, _ in windows:
-                try:
-                    logger.debug(f"Generating signal for window starting at {te_start}")
-                    window_signal = strategy_instance.generate_signals(
-                        monthly_data,
-                        daily_data,
-                        rets_full,
-                        te_start,
-                        None,
-                        None,
-                    )
-                    logger.debug(f"Successfully generated signal for window starting at {te_start}")
-
-                    if window_signal is not None and not window_signal.empty:
-                        logger.debug(f"Signal for {te_start}:\n{window_signal}")
-                        # Align columns
-                        for col in window_signal.columns:
-                            if col in signals_df.columns:
-                                signals_df.at[te_start, col] = window_signal.iloc[0][col]
-                        logger.debug(
-                            f"Successfully assigned signal for window starting at {te_start}"
-                        )
-                except Exception as sig_exc:
-                    logger.error(
-                        "Signal generation failed for window start %s: %s",
-                        te_start,
-                        sig_exc,
-                    )
-            logger.debug("Finished signal generation loop.")
-
-            # Forward-fill to make positions persistent
-            signals_df.ffill(inplace=True)
-            signals_df.fillna(0.0, inplace=True)
 
             # Convert to float32 NumPy array for Numba kernel
             signals_np, _ = _df_to_float32_array(signals_df)
