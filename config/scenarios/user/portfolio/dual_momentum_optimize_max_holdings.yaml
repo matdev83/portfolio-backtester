@@ -1,4 +1,5 @@
-name: dual_momentum_dynamic_test
+# Dual Momentum (Lagged) - Optimize max_holdings 10-30
+name: dual_momentum_lagged_portfolio_optimize_max_holdings
 strategy: DualMomentumLaggedPortfolioStrategy
 
 start_date: "2020-01-01"
@@ -14,18 +15,28 @@ timing_config:
 universe_config:
   type: method
   method_name: get_top_weight_sp500_components
-  n_holdings: 10
-  exact: false
+  n_holdings: 50
 
 benchmark_ticker: SPY
 optimization_metric: Sortino
+
+train_window_months: 60
+test_window_months: 12
+walk_forward_type: rolling
 
 strategy_params:
   lookback_months: 6
   min_absolute_momentum: 0.0
   lag_months: 1
-  max_holdings: 5
+  max_holdings: 10
   use_200sma_filter: false
   sma_period: 200
   trade_longs: true
   trade_shorts: false
+
+optimize:
+  - parameter: max_holdings
+    type: int
+    min_value: 10
+    max_value: 30
+    step: 1
