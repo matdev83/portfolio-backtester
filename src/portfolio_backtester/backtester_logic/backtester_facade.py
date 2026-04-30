@@ -7,6 +7,7 @@ while internally delegating to specialized classes following SOLID principles.
 
 import argparse
 import logging
+import random
 import time
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
@@ -115,18 +116,29 @@ class Backtester:
             args.timeout, start_time=self._timeout_start_time
         )
 
-        # Initialize random state
-        if random_state is None:
-            self.random_state = np.random.randint(0, 2**31 - 1)
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"No random seed provided. Using generated seed: {self.random_state}.")
-        else:
-            self.random_state = random_state
+        effective_random_state: Optional[int] = random_state
+        if effective_random_state is None:
+            cli_seed = getattr(args, "random_seed", None)
+            if cli_seed is not None:
+                try:
+                    effective_random_state = int(cli_seed)
+                except (TypeError, ValueError):
+                    effective_random_state = None
 
-        # Create a dedicated RNG for reproducibility
+        if effective_random_state is None:
+            self.random_state = int(np.random.randint(0, 2**31 - 1))
+            logger.warning(
+                "No random seed was provided; this run is not reproducible.",
+            )
+            logger.info("Generated random seed: %s", self.random_state)
+        else:
+            self.random_state = int(effective_random_state)
+            logger.info("Using random seed: %s", self.random_state)
+
         self.rng = np.random.default_rng(self.random_state)
 
         np.random.seed(self.random_state)
+        random.seed(self.random_state)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Numpy random seed set to {self.random_state}.")
 

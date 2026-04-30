@@ -87,7 +87,7 @@ class AssetReplacementManager:
         Set the data source for accessing full historical data.
 
         Args:
-            data_source: Data source instance (YFinanceDataSource, StooqDataSource, etc.)
+            data_source: Data source implementing BaseDataSource / IDataSource for OHLCV (typically MDMP)
             global_config: Global configuration containing universe and date ranges
         """
         self.data_source = data_source

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import pandas as pd
 import numpy as np
-from typing import Any, Dict, Optional, TYPE_CHECKING, Union, cast, Mapping
+from typing import Any, Callable, Dict, Optional, TYPE_CHECKING, Union, cast, Mapping
 
 if TYPE_CHECKING:
     from ..canonical_config import CanonicalScenarioConfig
@@ -67,12 +67,19 @@ class StrategyBacktester:
         data_cache: Cache for data preprocessing
     """
 
-    def __init__(self, global_config: Dict[str, Any], data_source: Any):
+    def __init__(
+        self,
+        global_config: Dict[str, Any],
+        data_source: Any,
+        *,
+        data_cache: Optional[Any] = None,
+    ) -> None:
         """Initialize the pure backtesting engine.
 
         Args:
             global_config: Global configuration dictionary
             data_source: Data source for fetching price data
+            data_cache: Optional shared cache manager; defaults to a new manager instance.
         """
         self.global_config = global_config
         self.data_source = data_source
@@ -81,8 +88,7 @@ class StrategyBacktester:
         self._registry = get_strategy_registry()
         self.strategy: Optional[BaseStrategy] = None
 
-        # Initialize data cache using DIP
-        self.data_cache = create_cache_manager()
+        self.data_cache = data_cache if data_cache is not None else create_cache_manager()
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("StrategyBacktester initialized without optimization dependencies")
@@ -96,6 +102,7 @@ class StrategyBacktester:
         start_date: Optional[pd.Timestamp] = None,
         end_date: Optional[pd.Timestamp] = None,
         track_trades: bool = True,
+        timeout_checker: Optional[Callable[[], bool]] = None,
     ) -> BacktestResult:
         """Execute a complete backtest for a strategy configuration.
 
@@ -107,6 +114,7 @@ class StrategyBacktester:
             monthly_data: Monthly price data
             daily_data: Daily OHLC price data
             rets_full: Daily returns data
+            timeout_checker: Optional predicate invoked during signal generation; defaults to no timeout.
 
         Returns:
             BacktestResult: Complete backtest results with all performance data
@@ -131,6 +139,8 @@ class StrategyBacktester:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Running backtest for strategy: {canonical_config.name}")
+
+        has_timed_out = timeout_checker if timeout_checker is not None else (lambda: False)
 
         # Filter data based on the window if start_date and end_date are provided
         if start_date and end_date:
@@ -176,7 +186,8 @@ class StrategyBacktester:
             daily_data,
             universe_tickers,
             benchmark_ticker,
-            lambda: False,  # No timeout for pure backtesting
+            has_timed_out,
+            global_config=self.global_config,
         )
 
         # Size positions
@@ -545,6 +556,7 @@ class StrategyBacktester:
             universe_tickers,
             benchmark_ticker,
             lambda: False,  # No timeout
+            global_config=self.global_config,
         )
 
         # Size positions

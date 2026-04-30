@@ -47,7 +47,8 @@ class TestBacktesterCLI(unittest.TestCase):
         # Assert
         mock_load_config.assert_called_once()
         mock_backtester.assert_called_once()
-        # More specific assertions can be added here
+        _args, kwargs = mock_backtester.call_args
+        self.assertEqual(kwargs.get("random_state"), 42)
 
 
 if __name__ == "__main__":

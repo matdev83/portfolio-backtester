@@ -48,7 +48,7 @@ class TestTransactionCosts(unittest.TestCase):
         self.assertIn("commission_costs", breakdown)
         self.assertIn("slippage_costs", breakdown)
         self.assertIn("total_costs", breakdown)
-        self.assertAlmostEqual(total_costs.sum(), 0.00006, places=5)
+        self.assertAlmostEqual(total_costs.sum(), 0.0002975, places=5)
 
 
 if __name__ == "__main__":

@@ -382,9 +382,7 @@ def main(args: Optional[List[str]] = None) -> None:
             # Source can be filename or scenario name
             source = parsed_args.scenario_filename or scen.get("name")
             canonical = normalizer.normalize(
-                scenario=scen,
-                global_config=GLOBAL_CONFIG_RELOADED,
-                source=source
+                scenario=scen, global_config=GLOBAL_CONFIG_RELOADED, source=source
             )
             canonical_scenarios.append(canonical)
             logger.debug(f"Canonicalized scenario '{canonical.name}'")
@@ -406,6 +404,7 @@ def main(args: Optional[List[str]] = None) -> None:
         GLOBAL_CONFIG_RELOADED,
         cast(Sequence[Union[Dict[str, Any], CanonicalScenarioConfig]], canonical_scenarios),
         parsed_args,
+        random_state=parsed_args.random_seed,
     )
 
     try:

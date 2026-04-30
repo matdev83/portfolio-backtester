@@ -8,10 +8,9 @@ The mapping prioritizes resolution via the market-data-multi-provider registry
 when available, with fallback to static mappings for common symbols.
 """
 
-import logging
 from functools import lru_cache
 
-logger = logging.getLogger(__name__)
+from portfolio_backtester.data_sources.mdmp_facade import lookup_mdmp_symbol
 
 # Direct mapping for special symbols (indices, non-standard tickers)
 _SPECIAL_SYMBOL_MAP: dict[str, str] = {
@@ -180,20 +179,11 @@ def to_canonical_id(ticker: str) -> str:
         return ticker
 
     # 3. Try MDMP registry lookup (if available)
-    try:
-        from market_data_multi_provider import get_symbol  # type: ignore[attr-defined]
-
-        spec = get_symbol(ticker_upper)
-        if spec is not None:
-            # In some test environments the MDMP dependency can be stubbed/mocked.
-            # Only trust results that look like a real canonical symbol id.
-            symbol_id = getattr(spec, "symbol_id", spec)
-            if isinstance(symbol_id, str) and ":" in symbol_id:
-                return symbol_id
-    except ImportError:
-        pass  # MDMP not installed, continue with static mapping
-    except Exception as e:
-        logger.debug(f"MDMP lookup failed for {ticker_upper}: {e}")
+    spec = lookup_mdmp_symbol(ticker_upper)
+    if spec is not None:
+        symbol_id = getattr(spec, "symbol_id", spec)
+        if isinstance(symbol_id, str) and ":" in symbol_id:
+            return symbol_id
 
     # 4. Determine exchange prefix based on known lists
     if ticker_upper in _NASDAQ_STOCKS:

@@ -11,12 +11,16 @@ This module tests all the extracted classes from the SOLID refactoring:
 """
 
 import argparse
+import logging
 import pytest
 from unittest.mock import Mock, patch
+
+from typing import List, cast
 
 import pandas as pd
 import numpy as np
 
+from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 from portfolio_backtester.backtester_logic.data_fetcher import DataFetcher
 from portfolio_backtester.backtester_logic.strategy_manager import StrategyManager
 from portfolio_backtester.backtester_logic.evaluation_engine import EvaluationEngine
@@ -105,7 +109,9 @@ class TestDataFetcher:
         def mock_strategy_getter(name, params):
             return mock_strategy
 
-        tickers, has_universe = fetcher.collect_required_tickers(scenarios, mock_strategy_getter)
+        tickers, has_universe = fetcher.collect_required_tickers(
+            cast(List[CanonicalScenarioConfig], scenarios), mock_strategy_getter
+        )
 
         # Should include benchmark + universe + strategy requirements
         expected_tickers = {"SPY", "AAPL", "MSFT"}
@@ -116,10 +122,11 @@ class TestDataFetcher:
         """Test daily data fetching."""
         fetcher = DataFetcher(sample_global_config, mock_data_source)
 
-        tickers = {"AAPL", "MSFT", "SPY"}
+        tickers = {"MSFT", "AAPL", "SPY"}
         result = fetcher.fetch_daily_data(tickers, "2020-01-01")
 
         mock_data_source.get_data.assert_called_once()
+        assert mock_data_source.get_data.call_args.kwargs["tickers"] == ["AAPL", "MSFT", "SPY"]
         assert isinstance(result, pd.DataFrame)
 
     def test_determine_optimal_start_date_single_ticker(
@@ -150,10 +157,71 @@ class TestDataFetcher:
         mock_ds.get_data.return_value = data
         fetcher = DataFetcher(sample_global_config, mock_ds)
 
-        tickers = {"SPY", "AAPL", "MSFT"}
+        tickers = {"SPY", "MSFT", "AAPL"}
         result = fetcher.determine_optimal_start_date(tickers, min_universe_coverage=1.0)
 
+        assert mock_ds.get_data.call_args.kwargs["tickers"] == ["AAPL", "MSFT"]
         assert result == str(dates[2].date())
+
+    def test_prepare_data_for_backtesting_logs_auto_start_mode(
+        self, sample_global_config, mock_data_source, caplog
+    ):
+        fetcher = DataFetcher(sample_global_config, mock_data_source)
+        scenarios = [
+            {
+                "name": "auto_start_log",
+                "strategy": "DummyStrategyForTestingSignalStrategy",
+                "strategy_params": {},
+                "start_date": "auto",
+                "universe": ["MSFT", "AAPL"],
+            }
+        ]
+
+        def strategy_getter(_name, _cfg):
+            strat = Mock()
+            strat.get_non_universe_data_requirements.return_value = []
+            return strat
+
+        with caplog.at_level(
+            logging.INFO, logger="portfolio_backtester.backtester_logic.data_fetcher"
+        ):
+            fetcher.prepare_data_for_backtesting(
+                cast(List[CanonicalScenarioConfig], scenarios), strategy_getter
+            )
+
+        messages = [r.message for r in caplog.records]
+        assert any("Auto start mode" in m for m in messages)
+        assert any("Auto start date resolved for data fetch" in m for m in messages)
+
+    def test_prepare_data_for_backtesting_explicit_start_skips_auto_start_log(
+        self, sample_global_config, mock_data_source, caplog
+    ):
+        fetcher = DataFetcher(sample_global_config, mock_data_source)
+        scenarios = [
+            {
+                "name": "explicit_start",
+                "strategy": "DummyStrategyForTestingSignalStrategy",
+                "strategy_params": {},
+                "start_date": "2021-06-01",
+                "universe": ["AAPL"],
+            }
+        ]
+
+        def strategy_getter(_name, _cfg):
+            strat = Mock()
+            strat.get_non_universe_data_requirements.return_value = []
+            return strat
+
+        with caplog.at_level(
+            logging.INFO, logger="portfolio_backtester.backtester_logic.data_fetcher"
+        ):
+            fetcher.prepare_data_for_backtesting(
+                cast(List[CanonicalScenarioConfig], scenarios), strategy_getter
+            )
+
+        messages = [r.message for r in caplog.records]
+        assert any("Explicit scenario start_date detected" in m for m in messages)
+        assert not any("Auto start mode" in m for m in messages)
 
 
 class TestStrategyManager:
@@ -314,6 +382,34 @@ class TestBacktester:
             assert hasattr(facade, "evaluation_engine")
             assert hasattr(facade, "backtest_runner")
             assert hasattr(facade, "optimization_orchestrator")
+
+    def test_initialization_uses_args_random_seed_when_kwarg_none(self, sample_global_config):
+        scenarios = [
+            {
+                "name": "test",
+                "strategy": "DummyStrategyForTestingSignalStrategy",
+                "strategy_params": {},
+            }
+        ]
+        args = argparse.Namespace(
+            timeout=None,
+            n_jobs=1,
+            early_stop_patience=10,
+            study_name=None,
+            random_seed=12345,
+        )
+
+        with (
+            patch("portfolio_backtester.backtester_logic.backtester_facade.create_data_source"),
+            patch("portfolio_backtester.backtester_logic.backtester_facade.create_cache_manager"),
+            patch("portfolio_backtester.backtester_logic.backtester_facade.create_timeout_manager"),
+            patch.object(BacktestRunner, "run_scenario") as mock_run_scenario,
+        ):
+            mock_run_scenario.return_value = pd.Series([0.01, 0.02, 0.03])
+
+            facade = Backtester(sample_global_config, scenarios, args)
+
+            assert facade.random_state == 12345
 
 
 class TestSolidPrinciplesCompliance:

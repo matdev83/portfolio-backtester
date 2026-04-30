@@ -9,7 +9,7 @@ backends and supports both single and multi-objective optimization.
 from __future__ import annotations
 import logging
 import os
-from typing import Any, Dict, List, Optional, Union, cast, TYPE_CHECKING
+from typing import Any, Dict, List, Mapping, Optional, Union, cast, TYPE_CHECKING
 
 
 import numpy as np
@@ -79,6 +79,15 @@ def _lookup_metric(metrics: Dict[str, float], name: str, default: float = -1e9) 
         if val is not None and not pd.isna(val):
             return float(val)
     return default
+
+
+def _resolved_walk_forward_enabled(
+    canonical_config: "CanonicalScenarioConfig", global_config: Mapping[str, Any]
+) -> bool:
+    extras = canonical_config.extras
+    if "is_wfo" in extras:
+        return bool(extras["is_wfo"])
+    return bool(global_config.get("is_wfo", False))
 
 
 class BacktestEvaluator:
@@ -208,7 +217,8 @@ class BacktestEvaluator:
             logger.warning(
                 "ACCIDENTAL BYPASS: Raw scenario_config dictionary passed to BacktestEvaluator.evaluate_parameters. "
                 "All scenarios should be canonicalized at the boundary. "
-                "Scenario: %s", scenario_config.get('name', 'unnamed')
+                "Scenario: %s",
+                scenario_config.get("name", "unnamed"),
             )
             normalizer = ScenarioNormalizer()
             # We assume global_config is available via backtester if not passed
@@ -219,20 +229,16 @@ class BacktestEvaluator:
         else:
             canonical_config = scenario_config
 
+        global_config_bt = backtester.global_config if hasattr(backtester, "global_config") else {}
 
-        # If not a WFO, create a single window for the entire period
-        # We check is_wfo from extras or assume True if not present
-        is_wfo = canonical_config.extras.get("is_wfo", True)
-        if not is_wfo:
-            # Explicitly cast to Timestamp to satisfy mypy, with fallbacks for safety
-            # though normalizer should have ensured these are set or default to data bounds.
+        walk_forward_enabled = _resolved_walk_forward_enabled(canonical_config, global_config_bt)
+        if not walk_forward_enabled and len(data.windows) > 1:
             start_val = canonical_config.start_date
             end_val = canonical_config.end_date
-            
+
             ts_start = pd.to_datetime(start_val) if start_val else pd.Timestamp.min
             ts_end = pd.to_datetime(end_val) if end_val else pd.Timestamp.max
-            
-            # Ensure they are Timestamps for WFOWindow
+
             if not isinstance(ts_start, pd.Timestamp):
                 ts_start = pd.Timestamp(ts_start)
             if not isinstance(ts_end, pd.Timestamp):
@@ -245,7 +251,6 @@ class BacktestEvaluator:
                 test_end=ts_end,
             )
             data.windows = [single_window]
-
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Evaluating parameters: {parameters}")
@@ -346,9 +351,12 @@ class BacktestEvaluator:
             p_func = cast(Any, Parallel)
             d_func = cast(Any, delayed)
             workers = min(self.n_jobs, 4)  # cap to avoid oversubscription
-            window_results = cast(List[WindowResult], p_func(n_jobs=workers, prefer="processes")(
-                d_func(_eval_single_window)(win) for win in enhanced_windows
-            ))
+            window_results = cast(
+                List[WindowResult],
+                p_func(n_jobs=workers, prefer="processes")(
+                    d_func(_eval_single_window)(win) for win in enhanced_windows
+                ),
+            )
 
         else:
             for idx, enhanced_window in enumerate(enhanced_windows, start=1):

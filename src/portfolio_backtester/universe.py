@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 from functools import lru_cache
-from typing import List, Union
+from pathlib import Path
+from typing import Dict, List, Union
 
 import pandas as pd
+
+from portfolio_backtester.data_sources.mdmp_facade import russell_get_constituents
 
 from .universe_data.spy_holdings import get_spy_holdings
 from .interfaces.date_normalizer_interface import normalize_date_polymorphic
@@ -17,7 +21,7 @@ constituents of the S&P 500 (approximated by SPY ETF holdings) for any
 point in time.
 
 The heavy lifting of downloading, cleaning and caching the full holdings
-history is implemented in :pymod:`portfolio_backtester.spy_holdings` – we
+history is delegated to MDMP via :pymod:`portfolio_backtester.universe_data.spy_holdings`; we
 simply reuse that functionality and add:
 
 1. A lightweight in-process cache keyed by ``(date, n, exact)`` so that
@@ -45,6 +49,44 @@ def _normalize_date(date: Union[str, dt.date, pd.Timestamp]) -> pd.Timestamp:
     checks, following the Open/Closed Principle.
     """
     return normalize_date_polymorphic(date)
+
+
+_SPY_HOLDINGS_ALIAS_PATH = Path(__file__).resolve().parent / "spy_holdings_ticker_aliases.json"
+_SPY_HOLDINGS_ALIASES_CACHE: Dict[str, str] | None = None
+
+
+def _spy_holdings_aliases() -> Dict[str, str]:
+    """Load JSON map of legacy SPY basket symbols to MDMP/yfinance-friendly tickers."""
+    global _SPY_HOLDINGS_ALIASES_CACHE
+    if _SPY_HOLDINGS_ALIASES_CACHE is not None:
+        return _SPY_HOLDINGS_ALIASES_CACHE
+    merged: Dict[str, str] = {}
+    if _SPY_HOLDINGS_ALIAS_PATH.is_file():
+        with _SPY_HOLDINGS_ALIAS_PATH.open(encoding="utf-8") as f:
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            merged = {
+                str(k).strip().upper(): str(v).strip().upper()
+                for k, v in loaded.items()
+                if isinstance(k, str) and isinstance(v, str)
+            }
+    _SPY_HOLDINGS_ALIASES_CACHE = merged
+    return _SPY_HOLDINGS_ALIASES_CACHE
+
+
+def normalize_spy_holding_ticker(symbol: str) -> str:
+    """Map a raw SPY holdings label to a ticker data providers typically resolve.
+
+    Extend mappings by editing ``spy_holdings_ticker_aliases.json`` beside this module.
+
+    Args:
+        symbol: Raw ticker from SPY holdings history.
+
+    Returns:
+        Mapped symbol when an alias exists; otherwise the trimmed uppercase input.
+    """
+    key = symbol.strip().upper()
+    return _spy_holdings_aliases().get(key, key)
 
 
 @lru_cache(maxsize=4096)
@@ -94,7 +136,7 @@ def get_top_weight_sp500_components(
 
     top = _cached_top(date_key, n, exact)
     # Could be shorter than *n* if the holdings file itself is shorter.
-    return list(top)
+    return [normalize_spy_holding_ticker(str(t)) for t in top]
 
 
 def get_all_historical_sp500_components() -> List[str]:
@@ -128,15 +170,18 @@ def get_current_sp500_components(
         as_of_date = pd.Timestamp.today().normalize()
 
     date_key = _normalize_date(as_of_date).strftime("%Y-%m-%d")
-    return list(_cached_current_sp500_components(date_key, exact))
+    return [
+        normalize_spy_holding_ticker(str(t))
+        for t in _cached_current_sp500_components(date_key, exact)
+    ]
 
 
 def get_all_historical_russell_1000_components() -> List[str]:
     """Return a list of ALL unique tickers that have ever been in the Russell 1000 history."""
     try:
-        from market_data_multi_provider.russell import get_constituents  # type: ignore[import-untyped]
-
-        result = get_constituents("russell_1000")
+        if russell_get_constituents is None:
+            return []
+        result = russell_get_constituents("russell_1000")
         return list(result) if result is not None else []
     except ImportError:
         return []
@@ -145,9 +190,9 @@ def get_all_historical_russell_1000_components() -> List[str]:
 def get_all_historical_russell_2000_components() -> List[str]:
     """Return a list of ALL unique tickers that have ever been in the Russell 2000 history."""
     try:
-        from market_data_multi_provider.russell import get_constituents
-
-        result = get_constituents("russell_2000")
+        if russell_get_constituents is None:
+            return []
+        result = russell_get_constituents("russell_2000")
         return list(result) if result is not None else []
     except ImportError:
         return []
@@ -159,4 +204,5 @@ __all__ = [
     "get_current_sp500_components",
     "get_all_historical_russell_1000_components",
     "get_all_historical_russell_2000_components",
+    "normalize_spy_holding_ticker",
 ]

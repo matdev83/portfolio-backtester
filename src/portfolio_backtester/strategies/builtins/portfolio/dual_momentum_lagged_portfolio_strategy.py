@@ -682,7 +682,10 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
             return pd.DataFrame(0.0, index=[current_date], columns=original_assets)
 
         # --- Dynamic Universe Filtering (Top-N S&P 500 from universe config) ---
-        universe_cfg = self.strategy_config.get("universe_config", {})
+        if self.canonical_config is not None and self.canonical_config.universe_definition:
+            universe_cfg = self.canonical_config.universe_definition
+        else:
+            universe_cfg = self.strategy_config.get("universe_config", {})
         configured_n = universe_cfg.get("n_holdings", params.get("num_holdings", max_holdings))
         try:
             dynamic_universe_n = int(configured_n)

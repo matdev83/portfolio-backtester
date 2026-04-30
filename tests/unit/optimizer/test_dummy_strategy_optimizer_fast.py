@@ -82,6 +82,7 @@ def test_dummy_strategy_single_trial_optimizer_fast():
         optuna_trials=1,
         pruning_enabled=False,
         test_fast_optimize=True,
+        random_seed=None,
     )
 
     backtester = Backtester(

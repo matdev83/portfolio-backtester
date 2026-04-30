@@ -5,11 +5,14 @@ This module provides abstractions for data source creation and management,
 enabling dependency inversion for backtester components.
 """
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, cast
 
 import pandas as pd
 from ..data_sources.base_data_source import BaseDataSource
+
+logger = logging.getLogger(__name__)
 
 
 class IDataSource(BaseDataSource):
@@ -90,21 +93,33 @@ class ConcreteDataSourceFactory(IDataSourceFactory):
             try:
                 from ..data_sources.mdmp_data_source import MarketDataMultiProviderDataSource
 
-                data_dir = global_config.get("data_dir")
                 min_coverage_ratio = global_config.get("min_coverage_ratio")
                 data_source_config = global_config.get("data_source_config", {}) or {}
+                allow_fallbacks = bool(data_source_config.get("allow_fallbacks", True))
+                cache_only = bool(data_source_config.get("cache_only", False))
+                preferred_provider = data_source_config.get("preferred_provider")
+                cache_max_age_seconds = data_source_config.get("cache_max_age_seconds", 14400)
+                max_workers = data_source_config.get("max_workers")
+                logger.info(
+                    "MDMP effective data_source_config (reproducibility): "
+                    "preferred_provider=%r, allow_fallbacks=%s, cache_only=%s, "
+                    "cache_max_age_seconds=%s, max_workers=%s",
+                    preferred_provider,
+                    allow_fallbacks,
+                    cache_only,
+                    cache_max_age_seconds,
+                    max_workers,
+                )
                 return cast(
                     IDataSource,
                     MarketDataMultiProviderDataSource(
-                        data_dir=data_dir,
+                        data_dir=None,
                         min_coverage_ratio=min_coverage_ratio,
-                        preferred_provider=data_source_config.get("preferred_provider"),
-                        allow_fallbacks=bool(data_source_config.get("allow_fallbacks", True)),
-                        max_workers=data_source_config.get("max_workers"),
-                        cache_only=bool(data_source_config.get("cache_only", False)),
-                        cache_max_age_seconds=data_source_config.get(
-                            "cache_max_age_seconds", 14400
-                        ),
+                        preferred_provider=preferred_provider,
+                        allow_fallbacks=allow_fallbacks,
+                        max_workers=max_workers,
+                        cache_only=cache_only,
+                        cache_max_age_seconds=cache_max_age_seconds,
                     ),
                 )
             except ImportError as e:

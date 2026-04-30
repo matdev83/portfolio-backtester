@@ -8,18 +8,20 @@ including ticker collection, data fetching, normalization, and preprocessing.
 from __future__ import annotations
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Iterable, Union, Mapping
+from collections.abc import Mapping as MappingABC
+from typing import Any, Dict, List, Optional, Tuple, Iterable, Union, Mapping
 from ..canonical_config import CanonicalScenarioConfig
 
 
 import pandas as pd
 
-if TYPE_CHECKING:
-    from ..canonical_config import CanonicalScenarioConfig
-
 logger = logging.getLogger(__name__)
 
 _SYNTHETIC_BENCHMARKS = {"SP500_EQUAL_WEIGHT"}
+
+
+def _sorted_ticker_list(tickers: Iterable[str]) -> list[str]:
+    return sorted(tickers)
 
 
 def _is_synthetic_benchmark_ticker(ticker: Any) -> bool:
@@ -117,12 +119,9 @@ class DataFetcher:
         from ..scenario_normalizer import ScenarioNormalizer
 
         normalizer = ScenarioNormalizer()
-        return normalizer.normalize(
-            scenario=scenario, global_config=self.global_config
-        )
+        return normalizer.normalize(scenario=scenario, global_config=self.global_config)
 
     def collect_required_tickers(
-
         self, scenarios_to_run: List[CanonicalScenarioConfig], strategy_getter
     ) -> Tuple[set, bool]:
         """
@@ -159,7 +158,7 @@ class DataFetcher:
                     # Special-case: dynamic SP500 historical universe is huge; reduce tickers up-front.
                     ucfg = scenario_config.universe_definition
                     if (
-                        isinstance(ucfg, dict)
+                        isinstance(ucfg, MappingABC)
                         and ucfg.get("type") == "method"
                         and ucfg.get("method_name")
                         in {
@@ -200,8 +199,14 @@ class DataFetcher:
                     collector = TickerCollectorFactory.create_collector(
                         scenario_config.universe_definition
                     )
+                    merged_global: Dict[str, Any] = dict(self.global_config)
+                    if scenario_config.start_date is not None:
+                        merged_global["start_date"] = scenario_config.start_date
+                    if scenario_config.end_date is not None:
+                        merged_global["end_date"] = scenario_config.end_date
                     universe_tickers = collector.collect_tickers(
-                        scenario_config.universe_definition
+                        scenario_config.universe_definition,
+                        global_config=merged_global,
                     )
                     all_tickers.update(universe_tickers)
                 except Exception as e:
@@ -230,7 +235,7 @@ class DataFetcher:
             ValueError: If no data is fetched from data source
         """
         daily_data = self.data_source.get_data(
-            tickers=list(all_tickers),
+            tickers=_sorted_ticker_list(all_tickers),
             start_date=start_date,
             end_date=self.global_config["end_date"],
         )
@@ -401,7 +406,7 @@ class DataFetcher:
                 # We only need enough history to find the first date where >50% have data,
                 # and searching before start_date creates unnecessary I/O.
                 test_data = self.data_source.get_data(
-                    tickers=list(universe_tickers),
+                    tickers=_sorted_ticker_list(universe_tickers),
                     start_date=str(default_start_date),
                     end_date=self.global_config["end_date"],
                 )
@@ -423,7 +428,7 @@ class DataFetcher:
                     ticker_columns = test_data.columns
 
                 # Filter to only universe tickers that actually have columns in the data
-                available_tickers = [t for t in universe_tickers if t in ticker_columns]
+                available_tickers = sorted(t for t in universe_tickers if t in ticker_columns)
 
                 if not available_tickers:
                     logger.warning(
@@ -525,7 +530,14 @@ class DataFetcher:
                 ucfg = scenario.universe_definition
                 if ucfg:
                     collector = TickerCollectorFactory.create_collector(ucfg)
-                    benchmark_universe.update(collector.collect_tickers(ucfg))
+                    merged_global_bm: Dict[str, Any] = dict(self.global_config)
+                    if scenario.start_date is not None:
+                        merged_global_bm["start_date"] = scenario.start_date
+                    if scenario.end_date is not None:
+                        merged_global_bm["end_date"] = scenario.end_date
+                    benchmark_universe.update(
+                        collector.collect_tickers(ucfg, global_config=merged_global_bm)
+                    )
         except Exception as e:
             logger.warning("Failed to resolve benchmark universe from scenario: %s", e)
 
@@ -642,16 +654,25 @@ class DataFetcher:
                         if floor_str is not None:
                             auto_floor_candidates.append(floor_str)
 
-
             auto_start_floor = min(auto_floor_candidates) if auto_floor_candidates else None
             if auto_start_floor is not None:
                 logger.info("Auto start floor enabled: %s", auto_start_floor)
 
+            coverage_log = min_coverage if min_coverage is not None else 0.5
+            logger.info(
+                "Auto start mode: no explicit scenario start_date; "
+                "determine_optimal_start_date with min_universe_coverage=%s, "
+                "start_floor=%s, %d tickers in fetch set.",
+                coverage_log,
+                auto_start_floor,
+                len(all_tickers),
+            )
             start_date = self.determine_optimal_start_date(
                 all_tickers,
                 min_universe_coverage=min_coverage,
                 start_floor=auto_start_floor,
             )
+            logger.info("Auto start date resolved for data fetch: %s", start_date)
         daily_data = self.fetch_daily_data(all_tickers, start_date)
         daily_ohlc = self.normalize_ohlc_format(daily_data)
 

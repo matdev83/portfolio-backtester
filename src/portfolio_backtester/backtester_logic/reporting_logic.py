@@ -204,7 +204,7 @@ def generate_optimization_report(
         logger.info("Report directory contains:")
         logger.info("   - optimization_report.md (Main report)")
         logger.info("   - plots/ (All generated visualizations)")
-        logger.info("   - data/ (Raw optimization data)")
+        logger.info("   - data/ (report bundle: trials/metrics CSVs, not OHLCV cache)")
 
     except Exception as e:
         logger.error(f"Failed to create optimization report: {e}")

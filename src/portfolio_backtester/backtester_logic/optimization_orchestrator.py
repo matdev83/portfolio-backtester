@@ -74,16 +74,18 @@ class OptimizationOrchestrator:
         return DEFAULT_OPTUNA_STORAGE_URL
 
     def _get_wfo_mode(self, scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig]) -> str:
-        """Resolve the walk-forward mode with a realistic default."""
+        """Resolve the walk-forward optimization mode (`cv` vs `reoptimize`)."""
         from ..canonical_config import CanonicalScenarioConfig
-        
+
         if isinstance(scenario_config, CanonicalScenarioConfig):
-            raw_mode = scenario_config.wfo_config.get("wfo_mode") or scenario_config.extras.get("wfo_mode")
+            raw_mode = scenario_config.wfo_config.get("wfo_mode") or scenario_config.extras.get(
+                "wfo_mode"
+            )
         else:
             raw_mode = scenario_config.get("wfo_mode")
-            
+
         raw_mode = raw_mode or self.global_config.get("wfo_mode")
-        mode = str(raw_mode or "reoptimize").strip().lower()
+        mode = str(raw_mode or "cv").strip().lower()
         if mode in {
             "reoptimize",
             "reopt",
@@ -95,8 +97,8 @@ class OptimizationOrchestrator:
             return "reoptimize"
         if mode in {"cv", "cross_validation", "cross-validation", "fixed"}:
             return "cv"
-        logger.warning("Unknown wfo_mode '%s'; defaulting to 'reoptimize'.", mode)
-        return "reoptimize"
+        logger.warning("Unknown wfo_mode '%s'; defaulting to 'cv'.", mode)
+        return "cv"
 
     def _calculate_consensus_params(self, window_params: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Derive a stable parameter set from per-window optimal parameters."""
@@ -211,9 +213,7 @@ class OptimizationOrchestrator:
                     f"{window_opt_config['study_name']}_{window_suffix}"
                 )
             else:
-                window_opt_config["study_name"] = (
-                    f"{scenario_config.name}_{window_suffix}"
-                )
+                window_opt_config["study_name"] = f"{scenario_config.name}_{window_suffix}"
 
             orchestrator = create_orchestrator(
                 optimizer_type=optimizer_type,
@@ -262,7 +262,7 @@ class OptimizationOrchestrator:
             params_dict.update(best_params)
             scen_dict = scenario_config.to_dict()
             scen_dict["strategy_params"] = params_dict
-            
+
             normalizer = ScenarioNormalizer()
             eval_config = normalizer.normalize(scenario=scen_dict, global_config=self.global_config)
 
@@ -369,10 +369,13 @@ class OptimizationOrchestrator:
             logger.warning(
                 "ACCIDENTAL BYPASS: Raw scenario dictionary passed to OptimizationOrchestrator.run_optimization. "
                 "All scenarios should be canonicalized at the boundary. "
-                "Scenario: %s", scenario_config.get('name', 'unnamed')
+                "Scenario: %s",
+                scenario_config.get("name", "unnamed"),
             )
             normalizer = ScenarioNormalizer()
-            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=self.global_config)
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=self.global_config
+            )
         else:
             canonical_config = scenario_config
 
@@ -536,8 +539,7 @@ class OptimizationOrchestrator:
             }
 
             wfo_mode = self._get_wfo_mode(canonical_config)
-            is_wfo = canonical_config.extras.get("is_wfo", True)
-            if not is_wfo:
+            if "is_wfo" in canonical_config.extras and not bool(canonical_config.extras["is_wfo"]):
                 wfo_mode = "cv"
 
             if wfo_mode == "reoptimize":
@@ -553,7 +555,6 @@ class OptimizationOrchestrator:
                     optimizer_type=optimizer_type,
                     optimizer_args=optimizer_args,
                 )
-
 
             # Create BacktestEvaluator
             # For population-based optimizers, disable window-level parallelism to avoid
@@ -708,7 +709,7 @@ class OptimizationOrchestrator:
             Dictionary defining the parameter space for optimization
         """
         from ..canonical_config import CanonicalScenarioConfig
-        
+
         parameter_space = {}
 
         # 1. Handle CanonicalScenarioConfig (Modern format via normalizer)
@@ -720,7 +721,9 @@ class OptimizationOrchestrator:
                 param_type = spec.get("type")
                 if not param_type:
                     if "min_value" in spec and "max_value" in spec:
-                        if isinstance(spec["min_value"], int) and isinstance(spec["max_value"], int):
+                        if isinstance(spec["min_value"], int) and isinstance(
+                            spec["max_value"], int
+                        ):
                             param_type = "int"
                         else:
                             param_type = "float"
@@ -759,7 +762,7 @@ class OptimizationOrchestrator:
                             "type": "multi-categorical",
                             "values": choices,
                         }
-            
+
             # The modern format (strategy.params.param_name.optimization) should also be handled
             # but usually the normalizer would have flattened it or preserved it in extras if it was non-standard.
             # In our current design, the normalizer handles the conversion of legacy shapes.

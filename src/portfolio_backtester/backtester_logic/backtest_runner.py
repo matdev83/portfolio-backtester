@@ -149,6 +149,7 @@ class BacktestRunner:
             universe_tickers,
             benchmark_ticker,
             self.timeout_checker,
+            global_config=self.global_config,
         )
 
         sized_signals = size_positions(

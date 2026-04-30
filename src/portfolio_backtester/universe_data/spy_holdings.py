@@ -1,10 +1,11 @@
 """
 Grab the longest public history of S&P-500 ETF holdings (default: SPY).
 
-This module has been migrated to use `market-data-multi-provider` as the backend.
-It now acts as a compatibility wrapper around `market_data_multi_provider.sp500`.
+This module routes SPY holdings through ``portfolio_backtester.data_sources.mdmp_facade``,
+which wraps ``market_data_multi_provider.sp500``. Persisted history lives in MDMP; PB does
+not ship repo-local holdings parquet/csv warehouses.
 
-Original Data sources – in priority order:
+MDMP may aggregate holdings from (priority order inside provider; not PB disk paths):
 1. Kaggle S&P 500 Historical Data
 2. SSGA daily basket XLSX (≈2011-present, 1-day lag)
 3. SEC N-PORT-P XML (monthly, 2019-present) - *Planned for future MDMP update*
@@ -22,19 +23,12 @@ from typing import List, Tuple, Union, cast
 import numpy as np
 import pandas as pd
 
-# Import from MDMP
-try:
-    from market_data_multi_provider.sp500 import (  # type: ignore[import-untyped]
-        build_history as mdmp_build_history,
-        get_holdings as mdmp_get_holdings,
-        reset_cache as mdmp_reset_cache,
-    )
-except ImportError:
-    # Fallback for when mdmp is not installed (e.g. CI without dependencies)
-    # This ensures the module is at least importable
-    mdmp_build_history = None
-    mdmp_get_holdings = None
-    mdmp_reset_cache = None
+from portfolio_backtester.data_sources.mdmp_facade import (
+    import_sp500_module,
+    sp500_build_history as mdmp_build_history,
+    sp500_get_holdings as mdmp_get_holdings,
+    sp500_reset_cache_if_loaded,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -50,7 +44,6 @@ _HISTORY_SLICES: dict[np.datetime64, tuple[int, int]] | None = None  # date -> (
 
 
 # Constants preserved for compatibility
-
 
 
 def _normalize_holdings_date(date: Union[str, dt.date, pd.Timestamp]) -> pd.Timestamp:
@@ -69,32 +62,20 @@ def _ensure_history_index_built() -> None:
         return
 
     try:
-        import sys
-
-        module = sys.modules.get("market_data_multi_provider.sp500")
-        if module is not None and hasattr(module, "builder"):
-            builder_obj = module.builder
-        else:
-            from market_data_multi_provider.sp500 import builder
-
-            builder_obj = builder
+        sp500_mod = import_sp500_module()
     except ImportError as e:
         raise ImportError("market-data-multi-provider package is required") from e
 
-    # Ensure MDMP has loaded its history (typically from parquet cache)
-    builder_obj._ensure_history_loaded()
-    hist = getattr(builder_obj, "_HISTORY_DF", None)
-    if hist is None or not isinstance(hist, pd.DataFrame) or hist.empty:
+    hist = sp500_mod.get_holdings_history()
+    if hist.empty:
         raise ValueError("SPY holdings history is not available (empty history)")
-
-    # Expected columns: date, ticker, weight_pct (keep flexible but validate minimum)
-    if "date" not in hist.columns or "ticker" not in hist.columns:
-        raise ValueError(f"Unexpected holdings history schema: columns={list(hist.columns)}")
 
     df = hist.copy()
 
+    if "date" not in df.columns or "ticker" not in df.columns:
+        raise ValueError(f"Unexpected holdings history schema: columns={list(df.columns)}")
+
     # Normalize dates to tz-naive midnight for stable matching
-    df["date"] = pd.to_datetime(df["date"], utc=False).dt.tz_localize(None).dt.normalize()
 
     # Ensure stable ordering by date then weight (weight may not exist in some schemas)
     sort_cols = ["date"]
@@ -236,13 +217,12 @@ def get_top_weight_sp500_components(
 def build_history(
     start: pd.Timestamp, end: pd.Timestamp, *, ignore_cache: bool = False
 ) -> pd.DataFrame:
-    """Download & assemble SPY holdings between *start* and *end*.
+    """Download & assemble SPY holdings between *start* and *end* via MDMP.
 
     Parameters
     ----------
     ignore_cache : bool, default ``False``
-        If ``True`` the function bypasses any aggregated parquet in
-        cache and rebuilds the DataFrame from scratch.
+        If ``True``, bypass MDMP aggregated cache and rebuild from sources.
     """
     if mdmp_build_history is None:
         raise ImportError("market-data-multi-provider package is required")
@@ -251,24 +231,24 @@ def build_history(
 
 
 def update_full_history(
-    out_path: Path,
+    out_path: Path | None,
     start_date: pd.Timestamp,
     end_date: pd.Timestamp,
     *,
     rebuild: bool = False,
 ) -> None:
-    """Update or rebuild the SPY holdings parquet.
+    """Rebuild SPY holdings history inside MDMP (no local parquet writes from PB).
 
-    This function is maintained for script compatibility.
+    Portfolio Backtester does not persist holdings artifacts; MDMP owns storage.
+    If ``out_path`` is set, it is ignored with a warning (script compatibility).
     """
-    logger.info(f"Updating history from {start_date} to {end_date} via MDMP...")
-    df = build_history(start_date, end_date, ignore_cache=rebuild)
-
-    # Save to specified path if provided
+    logger.info("Rebuilding SPY holdings history from %s to %s via MDMP...", start_date, end_date)
+    build_history(start_date, end_date, ignore_cache=rebuild)
     if out_path:
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_parquet(out_path)
-        logger.info(f"History saved to {out_path}")
+        logger.warning(
+            "Ignoring out_path=%s: PB does not write holdings parquet; use MDMP for persisted history.",
+            out_path,
+        )
 
 
 def reset_history_cache() -> None:
@@ -277,27 +257,21 @@ def reset_history_cache() -> None:
     _HISTORY_DF_LOCAL = None
     _HISTORY_DATES = None
     _HISTORY_SLICES = None
-    if mdmp_reset_cache:
-        import sys
-        import types
-
-        module = sys.modules.get("market_data_multi_provider.sp500")
-        if isinstance(module, types.ModuleType):
-            mdmp_reset_cache()
+    sp500_reset_cache_if_loaded()
 
 
 def get_all_historical_tickers() -> List[str]:
     """Get all unique tickers that have ever been in the S&P 500 history."""
     try:
-        from market_data_multi_provider.sp500 import builder
-    except ImportError:
-        raise ImportError("market-data-multi-provider package is required")
+        sp500_mod = import_sp500_module()
+        hist = sp500_mod.get_holdings_history()
+    except ImportError as e:
+        raise ImportError("market-data-multi-provider package is required") from e
 
-    builder._ensure_history_loaded()
-    if builder._HISTORY_DF is None:
+    if hist.empty:
         return []
 
-    unique_tickers = builder._HISTORY_DF["ticker"].unique()
+    unique_tickers = hist["ticker"].unique()
     return sorted([str(t) for t in unique_tickers if t is not None and str(t).strip()])
 
 
@@ -310,14 +284,19 @@ def main() -> None:
     parser.add_argument(
         "--rebuild", action="store_true", help="Ignore cache and rebuild from scratch"
     )
-    parser.add_argument("--output", type=str, help="Output parquet file path")
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Deprecated: ignored. MDMP persists holdings; PB does not write parquet.",
+    )
 
     args = parser.parse_args()
 
     start = pd.Timestamp(args.start) if args.start else pd.Timestamp("2009-01-30")
     end = pd.Timestamp(args.end) if args.end else pd.Timestamp.today().normalize()
 
-    out_path = Path(args.output) if args.output else Path("data/spy_holdings_full.parquet")
+    out_path = Path(args.output) if args.output else None
 
     update_full_history(out_path, start, end, rebuild=args.rebuild)
 

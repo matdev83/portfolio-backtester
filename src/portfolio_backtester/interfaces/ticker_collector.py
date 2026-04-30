@@ -5,7 +5,7 @@ Replaces isinstance checks in universe handling with proper polymorphic behavior
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Any
+from typing import Any, Dict, List, Optional
 import logging
 import warnings
 
@@ -24,7 +24,12 @@ class ITickerCollector(ABC):
     """Abstract interface for collecting tickers from universe configurations."""
 
     @abstractmethod
-    def collect_tickers(self, universe_config: Any) -> List[str]:
+    def collect_tickers(
+        self,
+        universe_config: Any,
+        *,
+        global_config: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
         """
         Collect ticker symbols from universe configuration.
 
@@ -43,12 +48,18 @@ class ITickerCollector(ABC):
 class ListTickerCollector(ITickerCollector):
     """Collects tickers from list-based universe configurations."""
 
-    def collect_tickers(self, universe_config: Any) -> List[str]:
+    def collect_tickers(
+        self,
+        universe_config: Any,
+        *,
+        global_config: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
         """
         Collect tickers from a list configuration.
 
         Args:
             universe_config: List of ticker symbols
+            global_config: Unused for list-based universes (forward-compat hook).
 
         Returns:
             List of ticker symbols
@@ -65,12 +76,19 @@ class ListTickerCollector(ITickerCollector):
 class ConfigTickerCollector(ITickerCollector):
     """Collects tickers from config-based universe configurations."""
 
-    def collect_tickers(self, universe_config: Any) -> List[str]:
+    def collect_tickers(
+        self,
+        universe_config: Any,
+        *,
+        global_config: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
         """
         Collect tickers from a configuration that needs resolution.
 
         Args:
             universe_config: Configuration that needs to be resolved
+            global_config: Optional global/scenario-merged config (e.g. start_date)
+                forwarded to :func:`resolve_universe_config` for deterministic universes.
 
         Returns:
             List of ticker symbols
@@ -81,7 +99,7 @@ class ConfigTickerCollector(ITickerCollector):
         try:
             from ..universe_resolver import resolve_universe_config
 
-            return list(resolve_universe_config(universe_config))
+            return list(resolve_universe_config(universe_config, global_config=global_config))
         except Exception as e:
             logger.error(f"Failed to resolve universe config: {e}")
             raise ValueError(f"Cannot resolve universe config: {e}")

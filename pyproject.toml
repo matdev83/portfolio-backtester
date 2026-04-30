@@ -23,7 +23,6 @@ dependencies = [
     "optuna",
     "matplotlib",
     "seaborn",
-    "yfinance",
     "lxml",
     "requests",
     "beautifulsoup4",
@@ -33,7 +32,6 @@ dependencies = [
     "rich",
     "pandas-market-calendars",
     "pyyaml",
-    "pandas_datareader",
     "openpyxl",
     "plotly",
     "kaleido",
@@ -77,6 +75,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src", "tests"]
+
+[tool.setuptools.package-data]
+portfolio_backtester = ["spy_holdings_ticker_aliases.json"]
 
 [tool.mypy]
 # Global mypy configuration

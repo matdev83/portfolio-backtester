@@ -6,13 +6,16 @@ GLOBAL_CONFIG:
   # - "test": Alias for memory data source
   data_source: "mdmp"
 
-  # MDMP fetch configuration (used when data_source == "mdmp")
+  # MDMP fetch configuration (used when data_source == "mdmp").
+  # Market-data cache directories are owned by MDMP; PB does not set data_dir here.
+  # PB may import market_data_multi_provider only via ``data_sources/mdmp_facade.py``
+  # — guarded by tests/unit/architecture/.
   data_source_config:
     # Use stooq for better historical coverage of Russell tickers.
     preferred_provider: "stooq"
 
-    # Disable fallbacks to providers that may require auth (e.g., tradingview)
-    # to prevent "provider not available" failures from zeroing out otherwise-fine symbols.
+    # When true, MDMP may try other vendors if the preferred provider fails — results can
+    # differ between runs. For comparable backtests set false and keep cache_only consistent.
     allow_fallbacks: true
 
     # Increase parallelism for R2K scale while staying safe for the system.
@@ -87,6 +90,9 @@ GLOBAL_CONFIG:
   benchmark: "AMEX:SPY"
   start_date: "2013-01-01"
   end_date: "2025-06-30"
+
+  # Multi-window framing for optimize when using this globals bundle (explicit opt-out: is_wfo: false).
+  is_wfo: true
 
   # Walk-Forward Optimization mode
   # Options: "reoptimize" (true WFO), "cv" (fixed-params cross-validation)

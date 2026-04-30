@@ -35,12 +35,16 @@ def test_get_spy_holdings_fast_lookup_exact_and_non_exact(monkeypatch: pytest.Mo
         def _ensure_history_loaded() -> None:
             return None
 
+    def _fake_get_holdings_history() -> pd.DataFrame:
+        return _FakeBuilder._HISTORY_DF.copy()
+
     # Patch import inside the module's helper by swapping the module attribute via sys.modules
     import types
     import sys
 
     fake_mod = types.ModuleType("market_data_multi_provider.sp500")
     fake_mod.builder = _FakeBuilder  # type: ignore[attr-defined]
+    fake_mod.get_holdings_history = _fake_get_holdings_history  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "market_data_multi_provider.sp500", fake_mod)
 
     # Ensure we do not call the slower mdmp_get_holdings fallback during this test
@@ -89,11 +93,15 @@ def test_get_spy_holdings_fast_lookup_out_of_range_fails_fast(
         def _ensure_history_loaded() -> None:
             return None
 
+    def _fake_get_holdings_history() -> pd.DataFrame:
+        return _FakeBuilder._HISTORY_DF.copy()
+
     import types
     import sys
 
     fake_mod = types.ModuleType("market_data_multi_provider.sp500")
     fake_mod.builder = _FakeBuilder  # type: ignore[attr-defined]
+    fake_mod.get_holdings_history = _fake_get_holdings_history  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "market_data_multi_provider.sp500", fake_mod)
 
     monkeypatch.setattr(

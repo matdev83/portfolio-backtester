@@ -8,7 +8,7 @@ Features:
 - Compatible with BaseDataSource interface
 - Automatic symbol mapping (local ↔ canonical format)
 - Multi-provider fallback (stooq → yfinance → tradingview)
-- Centralized caching via MDMP canonical store
+- Reads OHLCV via MDMP fetch/cache APIs only (no PB-side canonical parquet I/O)
 - Coverage validation with trading calendars
 """
 
@@ -20,7 +20,8 @@ from typing import Any, Dict, List, Optional, Union, cast
 import pandas as pd
 
 from .base_data_source import BaseDataSource
-from .symbol_mapper import to_canonical_id, from_canonical_id
+from .mdmp_facade import MarketDataClient
+from .symbol_mapper import from_canonical_id, to_canonical_id
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +67,11 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
             cache_only: If true, only use cached MDMP data and skip downloads.
             cache_max_age_seconds: Max cache age in seconds for MDMP cache reads.
         """
-        try:
-            from market_data_multi_provider import MarketDataClient  # type: ignore[attr-defined]
-        except ImportError as e:
+        if MarketDataClient is None:
             raise ImportError(
                 "market-data-multi-provider is not installed. "
                 "Install with: pip install -e ../market-data-multi-provider"
-            ) from e
+            )
 
         self.client = MarketDataClient(data_dir=data_dir)
         self.data_dir = Path(data_dir) if data_dir else None
@@ -84,9 +83,15 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
         self._cache_only = cache_only
         self._cache_max_age_seconds = cache_max_age_seconds
 
-        logger.debug(
-            f"MarketDataMultiProviderDataSource initialized. "
-            f"Data dir: {self.data_dir or 'MDMP default'}"
+        logger.info(
+            "MarketDataMultiProviderDataSource initialized (reproducibility): "
+            "preferred_provider=%r, allow_fallbacks=%s, cache_only=%s, "
+            "cache_max_age_seconds=%s, data_dir=%s",
+            self._preferred_provider,
+            bool(self._allow_fallbacks),
+            bool(self._cache_only),
+            int(self._cache_max_age_seconds),
+            str(self.data_dir) if self.data_dir is not None else "MDMP default",
         )
 
     def get_data(
@@ -123,6 +128,14 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
             return pd.DataFrame()
 
         logger.info(f"Fetching {len(tickers)} tickers from {start_date} to {end_date} via MDMP")
+        logger.info(
+            "MDMP fetch boundary (reproducibility): preferred_provider=%r, "
+            "allow_fallbacks=%s, cache_only=%s, cache_max_age_seconds=%s",
+            self._preferred_provider,
+            bool(self._allow_fallbacks),
+            bool(self._cache_only),
+            int(self._cache_max_age_seconds),
+        )
 
         # Parse dates
         try:
@@ -280,46 +293,18 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
     ) -> Dict[str, pd.DataFrame]:
         """Load cached canonical data from MDMP without downloading."""
         try:
-            from market_data_multi_provider.canonical import slice_dates  # type: ignore[import-untyped]
-        except ImportError as exc:
-            logger.error("MDMP cache-only mode unavailable: %s", exc)
+            results = self.client.fetch_many_cached_only(
+                canonical_ids,
+                start=start,
+                end=end,
+                cache_max_age_seconds=int(self._cache_max_age_seconds),
+                max_workers=self._max_workers,
+            )
+        except Exception as e:
+            logger.error("MDMP fetch_many_cached_only failed: %s", e)
             return {}
 
-        results: Dict[str, pd.DataFrame] = {}
-        for canonical_id in canonical_ids:
-            cached = None
-            canonical_store = getattr(self.client, "canonical", None)
-            if canonical_store is not None:
-                cached = canonical_store.load_if_fresh(
-                    symbol_id=canonical_id,
-                    max_age_seconds=int(self._cache_max_age_seconds),
-                )
-                if cached is None:
-                    cached = self._load_canonical_any(canonical_id)
-
-            if cached is None or cached.empty:
-                logger.warning("No cached canonical data for %s", canonical_id)
-                continue
-
-            cached = slice_dates(cached, start=start, end=end)
-            if cached.empty:
-                logger.warning("Cached data for %s has no rows in requested range", canonical_id)
-                continue
-
-            results[canonical_id] = cached
-        return results
-
-    def _load_canonical_any(self, canonical_id: str) -> Optional[pd.DataFrame]:
-        canonical_store = getattr(self.client, "canonical", None)
-        if canonical_store is None:
-            return None
-        paths = canonical_store.paths_for(canonical_id)
-        if paths.parquet_path.exists():
-            try:
-                return pd.read_parquet(paths.parquet_path)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to read cached canonical data for %s: %s", canonical_id, exc)
-        return None
+        return dict(results)
 
     def get_failure_report(self) -> Dict[str, Any]:
         """Get a report of any fetch failures.

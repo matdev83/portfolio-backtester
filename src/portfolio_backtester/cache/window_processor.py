@@ -50,9 +50,10 @@ class WindowProcessor:
             price_data: DataFrame with price data
 
         Returns:
-            DataFrame with computed returns (pct_change)
+            DataFrame of period-over-period returns. Leading row is NaN per ``pct_change``;
+            gaps/missing inputs remain NaN (not coerced to zero).
         """
-        return price_data.pct_change(fill_method=None).fillna(0)
+        return price_data.pct_change(fill_method=None)
 
     def precompute_window_returns(
         self, daily_data: pd.DataFrame, windows: List[Tuple]

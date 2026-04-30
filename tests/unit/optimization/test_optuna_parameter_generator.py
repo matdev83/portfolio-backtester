@@ -1,3 +1,5 @@
+from typing import List, Tuple, cast
+
 import pytest
 
 import optuna
@@ -67,7 +69,7 @@ class TestOptunaParameterGeneratorIntegration:
         generator.initialize(self.scenario_config, self.optimization_config)
 
         # Run a few suggestion cycles
-        for _ in range(self.optimization_config["max_evaluations"]):
+        for _ in range(cast(int, self.optimization_config["max_evaluations"])):
             params = generator.suggest_parameters()
             assert "param1" in params
             assert "param2" in params
@@ -86,7 +88,7 @@ class TestOptunaParameterGeneratorIntegration:
         generator.initialize(self.scenario_config, self.optimization_config)
 
         # Manually run a few trials
-        for i in range(self.optimization_config["max_evaluations"]):
+        for i in range(cast(int, self.optimization_config["max_evaluations"])):
             params = generator.suggest_parameters()
             value = (params["param1"] - 0.5) ** 2 + (params["param2"] - 5) ** 2
             result = EvaluationResult(
@@ -132,10 +134,61 @@ class TestOptunaParameterGeneratorIntegration:
         generator = OptunaParameterGenerator(random_state=42)
         generator.initialize(self.scenario_config, self.optimization_config)
 
-        for i in range(self.optimization_config["max_evaluations"]):
+        for i in range(cast(int, self.optimization_config["max_evaluations"])):
             assert not generator.is_finished()
             params = generator.suggest_parameters()
             result = EvaluationResult(objective_value=1.0, metrics={}, window_results=[])
             generator.report_result(params, result)
 
         assert generator.is_finished()
+
+    def test_completed_optuna_trials_after_twenty_evaluations(self):
+        unique_study_name = StudyNameGenerator.generate_test_study_name("optuna_gt20")
+        scenario_config = {"name": unique_study_name}
+        optimization_config = {
+            "parameter_space": {
+                "param1": {"type": "float", "low": 0.1, "high": 1.0},
+                "param2": {"type": "int", "low": 1, "high": 10},
+            },
+            "optimization_targets": [{"name": "value", "direction": "minimize"}],
+            "max_evaluations": 25,
+        }
+        generator = OptunaParameterGenerator(random_state=42)
+        generator.initialize(scenario_config, optimization_config)
+        study = generator.study
+        assert study is not None
+        for _ in range(25):
+            params = generator.suggest_parameters()
+            value = (params["param1"] - 0.5) ** 2 + (params["param2"] - 5) ** 2
+            generator.report_result(
+                params,
+                EvaluationResult(objective_value=float(value), metrics={}, window_results=[]),
+            )
+        completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+        assert len(completed) == 25
+        assert len(study.trials) == 25
+
+    def test_integer_seed_deterministic_across_twenty_plus_trials(self):
+        def run_once() -> List[Tuple[float, int]]:
+            unique_study_name = StudyNameGenerator.generate_test_study_name("optuna_det42")
+            scenario_config = {"name": unique_study_name}
+            optimization_config = {
+                "parameter_space": {
+                    "param1": {"type": "float", "low": 0.1, "high": 1.0},
+                    "param2": {"type": "int", "low": 1, "high": 10},
+                },
+                "optimization_targets": [{"name": "value", "direction": "minimize"}],
+                "max_evaluations": 25,
+            }
+            generator = OptunaParameterGenerator(random_state=42)
+            generator.initialize(scenario_config, optimization_config)
+            sequence: List[Tuple[float, int]] = []
+            for _ in range(25):
+                params = generator.suggest_parameters()
+                sequence.append((params["param1"], int(params["param2"])))
+                generator.report_result(
+                    params, EvaluationResult(objective_value=1.0, metrics={}, window_results=[])
+                )
+            return sequence
+
+        assert run_once() == run_once()

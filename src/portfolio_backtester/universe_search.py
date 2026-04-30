@@ -203,6 +203,7 @@ def run_universe_search(args: argparse.Namespace) -> Path:
     data_source = create_data_source(global_config)
     data_fetcher = DataFetcher(global_config=global_config, data_source=data_source)
     from portfolio_backtester.canonical_config import CanonicalScenarioConfig
+
     daily_ohlc, monthly_data, daily_closes = data_fetcher.prepare_data_for_backtesting(
         [CanonicalScenarioConfig.from_dict(scenario_for_fetch)], strategy_manager.get_strategy
     )
@@ -219,6 +220,7 @@ def run_universe_search(args: argparse.Namespace) -> Path:
         candidates,
         benchmark_ticker,
         has_timed_out=lambda: False,
+        global_config=global_config,
     )
     sized_signals = size_positions(
         signals,

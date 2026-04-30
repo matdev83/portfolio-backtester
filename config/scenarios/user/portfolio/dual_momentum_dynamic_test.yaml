@@ -1,0 +1,33 @@
+name: dual_momentum_dynamic_test
+strategy: DualMomentumLaggedPortfolioStrategy
+
+start_date: "2020-01-01"
+end_date: "2021-12-31"
+
+position_sizer: equal_weight
+rebalance_frequency: ME
+
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+
+universe_config:
+  type: method
+  method_name: get_top_weight_sp500_components
+  n_holdings: 10
+  exact: false
+
+benchmark_ticker: SPY
+optimization_metric: Sortino
+data_source_config:
+  cache_only: true
+
+strategy_params:
+  lookback_months: 6
+  min_absolute_momentum: 0.0
+  lag_months: 1
+  max_holdings: 5
+  use_200sma_filter: false
+  sma_period: 200
+  trade_longs: true
+  trade_shorts: false

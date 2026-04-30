@@ -5,18 +5,18 @@
       "errors": []
     },
     "state": {
-      "timestamp": 1775253279.2869096,
+      "timestamp": 1777577035.312726,
       "file_counts": {
-        "scenarios": 78,
-        "strategies": 74,
+        "scenarios": 81,
+        "strategies": 75,
         "parameters": 1
       },
       "files": {
         "parameters": [
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\parameters.yaml",
-            "mtime": 1775206212.927113,
-            "size": 15186
+            "mtime": 1777565490.8704782,
+            "size": 15545
           }
         ],
         "scenarios": [
@@ -302,18 +302,18 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_asri_filter.yaml",
-            "mtime": 1775206212.9451156,
-            "size": 529
+            "mtime": 1777564768.8357246,
+            "size": 527
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_asri_filter_size.yaml",
-            "mtime": 1775206212.9461157,
-            "size": 589
+            "mtime": 1777564768.965561,
+            "size": 587
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_asri_size_only.yaml",
-            "mtime": 1775206212.9461157,
-            "size": 557
+            "mtime": 1777564767.1200488,
+            "size": 555
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\donchian_asri_signal_strategy\\donchian_pure.yaml",
@@ -334,6 +334,16 @@
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\ema_roro_signal_strategy\\default.yaml",
             "mtime": 1754570311.9179943,
             "size": 366
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\mmm_qs_swing_nasdaq_signal_strategy\\default.yaml",
+            "mtime": 1777570643.3898835,
+            "size": 1856
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\mmm_qs_swing_nasdaq_signal_strategy\\optimize_sl_tp_sortino.yaml",
+            "mtime": 1777571459.5276523,
+            "size": 1463
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\builtins\\signal\\seasonal_signal_strategy\\default.yaml",
@@ -374,6 +384,11 @@
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\user\\portfolio\\dual_momentum_dynamic_2018_2025_backtest.yaml",
             "mtime": 1775248051.022643,
             "size": 682
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\user\\portfolio\\dual_momentum_dynamic_test.yaml",
+            "mtime": 1777577026.758693,
+            "size": 635
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\config\\scenarios\\user\\portfolio\\sharpe_momentum_2018_2025_backtest.yaml",
@@ -464,8 +479,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\dual_momentum_lagged_portfolio_strategy.py",
-            "mtime": 1775224734.312399,
-            "size": 35852
+            "mtime": 1777567611.1557376,
+            "size": 36034
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\portfolio\\dvol_sizer_momentum_portfolio_strategy.py",
@@ -539,8 +554,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\donchian_asri_signal_strategy.py",
-            "mtime": 1775206213.000336,
-            "size": 13658
+            "mtime": 1777564769.268965,
+            "size": 13650
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\dummy_signal_strategy.py",
@@ -556,6 +571,11 @@
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\ema_roro_signal_strategy.py",
             "mtime": 1775206213.0013826,
             "size": 2583
+          },
+          {
+            "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\mmm_qs_swing_nasdaq_signal_strategy.py",
+            "mtime": 1777570618.304718,
+            "size": 13091
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\builtins\\signal\\seasonal_signal_strategy.py",
@@ -709,8 +729,8 @@
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\base\\base\\base_strategy.py",
-            "mtime": 1775206212.9892623,
-            "size": 45606
+            "mtime": 1777575752.1479971,
+            "size": 47740
           },
           {
             "path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\src\\portfolio_backtester\\strategies\\_core\\base\\base\\meta_reporting.py",

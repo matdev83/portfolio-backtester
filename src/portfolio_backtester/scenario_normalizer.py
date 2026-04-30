@@ -111,6 +111,7 @@ class ScenarioNormalizer:
                 "rebalance_frequency",
                 "universe_config",
                 "universe",
+                "universe_definition",
                 "position_sizer",
                 "optimization_metric",
                 "train_window_months",
@@ -424,6 +425,7 @@ class ScenarioNormalizer:
         """Normalize universe definition and detect conflicts."""
         universe_config = scenario.get("universe_config")
         universe = scenario.get("universe")
+        universe_definition = scenario.get("universe_definition")
 
         if universe_config is not None and universe is not None:
             raise ScenarioNormalizationError(
@@ -443,6 +445,12 @@ class ScenarioNormalizer:
             if isinstance(universe, list):
                 return {"type": "fixed", "tickers": list(universe)}
             return {"type": "named", "name": universe}  # Handle legacy named string
+
+        # CanonicalScenarioConfig.to_dict() only emits ``universe_definition``. Re-normalizing
+        # that dict during optimization must preserve the universe (otherwise it becomes {}).
+        if universe_definition is not None:
+            if isinstance(universe_definition, Mapping) and universe_definition:
+                return dict(universe_definition)
 
         return {}
 

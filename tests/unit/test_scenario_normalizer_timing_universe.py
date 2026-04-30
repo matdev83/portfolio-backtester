@@ -92,6 +92,26 @@ def test_normalize_universe_conflict(mock_registry):
     assert "SPY" in str(excinfo.value)
 
 
+def test_normalize_universe_from_canonical_to_dict_roundtrip(mock_registry):
+    """Optimization merges trial params via to_dict(); universe must survive re-normalization."""
+    normalizer = ScenarioNormalizer()
+    global_config = {}
+
+    scenario = {
+        "strategy": "S",
+        "name": "roundtrip_u",
+        "universe_config": {"type": "fixed", "tickers": ["QQQ"]},
+    }
+    canon = normalizer.normalize(scenario=scenario, global_config=global_config)
+    assert dict(canon.universe_definition) == {"type": "fixed", "tickers": ("QQQ",)}
+
+    round_dict = canon.to_dict()
+    round_dict["strategy_params"] = {"sl_atr_mult": 1.5}
+    again = normalizer.normalize(scenario=round_dict, global_config=global_config)
+    assert dict(again.universe_definition) == {"type": "fixed", "tickers": ("QQQ",)}
+    assert dict(again.strategy_params)["sl_atr_mult"] == 1.5
+
+
 def test_normalize_wfo_overrides(mock_registry):
     normalizer = ScenarioNormalizer()
     global_config = {"wfo_robustness_config": {"train_window_months": 12, "test_window_months": 3}}

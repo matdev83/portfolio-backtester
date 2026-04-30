@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pandas as pd
 import pandas.testing as pdt
+from frozendict import frozendict
 
+from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 from portfolio_backtester.strategies.builtins.portfolio.calmar_momentum_portfolio_strategy import (
     CalmarMomentumPortfolioStrategy,
 )
@@ -120,6 +122,67 @@ def test_dual_momentum_dynamic_universe_respects_configured_top_n() -> None:
         )
 
     assert mock_top_components.call_args.kwargs["n"] == 20
+    assert mock_top_components.call_args.kwargs["exact"] is True
+
+
+def test_dual_momentum_canonical_config_uses_universe_definition_for_top_n() -> None:
+    dates = pd.bdate_range("2023-01-02", periods=5)
+    aaa = pd.Series(np.linspace(100.0, 104.0, len(dates)), index=dates)
+    bbb = pd.Series(np.linspace(90.0, 94.0, len(dates)), index=dates)
+    spx = pd.Series(np.linspace(4000.0, 4010.0, len(dates)), index=dates)
+
+    all_historical_data = pd.concat(
+        [_make_ohlc_multiindex(aaa, "AAA"), _make_ohlc_multiindex(bbb, "BBB")],
+        axis=1,
+    )
+    benchmark_historical_data = _make_ohlc_multiindex(spx, "SPX")
+
+    canonical = CanonicalScenarioConfig(
+        name="test_canonical_topn",
+        strategy="DualMomentumLaggedPortfolioStrategy",
+        universe_definition=frozendict(
+            {
+                "type": "method",
+                "method_name": "get_top_weight_sp500_components",
+                "n_holdings": 50,
+                "exact": True,
+            }
+        ),
+        strategy_params=frozendict(
+            {
+                "lookback_months": 6,
+                "lag_months": 0,
+                "max_holdings": 10,
+                "use_200sma_filter": False,
+                "min_absolute_momentum": -1.0,
+            }
+        ),
+    )
+
+    strategy = DualMomentumLaggedPortfolioStrategy(canonical)
+
+    risk_off_signal_generator = MagicMock()
+    risk_off_signal_generator.generate_risk_off_signal.return_value = False
+
+    with (
+        patch.object(strategy, "validate_data_sufficiency", return_value=(True, "")),
+        patch.object(strategy, "filter_universe_by_data_availability", return_value=["AAA", "BBB"]),
+        patch.object(strategy, "_get_dual_momentum_candidates", return_value=[]),
+        patch.object(
+            strategy, "get_risk_off_signal_generator", return_value=risk_off_signal_generator
+        ),
+        patch(
+            "portfolio_backtester.strategies.builtins.portfolio.dual_momentum_lagged_portfolio_strategy.get_top_weight_sp500_components",
+            return_value=["AAA", "BBB"],
+        ) as mock_top_components,
+    ):
+        strategy.generate_signals(
+            all_historical_data=all_historical_data,
+            benchmark_historical_data=benchmark_historical_data,
+            current_date=dates[-1],
+        )
+
+    assert mock_top_components.call_args.kwargs["n"] == 50
     assert mock_top_components.call_args.kwargs["exact"] is True
 
 

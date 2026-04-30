@@ -8,7 +8,6 @@ pruning, and study persistence.
 """
 
 import logging
-from unittest.mock import Mock
 from typing import Any, Dict, List, Optional, Union, cast, TYPE_CHECKING
 import warnings
 import numpy as np
@@ -72,7 +71,7 @@ class OptunaParameterGenerator(ParameterGenerator):
 
     def __init__(
         self,
-        random_state: Optional[np.random.Generator] = None,
+        random_state: Optional[Union[int, np.random.Generator]] = None,
         study_name: Optional[str] = None,
         storage_url: Optional[str] = None,
         enable_pruning: bool = True,
@@ -84,7 +83,7 @@ class OptunaParameterGenerator(ParameterGenerator):
         """Initialize the Optuna parameter generator.
 
         Args:
-            random_state: Random seed for reproducible results
+            random_state: Integer seed or NumPy Generator for reproducible results
             study_name: Name for the Optuna study (auto-generated if None)
             storage_url: URL for study persistence (in-memory if None)
             enable_pruning: Whether to enable trial pruning
@@ -114,6 +113,8 @@ class OptunaParameterGenerator(ParameterGenerator):
         self.optimization_history: List[Dict[str, Any]] = []
         self._initialized: bool = False
         self._current_trial: Optional[Any] = None
+        self._fast_sampler_enabled: bool = False
+        self._optuna_seed: Optional[int] = None
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -206,6 +207,7 @@ class OptunaParameterGenerator(ParameterGenerator):
             self.current_evaluation = 0
             self.optimization_history = []
             self._current_trial = None
+            self._fast_sampler_enabled = False
             self._initialized = True
 
             if logger.isEnabledFor(logging.INFO):
@@ -259,6 +261,8 @@ class OptunaParameterGenerator(ParameterGenerator):
             seed = int(self.random_state.integers(np.iinfo(np.int32).max))
         elif isinstance(self.random_state, int):
             seed = self.random_state
+
+        self._optuna_seed = seed
 
         sampler_kwargs: Dict[str, Any] = {"seed": seed}
         sampler_kwargs.update(self.sampler_config)
@@ -346,64 +350,22 @@ class OptunaParameterGenerator(ParameterGenerator):
             )
 
         try:
-            # For larger evaluation counts, switch Optuna's sampler to a lightweight RandomSampler to keep runtime scaling roughly linear.
-            if self.current_evaluation >= 20:
-                # Switch sampler the first time we cross the threshold
-                if (
-                    self._attribute_accessor.get_attribute(self, "_fast_sampler_enabled", False)
-                    is False
-                ):
-                    try:
-                        from optuna.samplers import RandomSampler
+            if self.current_evaluation >= 20 and not self._fast_sampler_enabled:
+                try:
+                    from optuna.samplers import RandomSampler
 
-                        if self.study is not None:
-                            local_seed: Optional[int] = None
-                            if isinstance(self.random_state, np.random.Generator):
-                                local_seed = int(self.random_state.integers(np.iinfo(np.int32).max))
-                            elif isinstance(self.random_state, int):
-                                local_seed = self.random_state
-                            self.study.sampler = RandomSampler(seed=local_seed)
-                    except Exception:
-                        pass
-                    self._fast_sampler_enabled = True
-                import random
-                import math
+                    if self.study is not None:
+                        self.study.sampler = RandomSampler(seed=self._optuna_seed)
+                except Exception:
+                    pass
+                self._fast_sampler_enabled = True
 
-                parameters = {}
-                for param_name, param_config in self.parameter_space.items():
-                    p_type = param_config.get("type", "float")
-                    if p_type == "float":
-                        low = param_config.get("low", 0.0)
-                        high = param_config.get("high", 1.0)
-                        step = param_config.get("step")
-                        if step:
-                            steps = int(math.floor((high - low) / step))
-                            parameters[param_name] = low + step * random.randint(0, steps)
-                        else:
-                            parameters[param_name] = random.uniform(low, high)
-                    elif p_type == "int":
-                        low = param_config.get("low", 0)
-                        high = param_config.get("high", 100)
-                        step = param_config.get("step", 1)
-                        parameters[param_name] = random.randrange(low, high + 1, step)
-                    elif p_type == "categorical":
-                        choices = param_config.get("choices", ["A", "B", "C"])
-                        parameters[param_name] = random.choice(choices)
-                    else:
-                        # Unsupported types fall back to first choice/default
-                        parameters[param_name] = param_config.get("default", None)
-                # No Optuna trial created – fake one to keep logic consistent
-                self._current_trial = Mock()
-                self._current_trial.number = self.current_evaluation
-                return parameters
-
-            # Otherwise use Optuna normally
             if self.study is not None:
                 self._current_trial = self.study.ask()
             else:
                 raise ParameterGeneratorError("Optuna study is not initialized")
 
-            parameters = {}
+            parameters: Dict[str, Any] = {}
 
             # Generate parameters based on parameter space definition
             for param_name, param_config in self.parameter_space.items():
@@ -517,8 +479,7 @@ class OptunaParameterGenerator(ParameterGenerator):
                     )
                     objective_values = [objective_values[0]] * len(self.metrics_to_optimize)
 
-                # Report multi-objective result (skip for mocked trial)
-                if not isinstance(self._current_trial, Mock) and self.study is not None:
+                if self.study is not None:
                     self.study.tell(self._current_trial, objective_values)
 
             else:
@@ -528,8 +489,7 @@ class OptunaParameterGenerator(ParameterGenerator):
                 else:
                     objective_value = result.objective_value
 
-                # Report single objective result (skip for mocked trial)
-                if not isinstance(self._current_trial, Mock) and self.study is not None:
+                if self.study is not None:
                     self.study.tell(self._current_trial, objective_value)
 
             # Add to optimization history
@@ -770,7 +730,7 @@ class OptunaParameterGenerator(ParameterGenerator):
             )
             return None
 
-    def set_random_state(self, random_state: Optional[np.random.Generator]) -> None:
+    def set_random_state(self, random_state: Optional[Union[int, np.random.Generator]]) -> None:
         """Set the random state for reproducible results.
 
         Args:

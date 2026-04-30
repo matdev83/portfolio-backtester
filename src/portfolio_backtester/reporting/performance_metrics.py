@@ -635,9 +635,12 @@ def calculate_metrics(
 
     # K-Ratio: slope of log equity curve scaled by its standard error
     if len(active_rets) >= 2:
-        log_equity = np.log((1 + active_rets).cumprod())
-        log_equity_std_val = log_equity.std()
-        log_equity_std = float(log_equity_std_val) if not pd.isna(log_equity_std_val) else 0.0
+        equity_for_log = (1 + active_rets.astype(float)).cumprod()
+        equity_positive = equity_for_log.clip(lower=np.finfo(float).tiny)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            log_equity = np.log(equity_positive.to_numpy(dtype=float, copy=False))
+        log_equity_std_val = np.nanstd(log_equity)
+        log_equity_std = float(log_equity_std_val) if np.isfinite(log_equity_std_val) else 0.0
         if log_equity_std < EPSILON_FOR_DIVISION:
             k_ratio = np.nan
         else:

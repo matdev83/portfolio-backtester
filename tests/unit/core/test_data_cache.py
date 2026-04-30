@@ -38,7 +38,7 @@ class TestDataPreprocessingCache:
         returns1 = self.cache.get_cached_returns(self.test_data, "test1")
 
         # Verify returns are correct
-        expected_returns = self.test_data.pct_change(fill_method=None).fillna(0)
+        expected_returns = self.test_data.pct_change(fill_method=None)
         pd.testing.assert_frame_equal(returns1, expected_returns)
 
         # Second call - should use cache
@@ -61,7 +61,7 @@ class TestDataPreprocessingCache:
         returns1 = self.cache.get_cached_window_returns(window_data, window_start, window_end)
 
         # Verify returns are correct
-        expected_returns = window_data.pct_change(fill_method=None).fillna(0)
+        expected_returns = window_data.pct_change(fill_method=None)
         pd.testing.assert_frame_equal(returns1, expected_returns)
 
         # Second call - should use cache

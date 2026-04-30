@@ -106,48 +106,51 @@ class TestCanonicalPathEquivalence(BaseIntegrationTest):
         """
         from portfolio_backtester.backtester_logic.backtest_runner import BacktestRunner
         from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
+        from portfolio_backtester.interfaces.cache_manager_interface import create_cache_manager
+        from tests.fixtures.market_data import MarketDataFixture
 
-        # Use simple mock data for returns
-        dates = pd.date_range(start="2020-01-01", periods=10, freq="BME")
-        assets = ["AAPL", "MSFT", "GOOGL", "SPY"]  # Include benchmark
-        mock_returns = pd.DataFrame(0.01, index=dates, columns=assets)
-        mock_prices = (1 + mock_returns).cumprod()
+        fixture = MarketDataFixture.create_basic_data(
+            tickers=("AAPL", "MSFT", "GOOGL", "SPY"),
+            start_date="2020-01-01",
+            end_date="2023-12-31",
+        )
+        closes = fixture.xs("Close", axis=1, level="Field")
+        assert isinstance(closes, pd.DataFrame)
+        monthly_closes = closes.resample("BME").last()
+        daily_closes = closes
+        rets_full = closes.pct_change(fill_method=None).fillna(0)
+        assert isinstance(rets_full, pd.DataFrame)
 
-        # Mock data manager to return our mock data
-        with unittest.mock.patch(
-            "portfolio_backtester.backtester_logic.backtest_runner.prepare_scenario_data"
-        ) as mock_prepare:
-            mock_prepare.return_value = (mock_prices, mock_returns)
+        shared_cache = create_cache_manager()
+        runner = BacktestRunner(
+            self.global_config,
+            data_cache=shared_cache,
+            strategy_manager=self.strategy_manager,
+        )
+        tester = StrategyBacktester(
+            self.global_config, data_source=unittest.mock.MagicMock(), data_cache=shared_cache
+        )
 
-            # Path A: BacktestRunner
-            runner = BacktestRunner(
-                self.global_config,
-                data_cache=unittest.mock.MagicMock(),
-                strategy_manager=self.strategy_manager,
-            )
+        res_a = runner.run_scenario(
+            self.canonical_config,
+            price_data_monthly_closes=monthly_closes,
+            price_data_daily_ohlc=daily_closes,
+            rets_daily=rets_full,
+            verbose=False,
+        )
+        res_b_full = tester.backtest_strategy(
+            self.canonical_config,
+            monthly_closes,
+            daily_closes,
+            rets_full,
+            track_trades=False,
+            timeout_checker=runner.timeout_checker,
+        )
+        res_b = res_b_full.returns
 
-            res_a = runner.run_scenario(
-                self.canonical_config,
-                price_data_monthly_closes=mock_prices,
-                price_data_daily_ohlc=mock_prices,
-            )
-
-            # Path B: StrategyBacktester
-            tester = StrategyBacktester(self.global_config, data_source=unittest.mock.MagicMock())
-
-            res_b_full = tester.backtest_strategy(
-                self.canonical_config,
-                monthly_data=mock_prices,
-                daily_data=mock_prices,
-                rets_full=mock_returns,
-            )
-            res_b = res_b_full.returns
-
-            # Compare returns
-            self.assertIsNotNone(res_a)
-            self.assertIsNotNone(res_b)
-            # Ignore frequency mismatch in comparison as different paths might handle it differently
-            pd.testing.assert_series_equal(res_a, res_b, check_freq=False)  # type: ignore
+        self.assertIsNotNone(res_a)
+        self.assertIsNotNone(res_b)
+        pd.testing.assert_series_equal(res_a, res_b, check_freq=False)
 
 
 if __name__ == "__main__":

@@ -167,7 +167,8 @@ CRUSH.md
 .crush
 *.db
 
-# Generated data/cache/report artifacts that should stay local.
+# Generated artifacts / legacy mirrors under repo-root data/: canonical OHLCV is MDMP-owned.
+# Patterns below prevent accidental commits of local caches or run outputs not tracked in git.
 data/cache/
 data/data/
 data/kaggle_sp500_weights/
