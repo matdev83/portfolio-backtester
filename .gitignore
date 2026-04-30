@@ -184,3 +184,4 @@ data/tmp_scenarios/
 data/yfinance/
 report_dir/
 signal_comparison.png
+data/config_validation_cache.json
