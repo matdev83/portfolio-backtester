@@ -101,6 +101,10 @@ class ReportingConfig:
     generate_heatmaps: bool = False
     heatmap_metrics: tuple[str, ...] = _DEFAULT_HEATMAP_METRICS
     generate_html: bool = False
+    html_embed_figures: bool = False
+    html_navigation: bool = True
+    generate_bootstrap_distribution_plots: bool = False
+    generate_cost_sensitivity_figure: bool = False
 
 
 class CostSensitivityRunOn(str, Enum):
@@ -166,14 +170,46 @@ class BootstrapConfig:
     block_shuffled_returns: BlockShuffledReturnsBootstrapConfig
     block_shuffled_positions: BlockShuffledPositionsBootstrapConfig
     random_strategy_parameters: RandomStrategyParametersBootstrapConfig
+    persist_distribution_samples: bool = False
+
+
+@dataclass(frozen=True)
+class ResumePartialRunConfig:
+    """Continue a prior grid evaluation run from per-cell filesystem snapshots."""
+
+    enabled: bool = False
+    run_directory: str | None = None
+
+
+@dataclass(frozen=True)
+class CrossValidationConfig:
+    """Temporal blocked folds inside ``global_train_period`` (architecture grid only)."""
+
+    enabled: bool = False
+    n_folds: int = 2
+    strategy: str = "blocked_global_train_period"
+
+
+_SUPPORTED_CV_STRATEGIES: frozenset[str] = frozenset({"blocked_global_train_period"})
 
 
 @dataclass(frozen=True)
 class ExecutionConfig:
-    """Runtime execution limits for research protocol runs."""
+    """Runtime execution limits for research protocol runs.
+
+    ``fail_fast`` controls parallel grid phases: after any cell raises, pending tasks are cancelled
+    and the executor is shut down without waiting on stragglers.
+
+    Parallel grid evaluation requires injecting ``optimization_orchestrator_factory`` (see
+    ``ResearchProtocolOrchestrator`` / ``DoubleOOSWFOProtocol``): without it, parallel worker
+    counts automatically fall back to serial execution because a single shared orchestrator instance
+    is not thread-safe.
+    """
 
     max_grid_cells: int = 100
     fail_fast: bool = True
+    max_parallel_grid_workers: int = 1
+    resume_partial: ResumePartialRunConfig = field(default_factory=ResumePartialRunConfig)
 
 
 @dataclass(frozen=True)
@@ -194,6 +230,7 @@ class DoubleOOSWFOProtocolConfig:
     cost_sensitivity: CostSensitivityConfig
     bootstrap: BootstrapConfig
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    cross_validation: CrossValidationConfig = field(default_factory=CrossValidationConfig)
 
     def validate_enabled(self) -> None:
         """Ensure the protocol is enabled before execution paths run."""
@@ -322,6 +359,7 @@ def parse_double_oos_wfo_protocol(raw: Mapping[str, Any]) -> DoubleOOSWFOProtoco
     cost_sensitivity = _parse_cost_sensitivity(inner.get("cost_sensitivity"))
     bootstrap = _parse_bootstrap(inner.get("bootstrap"))
     execution = _parse_execution(inner.get("execution"))
+    cross_validation = _parse_cross_validation(inner.get("cross_validation"))
 
     cfg = DoubleOOSWFOProtocolConfig(
         enabled=enabled,
@@ -338,9 +376,27 @@ def parse_double_oos_wfo_protocol(raw: Mapping[str, Any]) -> DoubleOOSWFOProtoco
         cost_sensitivity=cost_sensitivity,
         bootstrap=bootstrap,
         execution=execution,
+        cross_validation=cross_validation,
     )
     cfg._validate_periods_and_grid()
+    _validate_reporting_against_protocol_dependencies(cfg)
     return cfg
+
+
+def _validate_reporting_against_protocol_dependencies(cfg: DoubleOOSWFOProtocolConfig) -> None:
+    rep = cfg.reporting
+    if rep.generate_bootstrap_distribution_plots and not cfg.bootstrap.enabled:
+        msg = (
+            "reporting.generate_bootstrap_distribution_plots requires "
+            "research_protocol.bootstrap.enabled: true"
+        )
+        raise ResearchProtocolConfigError(msg)
+    if rep.generate_cost_sensitivity_figure and not cfg.cost_sensitivity.enabled:
+        msg = (
+            "reporting.generate_cost_sensitivity_figure requires "
+            "research_protocol.cost_sensitivity.enabled: true"
+        )
+        raise ResearchProtocolConfigError(msg)
 
 
 def _default_composite_direction(display_key: str) -> str:
@@ -673,6 +729,7 @@ def _parse_bootstrap(raw: Any) -> BootstrapConfig:
                 enabled=False,
                 sample_size=100,
             ),
+            persist_distribution_samples=False,
         )
     if not isinstance(raw, Mapping):
         msg = "bootstrap must be a mapping when provided"
@@ -690,6 +747,7 @@ def _parse_bootstrap(raw: Any) -> BootstrapConfig:
     if not isinstance(seed_raw, int) or isinstance(seed_raw, bool):
         msg = "bootstrap.random_seed must be an integer"
         raise ResearchProtocolConfigError(msg)
+    persist_distribution_samples = bool(block.get("persist_distribution_samples", False))
     rw_any = block.get("random_wfo_architecture")
     if rw_any is None:
         random_wfo = RandomWfoArchitectureBootstrapConfig(enabled=False)
@@ -771,6 +829,7 @@ def _parse_bootstrap(raw: Any) -> BootstrapConfig:
         block_shuffled_returns=block_shuf,
         block_shuffled_positions=block_pos,
         random_strategy_parameters=random_strategy,
+        persist_distribution_samples=persist_distribution_samples,
     )
 
 
@@ -795,7 +854,66 @@ def _parse_execution(raw: Any) -> ExecutionConfig:
         msg = "execution.max_grid_cells must be positive"
         raise ResearchProtocolConfigError(msg)
     fail_fast = bool(block.get("fail_fast", True))
-    return ExecutionConfig(max_grid_cells=int(max_raw), fail_fast=fail_fast)
+    par_raw = block.get("max_parallel_grid_workers", 1)
+    if not isinstance(par_raw, int) or isinstance(par_raw, bool):
+        msg = "execution.max_parallel_grid_workers must be an integer"
+        raise ResearchProtocolConfigError(msg)
+    if par_raw < 1:
+        msg = "execution.max_parallel_grid_workers must be >= 1"
+        raise ResearchProtocolConfigError(msg)
+    resume_partial = _parse_resume_partial(block.get("resume_partial"))
+    return ExecutionConfig(
+        max_grid_cells=int(max_raw),
+        fail_fast=fail_fast,
+        max_parallel_grid_workers=int(par_raw),
+        resume_partial=resume_partial,
+    )
+
+
+def _parse_resume_partial(raw: Any) -> ResumePartialRunConfig:
+    if raw is None:
+        return ResumePartialRunConfig()
+    if not isinstance(raw, Mapping):
+        msg = "execution.resume_partial must be a mapping when provided"
+        raise ResearchProtocolConfigError(msg)
+    block: Mapping[str, Any] = raw
+    enabled = bool(block.get("enabled", False))
+    rd_raw = block.get("run_directory", block.get("path"))
+    if enabled:
+        rd = rd_raw if rd_raw is not None else None
+        if rd is None or str(rd).strip() == "":
+            msg = (
+                "execution.resume_partial.run_directory must be a non-empty string "
+                "when resume_partial.enabled is true"
+            )
+            raise ResearchProtocolConfigError(msg)
+        return ResumePartialRunConfig(enabled=True, run_directory=str(rd))
+    return ResumePartialRunConfig(
+        enabled=False, run_directory=str(rd_raw) if rd_raw is not None else None
+    )
+
+
+def _parse_cross_validation(raw: Any) -> CrossValidationConfig:
+    if raw is None:
+        return CrossValidationConfig()
+    if not isinstance(raw, Mapping):
+        msg = "cross_validation must be a mapping when provided"
+        raise ResearchProtocolConfigError(msg)
+    block: Mapping[str, Any] = raw
+    enabled = bool(block.get("enabled", False))
+    nf_raw = block.get("n_folds", 2)
+    if not isinstance(nf_raw, int) or isinstance(nf_raw, bool):
+        msg = "cross_validation.n_folds must be an integer"
+        raise ResearchProtocolConfigError(msg)
+    strat = str(block.get("strategy", "blocked_global_train_period")).strip()
+    if strat not in _SUPPORTED_CV_STRATEGIES:
+        msg = f"unsupported cross_validation.strategy: {strat!r}"
+        raise ResearchProtocolConfigError(msg)
+    if enabled:
+        if nf_raw < 2:
+            msg = "cross_validation.n_folds must be >= 2 when cross_validation.enabled is true"
+            raise ResearchProtocolConfigError(msg)
+    return CrossValidationConfig(enabled=enabled, n_folds=int(nf_raw), strategy=strat)
 
 
 def _parse_reporting(block_any: Any) -> ReportingConfig:
@@ -808,6 +926,12 @@ def _parse_reporting(block_any: Any) -> ReportingConfig:
     enabled = bool(block.get("enabled", True))
     generate_heatmaps = bool(block.get("generate_heatmaps", False))
     generate_html = bool(block.get("generate_html", False))
+    html_embed_figures = bool(block.get("html_embed_figures", False))
+    html_navigation = bool(block.get("html_navigation", True))
+    generate_bootstrap_distribution_plots = bool(
+        block.get("generate_bootstrap_distribution_plots", False)
+    )
+    generate_cost_sensitivity_figure = bool(block.get("generate_cost_sensitivity_figure", False))
     hm_raw = block.get("heatmap_metrics")
     if hm_raw is None:
         heatmap_metrics = _DEFAULT_HEATMAP_METRICS
@@ -821,6 +945,10 @@ def _parse_reporting(block_any: Any) -> ReportingConfig:
         generate_heatmaps=generate_heatmaps,
         heatmap_metrics=heatmap_metrics,
         generate_html=generate_html,
+        html_embed_figures=html_embed_figures,
+        html_navigation=html_navigation,
+        generate_bootstrap_distribution_plots=generate_bootstrap_distribution_plots,
+        generate_cost_sensitivity_figure=generate_cost_sensitivity_figure,
     )
 
 

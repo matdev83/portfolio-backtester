@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 from portfolio_backtester.research.protocol_config import (
     RESEARCH_PROTOCOL_ARTIFACT_VERSION,
@@ -117,6 +118,97 @@ def test_generate_research_markdown_report_without_unseen(tmp_path: Path) -> Non
     assert "not run" in text.lower() or "none" in text.lower()
     assert "WFO heatmaps" in text
     assert "disabled" in text.lower()
+
+
+def test_generate_research_markdown_includes_cross_validation_block(tmp_path: Path) -> None:
+    arch = WFOArchitecture(24, 6, 3, "rolling")
+    war = WFOArchitectureResult(
+        architecture=arch,
+        metrics={"Calmar": 1.0},
+        score=1.0,
+        robust_score=None,
+        best_parameters={},
+        n_evaluations=5,
+    )
+    sp = SelectedProtocol(
+        rank=1,
+        architecture=arch,
+        metrics={"Calmar": 1.0},
+        score=1.0,
+        robust_score=None,
+        selected_parameters={"p": 1},
+    )
+    cv_summary = {
+        "enabled": True,
+        "strategy": "blocked_global_train_period",
+        "n_folds": 2,
+        "fold_periods": [
+            {"start": "2020-01-02T00:00:00", "end": "2020-06-30T00:00:00"},
+            {"start": "2020-07-01T00:00:00", "end": "2020-12-31T00:00:00"},
+        ],
+    }
+    rpr = ResearchProtocolResult(
+        scenario_name="scenario_alpha",
+        grid_results=[war],
+        selected_protocols=(sp,),
+        unseen_result=None,
+        artifact_dir=tmp_path,
+        cross_validation_summary=cv_summary,
+    )
+    cfg = _protocol_config()
+    generate_research_markdown_report(tmp_path, rpr, cfg)
+    text = (tmp_path / "research_validation_report.md").read_text(encoding="utf-8")
+    assert "Cross-validation" in text
+    assert "blocked_global_train_period" in text
+    assert "cross_validation_summary.yaml" in text
+    assert "Fold 1:" in text
+    assert "Fold 2:" in text
+
+
+def test_markdown_cross_validation_section_reads_yaml_when_result_summary_absent(
+    tmp_path: Path,
+) -> None:
+    arch = WFOArchitecture(24, 6, 3, "rolling")
+    war = WFOArchitectureResult(
+        architecture=arch,
+        metrics={"Calmar": 1.0},
+        score=1.0,
+        robust_score=None,
+        best_parameters={},
+        n_evaluations=5,
+    )
+    sp = SelectedProtocol(
+        rank=1,
+        architecture=arch,
+        metrics={"Calmar": 1.0},
+        score=1.0,
+        robust_score=None,
+        selected_parameters={"p": 1},
+    )
+    payload = {
+        "enabled": True,
+        "strategy": "blocked_global_train_period",
+        "n_folds": 2,
+        "fold_periods": [{"start": "2020-01-01", "end": "2020-06-01"}],
+    }
+    (tmp_path / "cross_validation_summary.yaml").write_text(
+        yaml.safe_dump(payload, sort_keys=False),
+        encoding="utf-8",
+    )
+    rpr = ResearchProtocolResult(
+        scenario_name="scenario_yaml_cv",
+        grid_results=[war],
+        selected_protocols=(sp,),
+        unseen_result=None,
+        artifact_dir=tmp_path,
+        cross_validation_summary=None,
+    )
+    cfg = _protocol_config()
+    generate_research_markdown_report(tmp_path, rpr, cfg)
+    text = (tmp_path / "research_validation_report.md").read_text(encoding="utf-8")
+    assert "Cross-validation" in text
+    assert "blocked_global_train_period" in text
+    assert "Fold 1:" in text
 
 
 def test_report_lists_heatmap_files_when_present(tmp_path: Path) -> None:

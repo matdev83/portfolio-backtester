@@ -12,11 +12,52 @@ from portfolio_backtester.research.protocol_config import (
     RESEARCH_PROTOCOL_ARTIFACT_VERSION,
     DoubleOOSWFOProtocolConfig,
 )
+from portfolio_backtester.research.report import resolve_cross_validation_summary
 from portfolio_backtester.research.results import ResearchProtocolResult
+from portfolio_backtester.research.static_charts import (
+    write_bootstrap_distribution_chart_pngs,
+    write_cost_sensitivity_line_chart_png,
+)
 
 
 def _esc(text: object) -> str:
     return html.escape(str(text), quote=True)
+
+
+def _append_assets_list_and_embed_images(
+    parts: list[str],
+    *,
+    root: Path,
+    glob_patterns: tuple[str, ...],
+    embed: bool,
+    title: str | None,
+) -> None:
+    pngs: list[Path] = []
+    for gp in glob_patterns:
+        pngs.extend(sorted(root.glob(gp)))
+    if not pngs:
+        parts.append("<p>No matching PNG artifacts were found.</p>")
+        return
+    parts.append("<ul>")
+    for png in pngs:
+        nm = png.name
+        parts.append(f'<li><a href="{_esc(nm)}">{_esc(nm)}</a>')
+        parts.append("</li>")
+    parts.append("</ul>")
+    if embed:
+        parts.append('<div class="figure-grid">')
+        for png in pngs:
+            nm = png.name
+            caption = nm if title is None else title
+            parts.append("<figure>")
+            parts.append(
+                "<img "
+                f'alt="{_esc(caption + ": " + nm)}" '
+                f'src="{_esc(nm)}" />'
+                f"<figcaption>{_esc(nm)}</figcaption>"
+                "</figure>"
+            )
+        parts.append("</div>")
 
 
 def generate_research_html_report(
@@ -27,6 +68,26 @@ def generate_research_html_report(
     """Write ``research_validation_report.html`` alongside markdown artifacts."""
 
     root = Path(run_dir)
+    rep_cfg = protocol_config.reporting
+
+    if rep_cfg.generate_bootstrap_distribution_plots:
+        write_bootstrap_distribution_chart_pngs(root)
+
+    cost_summary_yaml: dict[str, object] | None = None
+    if rep_cfg.generate_cost_sensitivity_figure:
+        ys = root / "cost_sensitivity_summary.yaml"
+        if ys.is_file():
+            try:
+                raw_cs = yaml.safe_load(ys.read_text(encoding="utf-8"))
+            except (OSError, yaml.YAMLError, TypeError, ValueError):
+                raw_cs = None
+            if isinstance(raw_cs, dict):
+                cost_summary_yaml = dict(raw_cs)
+        write_cost_sensitivity_line_chart_png(root, summary=cost_summary_yaml)
+
+    bs_cfg = protocol_config.bootstrap
+    cv_pay = resolve_cross_validation_summary(root, result)
+
     parts: list[str] = []
     parts.append("<!DOCTYPE html>")
     parts.append('<html lang="en">')
@@ -35,17 +96,47 @@ def generate_research_html_report(
     parts.append("<title>Research validation report</title>")
     parts.append("<style>")
     parts.append("body{font-family:Arial,sans-serif;margin:16px;line-height:1.35;}")
+    parts.append(
+        "nav{border:1px solid #ddd;padding:8px 12px;background:#fafafa;margin:12px 0;}"
+        "nav ul{margin:4px 0;padding-left:20px;display:flex;"
+        "flex-wrap:wrap;gap:12px 20px;list-style:disc}"
+    )
     parts.append("table{border-collapse:collapse;margin:8px 0;width:auto;}")
     parts.append("th,td{border:1px solid #ccc;padding:6px 10px;text-align:left;}")
     parts.append("th{background:#f4f4f4;}")
     parts.append("ul{margin:8px 0;padding-left:24px;}")
-    parts.append("section{margin-bottom:24px;}")
+    parts.append("section{margin-bottom:24px;scroll-margin-top:12px}")
+    parts.append(".figure-grid{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}")
+    parts.append(
+        ".figure-grid figure{border:1px solid #e0e0e0;margin:0;padding:6px;background:#fafafa}"
+    )
+    parts.append(".figure-grid img{display:block;width:520px;height:auto}")
     parts.append("</style>")
     parts.append("</head>")
     parts.append("<body>")
     parts.append("<h1>Research validation report</h1>")
 
-    parts.append("<section>")
+    if rep_cfg.html_navigation:
+        toc: list[tuple[str, str]] = []
+        toc.append(("protocol", "Protocol"))
+        toc.append(("periods", "Global periods"))
+        if protocol_config.constraints:
+            toc.append(("constraints", "Metric constraints"))
+        toc.append(("architectures", "Top architectures"))
+        toc.append(("unseen", "Unseen validation"))
+        if cv_pay is not None:
+            toc.append(("cross-validation", "Cross-validation"))
+        if protocol_config.cost_sensitivity.enabled:
+            toc.append(("cost-sensitivity", "Cost sensitivity"))
+        if bs_cfg.enabled:
+            toc.append(("bootstrap", "Bootstrap"))
+        toc.append(("heatmaps", "WFO heatmaps"))
+        parts.append('<nav aria-label="Report sections"><ul>')
+        for sec_id, label in toc:
+            parts.append(f'<li><a href="#{_esc(sec_id)}">{_esc(label)}</a></li>')
+        parts.append("</ul></nav>")
+
+    parts.append('<section id="protocol">')
     parts.append("<h2>Protocol</h2>")
     parts.append("<ul>")
     parts.append("<li>Protocol type: double_oos_wfo</li>")
@@ -64,7 +155,7 @@ def generate_research_html_report(
     parts.append("</ul>")
     parts.append("</section>")
 
-    parts.append("<section>")
+    parts.append('<section id="periods">')
     parts.append("<h2>Global periods</h2>")
     parts.append("<ul>")
     gt = protocol_config.global_train_period
@@ -83,7 +174,7 @@ def generate_research_html_report(
     parts.append("</section>")
 
     if protocol_config.constraints:
-        parts.append("<section>")
+        parts.append('<section id="constraints">')
         parts.append("<h2>Metric constraints</h2>")
         passed_n = sum(1 for r in result.grid_results if r.constraint_passed)
         parts.append("<ul>")
@@ -122,7 +213,7 @@ def generate_research_html_report(
             parts.append("</ul>")
         parts.append("</section>")
 
-    parts.append("<section>")
+    parts.append('<section id="architectures">')
     parts.append("<h2>Top selected architectures</h2>")
     if not result.selected_protocols:
         parts.append("<p>(none)</p>")
@@ -160,7 +251,7 @@ def generate_research_html_report(
         parts.append("</tbody></table>")
     parts.append("</section>")
 
-    parts.append("<section>")
+    parts.append('<section id="unseen">')
     parts.append("<h2>Unseen validation</h2>")
     if result.unseen_result is None:
         parts.append(
@@ -177,9 +268,44 @@ def generate_research_html_report(
         parts.append("</ul>")
     parts.append("</section>")
 
+    if cv_pay is not None:
+        parts.append('<section id="cross-validation">')
+        parts.append("<h2>Cross-validation summary</h2>")
+        parts.append("<ul>")
+        enabled = cv_pay.get("enabled")
+        if enabled is None:
+            parts.append("<li>enabled: inferred from archived summary</li>")
+        else:
+            parts.append(f"<li>enabled: {_esc(enabled)}</li>")
+        strat = cv_pay.get("strategy")
+        if strat is not None:
+            parts.append(f"<li>strategy: {_esc(strat)}</li>")
+        nf = cv_pay.get("n_folds")
+        if nf is not None:
+            parts.append(f"<li>n_folds: {_esc(nf)}</li>")
+        fp = cv_pay.get("fold_periods")
+        if isinstance(fp, list) and fp:
+            parts.append("<li>Fold periods:")
+            parts.append("<ol>")
+            for entry in fp:
+                if isinstance(entry, dict):
+                    parts.append(
+                        "<li>"
+                        f"{_esc(entry.get('start',''))} to {_esc(entry.get('end',''))}"
+                        "</li>"
+                    )
+                else:
+                    parts.append(f"<li>{_esc(entry)}</li>")
+            parts.append("</ol>")
+            parts.append("</li>")
+        yaml_link = '<a href="cross_validation_summary.yaml">cross_validation_summary.yaml</a>'
+        parts.append(f"<li>Persisted YAML: {yaml_link}</li>")
+        parts.append("</ul>")
+        parts.append("</section>")
+
     cs_cfg = protocol_config.cost_sensitivity
     if cs_cfg.enabled:
-        parts.append("<section>")
+        parts.append('<section id="cost-sensitivity">')
         parts.append("<h2>Cost sensitivity</h2>")
         parts.append("<ul>")
         parts.append(
@@ -215,11 +341,29 @@ def generate_research_html_report(
         else:
             parts.append("<li>Summary file not found for this run directory.</li>")
         parts.append("</ul>")
+        cost_png = root / "cost_sensitivity_survival_curve.png"
+        embed = protocol_config.reporting.html_embed_figures
+        if embed and cost_png.is_file():
+            nm = cost_png.name
+            parts.append("<figure>")
+            parts.append(
+                f'<img alt="Cost sensitivity survival curve" src="{_esc(nm)}" />'
+                f"<figcaption>{_esc(nm)}</figcaption>"
+                "</figure>"
+            )
+        elif cost_png.is_file() and not embed:
+            nm = cost_png.name
+            parts.append(
+                "<p>Cost sensitivity figure: " f'<a href="{_esc(nm)}">{_esc(nm)}</a>' "</p>"
+            )
+        elif rep_cfg.generate_cost_sensitivity_figure and not cost_png.is_file():
+            parts.append(
+                "<p>Note: survival curve PNG was not produced (CSV/summary incompatible).</p>"
+            )
         parts.append("</section>")
 
-    bs_cfg = protocol_config.bootstrap
     if bs_cfg.enabled:
-        parts.append("<section>")
+        parts.append('<section id="bootstrap">')
         parts.append("<h2>Bootstrap significance</h2>")
         parts.append("<p>")
         parts.append(
@@ -234,6 +378,20 @@ def generate_research_html_report(
             '<a href="bootstrap_summary.yaml">bootstrap_summary.yaml</a>'
             "</li>"
         )
+
+        distrib_glob_any = sorted(root.glob("bootstrap_distribution_*.csv"))
+        if distrib_glob_any:
+            parts.append("<li>")
+            inner = ", ".join(
+                f'<a href="{_esc(dp.name)}">{_esc(dp.name)}</a>' for dp in distrib_glob_any
+            )
+            parts.append(f"Distribution samples ({inner}):")
+            parts.append("</li>")
+        elif bs_cfg.persist_distribution_samples or rep_cfg.generate_bootstrap_distribution_plots:
+            parts.append(
+                "<li>Note: Bootstrap distribution CSVs absent (persist disabled or bootstrap skipped).</li>"
+            )
+
         summ_path = root / "bootstrap_summary.yaml"
         if summ_path.is_file():
             try:
@@ -276,25 +434,48 @@ def generate_research_html_report(
         else:
             parts.append("<li>Summary file not found for this run directory.</li>")
         parts.append("</ul>")
+
+        if sorted(root.glob("bootstrap_viz_*.png")):
+            _append_assets_list_and_embed_images(
+                parts,
+                root=root,
+                glob_patterns=("bootstrap_viz_*.png",),
+                embed=rep_cfg.html_embed_figures,
+                title="Bootstrap",
+            )
+
         parts.append("</section>")
 
-    parts.append("<section>")
+    parts.append('<section id="heatmaps">')
     parts.append("<h2>WFO heatmaps</h2>")
-    rep_cfg = protocol_config.reporting
     if not rep_cfg.generate_heatmaps:
         parts.append(
             "<p>Heatmaps are disabled (<code>reporting.generate_heatmaps: false</code>).</p>"
         )
     else:
         heatmap_paths = sorted(root.glob("wfo_heatmap_*.png"))
-        if heatmap_paths:
+        if not heatmap_paths:
+            parts.append("<p>No heatmap PNG files were generated for this run.</p>")
+        elif rep_cfg.html_embed_figures:
             parts.append("<ul>")
             for hp in heatmap_paths:
                 name = hp.name
                 parts.append(f'<li><a href="{_esc(name)}">{_esc(name)}</a></li>')
             parts.append("</ul>")
+            parts.append('<div class="figure-grid">')
+            for hp in heatmap_paths:
+                nm = hp.name
+                parts.append("<figure>")
+                parts.append(f'<img alt="{_esc(nm)}" src="{_esc(nm)}" />')
+                parts.append(f"<figcaption>{_esc(nm)}</figcaption>")
+                parts.append("</figure>")
+            parts.append("</div>")
         else:
-            parts.append("<p>No heatmap PNG files were generated for this run.</p>")
+            parts.append("<ul>")
+            for hp in heatmap_paths:
+                name = hp.name
+                parts.append(f'<li><a href="{_esc(name)}">{_esc(name)}</a></li>')
+            parts.append("</ul>")
     parts.append("</section>")
 
     parts.append("</body></html>")

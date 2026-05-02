@@ -71,6 +71,12 @@ def protocol_config_to_plain(config: DoubleOOSWFOProtocolConfig) -> dict[str, An
             "generate_heatmaps": config.reporting.generate_heatmaps,
             "heatmap_metrics": list(config.reporting.heatmap_metrics),
             "generate_html": config.reporting.generate_html,
+            "html_embed_figures": config.reporting.html_embed_figures,
+            "html_navigation": config.reporting.html_navigation,
+            "generate_bootstrap_distribution_plots": (
+                config.reporting.generate_bootstrap_distribution_plots
+            ),
+            "generate_cost_sensitivity_figure": config.reporting.generate_cost_sensitivity_figure,
         },
     }
     if config.constraints:
@@ -106,6 +112,7 @@ def protocol_config_to_plain(config: DoubleOOSWFOProtocolConfig) -> dict[str, An
         "enabled": bs.enabled,
         "n_samples": int(bs.n_samples),
         "random_seed": int(bs.random_seed),
+        "persist_distribution_samples": bool(bs.persist_distribution_samples),
         "random_wfo_architecture": {"enabled": bool(bs.random_wfo_architecture.enabled)},
         "block_shuffled_returns": {
             "enabled": bool(bs.block_shuffled_returns.enabled),
@@ -121,9 +128,18 @@ def protocol_config_to_plain(config: DoubleOOSWFOProtocolConfig) -> dict[str, An
         },
     }
     ex = config.execution
+    # ``resume_partial`` is intentionally omitted here so toggling checkpoint resume does not
+    # perturb ``protocol_lock.yaml`` hashes or manifests derived from protocol fingerprinting.
     out["execution"] = {
         "max_grid_cells": int(ex.max_grid_cells),
         "fail_fast": bool(ex.fail_fast),
+        "max_parallel_grid_workers": int(ex.max_parallel_grid_workers),
+    }
+    cv = config.cross_validation
+    out["cross_validation"] = {
+        "enabled": bool(cv.enabled),
+        "n_folds": int(cv.n_folds),
+        "strategy": cv.strategy,
     }
     return out
 

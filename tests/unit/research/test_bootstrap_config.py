@@ -27,6 +27,7 @@ def test_bootstrap_defaults_disabled() -> None:
     assert bs.block_shuffled_positions.block_size_days == 20
     assert bs.random_strategy_parameters.enabled is False
     assert bs.random_strategy_parameters.sample_size == 100
+    assert bs.persist_distribution_samples is False
 
 
 def test_bootstrap_parse_full_block() -> None:

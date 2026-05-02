@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 import pandas as pd
 
@@ -21,12 +21,15 @@ class ResearchProtocolOrchestrator:
         optimization_orchestrator: Any,
         backtest_runner: Any,
         artifact_writer: Any | None = None,
+        *,
+        optimization_orchestrator_factory: Callable[[], Any] | None = None,
     ) -> None:
         """Initialize with optimization/backtest primitives used by protocols."""
 
         self._optimization_orchestrator = optimization_orchestrator
         self._backtest_runner = backtest_runner
         self._artifact_writer = artifact_writer
+        self._optimization_orchestrator_factory = optimization_orchestrator_factory
 
     def run(
         self,
@@ -63,6 +66,7 @@ class ResearchProtocolOrchestrator:
             self._optimization_orchestrator,
             self._backtest_runner,
             self._artifact_writer,
+            optimization_orchestrator_factory=self._optimization_orchestrator_factory,
         )
         return executor.run(
             scenario_config=scenario_config,

@@ -87,12 +87,17 @@ def test_protocol_config_to_plain_includes_robust_selection() -> None:
     assert plain["robust_selection"]["enabled"] is False
     assert plain["reporting"]["generate_heatmaps"] is False
     assert plain["reporting"]["generate_html"] is False
+    assert plain["reporting"]["html_embed_figures"] is False
+    assert plain["reporting"]["html_navigation"] is True
+    assert plain["reporting"]["generate_bootstrap_distribution_plots"] is False
+    assert plain["reporting"]["generate_cost_sensitivity_figure"] is False
     assert plain["reporting"]["heatmap_metrics"] == ["score", "robust_score"]
     assert plain["cost_sensitivity"]["enabled"] is False
     assert plain["cost_sensitivity"]["run_on"] == "unseen"
     assert plain["bootstrap"]["enabled"] is False
     assert plain["bootstrap"]["n_samples"] == 200
     assert plain["bootstrap"]["random_seed"] == 42
+    assert plain["bootstrap"]["persist_distribution_samples"] is False
     rsp = plain["bootstrap"]["random_strategy_parameters"]
     assert rsp["enabled"] is False
     assert rsp["sample_size"] == 100

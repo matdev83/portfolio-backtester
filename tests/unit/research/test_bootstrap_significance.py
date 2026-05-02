@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
@@ -15,6 +16,7 @@ from portfolio_backtester.research.bootstrap import (
     bootstrap_random_strategy_parameters_p_value,
     bootstrap_random_wfo_architecture_p_value,
     run_research_bootstrap,
+    write_bootstrap_distribution_artifacts,
 )
 from portfolio_backtester.research.protocol_config import (
     BlockShuffledPositionsBootstrapConfig,
@@ -239,7 +241,7 @@ def test_run_research_bootstrap_includes_rsp_when_enabled() -> None:
         run_with_params_fn=run_with_params,
     )
     assert out is not None
-    summary, rows = out
+    summary, rows, _distributions = out
     rsp = summary["random_strategy_parameters"]
     assert rsp["enabled"] is True
     assert isinstance(rsp["p_value"], float)
@@ -394,9 +396,73 @@ def test_run_research_bootstrap_includes_positions_when_enabled() -> None:
         trade_history=th,
     )
     assert out is not None
-    summary, rows = out
+    summary, rows, _distributions = out
     bpos = summary["block_shuffled_positions"]
     assert bpos["enabled"] is True
     assert bpos["p_value"] == 1.0
     pos_rows = [r for r in rows if r.get("test") == "block_shuffled_positions"]
     assert len(pos_rows) == 1
+
+
+def test_random_wfo_persist_writes_distribution_samples(tmp_path: Path) -> None:
+    arch = WFOArchitecture(24, 6, 3, "rolling")
+    war = WFOArchitectureResult(
+        architecture=arch,
+        metrics={"Calmar": 1.0},
+        score=0.4,
+        robust_score=None,
+        best_parameters={},
+        n_evaluations=3,
+        constraint_passed=True,
+    )
+    sp = SelectedProtocol(
+        rank=1,
+        architecture=arch,
+        metrics={"Calmar": 1.0},
+        score=0.6,
+        robust_score=None,
+        selected_parameters={"p": 1},
+    )
+    idx = pd.date_range("2023-01-01", periods=2, freq="D")
+    unseen = UnseenValidationResult(
+        selected_protocol=sp,
+        metrics={"Calmar": 0.1},
+        returns=pd.Series([0.0, 0.01], index=idx),
+        mode="fixed_selected_params",
+    )
+    cfg = BootstrapConfig(
+        enabled=True,
+        n_samples=7,
+        random_seed=2,
+        random_wfo_architecture=RandomWfoArchitectureBootstrapConfig(enabled=True),
+        block_shuffled_returns=BlockShuffledReturnsBootstrapConfig(
+            enabled=False,
+            block_size_days=20,
+        ),
+        block_shuffled_positions=BlockShuffledPositionsBootstrapConfig(
+            enabled=False,
+            block_size_days=20,
+        ),
+        random_strategy_parameters=RandomStrategyParametersBootstrapConfig(
+            enabled=False,
+            sample_size=100,
+        ),
+        persist_distribution_samples=True,
+    )
+    payload = run_research_bootstrap(
+        cfg=cfg,
+        grid_results=[war],
+        selected=sp,
+        unseen_result=unseen,
+        selection_metric="Calmar",
+        metrics_from_returns=lambda _s: {"Calmar": 0.0},
+    )
+    assert payload is not None
+    _summary, _rows, dist = payload
+    assert dist is not None
+    assert len(dist["random_wfo_architecture"]) == 7
+    write_bootstrap_distribution_artifacts(tmp_path, dist)
+    csv_path = tmp_path / "bootstrap_distribution_random_wfo_architecture.csv"
+    assert csv_path.is_file()
+    loaded = pd.read_csv(csv_path)
+    assert len(loaded) == 7

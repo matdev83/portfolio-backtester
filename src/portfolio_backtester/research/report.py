@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Mapping
 
 import pandas as pd
 
@@ -13,6 +14,27 @@ from portfolio_backtester.research.protocol_config import (
     DoubleOOSWFOProtocolConfig,
 )
 from portfolio_backtester.research.results import ResearchProtocolResult
+
+
+def resolve_cross_validation_summary(
+    run_dir: Path | str,
+    result: ResearchProtocolResult,
+) -> dict[str, object] | None:
+    """Load cross-validation summary from the result object or ``cross_validation_summary.yaml``."""
+
+    root = Path(run_dir)
+    yaml_path = root / "cross_validation_summary.yaml"
+    blob = result.cross_validation_summary
+    if isinstance(blob, Mapping) and blob:
+        return dict(blob)
+    if yaml_path.is_file():
+        try:
+            loaded = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError, TypeError, ValueError):
+            loaded = None
+        if isinstance(loaded, Mapping) and loaded:
+            return dict(loaded)
+    return None
 
 
 def generate_research_markdown_report(
@@ -80,6 +102,25 @@ def generate_research_markdown_report(
             if len(failed) > 10:
                 lines.append(f"- … {len(failed) - 10} additional failing row(s) omitted")
         lines.append("")
+    cs_cfg_summary = resolve_cross_validation_summary(root, result)
+    if cs_cfg_summary is not None:
+        lines.append("## Cross-validation (global train)")
+        lines.append("")
+        lines.append(f"- Strategy: {cs_cfg_summary.get('strategy')}")
+        lines.append(f"- Folds: {cs_cfg_summary.get('n_folds')}")
+        fold_periods = cs_cfg_summary.get("fold_periods") or []
+        if isinstance(fold_periods, (list, tuple)):
+            fp_list = fold_periods
+        else:
+            fp_list = []
+        for i, blk in enumerate(fp_list[:10], start=1):
+            if not isinstance(blk, Mapping):
+                continue
+            lines.append(f"- Fold {i}: {blk.get('start')} -- {blk.get('end')}")
+        if len(fp_list) > 10:
+            lines.append(f"- … {len(fp_list) - 10} additional fold(s) omitted")
+        lines.append("- Artifacts: [cross_validation_summary.yaml](cross_validation_summary.yaml)")
+        lines.append("")
     lines.append("## Top selected architectures")
     lines.append("")
     if not result.selected_protocols:
@@ -138,6 +179,13 @@ def generate_research_markdown_report(
                     lines.append(f"- Break-even slippage (commission multiplier 1.0): {be} bps")
         else:
             lines.append("- Summary file not found for this run directory.")
+        cost_png = root / "cost_sensitivity_survival_curve.png"
+        if cost_png.is_file():
+            lines.append(f"- Survival curve chart: [{cost_png.name}]({cost_png.name})")
+        elif protocol_config.reporting.generate_cost_sensitivity_figure:
+            lines.append(
+                "- Note: survival curve PNG was not produced (CSV/summary may be incompatible)."
+            )
         lines.append("")
     bs_cfg = protocol_config.bootstrap
     if bs_cfg.enabled:
@@ -152,6 +200,18 @@ def generate_research_markdown_report(
             "- Artifacts: [bootstrap_significance.csv](bootstrap_significance.csv), "
             "[bootstrap_summary.yaml](bootstrap_summary.yaml)"
         )
+        distrib_paths = sorted(root.glob("bootstrap_distribution_*.csv"))
+        if distrib_paths:
+            lines.append("- Distribution sample CSVs:")
+            for dp in distrib_paths:
+                lines.append(f"  - [{dp.name}]({dp.name})")
+        elif bs_cfg.persist_distribution_samples or (
+            protocol_config.reporting.generate_bootstrap_distribution_plots
+        ):
+            lines.append(
+                "- Note: Bootstrap distribution CSVs absent "
+                "(persist disabled or bootstrap skipped)."
+            )
         summ_path = root / "bootstrap_summary.yaml"
         if summ_path.is_file():
             try:

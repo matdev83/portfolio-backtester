@@ -127,7 +127,10 @@ def test_valid_protocol_dispatches_double_oos_run_once(tmp_path: Path) -> None:
             global_config=gcfg,
         )
 
-    ctor.assert_called_once_with(opt, bt, None)
+    ctor.assert_called_once()
+    cargs, ckwargs = ctor.call_args
+    assert cargs == (opt, bt, None)
+    assert ckwargs.get("optimization_orchestrator_factory") is None
     mock_impl.run.assert_called_once()
     (_, kwargs) = mock_impl.run.call_args
     assert kwargs["scenario_config"] is scen

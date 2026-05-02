@@ -102,3 +102,4 @@ class ResearchProtocolResult:
     selected_protocols: tuple[SelectedProtocol, ...]
     unseen_result: UnseenValidationResult | None
     artifact_dir: Path
+    cross_validation_summary: Mapping[str, Any] | None = None

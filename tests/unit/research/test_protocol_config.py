@@ -11,6 +11,7 @@ from portfolio_backtester.research.protocol_config import (
     ExecutionConfig,
     FinalUnseenMode,
     ResearchProtocolConfigError,
+    ResumePartialRunConfig,
     WFOGridConfig,
     parse_double_oos_wfo_protocol,
 )
@@ -59,7 +60,12 @@ def _minimal_alias_inner() -> dict:
 
 def test_execution_defaults_max_grid_cells_and_fail_fast() -> None:
     cfg = parse_double_oos_wfo_protocol({"research_protocol": _minimal_primary_inner()})
-    assert cfg.execution == ExecutionConfig(max_grid_cells=100, fail_fast=True)
+    assert cfg.execution == ExecutionConfig(
+        max_grid_cells=100,
+        fail_fast=True,
+        max_parallel_grid_workers=1,
+        resume_partial=ResumePartialRunConfig(),
+    )
 
 
 def test_execution_parse_partial_overrides_defaults() -> None:
@@ -94,6 +100,28 @@ def test_execution_max_grid_cells_non_int_rejected() -> None:
     inner["execution"] = {"max_grid_cells": "100"}
     with pytest.raises(ResearchProtocolConfigError, match="integer"):
         parse_double_oos_wfo_protocol({"research_protocol": inner})
+
+
+def test_execution_max_parallel_grid_workers_below_one_rejected() -> None:
+    inner = _minimal_primary_inner()
+    inner["execution"] = {"max_parallel_grid_workers": 0}
+    with pytest.raises(ResearchProtocolConfigError, match="max_parallel_grid_workers"):
+        parse_double_oos_wfo_protocol({"research_protocol": inner})
+
+
+def test_execution_max_parallel_grid_workers_non_int_rejected() -> None:
+    inner = _minimal_primary_inner()
+    inner["execution"] = {"max_parallel_grid_workers": "2"}
+    with pytest.raises(ResearchProtocolConfigError, match="integer"):
+        parse_double_oos_wfo_protocol({"research_protocol": inner})
+
+
+def test_cross_validation_defaults_when_disabled_allow_n_folds_one() -> None:
+    inner = _minimal_primary_inner()
+    inner["cross_validation"] = {"enabled": False, "n_folds": 1}
+    cfg = parse_double_oos_wfo_protocol({"research_protocol": inner})
+    assert cfg.cross_validation.enabled is False
+    assert cfg.cross_validation.n_folds == 1
 
 
 def test_constraints_defaults_empty_tuple() -> None:
@@ -233,6 +261,10 @@ def test_defaults_final_unseen_lock_reporting() -> None:
     assert cfg.reporting.generate_heatmaps is False
     assert cfg.reporting.generate_html is False
     assert cfg.reporting.heatmap_metrics == ("score", "robust_score")
+    assert cfg.reporting.html_embed_figures is False
+    assert cfg.reporting.html_navigation is True
+    assert cfg.reporting.generate_bootstrap_distribution_plots is False
+    assert cfg.reporting.generate_cost_sensitivity_figure is False
 
 
 def test_reporting_generate_html_parse() -> None:
@@ -240,6 +272,31 @@ def test_reporting_generate_html_parse() -> None:
     inner["reporting"] = {"enabled": True, "generate_html": True}
     cfg = parse_double_oos_wfo_protocol({"research_protocol": inner})
     assert cfg.reporting.generate_html is True
+
+
+def test_reporting_html_optional_flags_parse() -> None:
+    inner = _minimal_primary_inner()
+    inner["bootstrap"] = {"enabled": True, "n_samples": 20}
+    inner["cost_sensitivity"] = {
+        "enabled": True,
+        "slippage_bps_grid": [0, 5],
+        "commission_multiplier_grid": [1.0],
+        "run_on": "unseen",
+    }
+    inner["reporting"] = {
+        "enabled": True,
+        "generate_html": True,
+        "html_embed_figures": True,
+        "html_navigation": False,
+        "generate_bootstrap_distribution_plots": True,
+        "generate_cost_sensitivity_figure": True,
+    }
+    cfg = parse_double_oos_wfo_protocol({"research_protocol": inner})
+    assert cfg.reporting.generate_html is True
+    assert cfg.reporting.html_embed_figures is True
+    assert cfg.reporting.html_navigation is False
+    assert cfg.reporting.generate_bootstrap_distribution_plots is True
+    assert cfg.reporting.generate_cost_sensitivity_figure is True
 
 
 def test_reporting_generate_heatmaps_and_metrics_parse() -> None:
@@ -493,6 +550,19 @@ def test_bootstrap_subblocks_default_when_parent_enabled() -> None:
     assert cfg.bootstrap.block_shuffled_returns.enabled is False
     assert cfg.bootstrap.block_shuffled_positions.enabled is False
     assert cfg.bootstrap.random_strategy_parameters.enabled is False
+    assert cfg.bootstrap.persist_distribution_samples is False
+
+
+def test_bootstrap_persist_distribution_samples_parse() -> None:
+    inner = _minimal_primary_inner()
+    inner["bootstrap"] = {
+        "enabled": True,
+        "n_samples": 50,
+        "random_seed": 1,
+        "persist_distribution_samples": True,
+    }
+    cfg = parse_double_oos_wfo_protocol({"research_protocol": inner})
+    assert cfg.bootstrap.persist_distribution_samples is True
 
 
 def test_bootstrap_block_shuffled_positions_subblock_non_mapping_rejected() -> None:
@@ -525,4 +595,35 @@ def test_bootstrap_random_strategy_parameters_subblock_non_mapping_rejected() ->
         "random_strategy_parameters": "yes",
     }
     with pytest.raises(ResearchProtocolConfigError, match="random_strategy_parameters"):
+        parse_double_oos_wfo_protocol({"research_protocol": inner})
+
+
+def test_reporting_bootstrap_plots_require_bootstrap_enabled() -> None:
+    inner = _minimal_primary_inner()
+    inner["reporting"] = {
+        "enabled": True,
+        "generate_html": True,
+        "generate_bootstrap_distribution_plots": True,
+    }
+    inner["bootstrap"] = {"enabled": False, "n_samples": 10}
+    with pytest.raises(ResearchProtocolConfigError, match="bootstrap"):
+        parse_double_oos_wfo_protocol({"research_protocol": inner})
+
+
+def test_reporting_cost_sensitivity_figure_requires_cost_sensitivity_enabled() -> None:
+    inner = _minimal_primary_inner()
+    inner["reporting"] = {
+        "enabled": True,
+        "generate_html": True,
+        "generate_cost_sensitivity_figure": True,
+    }
+    inner["cost_sensitivity"] = {"enabled": False}
+    with pytest.raises(ResearchProtocolConfigError, match="cost_sensitivity"):
+        parse_double_oos_wfo_protocol({"research_protocol": inner})
+
+
+def test_cross_validation_unknown_strategy_rejected_when_disabled() -> None:
+    inner = _minimal_primary_inner()
+    inner["cross_validation"] = {"enabled": False, "strategy": "kfold_split"}
+    with pytest.raises(ResearchProtocolConfigError, match="cross_validation.strategy"):
         parse_double_oos_wfo_protocol({"research_protocol": inner})

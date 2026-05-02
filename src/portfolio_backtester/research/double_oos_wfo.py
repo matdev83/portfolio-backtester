@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, List, Mapping, Sequence
+from typing import Any, Callable, List, Mapping, Sequence, cast
 
 import numpy as np
 import pandas as pd
+import yaml
 
 from ..canonical_config import CanonicalScenarioConfig
 from ..optimization.results import OptimizationResult
@@ -22,10 +25,27 @@ from .artifacts import (
     write_selected_protocols,
     write_unseen_results,
 )
+from .execution_manifest import (
+    assert_resume_manifest_matches,
+    load_execution_manifest_or_raise,
+    split_global_train_blocked_folds,
+    write_execution_manifest,
+)
 from .registry import ResearchRunRegistry, compute_registry_hashes
 from .heatmaps import write_wfo_heatmaps
 from .constraints import ConstraintEvaluator, ResearchConstraintError
-from .bootstrap import run_research_bootstrap, write_bootstrap_artifacts
+from .bootstrap import (
+    run_research_bootstrap,
+    write_bootstrap_artifacts,
+    write_bootstrap_distribution_artifacts,
+)
+from .checkpoint_io import (
+    ARCH_CHECKPOINT_SUBDIR_NAME,
+    checkpoint_key_for_architecture,
+    load_checkpoint_snapshots_map,
+    write_grid_cell_checkpoint,
+)
+from .cross_validation_aggregate import aggregate_blocked_fold_architecture_rows
 from .cost_sensitivity import (
     build_cost_sensitivity_summary,
     effective_global_config_for_cost_cell,
@@ -265,10 +285,12 @@ class DoubleOOSWFOProtocol:
         artifact_writer: ResearchArtifactWriter | None = None,
         *,
         scenario_normalizer: ScenarioNormalizer | None = None,
+        optimization_orchestrator_factory: Callable[[], Any] | None = None,
     ) -> None:
         """Initialize protocol with injected execution dependencies."""
 
         self._optimization_orchestrator = optimization_orchestrator
+        self._optimization_orchestrator_factory = optimization_orchestrator_factory
         self._backtest_runner = backtest_runner
         self._artifact_writer = artifact_writer
         self._normalizer = scenario_normalizer or ScenarioNormalizer()
@@ -342,6 +364,245 @@ class DoubleOOSWFOProtocol:
         metrics["Turnover"] = _turnover_proxy_from_returns(stitched)
         return metrics
 
+    @staticmethod
+    def _architecture_result_from_checkpoint_row(row: Mapping[str, Any]) -> WFOArchitectureResult:
+        arch_map = row.get("architecture")
+        if not isinstance(arch_map, Mapping):
+            msg = "checkpoint.architecture must be a mapping"
+            raise ResearchProtocolConfigError(msg)
+        arch = WFOArchitecture.from_dict(dict(arch_map))
+        rs = row.get("robust_score")
+        fails_raw = row.get("constraint_failures") or ()
+        fails_list = fails_raw if isinstance(fails_raw, (list, tuple)) else ()
+        fails = tuple(str(x) for x in fails_list)
+        metrics_any = row.get("metrics") or {}
+        metrics = {str(k): float(v) for k, v in dict(metrics_any).items()}
+        bp_raw = row.get("best_parameters")
+        if isinstance(bp_raw, Mapping):
+            best_parameters = dict(bp_raw)
+        elif isinstance(bp_raw, str):
+            best_parameters = dict(json.loads(bp_raw))
+        else:
+            best_parameters = {}
+        return WFOArchitectureResult(
+            architecture=arch,
+            metrics=metrics,
+            score=float(row["score"]),
+            robust_score=float(rs) if rs is not None else None,
+            best_parameters=best_parameters,
+            n_evaluations=int(row["n_evaluations"]),
+            stitched_returns=None,
+            constraint_passed=bool(row.get("constraint_passed", False)),
+            constraint_failures=fails,
+        )
+
+    def _evaluate_training_architecture_cell(
+        self,
+        *,
+        scenario_config: CanonicalScenarioConfig,
+        protocol_config: DoubleOOSWFOProtocolConfig,
+        training_period: DateRangeConfig,
+        architecture: WFOArchitecture,
+        monthly_slice: pd.DataFrame,
+        daily_slice: pd.DataFrame,
+        rets_slice: pd.DataFrame,
+        args: argparse.Namespace,
+        global_config: Mapping[str, Any],
+        constraint_evaluator: ConstraintEvaluator | None,
+        use_composite: bool,
+        optimization_orchestrator: Any | None = None,
+    ) -> WFOArchitectureResult:
+        scen_dict = training_scenario_dict_for_architecture(
+            scenario_config, training_period, architecture
+        )
+        canonical_cell = self._normalizer.normalize(
+            scenario=scen_dict, global_config=dict(global_config)
+        )
+        orch_eff = (
+            optimization_orchestrator
+            if optimization_orchestrator is not None
+            else self._optimization_orchestrator
+        )
+        opt_result = orch_eff.run_optimization(
+            canonical_cell, monthly_slice, daily_slice, rets_slice, args
+        )
+        stitched = self._optimization_result_to_series(opt_result)
+        metrics = self._metrics_from_returns(stitched, daily_slice, global_config)
+        passed, fails = (
+            constraint_evaluator.evaluate(metrics)
+            if constraint_evaluator is not None
+            else (True, ())
+        )
+        stitched_opt = stitched if isinstance(stitched, pd.Series) and not stitched.empty else None
+        if use_composite:
+            return WFOArchitectureResult(
+                architecture=architecture,
+                metrics=metrics,
+                score=0.0,
+                robust_score=None,
+                best_parameters=dict(opt_result.best_parameters),
+                n_evaluations=int(opt_result.n_evaluations),
+                stitched_returns=stitched_opt,
+                constraint_passed=passed,
+                constraint_failures=fails,
+            )
+        calculator = ResearchScoreCalculator(metric_key=protocol_config.selection.metric)
+        raw_metric = extract_metric_value(metrics, protocol_config.selection.metric)
+        score = calculator.score_for_ranking(raw_metric)
+        return WFOArchitectureResult(
+            architecture=architecture,
+            metrics=metrics,
+            score=score,
+            robust_score=None,
+            best_parameters=dict(opt_result.best_parameters),
+            n_evaluations=int(opt_result.n_evaluations),
+            stitched_returns=stitched_opt,
+            constraint_passed=passed,
+            constraint_failures=fails,
+        )
+
+    def _persist_grid_cell_checkpoint(
+        self,
+        snapshots_root: Path,
+        *,
+        architecture: WFOArchitecture,
+        result: WFOArchitectureResult,
+    ) -> None:
+        write_grid_cell_checkpoint(
+            snapshots_root,
+            architecture=architecture,
+            checkpoint_body={
+                "metrics": dict(result.metrics),
+                "score": float(result.score),
+                "robust_score": result.robust_score,
+                "best_parameters": dict(result.best_parameters),
+                "n_evaluations": int(result.n_evaluations),
+                "constraint_passed": bool(result.constraint_passed),
+                "constraint_failures": tuple(result.constraint_failures),
+            },
+        )
+
+    def _evaluate_architecture_grid_phase(
+        self,
+        *,
+        scenario_config: CanonicalScenarioConfig,
+        protocol_config: DoubleOOSWFOProtocolConfig,
+        architectures: Sequence[WFOArchitecture],
+        monthly_panel: pd.DataFrame,
+        daily_panel: pd.DataFrame,
+        rets_panel: pd.DataFrame,
+        training_period: DateRangeConfig,
+        args: argparse.Namespace,
+        global_config: Mapping[str, Any],
+        run_dir: Path,
+        scenario_hash: str,
+        protocol_config_hash: str,
+        resume_reload_snapshots: bool,
+        persist_execution_manifest: bool,
+        checkpoint_subdir_suffix: str | None,
+        max_parallel_grid_workers: int,
+    ) -> list[WFOArchitectureResult]:
+        use_composite_inner = is_robust_composite_metric(protocol_config.selection.metric)
+        constraint_evaluator = (
+            ConstraintEvaluator(protocol_config.constraints)
+            if protocol_config.constraints
+            else None
+        )
+        monthly_slice = slice_panel_by_dates(
+            monthly_panel, training_period.start, training_period.end
+        )
+        daily_slice = slice_panel_by_dates(daily_panel, training_period.start, training_period.end)
+        rets_slice = slice_panel_by_dates(rets_panel, training_period.start, training_period.end)
+
+        checkpoints_root = run_dir / ARCH_CHECKPOINT_SUBDIR_NAME
+        if checkpoint_subdir_suffix:
+            checkpoints_root = checkpoints_root / checkpoint_subdir_suffix
+        checkpoints_root.mkdir(parents=True, exist_ok=True)
+
+        arch_list = list(architectures)
+        if persist_execution_manifest:
+            write_execution_manifest(
+                run_dir,
+                scenario_hash=scenario_hash,
+                protocol_config_hash=protocol_config_hash,
+                architectures=arch_list,
+            )
+
+        snapshots_map: dict[str, Mapping[str, Any]]
+        snapshots_map = (
+            dict(load_checkpoint_snapshots_map(checkpoints_root)) if resume_reload_snapshots else {}
+        )
+
+        grid_slots: List[WFOArchitectureResult | None] = [None] * len(arch_list)
+        pending_indexes: List[int] = []
+        for i, arch in enumerate(arch_list):
+            key = checkpoint_key_for_architecture(arch)
+            snap = snapshots_map.get(key)
+            if snap is not None:
+                grid_slots[i] = self._architecture_result_from_checkpoint_row(snap)
+            else:
+                pending_indexes.append(i)
+
+        requested_workers = max(1, int(max_parallel_grid_workers))
+        effective_max_workers = 1
+        if pending_indexes:
+            if requested_workers > 1 and self._optimization_orchestrator_factory is None:
+                logger.warning(
+                    "research_protocol.execution.max_parallel_grid_workers=%s without "
+                    "optimization_orchestrator_factory is unsafe "
+                    "(shared OptimizationOrchestrator state). Falling back to serial grid "
+                    "evaluation.",
+                    requested_workers,
+                )
+                effective_max_workers = 1
+            else:
+                effective_max_workers = min(requested_workers, len(pending_indexes))
+
+        def finalize_index(cell_index: int) -> None:
+            arch = arch_list[cell_index]
+            orch_parallel = None
+            if effective_max_workers > 1 and self._optimization_orchestrator_factory is not None:
+                orch_parallel = self._optimization_orchestrator_factory()
+            res_inner = self._evaluate_training_architecture_cell(
+                scenario_config=scenario_config,
+                protocol_config=protocol_config,
+                training_period=training_period,
+                architecture=arch,
+                monthly_slice=monthly_slice,
+                daily_slice=daily_slice,
+                rets_slice=rets_slice,
+                args=args,
+                global_config=global_config,
+                constraint_evaluator=constraint_evaluator,
+                use_composite=use_composite_inner,
+                optimization_orchestrator=orch_parallel,
+            )
+            self._persist_grid_cell_checkpoint(
+                checkpoints_root, architecture=arch, result=res_inner
+            )
+            grid_slots[cell_index] = res_inner
+
+        if not pending_indexes:
+            pass
+        elif effective_max_workers <= 1:
+            for ix_pending in pending_indexes:
+                finalize_index(ix_pending)
+        else:
+            with ThreadPoolExecutor(max_workers=effective_max_workers) as executor:
+                future_map = {executor.submit(finalize_index, ix): ix for ix in pending_indexes}
+                try:
+                    for fut in as_completed(future_map):
+                        fut.result()
+                except Exception:
+                    if protocol_config.execution.fail_fast:
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    raise
+
+        if any(slot is None for slot in grid_slots):
+            msg = "architecture grid bookkeeping left uninitialized cells"
+            raise RuntimeError(msg)
+        return [cast(WFOArchitectureResult, slot) for slot in grid_slots]
+
     def run(
         self,
         *,
@@ -356,13 +617,8 @@ class DoubleOOSWFOProtocol:
         """Execute the double-OOS protocol (grid selection + optional unseen evaluation)."""
 
         writer = self._effective_writer()
-        run_dir = writer.create_run_directory(scenario_config.name)
-
         gt = protocol_config.global_train_period
         ut = protocol_config.unseen_test_period
-        monthly_tr = slice_panel_by_dates(monthly_data, gt.start, gt.end)
-        daily_tr = slice_panel_by_dates(daily_data, gt.start, gt.end)
-        rets_tr = slice_panel_by_dates(rets_full, gt.start, gt.end)
 
         architectures = expand_wfo_architecture_grid(grid=protocol_config.wfo_window_grid)
         max_cells = protocol_config.execution.max_grid_cells
@@ -372,63 +628,112 @@ class DoubleOOSWFOProtocol:
                 f"which exceeds research_protocol.execution.max_grid_cells={max_cells}"
             )
             raise ResearchProtocolConfigError(msg)
-        use_composite = is_robust_composite_metric(protocol_config.selection.metric)
-        constraint_evaluator = (
-            ConstraintEvaluator(protocol_config.constraints)
-            if protocol_config.constraints
-            else None
-        )
 
-        grid_results: list[WFOArchitectureResult] = []
-        for arch in architectures:
-            scen_dict = training_scenario_dict_for_architecture(scenario_config, gt, arch)
-            canonical_cell = self._normalizer.normalize(
-                scenario=scen_dict, global_config=dict(global_config)
+        resume_cfg = protocol_config.execution.resume_partial
+        resume_active = bool(resume_cfg.enabled)
+        cv_cfg = protocol_config.cross_validation
+        cross_summary: dict[str, Any] | None = None
+        if cv_cfg.enabled and resume_active:
+            msg = "research_protocol.execution.resume_partial is incompatible with cross_validation"
+            raise ResearchProtocolConfigError(msg)
+
+        sh, pch, uph = compute_registry_hashes(scenario_config, protocol_config)
+        parallel_workers = int(protocol_config.execution.max_parallel_grid_workers)
+        use_composite = is_robust_composite_metric(protocol_config.selection.metric)
+
+        if resume_active:
+            run_dir = Path(str(resume_cfg.run_directory)).expanduser().resolve()
+            if not run_dir.is_dir():
+                msg = f"resume_partial.run_directory is not a directory: {run_dir}"
+                raise ResearchProtocolConfigError(msg)
+            manifest = load_execution_manifest_or_raise(run_dir)
+            assert_resume_manifest_matches(
+                manifest,
+                scenario_hash=sh,
+                protocol_config_hash=pch,
+                architectures=architectures,
             )
-            opt_result = self._optimization_orchestrator.run_optimization(
-                canonical_cell, monthly_tr, daily_tr, rets_tr, args
-            )
-            stitched = self._optimization_result_to_series(opt_result)
-            metrics = self._metrics_from_returns(stitched, daily_tr, global_config)
-            passed, fails = (
-                constraint_evaluator.evaluate(metrics)
-                if constraint_evaluator is not None
-                else (True, ())
-            )
-            stitched_opt = (
-                stitched if isinstance(stitched, pd.Series) and not stitched.empty else None
-            )
-            if use_composite:
-                grid_results.append(
-                    WFOArchitectureResult(
-                        architecture=arch,
-                        metrics=metrics,
-                        score=0.0,
-                        robust_score=None,
-                        best_parameters=dict(opt_result.best_parameters),
-                        n_evaluations=int(opt_result.n_evaluations),
-                        stitched_returns=stitched_opt,
-                        constraint_passed=passed,
-                        constraint_failures=fails,
-                    )
+        else:
+            run_dir = writer.create_run_directory(scenario_config.name)
+
+        if cv_cfg.enabled:
+            folds = split_global_train_blocked_folds(gt, cv_cfg.n_folds)
+            per_fold: list[tuple[WFOArchitectureResult, ...]] = []
+            for fold_idx, fp in enumerate(folds):
+                fold_rows = self._evaluate_architecture_grid_phase(
+                    scenario_config=scenario_config,
+                    protocol_config=protocol_config,
+                    architectures=architectures,
+                    monthly_panel=monthly_data,
+                    daily_panel=daily_data,
+                    rets_panel=rets_full,
+                    training_period=fp,
+                    args=args,
+                    global_config=global_config,
+                    run_dir=run_dir,
+                    scenario_hash=sh,
+                    protocol_config_hash=pch,
+                    resume_reload_snapshots=False,
+                    persist_execution_manifest=False,
+                    checkpoint_subdir_suffix=f"fold_{fold_idx}",
+                    max_parallel_grid_workers=parallel_workers,
                 )
+                per_fold.append(tuple(fold_rows))
+            aggregated = aggregate_blocked_fold_architecture_rows(per_fold)
+            merged_rows: list[WFOArchitectureResult] = []
+            if use_composite:
+                for agg in aggregated:
+                    merged_rows.append(
+                        replace(agg, score=0.0, stitched_returns=None)
+                        if agg.constraint_passed
+                        else replace(agg, stitched_returns=None)
+                    )
             else:
                 calculator = ResearchScoreCalculator(metric_key=protocol_config.selection.metric)
-                raw_metric = extract_metric_value(metrics, protocol_config.selection.metric)
-                score = calculator.score_for_ranking(raw_metric)
-                grid_results.append(
-                    WFOArchitectureResult(
-                        architecture=arch,
-                        metrics=metrics,
-                        score=score,
-                        robust_score=None,
-                        best_parameters=dict(opt_result.best_parameters),
-                        n_evaluations=int(opt_result.n_evaluations),
-                        stitched_returns=stitched_opt,
-                        constraint_passed=passed,
-                        constraint_failures=fails,
-                    )
-                )
+                for agg in aggregated:
+                    if not agg.constraint_passed:
+                        merged_rows.append(replace(agg, stitched_returns=None))
+                        continue
+                    raw_metric = extract_metric_value(agg.metrics, protocol_config.selection.metric)
+                    score = calculator.score_for_ranking(raw_metric)
+                    merged_rows.append(replace(agg, score=score, stitched_returns=None))
+            grid_results = merged_rows
+            cross_summary = {
+                "enabled": True,
+                "strategy": cv_cfg.strategy,
+                "n_folds": len(folds),
+                "fold_periods": [
+                    {
+                        "start": pd.Timestamp(fp.start).isoformat(),
+                        "end": pd.Timestamp(fp.end).isoformat(),
+                    }
+                    for fp in folds
+                ],
+            }
+            cv_path = run_dir / "cross_validation_summary.yaml"
+            cv_path.write_text(
+                yaml.safe_dump(cross_summary, sort_keys=False, allow_unicode=False),
+                encoding="utf-8",
+            )
+        else:
+            grid_results = self._evaluate_architecture_grid_phase(
+                scenario_config=scenario_config,
+                protocol_config=protocol_config,
+                architectures=architectures,
+                monthly_panel=monthly_data,
+                daily_panel=daily_data,
+                rets_panel=rets_full,
+                training_period=gt,
+                args=args,
+                global_config=global_config,
+                run_dir=run_dir,
+                scenario_hash=sh,
+                protocol_config_hash=pch,
+                resume_reload_snapshots=resume_active,
+                persist_execution_manifest=not resume_active,
+                checkpoint_subdir_suffix=None,
+                max_parallel_grid_workers=parallel_workers,
+            )
 
         eligible = [r for r in grid_results if r.constraint_passed]
         if not eligible:
@@ -513,7 +818,6 @@ class DoubleOOSWFOProtocol:
         protocol_root = writer.scenario_protocol_root(scenario_config.name)
         run_id = run_dir.name
         lock_rel = Path(run_id) / "protocol_lock.yaml"
-        sh, pch, uph = compute_registry_hashes(scenario_config, protocol_config)
         registry = ResearchRunRegistry(protocol_root / "registry.yaml")
         skip_unseen = bool(getattr(args, "research_skip_unseen", False))
         force_run = bool(getattr(args, "force_new_research_run", False))
@@ -604,8 +908,9 @@ class DoubleOOSWFOProtocol:
                     asset_returns=rets_ut,
                 )
                 if payload is not None:
-                    bs_summary, bs_rows = payload
+                    bs_summary, bs_rows, bs_distributions = payload
                     write_bootstrap_artifacts(run_dir, bs_summary, bs_rows)
+                    write_bootstrap_distribution_artifacts(run_dir, bs_distributions)
 
         result = ResearchProtocolResult(
             scenario_name=scenario_config.name,
@@ -613,6 +918,7 @@ class DoubleOOSWFOProtocol:
             selected_protocols=selected,
             unseen_result=unseen_result,
             artifact_dir=run_dir,
+            cross_validation_summary=cross_summary,
         )
         if protocol_config.reporting.enabled:
             generate_research_markdown_report(run_dir, result, protocol_config)

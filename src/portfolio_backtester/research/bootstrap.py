@@ -127,6 +127,7 @@ def bootstrap_block_shuffled_positions_p_value(
     observed_value: float,
     metrics_from_returns: Callable[[pd.Series], Mapping[str, float]],
     rng: np.random.Generator,
+    collect_samples: list[float] | None = None,
 ) -> float:
     """One-sided empirical p-value from block-shuffled position paths."""
 
@@ -165,6 +166,7 @@ def bootstrap_block_shuffled_positions_p_value(
             observed_value=observed_value,
             metrics_from_returns=metrics_from_returns,
             rng=rng,
+            collect_samples=collect_samples,
         )
 
     weights_base = weights_daily_from_trade_history(
@@ -190,6 +192,8 @@ def bootstrap_block_shuffled_positions_p_value(
                 v = float(raw)
             except (TypeError, ValueError):
                 v = float("nan")
+        if collect_samples is not None and not math.isnan(v):
+            collect_samples.append(float(v))
         if not math.isnan(v) and v >= obs:
             count += 1
     return float(count) / float(n_samples)
@@ -201,6 +205,7 @@ def bootstrap_random_wfo_architecture_p_value(
     selected_score: float,
     n_samples: int,
     rng: np.random.Generator,
+    collect_samples: list[float] | None = None,
 ) -> float:
     """Return empirical p-value: fraction of bootstrap draws >= ``selected_score``."""
 
@@ -209,6 +214,8 @@ def bootstrap_random_wfo_architecture_p_value(
         return float("nan")
     arr = np.asarray(pool, dtype=float)
     draws = rng.choice(arr, size=int(n_samples), replace=True)
+    if collect_samples is not None:
+        collect_samples.extend(float(x) for x in draws.tolist())
     ss = float(selected_score)
     return float(np.mean(draws >= ss))
 
@@ -222,6 +229,7 @@ def bootstrap_block_shuffled_returns_p_value(
     observed_value: float,
     metrics_from_returns: Callable[[pd.Series], Mapping[str, float]],
     rng: np.random.Generator,
+    collect_samples: list[float] | None = None,
 ) -> float:
     """Return one-sided empirical p-value for shuffled paths vs observed survival metric."""
 
@@ -246,6 +254,8 @@ def bootstrap_block_shuffled_returns_p_value(
                 v = float(raw)
             except (TypeError, ValueError):
                 v = float("nan")
+        if collect_samples is not None and not math.isnan(v):
+            collect_samples.append(float(v))
         if not math.isnan(v) and v >= obs:
             count += 1
     return float(count) / float(n_samples)
@@ -260,6 +270,7 @@ def bootstrap_random_strategy_parameters_p_value(
     run_with_params_fn: Callable[[Mapping[str, Any]], Mapping[str, float]] | None,
     survival_metric: str,
     rng: np.random.Generator,
+    collect_samples: list[float] | None = None,
 ) -> float:
     """Return fraction of draws where survival metric >= selected unseen survival value."""
 
@@ -288,6 +299,8 @@ def bootstrap_random_strategy_parameters_p_value(
                 v = float(raw)
             except (TypeError, ValueError):
                 v = float("nan")
+        if collect_samples is not None and not math.isnan(v):
+            collect_samples.append(float(v))
         if not math.isnan(v) and v >= obs:
             count += 1
     return float(count) / float(sample_size)
@@ -305,7 +318,7 @@ def run_research_bootstrap(
     run_with_params_fn: Callable[[Mapping[str, Any]], Mapping[str, float]] | None = None,
     trade_history: pd.DataFrame | None = None,
     asset_returns: pd.DataFrame | None = None,
-) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, list[float]] | None] | None:
     """Compute bootstrap summaries; returns ``None`` when skipped."""
 
     if not cfg.enabled or unseen_result is None:
@@ -322,6 +335,20 @@ def run_research_bootstrap(
     rng = np.random.default_rng(int(cfg.random_seed))
     survival = survival_metric_for_selection(selection_metric)
     selected_score = float(selected.score)
+    persist_samples = cfg.persist_distribution_samples
+
+    rwfo_samples: list[float] | None = (
+        [] if persist_samples and cfg.random_wfo_architecture.enabled else None
+    )
+    br_samples: list[float] | None = (
+        [] if persist_samples and cfg.block_shuffled_returns.enabled else None
+    )
+    bp_samples: list[float] | None = (
+        [] if persist_samples and cfg.block_shuffled_positions.enabled else None
+    )
+    rsp_samples: list[float] | None = (
+        [] if persist_samples and cfg.random_strategy_parameters.enabled else None
+    )
 
     th_eff = trade_history
     if th_eff is None:
@@ -340,6 +367,7 @@ def run_research_bootstrap(
                 selected_score=selected_score,
                 n_samples=int(cfg.n_samples),
                 rng=rng,
+                collect_samples=rwfo_samples,
             )
 
     obs_raw = unseen_result.metrics.get(survival)
@@ -362,6 +390,7 @@ def run_research_bootstrap(
                 observed_value=observed_survival,
                 metrics_from_returns=metrics_from_returns,
                 rng=rng,
+                collect_samples=br_samples,
             )
 
     p_pos: float | None = None
@@ -391,6 +420,7 @@ def run_research_bootstrap(
                 observed_value=observed_survival,
                 metrics_from_returns=metrics_from_returns,
                 rng=rng,
+                collect_samples=bp_samples,
             )
 
     p_rsp: float | None = None
@@ -411,6 +441,7 @@ def run_research_bootstrap(
                 run_with_params_fn=run_with_params_fn,
                 survival_metric=survival,
                 rng=rng,
+                collect_samples=rsp_samples,
             )
 
     summary: dict[str, Any] = {
@@ -504,7 +535,44 @@ def run_research_bootstrap(
                 ),
             }
         )
-    return summary, rows
+    distributions: dict[str, list[float]] | None = None
+    if persist_samples:
+        distributions = {}
+        if rwfo_samples is not None and rwfo_samples:
+            distributions["random_wfo_architecture"] = rwfo_samples
+        if br_samples is not None and br_samples:
+            distributions["block_shuffled_returns"] = br_samples
+        if bp_samples is not None and bp_samples:
+            distributions["block_shuffled_positions"] = bp_samples
+        if rsp_samples is not None and rsp_samples:
+            distributions["random_strategy_parameters"] = rsp_samples
+        if not distributions:
+            distributions = {}
+    return summary, rows, distributions
+
+
+def write_bootstrap_distribution_artifacts(
+    run_dir: Path | str,
+    samples_by_test: Mapping[str, Sequence[float]] | None,
+) -> None:
+    """Write optional ``bootstrap_distribution_<test>.csv`` files alongside bootstrap summaries."""
+
+    if not samples_by_test:
+        return
+    root = Path(run_dir)
+    for key, seq in samples_by_test.items():
+        vals = []
+        for x in seq:
+            try:
+                fx = float(x)
+            except (TypeError, ValueError):
+                continue
+            if not math.isnan(fx):
+                vals.append(fx)
+        if not vals:
+            continue
+        df_out = pd.DataFrame({"value": vals})
+        df_out.to_csv(root / f"bootstrap_distribution_{key}.csv", index=False)
 
 
 def write_bootstrap_artifacts(
