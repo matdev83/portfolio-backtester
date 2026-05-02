@@ -333,12 +333,15 @@ def main(args: Optional[List[str]] = None) -> None:
     # Re-get the logger now that the configuration is set
     logger = logging.getLogger(__name__)
 
-    # Set up file logging for debug output
-    file_handler = logging.FileHandler("optimizer_debug.log", mode="w", encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
-    file_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
-    file_handler.setFormatter(file_formatter)
-    logging.getLogger().addHandler(file_handler)
+    # Optional file logging for deep diagnostics (avoids writing logs into the repo by default).
+    # Set PORTFOLIO_BACKTESTER_LOG_FILE to a path when you need a capture file.
+    log_file = os.environ.get("PORTFOLIO_BACKTESTER_LOG_FILE")
+    if log_file:
+        file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+        file_handler.setLevel(logging.DEBUG)
+        file_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
+        file_handler.setFormatter(file_formatter)
+        logging.getLogger().addHandler(file_handler)
 
     try:
         # Load global configuration and scenarios (call through module for test patching)

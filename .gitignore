@@ -58,6 +58,10 @@ coverage.xml
 # Django stuff:
 *.log
 local_settings.py
+
+# Local development / debugging (repo-root captures; *.log already ignores these)
+optimizer_debug.log
+*_debug.log
 db.sqlite3
 db.sqlite3-journal
 
