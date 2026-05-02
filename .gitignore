@@ -185,3 +185,6 @@ data/yfinance/
 report_dir/
 signal_comparison.png
 data/config_validation_cache.json
+
+# cProfile text output from scripts/profile_evaluate_parameters.py
+scripts/profile_evaluate_parameters_*.txt
