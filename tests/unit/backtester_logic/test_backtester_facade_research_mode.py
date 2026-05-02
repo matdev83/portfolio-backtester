@@ -161,11 +161,10 @@ def test_run_research_validate_prepares_data_once_and_dispatches_orchestrator(
         facade.run()
 
     mock_prepare.assert_called_once()
-    mock_orch_cls.assert_called_once_with(
-        facade.optimization_orchestrator,
-        facade.backtest_runner,
-        None,
-    )
+    mock_orch_cls.assert_called_once()
+    oc_args, oc_kwargs = mock_orch_cls.call_args
+    assert oc_args == (facade.optimization_orchestrator, facade.backtest_runner, None)
+    assert callable(oc_kwargs.get("optimization_orchestrator_factory"))
     orchestrator_instance.run.assert_called_once()
     mock_backtest.assert_not_called()
     mock_opt.assert_not_called()

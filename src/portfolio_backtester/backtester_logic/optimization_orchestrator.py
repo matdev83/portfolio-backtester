@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from typing import Any, Dict, List, Tuple, Optional, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Mapping, Tuple, Optional, Union, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -17,14 +17,40 @@ import pandas as pd
 if TYPE_CHECKING:
     from ..canonical_config import CanonicalScenarioConfig
 
+from ..canonical_config import CanonicalScenarioConfig
 
+from ..optimization.market_data_panel import MarketDataPanel
 from ..optimization.results import OptimizationData, OptimizationResult
+from ..optimization.window_bounds import build_window_bounds
 from ..interfaces.attribute_accessor_interface import (
     IAttributeAccessor,
     create_attribute_accessor,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_early_stop_patience(raw: Any, *, default: int = 10) -> Optional[int]:
+    """Map CLI/config patience to the value used by :class:`ProgressTracker`.
+
+    ``None`` disables early stopping on plateau (no cap on consecutive
+    non-improving evaluations). Non-positive integers are treated as disabled
+    so small discrete grids can be explored up to ``--optuna-trials``.
+
+    Args:
+        raw: Value from ``optimizer_args`` (typically an :class:`int`).
+        default: Patience used when ``raw`` is missing or not coercible to int.
+
+    Returns:
+        Positive patience, or ``None`` when early stopping should be off.
+    """
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = default
+    if n <= 0:
+        return None
+    return n
 
 
 class OptimizationOrchestrator:
@@ -149,7 +175,6 @@ class OptimizationOrchestrator:
         from ..optimization.factory import create_parameter_generator
         from ..optimization.orchestrator_factory import create_orchestrator
         from ..optimization.evaluator import BacktestEvaluator, _lookup_metric
-        from ..optimization.results import OptimizationData
         from ..optimization.wfo_window import WFOWindow
         from ..backtesting.strategy_backtester import StrategyBacktester
         from ..reporting.performance_metrics import calculate_metrics
@@ -177,11 +202,18 @@ class OptimizationOrchestrator:
                 strategy_name=getattr(window, "strategy_name", None),
             )
 
+            inner_panel = MarketDataPanel.from_daily_ohlc_and_returns(daily_data, rets_full)
             optimization_data = OptimizationData(
                 monthly=monthly_data,
                 daily=daily_data,
                 returns=rets_full,
                 windows=[train_window],
+                market_data=inner_panel,
+                daily_np=inner_panel.daily_np,
+                returns_np=inner_panel.returns_np,
+                daily_index_np=inner_panel.row_index_naive_datetime64(),
+                tickers_list=list(inner_panel.tickers),
+                window_bounds=[build_window_bounds(inner_panel.daily_index_naive, train_window)],
             )
 
             parameter_generator = create_parameter_generator(
@@ -229,8 +261,10 @@ class OptimizationOrchestrator:
                 timeout=self._attribute_accessor.get_attribute(
                     optimizer_args, "optuna_timeout_sec", None
                 ),
-                early_stop_patience=self._attribute_accessor.get_attribute(
-                    optimizer_args, "early_stop_patience", 10
+                early_stop_patience=normalize_early_stop_patience(
+                    self._attribute_accessor.get_attribute(
+                        optimizer_args, "early_stop_patience", 10
+                    )
                 ),
                 enable_adaptive_batch_sizing=self._attribute_accessor.get_attribute(
                     optimizer_args, "enable_adaptive_batch_sizing", True
@@ -283,6 +317,10 @@ class OptimizationOrchestrator:
             stitched_returns = pd.Series(dtype=float)
 
         benchmark_ticker = self.global_config.get("benchmark", "SPY")
+        if isinstance(scenario_config, CanonicalScenarioConfig):
+            benchmark_ticker = scenario_config.benchmark_ticker or benchmark_ticker
+        elif isinstance(scenario_config, Mapping):
+            benchmark_ticker = scenario_config.get("benchmark_ticker", benchmark_ticker)
         benchmark_returns = pd.Series(0.0, index=stitched_returns.index)
         if not stitched_returns.empty and benchmark_ticker:
             try:
@@ -428,37 +466,21 @@ class OptimizationOrchestrator:
 
             # Prepare optimization data
             # Hoist DataFrame → ndarray conversions once per optimization run (float32, C-contiguous)
-            if isinstance(daily_data.columns, pd.MultiIndex):
-                daily_close_df_maybe = daily_data.xs("Close", level="Field", axis=1)
-                daily_close_df = (
-                    daily_close_df_maybe
-                    if isinstance(daily_close_df_maybe, pd.DataFrame)
-                    else pd.DataFrame(daily_close_df_maybe)
-                )
-            else:
-                daily_close_df = daily_data
-            tickers_list = list(daily_close_df.columns)
-            daily_np = np.ascontiguousarray(daily_close_df.to_numpy(dtype=np.float32))
-            rets_full_df: pd.DataFrame = (
-                rets_full if isinstance(rets_full, pd.DataFrame) else pd.DataFrame(rets_full)
-            )
-            returns_df = (
-                rets_full_df.reindex(daily_close_df.index).reindex(columns=tickers_list).fillna(0.0)
-            )
-            returns_np = np.ascontiguousarray(returns_df.to_numpy(dtype=np.float32))
-            daily_index_np = daily_close_df.index.values.astype("datetime64[ns]")
+            panel = MarketDataPanel.from_daily_ohlc_and_returns(daily_data, rets_full)
+            window_bounds = [build_window_bounds(panel.daily_index_naive, w) for w in windows]
 
             optimization_data = OptimizationData(
                 monthly=monthly_data,
                 daily=daily_data,
                 returns=rets_full,
                 windows=windows,
+                market_data=panel,
+                daily_np=panel.daily_np,
+                returns_np=panel.returns_np,
+                daily_index_np=panel.row_index_naive_datetime64(),
+                tickers_list=list(panel.tickers),
+                window_bounds=window_bounds,
             )
-            # Attach prepared arrays for reuse across trials/windows (runtime cache)
-            optimization_data.daily_np = daily_np  # type: ignore[attr-defined]
-            optimization_data.returns_np = returns_np  # type: ignore[attr-defined]
-            optimization_data.daily_index_np = daily_index_np  # type: ignore[attr-defined]
-            optimization_data.tickers_list = tickers_list  # type: ignore[attr-defined]
 
             # Convert scenario optimization specs to parameter space format
             parameter_space = self.convert_optimization_specs_to_parameter_space(canonical_config)
@@ -593,8 +615,10 @@ class OptimizationOrchestrator:
                 timeout=self._attribute_accessor.get_attribute(
                     optimizer_args, "optuna_timeout_sec", None
                 ),
-                early_stop_patience=self._attribute_accessor.get_attribute(
-                    optimizer_args, "early_stop_patience", 10
+                early_stop_patience=normalize_early_stop_patience(
+                    self._attribute_accessor.get_attribute(
+                        optimizer_args, "early_stop_patience", 10
+                    )
                 ),
                 enable_adaptive_batch_sizing=self._attribute_accessor.get_attribute(
                     optimizer_args, "enable_adaptive_batch_sizing", True

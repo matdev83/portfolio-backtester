@@ -6,11 +6,15 @@ optimization process, ensuring type safety and clear data flow between component
 """
 
 from dataclasses import dataclass
-from typing import Dict, Any, List, Union, Optional
+from typing import Any, Dict, List, Optional, Union
+
+import numpy as np
 import pandas as pd
 
 from ..backtesting.results import WindowResult
+from .market_data_panel import MarketDataPanel
 from .wfo_window import WFOWindow
+from .window_bounds import WindowBounds
 
 
 @dataclass
@@ -96,9 +100,21 @@ class OptimizationData:
         daily: Daily OHLC price data
         returns: Daily returns data
         windows: List of walk-forward window definitions
+        market_data: Optional immutable numeric panel aligned to ``daily``
+        daily_np: Optional float32 C-contiguous close matrix (trial fast path helpers)
+        returns_np: Optional float32 returns aligned to ``daily_np`` columns/index
+        daily_index_np: Optional ``datetime64[ns]`` vector for ``daily_np`` rows
+        tickers_list: Optional ordered tickers aligned to ``daily_np`` columns
+        window_bounds: Optional positional bounds parallel to ``windows``
     """
 
     monthly: pd.DataFrame
     daily: pd.DataFrame
     returns: pd.DataFrame
     windows: List[WFOWindow]
+    market_data: Optional[MarketDataPanel] = None
+    daily_np: Optional[np.ndarray] = None
+    returns_np: Optional[np.ndarray] = None
+    daily_index_np: Optional[np.ndarray] = None
+    tickers_list: Optional[List[str]] = None
+    window_bounds: Optional[List[WindowBounds]] = None

@@ -182,10 +182,10 @@ def mdd_fast(series):
     n = len(series)
     if n == 0:
         return 0.0
-    
+
     max_drawdown = 0.0
     running_max = series[0]
-    
+
     for i in range(1, n):
         if series[i] > running_max:
             running_max = series[i]
@@ -193,7 +193,7 @@ def mdd_fast(series):
             drawdown = (series[i] / running_max) - 1.0
             if drawdown < max_drawdown:
                 max_drawdown = drawdown
-                
+
     return max_drawdown
 
 
@@ -354,7 +354,7 @@ def compensated_skew_fast(arr):
     if m2 <= 0.0:
         return 0.0
     m3 = m3_sum / n
-    return m3 / (m2 ** 1.5)
+    return m3 / (m2**1.5)
 
 
 @numba.njit(cache=True)
@@ -414,7 +414,7 @@ def compensated_kurtosis_fast(arr):
     if m2 <= 0.0:
         return 0.0
     m4 = m4_sum / n
-    return m4 / (m2 ** 2) - 3.0
+    return m4 / (m2**2) - 3.0
 
 
 # Backward compatibility alias expected by tests
@@ -518,9 +518,7 @@ def rolling_downside_volatility_fast(data, window):
             if len(downside_returns) > 1:
                 # Use ddof=1 to match pandas behavior (sample standard deviation)
                 mean_val = np.mean(downside_returns)
-                variance = np.sum((downside_returns - mean_val) ** 2) / (
-                    len(downside_returns) - 1
-                )
+                variance = np.sum((downside_returns - mean_val) ** 2) / (len(downside_returns) - 1)
                 # Guard against tiny negative rounding errors
                 if variance < 0.0:
                     variance = 0.0
@@ -934,7 +932,7 @@ def rolling_beta_fast(asset_returns, benchmark_returns, window):
             # np.var defaults to ddof=0, so adjustment is needed
             bench_var_pop = np.var(valid_bench)
             bench_var = bench_var_pop * len(valid_bench) / (len(valid_bench) - 1.0)
-            
+
             if bench_var > 1e-10:
                 covariance = np.cov(valid_asset, valid_bench)[0, 1]
                 result[i] = covariance / bench_var
@@ -1248,98 +1246,111 @@ def drawdown_duration_and_recovery_fast(equity_curve: np.ndarray) -> tuple:
     """
     Calculate average drawdown duration and recovery time from equity curve.
 
-    Analyzes equity curve to identify drawdown periods and their recovery times,
-    providing insights into the temporal characteristics of portfolio losses.
+    Identifies disjoint drawdown episodes (underwater versus the cumulative running high).
+    For each episode, measures peak-to-trough length and trough-to-recovery length.
 
     Parameters
     ----------
     equity_curve : np.ndarray
-        Equity curve values (cumulative returns).
+        Equity curve values (cumulative wealth / index levels).
 
     Returns
     -------
     tuple
-        (average_drawdown_duration, average_recovery_time) in periods.
+        (average_drawdown_duration, average_recovery_time) in periods (bar count).
 
     Notes
     -----
-    - Drawdown period: time from peak to trough
-    - Recovery period: time from trough back to previous peak
-    - Uses epsilon threshold to identify significant drawdowns
-    - Handles ongoing drawdowns at period end
+    - ``average_drawdown_duration``: mean over episodes of ``trough_bar - peak_bar``,
+      where ``peak_bar`` is the latest bar strictly before underwater starts that is
+      at the episode high-watermark, and ``trough_bar`` is the deepest index on
+      the interval from underwater start through the bar before recovery (or through
+      the final bar when unrecovered).
+    - ``average_recovery_time``: mean over episodes of ``recovery_bar - trough_bar`` when
+      the prior watermark is reclaimed; if still underwater at ``n-1``,
+      uses ``(n - 1) - trough_bar`` for that episode.
+    - Episodes skipped when underwater cannot be anchored (missing data); no episodes
+      yields avg drawdown duration 0 and avg recovery NaN.
     """
     n = len(equity_curve)
     if n < 2:
         return np.nan, np.nan
 
-    # Calculate running maximum
-    running_max = np.full(n, np.nan)
+    running_max = np.empty(n)
     running_max[0] = equity_curve[0]
     for i in range(1, n):
-        running_max[i] = max(running_max[i - 1], equity_curve[i])
-
-    # Calculate drawdown
-    drawdown = np.full(n, np.nan)
-    for i in range(n):
-        if running_max[i] > 0:
-            drawdown[i] = (equity_curve[i] / running_max[i]) - 1.0
+        if equity_curve[i] > running_max[i - 1]:
+            running_max[i] = equity_curve[i]
         else:
-            drawdown[i] = 0.0
+            running_max[i] = running_max[i - 1]
 
-    # Find drawdown periods
-    epsilon = 1e-9
-    drawdown_periods = []
-    recovery_periods = []
-
-    in_drawdown = False
-    drawdown_start = -1
-
+    drawdown_frac = np.empty(n)
     for i in range(n):
-        if drawdown[i] < -epsilon and not in_drawdown:
-            # Start of drawdown
-            in_drawdown = True
-            drawdown_start = i
-        elif drawdown[i] >= -epsilon and in_drawdown:
-            # End of drawdown
-            in_drawdown = False
-            if drawdown_start >= 0:
-                duration = i - drawdown_start
-                drawdown_periods.append(duration)
+        rm = running_max[i]
+        if rm > 0.0:
+            drawdown_frac[i] = equity_curve[i] / rm - 1.0
+        else:
+            drawdown_frac[i] = 0.0
 
-                # Find recovery period (time to reach new high)
-                peak_before_dd = running_max[drawdown_start]
-                recovery_start = i
+    eps_frac = 1e-9
+    sum_peak_to_trough = 0.0
+    sum_trough_to_recover = 0.0
+    n_eps = 0
 
-                recovery_found = False
-                for j in range(recovery_start, n):
-                    if equity_curve[j] >= peak_before_dd:
-                        recovery_time = j - i
-                        recovery_periods.append(recovery_time)
-                        recovery_found = True
-                        break
+    i = 0
+    while i < n:
+        while i < n and drawdown_frac[i] >= -eps_frac:
+            i += 1
+        if i >= n:
+            break
 
-                if not recovery_found:
-                    # Still in recovery at end of period
-                    recovery_time = n - 1 - i
-                    recovery_periods.append(recovery_time)
+        dd_start = i
+        peak_val = running_max[dd_start]
+        atol = max(1e-9 * abs(peak_val), 1e-12)
 
-    # Handle case where period ends in drawdown
-    if in_drawdown and drawdown_start >= 0:
-        duration = n - drawdown_start
-        drawdown_periods.append(duration)
+        if dd_start <= 0:
+            i += 1
+            continue
 
-    # Calculate averages
-    if len(drawdown_periods) > 0:
-        avg_dd_duration: float = float(np.mean(np.array(drawdown_periods)))
-    else:
-        avg_dd_duration = 0.0
+        peak_idx = dd_start - 1
+        for k in range(dd_start - 1, -1, -1):
+            if equity_curve[k] >= peak_val - atol:
+                peak_idx = k
+                break
 
-    if len(recovery_periods) > 0:
-        avg_recovery_time: float = float(np.mean(np.array(recovery_periods)))
-    else:
-        avg_recovery_time = np.nan
+        recovery_idx = n
+        for j in range(dd_start, n):
+            if equity_curve[j] >= peak_val - atol:
+                recovery_idx = j
+                break
 
-    return avg_dd_duration, avg_recovery_time
+        end_trough_exclusive = recovery_idx if recovery_idx < n else n
+        trough_idx = dd_start
+        trough_eq = equity_curve[dd_start]
+        for j in range(dd_start + 1, end_trough_exclusive):
+            if equity_curve[j] < trough_eq:
+                trough_eq = equity_curve[j]
+                trough_idx = j
+
+        peak_to_trough = float(trough_idx - peak_idx)
+        if recovery_idx < n:
+            trough_to_recover = float(recovery_idx - trough_idx)
+        else:
+            trough_to_recover = float((n - 1) - trough_idx)
+
+        sum_peak_to_trough += peak_to_trough
+        sum_trough_to_recover += trough_to_recover
+        n_eps += 1
+
+        if recovery_idx < n:
+            i = recovery_idx + 1
+        else:
+            break
+
+    if n_eps <= 0:
+        return 0.0, np.nan
+
+    return sum_peak_to_trough / float(n_eps), sum_trough_to_recover / float(n_eps)
 
 
 # =============================================================================

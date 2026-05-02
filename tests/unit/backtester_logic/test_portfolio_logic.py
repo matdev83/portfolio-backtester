@@ -229,6 +229,23 @@ class TestPortfolioLogic:
         assert weights_daily.loc[fri, "A"] == pytest.approx(1.0)
         assert weights_daily.loc[mon, "A"] == pytest.approx(1.0)
 
+    def test_sized_signals_ffill_carries_targets_over_all_nan_row(self):
+        """Column ffill before fillna(0) keeps exposure across skipped scan rows."""
+        d0 = pd.Timestamp("2023-01-02")
+        d1 = pd.Timestamp("2023-01-03")
+        d2 = pd.Timestamp("2023-01-04")
+        idx = pd.DatetimeIndex([d0, d1, d2])
+        sized = pd.DataFrame(
+            [[0.6, 0.4], [np.nan, np.nan], [0.25, 0.75]],
+            index=idx,
+            columns=["A", "B"],
+        )
+        weights_daily = _sized_signals_to_weights_daily(sized, ["A", "B"], idx)
+        assert weights_daily.loc[d1, "A"] == pytest.approx(0.6)
+        assert weights_daily.loc[d1, "B"] == pytest.approx(0.4)
+        assert weights_daily.loc[d2, "A"] == pytest.approx(0.25)
+        assert weights_daily.loc[d2, "B"] == pytest.approx(0.75)
+
     def test_time_based_me_sparse_month_end_friday_shifted_returns_start_next_session(self):
         thu = pd.Timestamp("2023-09-28")
         fri = pd.Timestamp("2023-09-29")

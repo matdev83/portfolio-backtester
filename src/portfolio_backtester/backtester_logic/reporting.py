@@ -93,33 +93,25 @@ def _resolve_benchmark_ticker(backtester: Any) -> str:
 
 
 def _benchmark_returns(daily_data_for_display: pd.DataFrame, benchmark_ticker: str) -> pd.Series:
-    """Extract benchmark price series and convert to returns."""
+    """Extract benchmark close returns using the shared OHLC benchmark helper."""
+    from ..backtesting.strategy_backtester import _extract_close_returns
+
     candidates = [benchmark_ticker]
     if ":" in benchmark_ticker:
         candidates.append(benchmark_ticker.split(":")[-1])
 
-    prices = None
-    if isinstance(daily_data_for_display.columns, pd.MultiIndex):
-        tickers = daily_data_for_display.columns.get_level_values("Ticker")
-        for candidate in candidates:
-            if candidate in tickers and (candidate, "Close") in daily_data_for_display.columns:
-                prices = daily_data_for_display[(candidate, "Close")]
-                break
-    else:
-        for candidate in candidates:
-            if candidate in daily_data_for_display.columns:
-                prices = daily_data_for_display[candidate]
-                break
-
-    if prices is None:
-        logger = logging.getLogger(__name__)
-        logger.warning(
-            "Benchmark %s not found in price data; skipping benchmark returns.", benchmark_ticker
+    for candidate in candidates:
+        rets = _extract_close_returns(
+            daily_data_for_display, candidate, daily_data_for_display.index
         )
-        return pd.Series(dtype=float)
+        if not rets.empty and not rets.eq(0.0).all():
+            return rets
 
-    rets = prices.pct_change(fill_method=None).fillna(0.0)
-    return rets.iloc[:, 0] if isinstance(rets, pd.DataFrame) else rets
+    logger = logging.getLogger(__name__)
+    logger.warning(
+        "Benchmark %s not found in price data; skipping benchmark returns.", benchmark_ticker
+    )
+    return pd.Series(dtype=float)
 
 
 def _align_reporting_window(
@@ -166,6 +158,9 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
         stage2_processed_scenarios: set[str] = set()
         for name, result in self.results.items():
             logger.info("Processing optimization report for: %s", name)
+            if not isinstance(result, Mapping):
+                logger.info("  - Skipping optimization plots (non-tabular result type).")
+                continue
             best_trial = result.get("best_trial_obj")
             if best_trial is None:
                 logger.info("  - No best_trial_obj found, skipping.")
@@ -213,11 +208,19 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
     # ------------------------------------------------------------------
     try:
         logger.info("--- Generating Basic Performance Table & Plots ---")
-        period_returns = {n: d["returns"] for n, d in self.results.items()}
+        period_returns = {
+            n: d["returns"]
+            for n, d in self.results.items()
+            if isinstance(d, Mapping) and "returns" in d
+        }
         benchmark_ticker = _resolve_benchmark_ticker(self)
         benchmark_rets = _benchmark_returns(daily_data_for_display, benchmark_ticker)
         period_returns, benchmark_rets = _align_reporting_window(period_returns, benchmark_rets)
-        trials_map = {n: d.get("num_trials_for_dsr", 1) for n, d in self.results.items()}
+        trials_map = {
+            n: d.get("num_trials_for_dsr", 1)
+            for n, d in self.results.items()
+            if isinstance(d, Mapping)
+        }
 
         # unique report directory per run
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -315,6 +318,8 @@ def display_results(self: Any, daily_data_for_display: pd.DataFrame) -> None:  #
         # 3) Price charts with trade markers for strategies trading ≤2 symbols
         # --------------------------------------------------------------
         for name, result_data in self.results.items():
+            if not isinstance(result_data, Mapping):
+                continue
             trade_hist = result_data.get("trade_history")
             if trade_hist is None or trade_hist.empty:
                 continue

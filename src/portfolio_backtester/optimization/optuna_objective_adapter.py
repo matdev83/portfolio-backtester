@@ -29,6 +29,7 @@ class OptunaObjectiveAdapter:
         data: OptimizationData,
         n_jobs: int = 1,
         parameter_space: Optional[Dict[str, Any]] = None,
+        planned_optimization_trials: Optional[int] = None,
     ):
         """Construct the objective adapter.
 
@@ -41,6 +42,7 @@ class OptunaObjectiveAdapter:
         self.data = data
         self.n_jobs = n_jobs
         self.parameter_space = parameter_space or {}
+        self.planned_optimization_trials: Optional[int] = planned_optimization_trials
         self._local: threading.local = threading.local()
 
     def __call__(self, trial: optuna.Trial) -> float:
@@ -90,6 +92,7 @@ class OptunaObjectiveAdapter:
             scenario_config=self.scenario_config,
             data=self.data,
             backtester=backtester,
+            num_trials_for_metrics=self.planned_optimization_trials,
         )
 
         objective_value = result.objective_value

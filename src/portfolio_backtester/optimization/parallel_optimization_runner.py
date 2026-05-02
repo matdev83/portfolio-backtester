@@ -187,6 +187,7 @@ def _optuna_worker(
         data=data,  # Pass the reconstructed data object
         n_jobs=1,  # Keep at 1 to avoid nested parallelization conflicts
         parameter_space=parameter_space or {},
+        planned_optimization_trials=n_trials,
     )
 
     # Wrap with deduplication if enabled

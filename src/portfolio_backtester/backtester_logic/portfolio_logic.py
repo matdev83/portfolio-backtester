@@ -19,6 +19,10 @@ from ..numba_kernels import (
     trade_tracking_kernel,
     trade_lifecycle_kernel,
 )
+from .portfolio_simulation_input import (
+    build_portfolio_simulation_input,
+    prepare_close_arrays_for_simulation,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -86,7 +90,13 @@ def _sized_signals_to_weights_daily(
     universe_tickers: list[str],
     daily_index: pd.Index,
 ) -> pd.DataFrame:
-    weights_monthly = sized_signals.copy().reindex(columns=universe_tickers).fillna(0.0)
+    """Expand sparse event targets to a daily index.
+
+    Column-wise ``ffill`` before ``fillna(0)`` preserves the last explicit targets across
+    rows that are entirely NaN (e.g. skipped signal_based scans). Leading NaNs become
+    zero exposure before reindexing to the full session calendar.
+    """
+    weights_monthly = sized_signals.copy().reindex(columns=universe_tickers).ffill().fillna(0.0)
     return weights_monthly.reindex(daily_index, method="ffill")
 
 
@@ -99,6 +109,7 @@ def calculate_portfolio_returns(
     global_config,
     track_trades=False,
     strategy=None,
+    market_data_panel=None,
 ):
     # Check if this is a meta strategy - if so, use trade-based returns
     strategy_resolver = StrategyResolverFactory.create()
@@ -155,8 +166,6 @@ def calculate_portfolio_returns(
     transaction_costs: pd.Series | None = None
 
     if use_ndarray_sim:
-        import numpy as np
-
         # The ndarray simulation is now the only path. If it fails, the system will raise an exception.
         if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and (
             "Close" in price_data_daily_ohlc.columns.get_level_values(-1)
@@ -169,13 +178,32 @@ def calculate_portfolio_returns(
 
         valid_cols = [t for t in universe_tickers if t in aligned_rets_daily.columns]
 
-        # Compute detailed IBKR-style commission+slippage in ndarray path
-        close_prices_use = close_prices_df.reindex(index=price_index, columns=valid_cols).astype(
-            float
+        array_first_portfolio_prep = bool(feature_flags.get("array_first_portfolio_prep", False))
+        resolved_panel = market_data_panel
+        if resolved_panel is None and isinstance(global_config, dict):
+            resolved_panel = global_config.get("market_data_panel")
+
+        price_ix = pd.DatetimeIndex(price_index)
+        close_arr, price_mask_arr = prepare_close_arrays_for_simulation(
+            market_data_panel=resolved_panel,
+            array_first_portfolio_prep=array_first_portfolio_prep,
+            track_trades=track_trades,
+            close_prices_df=close_prices_df,
+            price_index=price_ix,
+            valid_cols=valid_cols,
         )
-        price_mask = close_prices_use.notna() & (close_prices_use > 0)
-        close_arr = close_prices_use.fillna(0.0).to_numpy(copy=True)
-        price_mask_arr = price_mask.to_numpy(copy=True)
+        sim_input = build_portfolio_simulation_input(
+            weights_daily=weights_daily,
+            aligned_rets_daily=aligned_rets_daily,
+            price_index=price_ix,
+            valid_cols=valid_cols,
+            close_arr=close_arr,
+            price_mask_arr=price_mask_arr,
+        )
+        weights_current = sim_input.weights_target
+        w_for_returns = sim_input.weights_lagged_for_returns
+        r = sim_input.asset_returns
+        m = sim_input.returns_finite_mask
 
         costs_config = scenario_config.get("costs_config") if scenario_config is not None else None
         transaction_costs_bps = None
@@ -190,12 +218,8 @@ def calculate_portfolio_returns(
                         raw_bps,
                     )
 
-        weights_current = (
-            weights_daily.reindex(index=price_index, columns=valid_cols).fillna(0.0).to_numpy()
-        )
-
         if transaction_costs_bps is not None:
-            weights_df = weights_daily.reindex(index=price_index, columns=valid_cols).fillna(0.0)
+            weights_df = weights_daily.reindex(index=price_ix, columns=valid_cols).fillna(0.0)
             delta_weights = weights_df.diff().abs()
             if not delta_weights.empty:
                 delta_weights.iloc[0] = weights_df.iloc[0].abs()
@@ -241,26 +265,14 @@ def calculate_portfolio_returns(
                 price_mask=price_mask_arr,
             )
 
-            transaction_costs = pd.Series(tc_frac, index=price_index, dtype=float)
+            transaction_costs = pd.Series(tc_frac, index=price_ix, dtype=float)
             per_asset_transaction_costs = pd.DataFrame(
-                tc_frac_detailed, index=price_index, columns=valid_cols
+                tc_frac_detailed, index=price_ix, columns=valid_cols
             )
 
         # --- Return simulation (fast + realistic): drift weights between rebalances ---
-        w_for_returns = (
-            weights_daily.reindex(index=price_index, columns=valid_cols)
-            .fillna(0.0)
-            .shift(1)
-            .fillna(0.0)
-            .to_numpy(dtype=np.float32)
-        )
-        rets_kernel_df = aligned_rets_daily.reindex(index=price_index, columns=valid_cols)
-        r_known = rets_kernel_df.to_numpy(dtype=np.float64)
-        m = np.isfinite(r_known)
-        r = np.where(m, r_known, 0.0).astype(np.float32)
-
         gross_arr = drifting_weights_returns_kernel(w_for_returns, r, m)
-        gross_returns_series = pd.Series(gross_arr, index=price_index, dtype=float)
+        gross_returns_series = pd.Series(gross_arr, index=price_ix, dtype=float)
 
         returns_net_of_costs = (gross_returns_series - transaction_costs).astype(float)
 
@@ -271,7 +283,7 @@ def calculate_portfolio_returns(
         merged_flags.update(scenario_config.get("feature_flags", {}) or {})
         if bool(merged_flags.get("pnl_sanity", False)):
             w_sums = (
-                weights_daily.reindex(index=price_index, columns=valid_cols).fillna(0.0).sum(axis=1)
+                weights_daily.reindex(index=price_ix, columns=valid_cols).fillna(0.0).sum(axis=1)
             )
             logger.info(
                 "[PnL sanity] tickers=%d weights_sum[min=%.4f max=%.4f] ret[min=%.4f max=%.4f] tc_max=%.6f",

@@ -20,6 +20,7 @@ from portfolio_backtester.strategies._core.base.base.base_strategy import BaseSt
 from ..strategies._core.registry import get_strategy_registry
 from ..interfaces import create_cache_manager
 from ..backtester_logic.strategy_logic import generate_signals, size_positions
+from ..optimization.signal_cache import default_never_timed_out
 from ..backtester_logic.portfolio_logic import calculate_portfolio_returns
 from ..backtester_logic.data_manager import prepare_scenario_data
 from ..backtester_logic.strategy_overlays import apply_wfo_scaling_and_kill_switch
@@ -27,6 +28,38 @@ from ..reporting.performance_metrics import calculate_metrics
 from ..optimization.wfo_window import WFOWindow
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_close_returns(price_data: pd.DataFrame, ticker: str, index: pd.Index) -> pd.Series:
+    """Return close-to-close returns for a ticker from OHLC or close-only data."""
+    if price_data is None or price_data.empty:
+        return pd.Series(0.0, index=index)
+
+    try:
+        if isinstance(price_data.columns, pd.MultiIndex):
+            close_prices = price_data.xs(ticker, level="Ticker", axis=1)["Close"]
+        elif ticker in price_data.columns:
+            ticker_data = price_data[ticker]
+            close_prices = (
+                ticker_data["Close"]
+                if isinstance(ticker_data, pd.DataFrame) and "Close" in ticker_data.columns
+                else ticker_data
+            )
+        elif "Close" in price_data.columns:
+            close_prices = price_data["Close"]
+        else:
+            close_prices = price_data.iloc[:, 0]
+    except (KeyError, IndexError):
+        logger.warning("Benchmark %s close data missing; using zero benchmark returns.", ticker)
+        return pd.Series(0.0, index=index)
+
+    if isinstance(close_prices, pd.DataFrame):
+        if close_prices.empty or len(close_prices.columns) == 0:
+            return pd.Series(0.0, index=index)
+        close_prices = close_prices.iloc[:, 0]
+
+    benchmark_returns = close_prices.reindex(index).pct_change(fill_method=None).fillna(0)
+    return benchmark_returns
 
 
 def _build_wfo_test_mask(overlay_diagnostics: Dict[str, Any], index: pd.Index) -> pd.Series:
@@ -144,7 +177,7 @@ class StrategyBacktester:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Running backtest for strategy: {canonical_config.name}")
 
-        has_timed_out = timeout_checker if timeout_checker is not None else (lambda: False)
+        has_timed_out = timeout_checker if timeout_checker is not None else default_never_timed_out
 
         # Filter data based on the window if start_date and end_date are provided
         if start_date and end_date:
@@ -249,13 +282,9 @@ class StrategyBacktester:
             return self._create_empty_backtest_result()
 
         # Calculate benchmark returns for metrics
-        benchmark_data = (
-            daily_data[benchmark_ticker] if benchmark_ticker in daily_data.columns else None
+        benchmark_returns = _extract_close_returns(
+            daily_data, benchmark_ticker, portfolio_returns.index
         )
-        if benchmark_data is not None:
-            benchmark_returns = benchmark_data.pct_change(fill_method=None).fillna(0)
-        else:
-            benchmark_returns = pd.Series(0.0, index=portfolio_returns.index)
 
         metrics_returns = portfolio_returns
         benchmark_returns_for_metrics = benchmark_returns
@@ -393,15 +422,17 @@ class StrategyBacktester:
 
         # Calculate benchmark returns for this window
         benchmark_ticker = (
-            strategy_config.benchmark_ticker
+            (strategy_config.benchmark_ticker or self.global_config.get("benchmark", "SPY"))
             if isinstance(strategy_config, CanonicalScenarioConfig)
             else strategy_config.get("benchmark_ticker", self.global_config.get("benchmark", "SPY"))
         )
-        benchmark_data = daily_slice[benchmark_ticker].loc[test_start:test_end]
-        benchmark_returns = benchmark_data.pct_change(fill_method=None).fillna(0)
+        benchmark_slice = daily_slice.loc[test_start:test_end]
+        benchmark_returns = _extract_close_returns(
+            benchmark_slice, str(benchmark_ticker), test_returns.index
+        )
 
         # Calculate metrics for this window
-        metrics = calculate_metrics(test_returns, benchmark_returns, benchmark_ticker)
+        metrics = calculate_metrics(test_returns, benchmark_returns, str(benchmark_ticker))
 
         return WindowResult(
             window_returns=test_returns,
@@ -540,8 +571,30 @@ class StrategyBacktester:
             canonical_config,
         )
 
-        # Use strategy's universe provider
-        universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
+        benchmark_ticker = canonical_config.benchmark_ticker or self.global_config.get(
+            "benchmark", "SPY"
+        )
+
+        # For dynamic method universes (e.g. get_top_weight_sp500_components), DataFetcher has
+        # already prefetched the union of all tickers that can appear over the full date range.
+        # Using strategy.get_universe() here would snapshot the universe at global start_date,
+        # producing a stale single-date Top-N list instead of the full tradable set.
+        # We therefore derive universe_tickers from the already-fetched price data columns,
+        # matching the fix applied in backtest_strategy and backtest_runner.
+        from ..backtester_logic.strategy_logic import _strategy_supports_method_dynamic_universe
+
+        if _strategy_supports_method_dynamic_universe(strategy):
+            if isinstance(daily_data.columns, pd.MultiIndex):
+                all_fetched = list(daily_data.columns.get_level_values("Ticker").unique())
+            else:
+                all_fetched = list(daily_data.columns)
+            universe_tickers = [t for t in all_fetched if t != benchmark_ticker]
+            logger.info(
+                "Dynamic universe: derived %d universe_tickers from prefetched price data columns.",
+                len(universe_tickers),
+            )
+        else:
+            universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
 
         # Filter missing tickers using daily_data (more reliable for presence)
         from ..interfaces.ohlc_normalizer import OHLCNormalizerFactory
@@ -559,10 +612,6 @@ class StrategyBacktester:
             )
             return None
 
-        benchmark_ticker = canonical_config.benchmark_ticker or self.global_config.get(
-            "benchmark", "SPY"
-        )
-
         # Prepare scenario data if not provided
         if rets_daily is None:
             monthly_closes, rets_daily = prepare_scenario_data(daily_data, self.data_cache)
@@ -576,7 +625,7 @@ class StrategyBacktester:
             daily_data,
             universe_tickers,
             benchmark_ticker,
-            lambda: False,  # No timeout
+            default_never_timed_out,
             global_config=self.global_config,
         )
 

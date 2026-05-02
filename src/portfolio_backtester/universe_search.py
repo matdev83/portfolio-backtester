@@ -15,6 +15,7 @@ import portfolio_backtester.config_loader as config_loader
 from portfolio_backtester.backtester_logic.data_fetcher import DataFetcher
 from portfolio_backtester.backtester_logic.reporting import _benchmark_returns
 from portfolio_backtester.backtester_logic.strategy_logic import generate_signals, size_positions
+from portfolio_backtester.optimization.signal_cache import default_never_timed_out
 from portfolio_backtester.backtester_logic.strategy_manager import StrategyManager
 from portfolio_backtester.interfaces import create_cache_manager, create_data_source
 from portfolio_backtester.reporting.report_directory_utils import (
@@ -219,7 +220,7 @@ def run_universe_search(args: argparse.Namespace) -> Path:
         daily_ohlc,
         candidates,
         benchmark_ticker,
-        has_timed_out=lambda: False,
+        has_timed_out=default_never_timed_out,
         global_config=global_config,
     )
     sized_signals = size_positions(

@@ -122,7 +122,11 @@ def _create_parser() -> argparse.ArgumentParser:
         "--early-stop-patience",
         type=int,
         default=10,
-        help="Stop optimisation after N successive ~zero-return evaluations.",
+        help=(
+            "Stop optimization after this many consecutive evaluations without "
+            "improving the objective. Use 0 to disable. (Unrelated to "
+            "--early-stop-zero-trials.)"
+        ),
     )
     parser.add_argument(
         "--early-stop-zero-trials",

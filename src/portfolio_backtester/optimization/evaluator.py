@@ -9,6 +9,7 @@ backends and supports both single and multi-objective optimization.
 from __future__ import annotations
 import logging
 import os
+from dataclasses import replace
 from typing import Any, Dict, List, Mapping, Optional, Union, cast, TYPE_CHECKING
 
 
@@ -44,6 +45,49 @@ from .performance_optimizer import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_trial_values(parameters: Mapping[str, Any]) -> dict[str, Any]:
+    """Convert optimizer trial values to plain Python scalars for frozendict storage."""
+    out: dict[str, Any] = {}
+    for key, val in parameters.items():
+        if isinstance(val, bool):
+            out[key] = val
+        elif isinstance(val, np.bool_):
+            out[key] = bool(val)
+        elif isinstance(val, (np.floating, np.float32, np.float64)):
+            out[key] = float(val)
+        elif isinstance(val, (np.integer, int)):
+            out[key] = int(val)
+        elif hasattr(val, "item") and callable(getattr(val, "item", None)):
+            try:
+                out[key] = val.item()
+            except Exception:  # noqa: BLE001
+                out[key] = val
+        else:
+            out[key] = val
+    return out
+
+
+def _canonical_with_merged_strategy_params(
+    canonical_config: "CanonicalScenarioConfig",
+    parameters: Mapping[str, Any],
+    global_config: Mapping[str, Any],
+) -> "CanonicalScenarioConfig":
+    """Build trial scenario config without full YAML re-normalization when possible."""
+    from ..canonical_config import freeze_config
+
+    merged = {**dict(canonical_config.strategy_params), **_coerce_trial_values(parameters)}
+    try:
+        return replace(canonical_config, strategy_params=freeze_config(merged))
+    except Exception as exc:  # noqa: BLE001
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Fast-path canonical replace failed; falling back to normalize: %s", exc)
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        scen_dict = canonical_config.to_dict()
+        scen_dict["strategy_params"] = merged
+        return ScenarioNormalizer().normalize(scenario=scen_dict, global_config=global_config)
 
 
 def _lookup_metric(metrics: Dict[str, float], name: str, default: float = -1e9) -> float:
@@ -186,13 +230,20 @@ class BacktestEvaluator:
         Returns:
             List of ticker symbols
         """
-        # Try to get universe from strategy
+        # This compatibility helper is not used by the production optimization path,
+        # but some integration tests exercise it with simple strategy mocks. Real
+        # BaseStrategy instances require global_config for get_universe(), so only
+        # call zero-argument mocks here.
         if hasattr(strategy, "get_universe"):
             try:
                 universe = strategy.get_universe()
                 return list(universe) if universe else []
+            except TypeError:
+                logger.debug(
+                    "Skipping strategy.get_universe() compatibility helper because it requires arguments."
+                )
             except Exception:
-                pass
+                logger.debug("Strategy get_universe compatibility helper failed.", exc_info=True)
 
         # Default fallback - this will be overridden by actual implementation
         return ["SPY", "TLT", "GLD", "VTI", "QQQ"]
@@ -204,6 +255,7 @@ class BacktestEvaluator:
         data: OptimizationData,
         backtester: "StrategyBacktester",
         previous_parameters: Optional[Dict[str, Any]] = None,
+        num_trials_for_metrics: Optional[int] = None,
     ) -> EvaluationResult:
         """
         Evaluate a given set of parameters by running a backtest.
@@ -230,6 +282,12 @@ class BacktestEvaluator:
             canonical_config = scenario_config
 
         global_config_bt = backtester.global_config if hasattr(backtester, "global_config") else {}
+        ff_bt = global_config_bt.get("feature_flags") or {}
+        if bool(ff_bt.get("signal_cache")):
+            from .signal_cache import SignalCache
+
+            if not isinstance(global_config_bt.get("_signal_matrix_cache"), SignalCache):
+                global_config_bt["_signal_matrix_cache"] = SignalCache()
 
         walk_forward_enabled = _resolved_walk_forward_enabled(canonical_config, global_config_bt)
         if not walk_forward_enabled and len(data.windows) > 1:
@@ -283,19 +341,11 @@ class BacktestEvaluator:
                 # If we pass canonical object, it uses its strategy_params.
                 # So we need to create a new canonical object with updated parameters.
 
-                params_dict = dict(canonical_config.strategy_params)
-                params_dict.update(parameters)
-
-                scen_dict = canonical_config.to_dict()
-                scen_dict["strategy_params"] = params_dict
-
-                # Re-normalize
-                normalizer = ScenarioNormalizer()
                 global_config = (
                     backtester.global_config if hasattr(backtester, "global_config") else {}
                 )
-                config_for_eval = normalizer.normalize(
-                    scenario=scen_dict, global_config=global_config
+                config_for_eval = _canonical_with_merged_strategy_params(
+                    canonical_config, parameters, global_config
                 )
 
                 if derived_universe:
@@ -427,11 +477,13 @@ class BacktestEvaluator:
             self.incremental_manager.new_generation()
 
         # Aggregate results
+        nt_fm = num_trials_for_metrics if num_trials_for_metrics is not None else 1
         return self._aggregate_window_results(
             window_results,
             parameters,
             data.daily,
             backtester.global_config if hasattr(backtester, "global_config") else {},
+            num_trials_for_metrics=nt_fm,
         )
 
     def _aggregate_window_results(
@@ -440,6 +492,7 @@ class BacktestEvaluator:
         parameters: Dict[str, Any],
         daily_data: Optional[pd.DataFrame],
         global_config: Dict[str, Any],
+        num_trials_for_metrics: int = 1,
     ) -> EvaluationResult:
         """Aggregate results from daily evaluation windows.
 
@@ -486,12 +539,37 @@ class BacktestEvaluator:
             except Exception:
                 benchmark_returns = pd.Series(0.0, index=combined_returns.index)
 
-        from ..reporting.performance_metrics import calculate_metrics
+        feature_flags = (
+            (global_config or {}).get("feature_flags", {})
+            if isinstance(global_config, dict)
+            else {}
+        )
+        use_fast_optimizer_metrics = bool(feature_flags.get("fast_optimizer_metrics", False))
+        if use_fast_optimizer_metrics:
+            from ..reporting.fast_objective_metrics import calculate_optimizer_metrics_fast
 
-        metrics_series = calculate_metrics(combined_returns, benchmark_returns, benchmark_ticker)
-        metrics = {
-            k: float(v) if not pd.isna(v) else float("nan") for k, v in metrics_series.items()
-        }
+            metrics_series = calculate_optimizer_metrics_fast(
+                combined_returns,
+                benchmark_returns,
+                benchmark_ticker,
+                num_trials=num_trials_for_metrics,
+            )
+        else:
+            from ..reporting.performance_metrics import calculate_metrics
+
+            metrics_series = calculate_metrics(
+                combined_returns,
+                benchmark_returns,
+                benchmark_ticker,
+                num_trials=num_trials_for_metrics,
+            )
+        metrics = cast(
+            dict[str, float],
+            {
+                str(k): float(v) if not pd.isna(v) else float("nan")
+                for k, v in metrics_series.items()
+            },
+        )
         alias_map = {
             "sharpe_ratio": "Sharpe",
             "sortino_ratio": "Sortino",

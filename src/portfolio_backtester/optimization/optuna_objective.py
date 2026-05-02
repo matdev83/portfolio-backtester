@@ -149,11 +149,15 @@ def build_objective(
         SPECIAL_SCEN_CFG_KEYS = ["position_sizer"]
 
         strategy_name = base_scen_cfg.get("strategy")
-        strategy_tunable_params = set()
+        strategy_tunable_param_names: set[str] = set()
         if strategy_name:
             strat_cls = _resolve_strategy(strategy_name)
             if strat_cls:
-                strategy_tunable_params = strat_cls.tunable_parameters()
+                tunables = strat_cls.tunable_parameters()
+                if isinstance(tunables, dict):
+                    strategy_tunable_param_names = set(tunables.keys())
+                else:
+                    strategy_tunable_param_names = set(tunables)
             else:
                 print(
                     f"Warning: Could not resolve strategy '{strategy_name}' for parameter filtering. Optimizing all parameters."
@@ -169,15 +173,15 @@ def build_objective(
 
         position_sizer = base_scen_cfg.get("position_sizer")
         if position_sizer and position_sizer in sizer_param_map:
-            strategy_tunable_params.add(sizer_param_map[position_sizer])
+            strategy_tunable_param_names.add(sizer_param_map[position_sizer])
 
         skipped_params = []
         for opt_spec in optimization_specs:
             param_name = opt_spec["parameter"]
 
             if (
-                strategy_tunable_params
-                and param_name not in strategy_tunable_params
+                strategy_tunable_param_names
+                and param_name not in strategy_tunable_param_names
                 and param_name not in SPECIAL_SCEN_CFG_KEYS
             ):
                 skipped_params.append(param_name)

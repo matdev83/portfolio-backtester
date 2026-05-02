@@ -54,18 +54,26 @@ class SequentialOrchestrator(OptimizationOrchestrator):
             logger.warning(
                 "ACCIDENTAL BYPASS: Raw scenario dictionary passed to SequentialOrchestrator.optimize. "
                 "All scenarios should be canonicalized at the boundary. "
-                "Scenario: %s", scenario_config.get('name', 'unnamed')
+                "Scenario: %s",
+                scenario_config.get("name", "unnamed"),
             )
             normalizer = ScenarioNormalizer()
             # Assuming global_config is available via backtester or something
             global_config = getattr(backtester, "global_config", {})
-            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=global_config
+            )
         else:
             canonical_config = scenario_config
 
         logger.info("Starting sequential optimization process")
 
         self.parameter_generator.initialize(canonical_config, optimization_config)
+
+        trial_budget = optimization_config.get("optuna_trials")
+        if trial_budget is None:
+            trial_budget = optimization_config.get("max_evaluations")
+        num_trials_fm: Optional[int] = int(trial_budget) if trial_budget is not None else None
 
         try:
             while (
@@ -95,6 +103,7 @@ class SequentialOrchestrator(OptimizationOrchestrator):
                     scenario_config,
                     data,
                     strategy_backtester,  # type: ignore[arg-type]
+                    num_trials_for_metrics=num_trials_fm,
                 )
 
                 self.progress_tracker.update_progress(evaluation_result.objective_value)

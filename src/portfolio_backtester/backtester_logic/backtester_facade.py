@@ -462,10 +462,20 @@ class Backtester:
         if artifact_base is not None:
             artifact_writer = ResearchArtifactWriter(Path(str(artifact_base)))
 
+        def _research_optimization_factory() -> OptimizationOrchestrator:
+            return OptimizationOrchestrator(
+                global_config=self.global_config,
+                data_source=self.data_source,
+                backtest_runner=self.backtest_runner,
+                evaluation_engine=self.evaluation_engine,
+                rng=np.random.default_rng(),
+            )
+
         orchestrator = ResearchProtocolOrchestrator(
             self.optimization_orchestrator,
             self.backtest_runner,
             artifact_writer,
+            optimization_orchestrator_factory=_research_optimization_factory,
         )
         result = orchestrator.run(
             scenario_config=scenario_config,
@@ -507,33 +517,20 @@ class Backtester:
 
         stitched_returns = getattr(optimization_result, "stitched_returns", None)
         if isinstance(stitched_returns, pd.Series):
-            from ..backtesting.strategy_backtester import StrategyBacktester
+            from ..backtesting.strategy_backtester import StrategyBacktester, _extract_close_returns
             from ..reporting.performance_metrics import calculate_metrics
 
-            benchmark_ticker = self.global_config.get("benchmark", "SPY")
-            benchmark_returns = pd.Series(0.0, index=stitched_returns.index)
-            if isinstance(daily_data, pd.DataFrame) and not daily_data.empty:
-                try:
-                    if isinstance(daily_data.columns, pd.MultiIndex):
-                        if "Close" in daily_data.columns.get_level_values("Field"):
-                            daily_close = daily_data.xs("Close", level="Field", axis=1)
-                        else:
-                            daily_close = daily_data
-                    else:
-                        daily_close = daily_data
-
-                    if benchmark_ticker in daily_close.columns:
-                        benchmark_returns = (
-                            daily_close[benchmark_ticker]
-                            .pct_change(fill_method=None)
-                            .reindex(stitched_returns.index)
-                            .fillna(0.0)
-                        )
-                except Exception:
-                    benchmark_returns = pd.Series(0.0, index=stitched_returns.index)
+            benchmark_ticker = getattr(
+                scenario_config, "benchmark_ticker", None
+            ) or self.global_config.get(
+                "benchmark_ticker", self.global_config.get("benchmark", "SPY")
+            )
+            benchmark_returns = _extract_close_returns(
+                daily_data, str(benchmark_ticker), stitched_returns.index
+            )
 
             metrics_series = calculate_metrics(
-                stitched_returns, benchmark_returns, benchmark_ticker
+                stitched_returns, benchmark_returns, str(benchmark_ticker)
             )
             metrics = {
                 k: float(v) if not pd.isna(v) else float("nan") for k, v in metrics_series.items()
