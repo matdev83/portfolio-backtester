@@ -1,0 +1,60 @@
+name: proof_dual_momentum_opt
+strategy: DualMomentumLaggedPortfolioStrategy
+
+start_date: "2018-01-01"
+end_date: "2020-12-31"
+
+position_sizer: equal_weight
+rebalance_frequency: ME
+
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+
+universe_config:
+  type: fixed
+  tickers: [QQQ]
+  n_holdings: 8
+  exact: false
+
+benchmark_ticker: SPY
+optimization_metric: Sortino
+
+train_window_months: 12
+test_window_months: 6
+walk_forward_type: rolling
+
+strategy_params:
+  lookback_months: 6
+  min_absolute_momentum: 0.0
+  lag_months: 1
+  max_holdings: 5
+  use_200sma_filter: false
+  sma_period: 200
+  trade_longs: true
+  trade_shorts: false
+
+optimize:
+  - parameter: lookback_months
+    type: int
+    min_value: 3
+    max_value: 9
+    step: 3
+  - parameter: lag_months
+    type: int
+    min_value: 0
+    max_value: 1
+    step: 1
+  - parameter: max_holdings
+    type: int
+    min_value: 5
+    max_value: 5
+    step: 1
+  - parameter: use_200sma_filter
+    type: categorical
+    choices: [true, false]
+  - parameter: min_absolute_momentum
+    type: float
+    min_value: -0.02
+    max_value: 0.04
+    step: 0.02
