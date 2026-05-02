@@ -55,6 +55,7 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         # Set defaults
         params.setdefault("lookback_months", 12)
         params.setdefault("lag_months", 1)
+        params.setdefault("momentum_skip_months", 0)
         params.setdefault("max_holdings", 10)
         params.setdefault("use_200sma_filter", True)
         params.setdefault("min_absolute_momentum", 0.0)
@@ -105,6 +106,13 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
                 "max": 3,
                 "default": 1,
                 "description": "Lag period before entry/exit confirmation",
+            },
+            "momentum_skip_months": {
+                "type": "int",
+                "min": 0,
+                "max": 3,
+                "default": 0,
+                "description": "Months skipped at the end of the momentum formation window",
             },
             "max_holdings": {
                 "type": "int",
@@ -405,15 +413,17 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         prices: pd.Series,
         current_date: pd.Timestamp,
         lookback_months: int,
+        skip_months: int = 0,
     ) -> Optional[float]:
         """Calculate momentum score for a single asset.
 
         Returns price return over lookback period, or None if insufficient data.
         """
-        lookback_date = current_date - pd.DateOffset(months=lookback_months)
+        formation_end_date = current_date - pd.DateOffset(months=max(skip_months, 0))
+        lookback_date = formation_end_date - pd.DateOffset(months=lookback_months)
 
-        # Get price at current date (or most recent before)
-        prices_up_to_current = prices[prices.index <= current_date]
+        # Get price at formation end date (or most recent before)
+        prices_up_to_current = prices[prices.index <= formation_end_date]
         if prices_up_to_current.empty:
             return None
 
@@ -437,6 +447,7 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         current_date: pd.Timestamp,
         lookback_months: int,
         price_column: str = "Close",
+        skip_months: int = 0,
     ) -> Optional[float]:
         """Calculate benchmark momentum for the same period."""
         # Extract close prices from benchmark
@@ -454,7 +465,32 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
             else:
                 bench_close = benchmark_prices.iloc[:, 0]
 
-        return self._calculate_momentum_score(bench_close, current_date, lookback_months)
+        return self._calculate_momentum_score(
+            bench_close, current_date, lookback_months, skip_months=skip_months
+        )
+
+    def _extract_benchmark_close_series(
+        self, benchmark_prices: pd.DataFrame, price_column: str = "Close"
+    ) -> Optional[pd.Series]:
+        """Return benchmark close series, or None when benchmark data is unavailable."""
+        if benchmark_prices.empty or len(benchmark_prices.columns) == 0:
+            return None
+
+        if isinstance(benchmark_prices.columns, pd.MultiIndex):
+            try:
+                bench_close = benchmark_prices.xs(price_column, level="Field", axis=1)
+                if isinstance(bench_close, pd.DataFrame):
+                    if bench_close.empty or len(bench_close.columns) == 0:
+                        return None
+                    return bench_close.iloc[:, 0]
+                return bench_close
+            except KeyError:
+                return benchmark_prices.iloc[:, 0]
+
+        if price_column in benchmark_prices.columns:
+            return benchmark_prices[price_column]
+
+        return benchmark_prices.iloc[:, 0]
 
     def _is_benchmark_above_200sma(
         self,
@@ -464,19 +500,15 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         price_column: str = "Close",
     ) -> bool:
         """Check if benchmark close is above its 200-day SMA."""
-        # Extract close prices from benchmark
-        if isinstance(benchmark_prices.columns, pd.MultiIndex):
-            try:
-                bench_close = benchmark_prices.xs(price_column, level="Field", axis=1)
-                if isinstance(bench_close, pd.DataFrame):
-                    bench_close = bench_close.iloc[:, 0]
-            except KeyError:
-                bench_close = benchmark_prices.iloc[:, 0]
-        else:
-            if price_column in benchmark_prices.columns:
-                bench_close = benchmark_prices[price_column]
-            else:
-                bench_close = benchmark_prices.iloc[:, 0]
+        bench_close = self._extract_benchmark_close_series(
+            benchmark_prices, price_column=price_column
+        )
+        if bench_close is None:
+            logger.warning(
+                "Benchmark data is missing; treating 200SMA filter as risk-off for %s.",
+                current_date,
+            )
+            return False
 
         bench_close_up_to_date = bench_close[bench_close.index <= current_date]
         if len(bench_close_up_to_date) < sma_period:
@@ -501,6 +533,7 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         Returns list of (ticker, score) tuples, sorted by score descending.
         """
         lookback_months = int(params.get("lookback_months", 12))
+        skip_months = int(params.get("momentum_skip_months", 0))
         min_abs_momentum = float(params.get("min_absolute_momentum", 0.0))
         ranking_method = str(params.get("ranking_method", "excess_total_return")).lower()
         abs_exit_buffer = float(params.get("absolute_exit_buffer", 0.0))
@@ -513,7 +546,7 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
 
         # Calculate benchmark momentum
         bench_momentum = self._calculate_benchmark_momentum(
-            benchmark_prices, current_date, lookback_months
+            benchmark_prices, current_date, lookback_months, skip_months=skip_months
         )
         if bench_momentum is None:
             return []
@@ -522,7 +555,7 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
 
         for ticker in asset_prices.columns:
             asset_momentum = self._calculate_momentum_score(
-                asset_prices[ticker], current_date, lookback_months
+                asset_prices[ticker], current_date, lookback_months, skip_months=skip_months
             )
             if asset_momentum is None:
                 continue
@@ -686,40 +719,46 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
             universe_cfg = self.canonical_config.universe_definition
         else:
             universe_cfg = self.strategy_config.get("universe_config", {})
+
+        universe_type = str(universe_cfg.get("type", "")).lower()
+        method_name = str(universe_cfg.get("method_name", "")).strip()
+        should_apply_dynamic_universe = (
+            universe_type == "method" and method_name == "get_top_weight_sp500_components"
+        )
         configured_n = universe_cfg.get("n_holdings", params.get("num_holdings", max_holdings))
-        try:
-            dynamic_universe_n = int(configured_n)
-        except (TypeError, ValueError):
-            dynamic_universe_n = 50
-        if dynamic_universe_n <= 0:
-            dynamic_universe_n = 50
+        if should_apply_dynamic_universe:
+            try:
+                dynamic_universe_n = int(configured_n)
+            except (TypeError, ValueError):
+                dynamic_universe_n = 50
+            if dynamic_universe_n <= 0:
+                dynamic_universe_n = 50
 
-        dynamic_universe_exact = bool(universe_cfg.get("exact", False))
+            dynamic_universe_exact = bool(universe_cfg.get("exact", False))
 
-        # Get top components for the current date to handle survivorship bias
-        try:
-            top_components = get_top_weight_sp500_components(
-                current_date,
-                n=dynamic_universe_n,
-                exact=dynamic_universe_exact,
-            )
+            # Get top components for the current date to handle survivorship bias.
+            try:
+                top_components = get_top_weight_sp500_components(
+                    current_date,
+                    n=dynamic_universe_n,
+                    exact=dynamic_universe_exact,
+                )
 
-            # IMPORTANT: `all_historical_data` tickers are the *local* tickers we requested
-            # from the data source (e.g., "AAPL", "SPY"), not MDMP canonical IDs.
-            # Converting Top-50 tickers to canonical IDs here makes the intersection empty.
-            top_set = {str(t).strip().upper() for t in top_components}
+                # IMPORTANT: `all_historical_data` tickers are the *local* tickers we requested
+                # from the data source (e.g., "AAPL", "SPY"), not MDMP canonical IDs.
+                # Converting Top-50 tickers to canonical IDs here makes the intersection empty.
+                top_set = {str(t).strip().upper() for t in top_components}
 
-            valid_assets = [str(a) for a in valid_assets if str(a).strip().upper() in top_set]
+                valid_assets = [str(a) for a in valid_assets if str(a).strip().upper() in top_set]
 
-            if not valid_assets:
-                logger.warning(f"No valid assets found in Top 50 for {current_date}")
+                if not valid_assets:
+                    logger.warning(f"No valid assets found in Top 50 for {current_date}")
+                    return pd.DataFrame(0.0, index=[current_date], columns=original_assets)
+
+            except Exception as e:
+                logger.error(f"Dynamic universe filtering failed: {e}")
+                # Failing safe is better than trading the wrong dynamic universe.
                 return pd.DataFrame(0.0, index=[current_date], columns=original_assets)
-
-        except Exception as e:
-            logger.error(f"Dynamic universe filtering failed: {e}")
-            # Fallback: continue with original valid_assets?
-            # Or fail safe? Failing safe (empty) is better than trading wrong universe.
-            return pd.DataFrame(0.0, index=[current_date], columns=original_assets)
         # ---------------------------------------------------
 
         # Extract close prices
