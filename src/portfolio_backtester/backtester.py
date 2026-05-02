@@ -34,8 +34,34 @@ def _create_parser() -> argparse.ArgumentParser:
         "--mode",
         type=str,
         required=True,
-        choices=["backtest", "optimize"],
+        choices=["backtest", "optimize", "research_validate"],
         help="Mode to run the backtester in.",
+    )
+    parser.add_argument(
+        "--protocol",
+        type=str,
+        default="double_oos_wfo",
+        choices=["double_oos_wfo"],
+        help="Research validation protocol (research_validate mode only).",
+    )
+    parser.add_argument(
+        "--force-new-research-run",
+        action="store_true",
+        help="Ignore prior research artifacts and start a fresh validation run.",
+    )
+    parser.add_argument(
+        "--research-skip-unseen",
+        action="store_true",
+        help="Skip validation steps that have not been seen before (protocol-specific).",
+    )
+    parser.add_argument(
+        "--research-artifact-base-dir",
+        type=str,
+        default=None,
+        help=(
+            "Optional root directory for research_validate artifacts "
+            "(defaults to data/reports when omitted)."
+        ),
     )
     parser.add_argument(
         "--scenario-name",
@@ -90,7 +116,7 @@ def _create_parser() -> argparse.ArgumentParser:
         "--n-jobs",
         type=int,
         default=8,
-        help="Parallel worker processes to use (-1 ⇒ all cores).",
+        help="Parallel worker processes to use (-1 means all cores).",
     )
     parser.add_argument(
         "--early-stop-patience",
@@ -337,16 +363,17 @@ def main(args: Optional[List[str]] = None) -> None:
 
     except Exception as e:
         logger.error(f"Unexpected error loading configuration: {e}")
-        print(f"\n❌ Unexpected configuration error: {e}", file=sys.stderr)
+        print(f"\nUnexpected configuration error: {e}", file=sys.stderr)
         print("Please check your configuration files for syntax errors.", file=sys.stderr)
         sys.exit(1)
 
-    if (
-        parsed_args.mode == "optimize"
-        and parsed_args.scenario_name is None
-        and parsed_args.scenario_filename is None
+    if parsed_args.mode in ("optimize", "research_validate") and (
+        parsed_args.scenario_name is None and parsed_args.scenario_filename is None
     ):
-        parser.error("--scenario-name or --scenario-filename is required for 'optimize' mode.")
+        parser.error(
+            "--scenario-name or --scenario-filename is required for "
+            "'optimize' or 'research_validate' mode."
+        )
 
     if parsed_args.scenario_filename:
         scenario_path = Path(parsed_args.scenario_filename)
@@ -388,7 +415,7 @@ def main(args: Optional[List[str]] = None) -> None:
             logger.debug(f"Canonicalized scenario '{canonical.name}'")
         except ScenarioNormalizationError as e:
             logger.error(f"Normalization failed for scenario: {e}")
-            print(f"\n❌ Scenario normalization error: {e}", file=sys.stderr)
+            print(f"\nScenario normalization error: {e}", file=sys.stderr)
             if e.errors:
                 for error in e.errors:
                     print(f"  - {error}", file=sys.stderr)

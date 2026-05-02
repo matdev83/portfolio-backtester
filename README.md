@@ -74,6 +74,7 @@ Use the convenience script for quick optimization runs:
 
 - **True Walk-Forward (Default)** — Re-optimize each window and stitch OOS results
 - **CV Mode Option** — Fixed-parameter time-series cross-validation when desired
+- **Double-OOS Research Protocol** — Optimize WFO architecture on a global-train period, lock the selected setup, then validate on an unseen period
 - **Dual Engines** — Optuna (Bayesian) or Genetic Algorithm
 - **Early Stopping** — Automatically stops unpromising optimization runs
 - **Resumable Studies** — Continue optimization sessions anytime
@@ -263,6 +264,131 @@ python -m src.portfolio_backtester.backtester \
 - `--n-jobs 4` — Parallel workers (use `-1` for all CPU cores)
 - `--study-name "name"` — Save/resume optimization (stored in `data/optuna_studies.db`)
 
+### Research Validation: Double-OOS WFO
+
+Use `research_validate` when you want a stricter research workflow than a normal optimization run. The protocol searches over walk-forward architecture choices on a global-training period, writes a lock file for the selected protocol, then validates once on a separate unseen period.
+
+```bash
+python -m src.portfolio_backtester.backtester \
+  --mode research_validate \
+  --scenario-filename "config/scenarios/builtins/portfolio/sharpe_momentum_portfolio_strategy/default.yaml" \
+  --protocol double_oos_wfo \
+  --optimizer optuna \
+  --optuna-trials 100
+```
+
+Add a `research_protocol` block to the scenario YAML:
+
+```yaml
+research_protocol:
+  enabled: true
+  type: double_oos_wfo
+
+  execution:
+    max_grid_cells: 100  # unique expanded grid cells; raises ResearchProtocolConfigError if exceeded
+    fail_fast: true      # reserved for future behavior; stored on the parsed config
+
+  global_train_period:
+    start_date: "2005-01-01"
+    end_date: "2018-12-31"
+
+  unseen_test_period:
+    start_date: "2019-01-01"
+    end_date: "2025-12-31"
+
+  wfo_window_grid:
+    train_window_months: [24, 36, 60, 84, 120]
+    test_window_months: [3, 6, 12]
+    wfo_step_months: [3, 6, 12]
+    walk_forward_type: [rolling]
+
+  selection:
+    top_n: 3
+    # Preferred: omit `metric` or set `metric: RobustComposite` for weighted rank selection.
+    metric: RobustComposite
+
+  scoring:
+    type: composite_rank
+    weights:
+      Calmar: 0.35
+      Sortino: 0.25
+      "Total Return": 0.20
+      "Max Drawdown": 0.10
+      Turnover: 0.10
+    directions:
+      Turnover: lower
+
+  constraints:
+    - metric: "Max Drawdown"
+      min_value: -0.35
+    - metric: "Turnover"
+      max_value: 60
+    - metric: "Years Positive %"
+      min_value: 0.55
+
+  final_unseen_mode: reoptimize_with_locked_architecture
+
+  lock:
+    enabled: true
+    refuse_overwrite: true
+
+  reporting:
+    enabled: true
+
+  # Optional: neighbor-smoothed robust score for ranking (eligible cells only).
+  robust_selection:
+    enabled: false
+    weights:
+      cell: 0.50
+      neighbor_median: 0.30
+      neighbor_min: 0.20
+```
+
+When `metric` is omitted or `RobustComposite`, a default `scoring` block matching the weights above is used if you omit `scoring`. For a single-metric selection (e.g. `metric: Calmar`), omit `scoring` entirely. Optional `constraints` require each grid architecture to satisfy metric bounds (inclusive min/max) before ranking; metric labels accept the same aliases as composite scoring. If every row fails constraints, the run raises `ResearchConstraintError`.
+
+The Cartesian-expansion grid is deduplicated after expansion; when the number of unique architecture cells exceeds `research_protocol.execution.max_grid_cells` (default 100), the run raises `ResearchProtocolConfigError` before optimization starts (`fail_fast` is parsed and defaults to true but is only documented for future use). Small worked examples live under `config/scenarios/examples/research/`.
+
+Optional `robust_selection` adjusts ranking using adjacent grid neighbors (same `walk_forward_type` and `wfo_step_months`, neighboring `train_window_months` / `test_window_months` on the sorted unique axes). Only constraint-passing rows participate in neighbor lookup; when `enabled` is false, `robust_score` in CSV/YAML still defaults to the raw cell score for convenience.
+
+```yaml
+  selection:
+    top_n: 3
+    metric: "Calmar"
+```
+
+Supported `final_unseen_mode` values:
+
+| Mode | Behavior |
+|------|----------|
+| `reoptimize_with_locked_architecture` | Re-run WFO on the unseen period using the selected WFO architecture |
+| `fixed_selected_params` | Run a single unseen backtest with selected parameters merged into `strategy_params` |
+
+Research artifacts are written under `data/reports/<scenario>/research_protocol/<run_id>/` by default. Override the root with `--research-artifact-base-dir <path>` (the scenario-safe subdirectory layout is unchanged).
+
+- `wfo_architecture_grid.csv` — Metrics and scores for each WFO architecture cell
+- `selected_protocols.yaml` — Ranked selected architectures and parameters
+- `protocol_lock.yaml` — Scenario, global config, and protocol hashes plus selected architecture
+- `unseen_test_returns.csv` and `unseen_test_metrics.yaml` — Final unseen validation outputs
+- `research_validation_report.md` — Human-readable protocol summary (canonical)
+- `research_validation_report.html` — Optional HTML derivative when `research_protocol.reporting.generate_html: true`
+- `bootstrap_significance.csv` and `bootstrap_summary.yaml` — Optional post-selection bootstrap summaries (see below)
+
+Optional `bootstrap` runs **after** unseen validation and **after** cost sensitivity (when enabled). It does not affect architecture selection or ranking; if unseen validation is skipped or absent, bootstrap is skipped.
+
+```yaml
+  bootstrap:
+    enabled: true
+    n_samples: 200
+    random_seed: 42
+    random_wfo_architecture:
+      enabled: true
+    block_shuffled_returns:
+      enabled: true
+      block_size_days: 20
+```
+
+Use `--research-skip-unseen` to generate the grid/lock artifacts without running final unseen validation. Use `--force-new-research-run` to allow lock overwrite behavior for a fresh run.
+
 ### Monte Carlo Stress Testing
 
 Test strategy robustness under synthetic market conditions:
@@ -336,6 +462,8 @@ wfo_step_months: 12      # step between window starts (months)
 wfo_embargo_bdays: 5     # optional embargo between train_end and test_start
 walk_forward_type: "rolling"  # or "expanding"
 ```
+
+For scientific validation of WFO architecture choices, use `--mode research_validate` with a scenario-level `research_protocol` block. This opt-in mode tries a grid of `train_window_months`, `test_window_months`, `wfo_step_months`, and `walk_forward_type` values on `global_train_period`, locks the selected protocol, then validates on `unseen_test_period`.
 
 ### Risk Management
 
@@ -460,7 +588,7 @@ strategy_params:
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--mode` | `backtest`, `optimize`, or `monte_carlo` | Required |
+| `--mode` | `backtest`, `optimize`, or `research_validate` | Required |
 | `--scenario-filename` | Path to scenario YAML | Required |
 | `--log-level` | `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` |
 | `--mdmp-cache-only` | Use MDMP cached data only; skip downloads | Off |
@@ -477,6 +605,15 @@ strategy_params:
 | `--study-name` | Name for resumable study | None |
 | `--pruning-enabled` | Early stopping of bad trials | Off |
 | `--early-stop-patience` | Stop after N non-improving trials | `10` |
+
+### Research Validation Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--protocol` | Research protocol for `research_validate` mode | `double_oos_wfo` |
+| `--research-artifact-base-dir` | Root directory for research artifacts (instead of `data/reports`) | None |
+| `--research-skip-unseen` | Skip final unseen validation after grid selection/lock artifacts | Off |
+| `--force-new-research-run` | Allow a fresh research run when lock artifacts would otherwise block overwrite | Off |
 
 ### Monte Carlo Parameters
 
@@ -509,6 +646,16 @@ Optimization produces:
 - **Trial History** — Performance of each tested combination
 - **Parameter Importance** — Which parameters matter most
 - **Walk-Forward Validation** — Stitched out-of-sample performance estimates
+
+### Research Validation Outputs
+
+`research_validate` produces a reproducible protocol bundle under `data/reports/<scenario>/research_protocol/<run_id>/`:
+
+- **WFO Architecture Grid** — `wfo_architecture_grid.csv` with metrics/scores for each window architecture
+- **Selected Protocols** — `selected_protocols.yaml` with ranked architectures and selected parameters
+- **Protocol Lock** — `protocol_lock.yaml` with scenario/config/protocol hashes for reproducibility
+- **Unseen Validation** — Returns and metrics for the locked final validation period
+- **Research Report** — `research_validation_report.md` summarizing the protocol and unseen result (optional `research_validation_report.html` via `reporting.generate_html`)
 
 ---
 

@@ -77,6 +77,77 @@ To run the optimizer for a specific strategy, you can use the `--scenario-filena
 ./.venv/Scripts/python.exe -m src.portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/signal/dummy_strategy/dummy_strategy_test.yaml
 ```
 
+## Research Validation Protocol
+
+The backtester includes an opt-in `research_validate` mode for double out-of-sample WFO validation. This is a protocol layer above normal optimization: it searches WFO architecture choices on `global_train_period`, writes protocol artifacts/lock files, then validates the locked setup on `unseen_test_period`.
+
+Run it with:
+
+```bash
+./.venv/Scripts/python.exe -m src.portfolio_backtester.backtester --mode research_validate --scenario-filename <scenario.yaml> --protocol double_oos_wfo
+
+Optional: `--research-artifact-base-dir <path>` writes artifacts under `<path>/<scenario>/research_protocol/...` instead of `data/reports/`.
+```
+
+Scenario YAML must include a top-level `research_protocol` block, for example:
+
+```yaml
+research_protocol:
+  enabled: true
+  type: double_oos_wfo
+  execution:
+    max_grid_cells: 100   # cap on unique expanded WFO architecture cells (raises ResearchProtocolConfigError if exceeded)
+    fail_fast: true       # reserved for future use; default true
+  global_train_period:
+    start_date: "2005-01-01"
+    end_date: "2018-12-31"
+  unseen_test_period:
+    start_date: "2019-01-01"
+    end_date: "2025-12-31"
+  wfo_window_grid:
+    train_window_months: [24, 36, 60]
+    test_window_months: [3, 6, 12]
+    wfo_step_months: [3, 6]
+    walk_forward_type: [rolling]
+  selection:
+    top_n: 3
+    metric: RobustComposite
+  scoring:
+    type: composite_rank
+    weights:
+      Calmar: 0.35
+      Sortino: 0.25
+      "Total Return": 0.20
+      "Max Drawdown": 0.10
+      Turnover: 0.10
+    directions:
+      Turnover: lower
+  final_unseen_mode: reoptimize_with_locked_architecture
+  constraints:
+    - metric: "Max Drawdown"
+      min_value: -0.35
+    - metric: "Turnover"
+      max_value: 60
+    - metric: "Years Positive %"
+      min_value: 0.55
+  robust_selection:
+    enabled: false
+    weights:
+      cell: 0.50
+      neighbor_median: 0.30
+      neighbor_min: 0.20
+```
+
+Omit `selection.metric` to get the same RobustComposite default. Single-metric selection (e.g. `metric: Calmar`) remains supported; do not set `scoring` in that case. Optional `constraints` gate architecture rows before ranking: each row needs all bounds satisfied (metric names use the same canonicalization as `scoring`); if none pass, the run fails with `ResearchConstraintError`. Optional `robust_selection` uses adjacent cells on the WFO train/test grid (same step and walk-forward type, eligible rows only) to build a `robust_score`; when `enabled`, ranking uses `robust_score` instead of the raw score. Example scenarios live under `config/scenarios/examples/research/` (small grids, suitable for smoke/CI).
+
+Implementation notes for agents:
+- Keep research protocol code under `src/portfolio_backtester/research/` unless it is only CLI/facade wiring.
+- Preserve the separation between normal `optimize` and `research_validate`; do not change existing optimizer semantics to satisfy protocol behavior.
+- Use TDD for protocol changes. Update tests under `tests/unit/research/` and `tests/integration/research/` before changing implementation.
+- Verify artifact-producing changes with focused research tests and the full suite: `./.venv/Scripts/python.exe -m pytest tests/unit/research/ tests/integration/research/ -v` and `./.venv/Scripts/python.exe -m pytest tests/ -v`.
+- Research artifacts are written under `data/reports/<scenario>/research_protocol/<run_id>/` and should include grid CSV, selected protocol YAML, lock YAML, unseen outputs, optional cost-sensitivity and bootstrap summaries, and a markdown report. Optional `research_protocol.reporting.generate_html: true` also writes `research_validation_report.html` (derivative of the same structured outputs).
+- Optional `bootstrap` (under `research_protocol`) runs after unseen validation and after `cost_sensitivity` when enabled; it writes `bootstrap_significance.csv` and `bootstrap_summary.yaml` and does not affect selection.
+
 ## Proper Python interpreter file
 
 To run all Python commands inside this project use the `.venv/Scripts/python.exe` file.

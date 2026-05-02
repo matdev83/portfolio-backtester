@@ -1,0 +1,97 @@
+# Small double-OOS WFO research example: RobustComposite (default when selection.metric omitted),
+# constraints, robust_selection, optional cost/bootstrap (commented).
+name: research_example_robust_composite_minimal
+strategy: SimpleMomentumPortfolioStrategy
+start_date: "2018-01-01"
+end_date: "2020-12-31"
+train_window_months: 12
+test_window_months: 6
+wfo_step_months: 3
+walk_forward_type: rolling
+wfo_mode: reoptimize
+position_sizer: equal_weight
+rebalance_frequency: ME
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+universe_config:
+  type: fixed
+  tickers: [AAPL, MSFT]
+benchmark_ticker: SPY
+optimization_metric: Sharpe
+strategy_params:
+  lookback_months: 6
+  num_holdings: 2
+  top_decile_fraction: 0.2
+  smoothing_lambda: 0.5
+  leverage: 1.0
+  skip_months: 0
+optimize:
+  - parameter: num_holdings
+    type: int
+    min_value: 2
+    max_value: 3
+    step: 1
+
+research_protocol:
+  enabled: true
+  type: double_oos_wfo
+  execution:
+    max_grid_cells: 100
+    fail_fast: true
+  global_train_period:
+    start_date: "2018-01-01"
+    end_date: "2019-06-30"
+  unseen_test_period:
+    start_date: "2019-07-01"
+    end_date: "2020-06-30"
+  wfo_window_grid:
+    train_window_months: [12, 18]
+    test_window_months: [6]
+    wfo_step_months: [3]
+    walk_forward_type: [rolling]
+  selection:
+    top_n: 2
+  scoring:
+    type: composite_rank
+    weights:
+      Calmar: 0.35
+      Sortino: 0.25
+      "Total Return": 0.20
+      "Max Drawdown": 0.10
+      Turnover: 0.10
+    directions:
+      Turnover: lower
+  constraints:
+    - metric: "Max Drawdown"
+      min_value: -0.9
+    - metric: "Turnover"
+      max_value: 200
+  robust_selection:
+    enabled: true
+    weights:
+      cell: 0.50
+      neighbor_median: 0.30
+      neighbor_min: 0.20
+  final_unseen_mode: fixed_selected_params
+  lock:
+    enabled: true
+    refuse_overwrite: false
+  reporting:
+    enabled: false
+
+  # Optional post-validation sweeps (keep disabled for CI / quick smoke):
+  # cost_sensitivity:
+  #   enabled: true
+  #   slippage_bps_grid: [0, 5]
+  #   commission_multiplier_grid: [1.0]
+  #   run_on: unseen
+  # bootstrap:
+  #   enabled: true
+  #   n_samples: 32
+  #   random_seed: 7
+  #   random_wfo_architecture:
+  #     enabled: false
+  #   block_shuffled_returns:
+  #     enabled: false
+  #     block_size_days: 20

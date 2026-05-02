@@ -9,6 +9,7 @@ import argparse
 import logging
 import random
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 import numpy as np
@@ -371,6 +372,15 @@ class Backtester:
                     self.daily_data_ohlc,
                     rets_df,
                 )
+        elif getattr(self.args, "mode", None) == "research_validate":
+            rets_df = (
+                self.rets_full
+                if isinstance(self.rets_full, pd.DataFrame)
+                else pd.DataFrame(self.rets_full)
+            )
+            self._run_research_validate_mode(
+                scenario, self.monthly_data, self.daily_data_ohlc, rets_df
+            )
         else:
             rets_df = (
                 self.rets_full
@@ -397,6 +407,11 @@ class Backtester:
 
         if getattr(self.args, "mode", None) == "backtest":
             self._display_results()
+        elif getattr(self.args, "mode", None) == "research_validate":
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "research_validate mode: skipping deferred optimization report and display."
+                )
         else:
             try:
                 from ..backtester_logic.execution import generate_deferred_report
@@ -428,6 +443,39 @@ class Backtester:
             logger.info(
                 f"Backtester {mode} mode execution time: {execution_time:.2f} seconds ({execution_time/60:.2f} minutes)"
             )
+
+    def _run_research_validate_mode(
+        self,
+        scenario_config: CanonicalScenarioConfig,
+        monthly_data: pd.DataFrame,
+        daily_data: pd.DataFrame,
+        rets_full: pd.DataFrame,
+    ) -> None:
+        """Run research validation mode via ``ResearchProtocolOrchestrator``."""
+        from ..research.artifacts import ResearchArtifactWriter
+        from ..research.protocol_orchestrator import ResearchProtocolOrchestrator
+
+        artifact_writer = None
+        # Set via CLI --research-artifact-base-dir or programmatic Namespace; when unset,
+        # DoubleOOSWFOProtocol uses ResearchArtifactWriter(Path("data/reports")).
+        artifact_base = getattr(self.args, "research_artifact_base_dir", None)
+        if artifact_base is not None:
+            artifact_writer = ResearchArtifactWriter(Path(str(artifact_base)))
+
+        orchestrator = ResearchProtocolOrchestrator(
+            self.optimization_orchestrator,
+            self.backtest_runner,
+            artifact_writer,
+        )
+        result = orchestrator.run(
+            scenario_config=scenario_config,
+            monthly_data=monthly_data,
+            daily_data=daily_data,
+            rets_full=rets_full,
+            args=self.args,
+            global_config=self.global_config,
+        )
+        self.results[f"{scenario_config.name}_ResearchValidation"] = result
 
     def _run_backtest_mode(
         self,

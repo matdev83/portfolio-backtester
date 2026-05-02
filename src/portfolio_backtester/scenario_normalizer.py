@@ -240,6 +240,7 @@ class ScenarioNormalizer:
             "optimizer_config",
             "strategy_params",
             "extras",
+            "research_protocol",
         }
 
         # Get valid parameter names for this strategy to distinguish params from unknown keys
