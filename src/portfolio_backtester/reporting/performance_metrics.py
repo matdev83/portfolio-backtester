@@ -282,6 +282,16 @@ def calculate_metrics(
     # lead to inconsistent comparisons vs the benchmark.
     active_rets = rets.dropna()
     active_bench_rets = bench_rets.dropna()
+    if isinstance(active_rets, pd.DataFrame):
+        if active_rets.empty or len(active_rets.columns) == 0:
+            active_rets = pd.Series(dtype=float)
+        else:
+            active_rets = active_rets.iloc[:, 0]
+    if isinstance(active_bench_rets, pd.DataFrame):
+        if active_bench_rets.empty or len(active_bench_rets.columns) == 0:
+            active_bench_rets = pd.Series(dtype=float)
+        else:
+            active_bench_rets = active_bench_rets.iloc[:, 0]
 
     if active_rets.empty:
         metrics = _default_zero_activity_metrics(is_all_zero_returns)
@@ -441,6 +451,9 @@ def calculate_metrics(
         See: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2460551
         """
         if num_trials <= 0:
+            return np.nan
+
+        if num_trials <= 1:
             return np.nan
 
         if len(rets) < 100:  # DSR requires a longer series

@@ -604,6 +604,8 @@ def generate_transaction_history_csv(backtest_results: dict, report_dir: str):
         report_dir: Directory to save the CSV file
     """
     for name, result_data in backtest_results.items():
+        if not isinstance(result_data, Mapping):
+            continue
         if "trade_history" not in result_data or result_data["trade_history"].empty:
             continue
 
