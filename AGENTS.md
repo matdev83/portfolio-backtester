@@ -230,7 +230,7 @@ The backtester supports configurable trade execution timing via `timing_config.t
 2. **Portfolio simulation** (`portfolio_logic.py`): 
    - For `time_based` mode: `rebalance_to_first_event_per_period()` collapses dense signals to the first observation per period while preserving the original timestamp.
    - `map_sparse_target_weights_to_execution_dates()` applies the execution timing remap.
-   - `_sized_signals_to_weights_daily()` expands to daily via ffill.
+   - `_sized_signals_to_weights_daily()` column-``ffill()``s event targets then ``fillna(0)``, then reindexes to the full session calendar with ``ffill`` so skipped signal rows do not zero out prior targets.
 3. **Optimizer parity** (`evaluation_engine.py`): The same remap is applied in both fast-path blocks.
 
 ### Resolution Order

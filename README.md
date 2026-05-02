@@ -22,6 +22,7 @@ A powerful Python tool for backtesting portfolio strategies with walk-forward op
 - [Rebalance Frequencies](#rebalance-frequencies)
 - [CLI Reference](#cli-reference)
 - [Example Outputs](#example-outputs)
+  - [Dual Momentum Top-N Proof Runs](#dual-momentum-top-n-proof-runs)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 - [License](#license)
@@ -93,7 +94,8 @@ Use the convenience script for quick optimization runs:
 
 ### 📋 Comprehensive Reporting
 
-- **Performance Metrics** — Sharpe, Sortino, Calmar ratios, drawdowns
+- **Performance Metrics** — Sharpe, Sortino, Calmar ratios, drawdowns (Deflated Sharpe is NaN on single non-optimized runs; optimization passes trial counts when available.)
+- **Drawdown diagnostics** — Average drawdown episode length (peak to trough) and average recovery (trough back to prior high, or trough to last bar when still underwater)
 - **Visual Reports** — Equity curves, drawdown charts, metric distributions
 - **Parameter Analysis** — Sensitivity and importance rankings
 
@@ -265,6 +267,8 @@ python -m src.portfolio_backtester.backtester \
 - `--study-name "name"` — Save/resume optimization (stored in `data/optuna_studies.db`)
 
 ### Research Validation: Double-OOS WFO
+
+Methodology (periods, grids, artifacts, CV/resume, limitations): see [`docs/research_validation.md`](docs/research_validation.md).
 
 Use `research_validate` when you want a stricter research workflow than a normal optimization run. The protocol searches over walk-forward architecture choices on a global-training period, writes a lock file for the selected protocol, then validates once on a separate unseen period.
 
@@ -656,6 +660,48 @@ Optimization produces:
 - **Protocol Lock** — `protocol_lock.yaml` with scenario/config/protocol hashes for reproducibility
 - **Unseen Validation** — Returns and metrics for the locked final validation period
 - **Research Report** — `research_validation_report.md` summarizing the protocol and unseen result (optional `research_validation_report.html` via `reporting.generate_html`)
+
+### Dual Momentum Top-N Proof Runs
+
+The `DualMomentumLaggedPortfolioStrategy` has two useful S&P 500 Top-N scenarios with different goals:
+
+| Scenario | Purpose | Key Settings | Cache-only Proof Result |
+|----------|---------|--------------|-------------------------|
+| `config/scenarios/builtins/portfolio/dual_momentum_lagged_portfolio_strategy/default.yaml` | Risk-managed production default | 12-month lookback, 1-month entry confirmation lag, 200SMA market filter, residual momentum ranking, volatility targeting | Backtest total return `195.82%` vs SPX `324.29%` |
+| `config/scenarios/builtins/portfolio/dual_momentum_lagged_portfolio_strategy/canonical_topn_momentum.yaml` | Aggressive canonical-style momentum sleeve | 6-month lookback, no entry lag, no 200SMA gate, no volatility target, excess total-return ranking | Backtest total return `688.77%` vs SPX `324.29%` |
+| `canonical_topn_momentum` with `momentum_skip_months: 1` | Academic-style skip-month momentum | 6-month lookback, skip 1 month in formation window, no entry lag, excess total-return ranking | Backtest total return `559.45%` vs SPX `324.29%` |
+
+Both proof runs used MDMP cache-only data with `cache_max_age_seconds: 604800`, fetched `48/49` requested symbols, and derived `47` dynamic universe tickers from prefetched OHLC columns. This validates the dynamic point-in-time S&P 500 Top-N flow without relying on live downloads.
+
+Run the canonical-style proof backtest:
+
+```bash
+python -m src.portfolio_backtester.backtester   --mode backtest   --scenario-filename config/scenarios/builtins/portfolio/dual_momentum_lagged_portfolio_strategy/canonical_topn_momentum.yaml   --mdmp-cache-only   --log-level INFO
+```
+
+Latest cache-only canonical proof metrics:
+
+| Metric | Strategy | SPX |
+|--------|----------|-----|
+| Total Return | `688.77%` | `324.29%` |
+| Ann. Return | `18.02%` | `12.29%` |
+| Sharpe | `0.8939` | `0.7129` |
+| Sortino | `1.3205` | `1.0656` |
+| Max Drawdown | `-31.22%` | `-33.92%` |
+| Beta | `0.9656` | `1.0000` |
+
+A 4-trial optimization smoke run on the canonical-style scenario completed without errors and produced stitched out-of-sample total return `357.09%` vs SPX `324.29%`:
+
+```bash
+python -m src.portfolio_backtester.backtester   --mode optimize   --scenario-filename config/scenarios/builtins/portfolio/dual_momentum_lagged_portfolio_strategy/canonical_topn_momentum.yaml   --mdmp-cache-only   --log-level INFO   --optuna-trials 4   --n-jobs 1   --random-seed 123
+```
+
+Notes:
+
+- `lag_months` is an entry-confirmation lag, not the same as an academic skip-month momentum definition.
+- `momentum_skip_months` skips the most recent months in the formation window (e.g. skip 1 = use prices ending one month before the rebalance date). This is closer to Jegadeesh & Titman-style momentum.
+- These proof runs use the available MDMP `Close` series, not dividend-adjusted or total-return constituent data, so paper-to-paper comparisons should account for data construction differences.
+- The canonical-style scenario is higher-return and less risk-managed than the production default by design.
 
 ---
 
