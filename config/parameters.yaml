@@ -21,8 +21,9 @@ GLOBAL_CONFIG:
     # Increase parallelism for R2K scale while staying safe for the system.
     max_workers: 5
 
-    # Cache max-age (seconds) for MDMP reads; 14400 = 4 hours.
-    cache_max_age_seconds: 14400
+    # Cache max-age (seconds) for MDMP reads; 604800 = 1 week.
+    # Increased from 4 hours to tolerate stale caches during testing.
+    cache_max_age_seconds: 604800
 
     # If true, only use cached MDMP data and skip downloads.
     cache_only: false
@@ -525,3 +526,72 @@ OPTIMIZER_PARAMETER_DEFAULTS:
     low: 63
     high: 252
     step: 63
+  # SeasonalSignalStrategy (and similar intramonth calendars)
+  entry_day:
+    type: "int"
+    low: -21
+    high: 21
+    step: 1
+  hold_days:
+    type: "int"
+    low: 1
+    high: 20
+    step: 1
+  direction:
+    type: "categorical"
+    values: ["long", "short"]
+  trade_month_1:
+    type: "categorical"
+    values: [true, false]
+  trade_month_2:
+    type: "categorical"
+    values: [true, false]
+  trade_month_3:
+    type: "categorical"
+    values: [true, false]
+  trade_month_4:
+    type: "categorical"
+    values: [true, false]
+  trade_month_5:
+    type: "categorical"
+    values: [true, false]
+  trade_month_6:
+    type: "categorical"
+    values: [true, false]
+  trade_month_7:
+    type: "categorical"
+    values: [true, false]
+  trade_month_8:
+    type: "categorical"
+    values: [true, false]
+  trade_month_9:
+    type: "categorical"
+    values: [true, false]
+  trade_month_10:
+    type: "categorical"
+    values: [true, false]
+  trade_month_11:
+    type: "categorical"
+    values: [true, false]
+  trade_month_12:
+    type: "categorical"
+    values: [true, false]
+  month_local_seasonal_windows:
+    type: "categorical"
+    values: [true, false]
+  simple_high_low_stop_loss:
+    type: "categorical"
+    values: [true, false]
+  simple_high_low_take_profit:
+    type: "categorical"
+    values: [true, false]
+  stop_loss_atr_multiple:
+    type: "float"
+    low: 0.0
+    high: 10.0
+    step: 0.1
+  take_profit_atr_multiple:
+    type: "float"
+    low: 0.0
+    high: 10.0
+    step: 0.1

@@ -1,10 +1,19 @@
 name: seasonal_signal_strategy
 strategy: SeasonalSignalStrategy
 
+# Month-end label only affects time_based paths; with signal_based + daily scan,
+# the engine evaluates on every session in the data index (see timing_config).
 rebalance_frequency: ME
 position_sizer: equal_weight
 timing_config:
   mode: signal_based
   scan_frequency: D
+  # Keep at 1 for daily seasonal windows; higher values skip scans and rely on
+  # portfolio forward-fill of last targets—verify behavior before tightening.
   min_holding_period: 1
+# Default: cross-month holds (windows anchored in prior months may include this session).
+# Set strategy_params.month_local_seasonal_windows: true for legacy month-only anchors.
+# Optional: simple_high_low_stop_loss / simple_high_low_take_profit (default false) require
+# daily OHLC MultiIndex columns when enabled.
+# Optional: stop_loss_atr_multiple / take_profit_atr_multiple (default 0) for 21-day ATR exits.
 strategy_params: {}

@@ -1,0 +1,68 @@
+# Optimize SeasonalSignalStrategy: August-only calendar, SPY only, long-only, cross-month holds.
+#
+# Run (example): disable plateau early-stop so all trials can run (grid is only 20 entry_day values).
+#   ./.venv/Scripts/python.exe -m src.portfolio_backtester.backtester --mode optimize ^
+#     --scenario-filename config/scenarios/builtins/signal/seasonal_signal_strategy/optimize_august_entry_sortino_spy.yaml ^
+#     --mdmp-cache-only --optuna-trials 40 --early-stop-patience 0
+#
+# Grid: entry_day 1..20 (step 1). hold_days fixed at 10 (edit strategy_params / optimize to sweep).
+
+name: seasonal_optimize_august_entry_sortino_spy
+strategy: SeasonalSignalStrategy
+
+start_date: "2005-01-01"
+end_date: "2024-12-31"
+
+benchmark_ticker: SPY
+rebalance_frequency: ME
+position_sizer: equal_weight
+
+timing_config:
+  mode: signal_based
+  scan_frequency: D
+  min_holding_period: 1
+  trade_execution_timing: bar_close
+
+universe_config:
+  type: fixed
+  tickers: [SPY]
+
+train_window_months: 36
+test_window_months: 12
+
+# Single evaluation span over [start_date, end_date] (see optimization_orchestrator is_wfo handling).
+extras:
+  is_wfo: false
+
+optimization_targets:
+  - name: Sortino
+    direction: maximize
+
+optimize:
+  - parameter: entry_day
+    type: int
+    min_value: 1
+    max_value: 20
+    step: 1
+
+strategy_params:
+  direction: long
+  # Default false: hold may extend past the entry month (entry month gates trade_month_*).
+  month_local_seasonal_windows: false
+  hold_days: 10
+  entry_day: 1
+  trade_month_1: false
+  trade_month_2: false
+  trade_month_3: false
+  trade_month_4: false
+  trade_month_5: false
+  trade_month_6: false
+  trade_month_7: false
+  trade_month_8: true
+  trade_month_9: false
+  trade_month_10: false
+  trade_month_11: false
+  trade_month_12: false
+
+costs_config:
+  transaction_costs_bps: 0.0

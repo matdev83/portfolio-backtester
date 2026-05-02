@@ -1,0 +1,42 @@
+# Canonical-style concentrated S&P 500 top-weight dual momentum.
+#
+# This variant keeps PIT S&P 500 top-weight universe handling but removes
+# return-suppressing overlays from the production default: no volatility target,
+# no 200SMA market gate, no lag confirmation, no exit hysteresis, and raw excess
+# total-return ranking. It is intended as a closer comparison to academic-style
+# monthly long-only momentum sleeves than the risk-managed default.
+
+name: dual_momentum_lagged_portfolio_canonical_topn_momentum
+strategy: DualMomentumLaggedPortfolioStrategy
+
+position_sizer: equal_weight
+rebalance_frequency: ME
+
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+
+universe_config:
+  type: method
+  method_name: get_top_weight_sp500_components
+  n_holdings: 20
+
+benchmark_ticker: SPX
+
+strategy_params:
+  lookback_months: 6
+  lag_months: 0
+  max_holdings: 10
+  min_absolute_momentum: 0.1
+
+  use_200sma_filter: false
+  sma_period: 250
+
+  ranking_method: excess_total_return
+  absolute_exit_buffer: 0.0
+  relative_exit_buffer: 0.0
+  vol_target_enabled: false
+  panic_overlay_enabled: false
+
+  trade_longs: true
+  trade_shorts: false
