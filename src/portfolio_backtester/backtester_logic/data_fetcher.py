@@ -11,6 +11,7 @@ import math
 from collections.abc import Mapping as MappingABC
 from typing import Any, Dict, List, Optional, Tuple, Iterable, Union, Mapping
 from ..canonical_config import CanonicalScenarioConfig
+from ..reporting.risk_free import resolve_risk_free_yield_ticker
 
 
 import pandas as pd
@@ -141,6 +142,10 @@ class DataFetcher:
         if global_benchmark and not _is_synthetic_benchmark_ticker(global_benchmark):
             all_tickers.add(global_benchmark)
 
+        rf_global = resolve_risk_free_yield_ticker(self.global_config, None)
+        if rf_global:
+            all_tickers.add(rf_global)
+
         scenario_has_universe = False
 
         for scenario in scenarios_to_run:
@@ -150,6 +155,10 @@ class DataFetcher:
             if scenario_config.benchmark_ticker:
                 if not _is_synthetic_benchmark_ticker(scenario_config.benchmark_ticker):
                     all_tickers.add(scenario_config.benchmark_ticker)
+
+            rf_scenario = resolve_risk_free_yield_ticker(self.global_config, scenario_config)
+            if rf_scenario:
+                all_tickers.add(rf_scenario)
 
             # Universe handling
             if scenario_config.universe_definition:

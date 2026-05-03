@@ -178,6 +178,7 @@ class OptimizationOrchestrator:
         from ..optimization.wfo_window import WFOWindow
         from ..backtesting.strategy_backtester import StrategyBacktester
         from ..reporting.performance_metrics import calculate_metrics
+        from ..reporting.risk_free import build_optional_risk_free_series
         from ..scenario_normalizer import ScenarioNormalizer
 
         if not windows:
@@ -342,7 +343,12 @@ class OptimizationOrchestrator:
             except Exception:
                 benchmark_returns = pd.Series(0.0, index=stitched_returns.index)
 
-        metrics_series = calculate_metrics(stitched_returns, benchmark_returns, benchmark_ticker)
+        rf_opt = build_optional_risk_free_series(
+            daily_data, self.global_config, stitched_returns.index, scenario_config
+        )
+        metrics_series = calculate_metrics(
+            stitched_returns, benchmark_returns, benchmark_ticker, risk_free_rets=rf_opt
+        )
         metrics = {
             k: float(v) if not pd.isna(v) else float("nan") for k, v in metrics_series.items()
         }

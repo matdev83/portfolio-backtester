@@ -2,17 +2,26 @@ import logging
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from scipy.stats import kurtosis
+from ..numba_optimized import compensated_kurtosis_fast, compensated_skew_fast
+
 try:
-    from ..numba_optimized import compensated_skew_fast, compensated_kurtosis_fast
     _HAS_NUMBA_MOMENTS = True
 except Exception:
-    from scipy.stats import skew
     _HAS_NUMBA_MOMENTS = False
+
 
 logger = logging.getLogger(__name__)
 
 EPSILON = 1e-9
+
+__all__ = (
+    "calculate_metrics",
+    "calculate_sharpe",
+    "calculate_sortino",
+    "calculate_max_drawdown",
+    "compensated_skew_fast",
+    "compensated_kurtosis_fast",
+)
 
 
 def _infer_steps_per_year(index: pd.DatetimeIndex) -> int:
@@ -87,33 +96,23 @@ def calculate_max_drawdown(equity_curve):
     return (equity_curve / equity_curve.cummax() - 1).min()
 
 
-def calculate_metrics(rets, bench_rets, bench_ticker_name, name="Strategy", num_trials=1):
-    if rets.empty or rets.abs().max() < EPSILON:
-        return pd.Series(np.nan, name=name)
+def calculate_metrics(
+    rets,
+    bench_rets,
+    bench_ticker_name,
+    name="Strategy",
+    num_trials=1,
+    risk_free_rets=None,
+):
+    """Delegate to :mod:`performance_metrics` for a single canonical implementation."""
+    from .performance_metrics import calculate_metrics as full_calculate_metrics
 
-    steps_per_year = _infer_steps_per_year(rets.index)
-    equity_curve = (1 + rets).cumprod()
-
-    common_index = rets.index.intersection(bench_rets.index)
-    rets_aligned, bench_aligned = rets.loc[common_index], bench_rets.loc[common_index]
-
-    alpha, beta, r_squared = _calculate_capm(
-        rets_aligned, bench_aligned, bench_ticker_name, steps_per_year
+    return full_calculate_metrics(
+        rets,
+        bench_rets,
+        bench_ticker_name,
+        name=name,
+        num_trials=num_trials,
+        trade_stats=None,
+        risk_free_rets=risk_free_rets,
     )
-
-    metrics = {
-        "Total Return": (1 + rets).prod() - 1,
-        "Ann. Return": (1 + rets).prod() ** (steps_per_year / len(rets)) - 1,
-        "Ann. Vol": rets.std() * np.sqrt(steps_per_year),
-        "Sharpe": calculate_sharpe(rets, steps_per_year),
-        "Sortino": calculate_sortino(rets, steps_per_year),
-        "Calmar": ((1 + rets).prod() ** (steps_per_year / len(rets)) - 1)
-        / abs(calculate_max_drawdown(equity_curve)),
-        "Alpha (ann)": alpha,
-        "Beta": beta,
-        "R^2": r_squared,
-        "Max Drawdown": calculate_max_drawdown(equity_curve),
-        "Skew": float(compensated_skew_fast(rets.values) if _HAS_NUMBA_MOMENTS else skew(rets)),
-        "Kurtosis": float(compensated_kurtosis_fast(rets.values) if _HAS_NUMBA_MOMENTS else kurtosis(rets)),
-    }
-    return pd.Series(metrics, name=name)

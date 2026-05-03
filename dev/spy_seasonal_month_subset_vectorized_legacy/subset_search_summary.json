@@ -1,0 +1,35 @@
+{
+  "best_row": {
+    "bitmask": 3708,
+    "n_months": 8,
+    "months_csv": "March;April;May;June;July;October;November;December",
+    "Sortino": 1.8056727406351851,
+    "Sharpe": 1.1125298017107736,
+    "Calmar": 1.1272080827464346,
+    "Total Return": 7.077328070780791,
+    "Max Drawdown": -0.09615091029819278,
+    "Ann Return": 0.1083820832515503
+  },
+  "period": {
+    "start": "2005-01-01",
+    "end": "2024-12-31"
+  },
+  "hold_days": 10,
+  "legacy_sortino": true,
+  "per_month_entry_day_from_csv": {
+    "1": 14,
+    "2": 3,
+    "3": 16,
+    "4": 11,
+    "5": 14,
+    "6": 20,
+    "7": 7,
+    "8": 17,
+    "9": 4,
+    "10": 19,
+    "11": 15,
+    "12": 14
+  },
+  "evaluated_subsets": 4095,
+  "method": "vectorized union of SeasonalSignalStrategy cross-month windows; SPY close-to-close bar_close; risk_free_metrics_enabled=false for parity with monthly report Sortino"
+}

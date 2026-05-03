@@ -1,0 +1,35 @@
+{
+  "country_etf_dual_momentum_universe": {
+    "description": "Single-country / regional equity ETFs for dual momentum sleeves (see scenario country_etf_universe_spy_benchmark).",
+    "benchmark": "SPY",
+    "symbols": [
+      { "ticker": "ARGT", "country": "Argentina", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EWA", "country": "Australia", "turnover_bucket_usd": ">50M" },
+      { "ticker": "EWZ", "country": "Brazil", "turnover_bucket_usd": ">1B" },
+      { "ticker": "EWC", "country": "Canada", "turnover_bucket_usd": ">50M" },
+      { "ticker": "ECH", "country": "Chile", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "FXI", "country": "China", "turnover_bucket_usd": ">1B" },
+      { "ticker": "EWQ", "country": "France", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EWG", "country": "Germany", "turnover_bucket_usd": ">50M" },
+      { "ticker": "EWH", "country": "Hong Kong", "turnover_bucket_usd": ">50M" },
+      { "ticker": "INDA", "country": "India", "turnover_bucket_usd": ">50M" },
+      { "ticker": "EIDO", "country": "Indonesia", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EIS", "country": "Israel", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EWI", "country": "Italy", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EWJ", "country": "Japan", "turnover_bucket_usd": ">50M" },
+      { "ticker": "EWM", "country": "Malaysia", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EWW", "country": "Mexico", "turnover_bucket_usd": ">50M" },
+      { "ticker": "EPU", "country": "Peru", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EPOL", "country": "Poland", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "KSA", "country": "Saudi Arabia", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EWS", "country": "Singapore", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EZA", "country": "South Africa", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EWY", "country": "South Korea", "turnover_bucket_usd": ">1B" },
+      { "ticker": "EWL", "country": "Switzerland", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EWT", "country": "Taiwan", "turnover_bucket_usd": ">50M" },
+      { "ticker": "TUR", "country": "Turkey", "turnover_bucket_usd": "10M-50M" },
+      { "ticker": "EWU", "country": "United Kingdom", "turnover_bucket_usd": ">50M" },
+      { "ticker": "VNM", "country": "Vietnam", "turnover_bucket_usd": "10M-50M" }
+    ]
+  }
+}

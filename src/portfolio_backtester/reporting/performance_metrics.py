@@ -1,5 +1,23 @@
+"""Performance metrics for reporting (Rich tables, CSV, optimizer parity).
+
+Canonical entry point: :func:`calculate_metrics`.
+
+**Sharpe:** With risk-free series aligned and non-empty, Sharpe uses annualized
+mean and volatility of **excess** returns. Otherwise it uses **geometric**
+annualized return divided by annualized volatility (legacy path). See
+``docs/performance_metrics.md``.
+
+**Tail Ratio:** Custom percentile ratio (95th pct of wins vs 5th pct of losses),
+not average gain / average loss.
+
+**Deflated Sharpe:** Column name in reports; implementation returns a
+PSR-like probability (normal CDF of a z-statistic), not the paper DSR formula.
+Requires ``num_trials > 1`` and sufficient history for a defined value.
+"""
+
 import logging
 import warnings
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -7,6 +25,7 @@ import statsmodels.api as sm
 from scipy.stats import kurtosis, linregress, norm, skew
 from statsmodels.tsa.stattools import adfuller
 from ..numba_optimized import drawdown_duration_and_recovery_fast
+from .metric_display import SHARPE_PATH_EXCESS, SHARPE_PATH_LEGACY_CAGR_VOL
 
 logger = logging.getLogger(__name__)
 
@@ -177,8 +196,10 @@ def _default_zero_activity_metrics(is_all_zero_returns: bool) -> dict:
         "Kurtosis": np.nan,
         "R^2": NEUTRAL,
         "K-Ratio": ZERO if is_all_zero_returns else VERY_BAD,
-        "ADF Statistic": np.nan,
-        "ADF p-value": np.nan,
+        "ADF Statistic (equity)": np.nan,
+        "ADF p-value (equity)": np.nan,
+        "ADF Statistic (returns)": np.nan,
+        "ADF p-value (returns)": np.nan,
         "Deflated Sharpe": ZERO if is_all_zero_returns else VERY_BAD,
     }
     return m
@@ -204,9 +225,13 @@ def _ensure_expected_keys(metrics_dict: dict) -> dict:
         "Kurtosis",
         "R^2",
         "K-Ratio",
-        "ADF Statistic",
-        "ADF p-value",
+        "ADF Statistic (equity)",
+        "ADF p-value (equity)",
+        "ADF Statistic (returns)",
+        "ADF p-value (returns)",
+        "Tail Ratio (mean)",
         "Deflated Sharpe",
+        "Max DD Recovery Time (bars)",
     ]
     for k in expected:
         metrics_dict.setdefault(k, np.nan)
@@ -272,7 +297,13 @@ def _capm_on_zeros(rets: pd.Series, active_bench_rets: pd.Series, bench_ticker_n
 
 
 def calculate_metrics(
-    rets, bench_rets, bench_ticker_name, name="Strategy", num_trials=1, trade_stats=None
+    rets,
+    bench_rets,
+    bench_ticker_name,
+    name="Strategy",
+    num_trials=1,
+    trade_stats=None,
+    risk_free_rets: Optional[pd.Series] = None,
 ):
     is_all_zero_returns = _is_all_zero(rets)
     # IMPORTANT:
@@ -297,22 +328,49 @@ def calculate_metrics(
         metrics = _default_zero_activity_metrics(is_all_zero_returns)
         if not active_bench_rets.empty and is_all_zero_returns:
             metrics.update(_capm_on_zeros(rets, active_bench_rets, bench_ticker_name))
-        return pd.Series(_ensure_expected_keys(metrics), name=name)
+        out = pd.Series(_ensure_expected_keys(metrics), name=name)
+        out.attrs["sharpe_path"] = SHARPE_PATH_LEGACY_CAGR_VOL
+        return out
 
     # If active_rets is not empty, proceed with normal calculation.
     # Note: _infer_steps_per_year should ideally use rets.index if active_rets is empty
     # but the functions below (sharpe, calmar etc) use active_rets.
     # The current structure means if active_rets is empty, we don't reach here.
     # If it's not empty, then active_rets.index is valid.
-    steps_per_year = _infer_steps_per_year(active_rets.index)
+    steps_per_year = _infer_steps_per_year(pd.DatetimeIndex(active_rets.index))
+
+    excess_active: pd.Series | None = None
+    use_rf_effective = False
+    if risk_free_rets is not None and not risk_free_rets.empty:
+        rf_aligned = risk_free_rets.reindex(active_rets.index).ffill().bfill()
+        excess_active = (active_rets.astype(float) - rf_aligned.astype(float)).dropna()
+        use_rf_effective = excess_active is not None and not excess_active.empty
+
+    def sharpe_traditional_excess(excess: pd.Series) -> float:
+        """Annualized mean excess return / annualized volatility of excess (sample std)."""
+        if excess.empty or excess.isnull().all():
+            return np.nan
+        steps_ex = _infer_steps_per_year(pd.DatetimeIndex(excess.index))
+        mean_excess = float(excess.mean() * steps_ex)
+        vol_excess = float(excess.std(ddof=1) * np.sqrt(steps_ex))
+        if pd.isna(mean_excess) or pd.isna(vol_excess):
+            return np.nan
+        if vol_excess < EPSILON_FOR_DIVISION:
+            if abs(mean_excess) < EPSILON_FOR_DIVISION:
+                return 0.0
+            return np.inf if mean_excess > 0 else -np.inf
+        return mean_excess / vol_excess
 
     def sortino_ratio(r, target=0):
         if r.empty or r.isnull().all():
             return np.nan
+        steps_loc = (
+            _infer_steps_per_year(pd.DatetimeIndex(r.index)) if len(r) >= 1 else steps_per_year
+        )
         target_returns = r - target
         downside_risk = np.sqrt(np.mean(np.minimum(0, target_returns) ** 2))
 
-        annualized_mean_return = r.mean() * steps_per_year
+        annualized_mean_return = r.mean() * steps_loc
         if pd.isna(annualized_mean_return) or pd.isna(
             downside_risk
         ):  # If either is NaN, Sortino is NaN
@@ -332,7 +390,7 @@ def calculate_metrics(
         # The original formula simplifies to mean_return / downside_risk_per_period, then annualize.
         # Or, (annualized_mean_return) / (annualized_downside_risk).
         # Annualized downside risk = downside_risk * np.sqrt(steps_per_year)
-        annualized_downside_risk = downside_risk * np.sqrt(steps_per_year)
+        annualized_downside_risk = downside_risk * np.sqrt(steps_loc)
         if (
             annualized_downside_risk < EPSILON_FOR_DIVISION
         ):  # Check again after annualization, though less likely to change category
@@ -350,17 +408,21 @@ def calculate_metrics(
     def ann(x):
         if x.empty or x.isnull().all():
             return np.nan
+        steps_a = _infer_steps_per_year(pd.DatetimeIndex(x.index))
         prod = (1 + x).prod()
         if prod < 0:
             return -1.0
-        return prod ** (steps_per_year / len(x)) - 1
+        return prod ** (steps_a / len(x)) - 1
 
     def ann_vol(x):
         if x.empty or x.isnull().all():
             return np.nan
-        return x.std() * np.sqrt(steps_per_year)
+        steps_v = _infer_steps_per_year(pd.DatetimeIndex(x.index))
+        return x.std() * np.sqrt(steps_v)
 
     def sharpe(x):
+        if use_rf_effective and excess_active is not None:
+            return sharpe_traditional_excess(excess_active)
         if x.empty or x.isnull().all():
             return np.nan
         annualized_return = ann(x)
@@ -431,17 +493,29 @@ def calculate_metrics(
                 return -np.inf  # Negative return, zero drawdown
         return annualized_return / abs(max_dd)
 
-    def stationarity_test(series):
-        """Performs ADF test on the cumulative P&L (equity curve)."""
+    def stationarity_test_equity(series):
+        """ADF test on cumulative equity (price-like series)."""
         if len(series) < 40:
             return np.nan, np.nan
 
-        # The ADF test should be run on the price series (cumulative returns)
         cumulative_pnl = (1 + series).cumprod()
 
         try:
             result = adfuller(cumulative_pnl)
             return result[0], result[1]  # ADF Statistic, p-value
+        except Exception:
+            return np.nan, np.nan
+
+    def stationarity_test_returns(series):
+        """ADF test on per-period returns (stationarity of return process)."""
+        if len(series) < 40:
+            return np.nan, np.nan
+        clean = series.dropna()
+        if len(clean) < 40:
+            return np.nan, np.nan
+        try:
+            result = adfuller(clean)
+            return result[0], result[1]
         except Exception:
             return np.nan, np.nan
 
@@ -456,7 +530,9 @@ def calculate_metrics(
         if num_trials <= 1:
             return np.nan
 
-        if len(rets) < 100:  # DSR requires a longer series
+        rser = excess_active if use_rf_effective and excess_active is not None else rets
+
+        if len(rser) < 100:  # DSR requires a longer series
             return np.nan
 
         sr = sharpe(rets)
@@ -464,26 +540,15 @@ def calculate_metrics(
             return np.nan
 
         # Guard against precision loss on near-constant returns
-        std_rets = (
-            rets.std().item()
-            if not pd.isna(rets.std())
-            else (
-                lambda: (
-                    warnings.warn(
-                        "Precision loss occurred in moment calculation due to catastrophic cancellation. This occurs when the data are nearly identical. Results may be unreliable.",
-                        RuntimeWarning,
-                    ),
-                    0.0,
-                )[1]
-            )()
-        )
+        std_rets_val = rser.std(ddof=1)
+        std_rets = float(std_rets_val) if pd.notna(std_rets_val) else 0.0
         if std_rets <= EPSILON_FOR_DIVISION:
             # Near-constant returns – DSR undefined without emitting warnings.
             return np.nan
         # Use numerically-stable implementations for skew and kurtosis
-        sk = _safe_moment(skew, rets)
-        k_excess = _safe_moment(kurtosis, rets)
-        n = len(rets)
+        sk = _safe_moment(skew, rser)
+        k_excess = _safe_moment(kurtosis, rser)
+        n = len(rser)
 
         # The expected SR of random strategies is not necessarily zero.
         # We use the formula for the expected maximum SR from a set of trials.
@@ -569,6 +634,20 @@ def calculate_metrics(
 
         return upper_tail / abs(lower_tail)
 
+    def tail_ratio_mean(rets):
+        """Ratio of mean positive return to mean absolute negative return (common platform style)."""
+        if rets.empty or rets.isnull().all():
+            return np.nan
+        positive_rets = rets[rets > 0]
+        negative_rets = rets[rets < 0]
+        if positive_rets.empty or negative_rets.empty:
+            return np.nan
+        pos_mean = float(positive_rets.mean())
+        neg_mean = float(negative_rets.mean())
+        if abs(neg_mean) < EPSILON_FOR_DIVISION:
+            return np.inf if pos_mean > 0 else np.nan
+        return pos_mean / abs(neg_mean)
+
     def drawdown_duration_and_recovery(equity_curve):
         """Calculate average drawdown duration and recovery time."""
         if equity_curve.empty or equity_curve.isnull().all():
@@ -641,7 +720,8 @@ def calculate_metrics(
             beta = np.nan
             r_squared = np.nan
 
-    adf_stat, adf_p_value = stationarity_test(active_rets)
+    adf_eq_stat, adf_eq_p = stationarity_test_equity(active_rets)
+    adf_ret_stat, adf_ret_p = stationarity_test_returns(active_rets)
 
     # Coefficient of determination (R^2)
     r_squared = r_squared if "r_squared" in locals() else np.nan
@@ -681,18 +761,23 @@ def calculate_metrics(
     var_5pct = value_at_risk(active_rets, 0.05)
     cvar_5pct = conditional_value_at_risk(active_rets, 0.05)
     tail_ratio_95 = tail_ratio(active_rets, 95)
+    tail_ratio_mean_v = tail_ratio_mean(active_rets)
 
     # Calculate drawdown metrics using full equity curve
     equity_curve = (1 + rets).cumprod()
     avg_dd_duration, avg_recovery_time = drawdown_duration_and_recovery(equity_curve)
 
     # Base metrics
+    vol_series = excess_active if use_rf_effective and excess_active is not None else active_rets
+    sortino_series = (
+        excess_active if use_rf_effective and excess_active is not None else active_rets
+    )
     base_metrics = {
         "Total Return": total_ret(active_rets),
         "Ann. Return": ann(active_rets),
-        "Ann. Vol": ann_vol(active_rets),
+        "Ann. Vol": ann_vol(vol_series),
         "Sharpe": sharpe(active_rets),
-        "Sortino": sortino_ratio(active_rets),
+        "Sortino": sortino_ratio(sortino_series),
         "Calmar": calmar(active_rets),
         "Alpha (ann)": alpha,
         "Beta": beta,
@@ -702,6 +787,7 @@ def calculate_metrics(
         "VaR (5%)": var_5pct,
         "CVaR (5%)": cvar_5pct,
         "Tail Ratio": tail_ratio_95,
+        "Tail Ratio (mean)": tail_ratio_mean_v,
         "Avg DD Duration": avg_dd_duration,
         "Avg Recovery Time": avg_recovery_time,
         # For summary metrics, emit a RuntimeWarning on near-constant data to match tests' expectation,
@@ -710,8 +796,10 @@ def calculate_metrics(
         "Kurtosis": _safe_moment(kurtosis, active_rets),
         "R^2": r_squared,
         "K-Ratio": k_ratio,
-        "ADF Statistic": adf_stat,
-        "ADF p-value": adf_p_value,
+        "ADF Statistic (equity)": adf_eq_stat,
+        "ADF p-value (equity)": adf_eq_p,
+        "ADF Statistic (returns)": adf_ret_stat,
+        "ADF p-value (returns)": adf_ret_p,
         "Deflated Sharpe": deflated_sharpe_ratio(active_rets, num_trials),
     }
 
@@ -792,16 +880,21 @@ def calculate_metrics(
 
     # Calculate additional derived metrics
     max_dd_recovery_time = calculate_max_dd_recovery_time(rets)
+    max_dd_recovery_bars = calculate_max_dd_recovery_bars(rets)
     max_flat_period = calculate_max_flat_period(rets)
 
     base_metrics.update(
         {
             "Max DD Recovery Time (days)": max_dd_recovery_time,
+            "Max DD Recovery Time (bars)": max_dd_recovery_bars,
             "Max Flat Period (days)": max_flat_period,
         }
     )
 
     metrics = pd.Series(base_metrics, name=name)
+    metrics.attrs["sharpe_path"] = (
+        SHARPE_PATH_EXCESS if use_rf_effective else SHARPE_PATH_LEGACY_CAGR_VOL
+    )
     return metrics
 
 
@@ -847,6 +940,34 @@ def calculate_max_dd_recovery_time(rets):
     except Exception as e:
         logger.warning(f"Could not calculate max drawdown recovery time: {e}")
         logger.debug(f"rets that caused the error:\n{rets.to_string()}")
+        return np.nan
+
+
+def calculate_max_dd_recovery_bars(rets):
+    """Maximum drawdown recovery length in observation bars (episode logic aligned with calendar-days helper).
+
+    Counts bars from first observation strictly underwater until recovery to prior peak watermark,
+    using the same threshold heuristic as :func:`calculate_max_dd_recovery_time`.
+    """
+    if rets.empty or not isinstance(rets.index, pd.DatetimeIndex):
+        return 0
+    try:
+        cumulative = (1 + rets).cumprod()
+        running_max = cumulative.expanding().max()
+        drawdown = cumulative / running_max - 1
+        max_recovery_bars = 0
+        in_drawdown = False
+        start_i: int | None = None
+        for i, dd_value in enumerate(drawdown):
+            if dd_value < -1e-6 and not in_drawdown:
+                in_drawdown = True
+                start_i = i
+            elif dd_value >= -1e-6 and in_drawdown:
+                in_drawdown = False
+                if start_i is not None:
+                    max_recovery_bars = max(max_recovery_bars, i - start_i)
+        return max_recovery_bars
+    except Exception:
         return np.nan
 
 

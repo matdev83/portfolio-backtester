@@ -9,11 +9,23 @@ and leveraging the existing Numba optimizations.
 import pandas as pd
 import numpy as np
 import hashlib
-from typing import Dict
+from typing import Dict, Union
 from dataclasses import dataclass
 import threading
 
 from ..numba_optimized import atr_fast_fixed
+
+
+def _align_ts_to_ohlc_index(ts: Union[pd.Timestamp, str], index: pd.Index) -> pd.Timestamp:
+    """Align a wall-clock timestamp to the OHLC index timezone for label comparisons."""
+    t = pd.Timestamp(ts)
+    if not isinstance(index, pd.DatetimeIndex):
+        return t.tz_localize(None) if t.tzinfo is not None else t
+    if index.tz is None:
+        return t.tz_localize(None) if t.tzinfo is not None else t
+    if t.tzinfo is None:
+        return pd.Timestamp(year=t.year, month=t.month, day=t.day, tz=index.tz)
+    return t.tz_convert(index.tz)
 
 
 @dataclass(frozen=True)
@@ -59,6 +71,8 @@ class OptimizedATRService:
         """
         if asset_ohlc_history is None or asset_ohlc_history.empty:
             return pd.Series(dtype=float)
+
+        current_date = _align_ts_to_ohlc_index(current_date, asset_ohlc_history.index)
 
         # Extract symbols for cache key
         symbols = tuple(sorted(self._extract_tickers(asset_ohlc_history)))

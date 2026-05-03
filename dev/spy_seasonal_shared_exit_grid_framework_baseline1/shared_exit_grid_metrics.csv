@@ -1,0 +1,2 @@
+idx,simple_high_low_stop_loss,simple_high_low_take_profit,stop_loss_atr_multiple,take_profit_atr_multiple,Sortino,Sharpe,Total Return,Max Drawdown
+0,False,False,0.0,0.0,1.916098886206716,1.1787220811937111,9.709801790958974,-0.1730644965642899

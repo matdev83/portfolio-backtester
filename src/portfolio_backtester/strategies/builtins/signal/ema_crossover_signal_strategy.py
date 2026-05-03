@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import Dict, Any, Optional, Union, Mapping, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, Union, Mapping, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ....canonical_config import CanonicalScenarioConfig
 
+import numpy as np
 import pandas as pd
 
 
@@ -84,6 +85,51 @@ class EmaCrossoverSignalStrategy(SignalStrategy):
             return reduced
         # Single-level columns; assume already prices
         return df
+
+    def _leverage_for_signal_row(self, current_date: pd.Timestamp) -> float:
+        return float(self.leverage)
+
+    def generate_signal_matrix(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        non_universe_historical_data: Optional[pd.DataFrame],
+        rebalance_dates: pd.DatetimeIndex,
+        universe_tickers: List[str],
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
+        use_sparse_nan_for_inactive_rows: bool = False,
+    ) -> Optional[pd.DataFrame]:
+        cols = list(universe_tickers)
+        close_prices = (
+            self._extract_close_frame(all_historical_data).astype(float).reindex(columns=cols)
+        )
+        min_periods = max(self.fast_ema_days, self.slow_ema_days)
+        cum_non_na = close_prices.notna().cumsum()
+        fast = close_prices.ewm(span=self.fast_ema_days).mean()
+        slow = close_prices.ewm(span=self.slow_ema_days).mean()
+
+        idx = pd.DatetimeIndex(rebalance_dates)
+        fill_value = np.nan if use_sparse_nan_for_inactive_rows else 0.0
+        result = pd.DataFrame(fill_value, index=idx, columns=cols, dtype=float)
+        if len(idx) == 0 or len(cols) == 0:
+            return result
+
+        sub_fast = fast.reindex(idx)
+        sub_slow = slow.reindex(idx)
+        sub_cum = cum_non_na.reindex(idx)
+        valid = sub_cum.ge(min_periods)
+        comp = sub_fast.gt(sub_slow) & valid
+        num = comp.sum(axis=1).to_numpy(dtype=np.int64)
+        leverages = np.array(
+            [self._leverage_for_signal_row(pd.Timestamp(d)) for d in idx],
+            dtype=float,
+        )
+        with np.errstate(divide="ignore", invalid="ignore"):
+            w_per_row = np.where(num > 0, leverages / num.astype(float), 0.0)
+        dense = np.where(comp.to_numpy(dtype=bool), w_per_row[:, np.newaxis], 0.0)
+        result.iloc[:, :] = dense.astype(float)
+        return result
 
     def generate_signals(
         self,

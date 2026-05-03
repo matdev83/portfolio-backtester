@@ -94,7 +94,7 @@ Use the convenience script for quick optimization runs:
 
 ### 📋 Comprehensive Reporting
 
-- **Performance Metrics** — Sharpe, Sortino, Calmar ratios, drawdowns (Deflated Sharpe is NaN on single non-optimized runs; optimization passes trial counts when available.)
+- **Performance Metrics** — By default (after loading `config/parameters.yaml`), **Sharpe**, **Sortino**, and **Deflated Sharpe** use **excess returns** over the implied per-bar risk-free rate from the configured Treasury yield index (`risk_free_yield_ticker`, default `^IRX`), using simple split: annual yield % divided by `steps_per_year` per bar. Set `risk_free_metrics_enabled: false` in `GLOBAL_CONFIG` for legacy **annualized return / annualized volatility** Sharpe everywhere, or override per scenario in `extras` (see AGENTS.md). If yield data are missing or all-NaN for the window, those metrics fall back to the legacy path. (Deflated Sharpe stays NaN on single non-optimized runs when trial count is 1.) Rich console row naming is controlled by `metrics_display_profile` (`legacy` default, or `platform_standard` / `verbose`); CSV keeps canonical metric keys. See [docs/performance_metrics.md](docs/performance_metrics.md) for formulas, legacy vs excess Sharpe, **Tail Ratio** vs **Gain/Loss Mean Ratio**, ADF equity vs returns, and how the **Deflated Sharpe** column relates to PSR-style statistics.
 - **Drawdown diagnostics** — Average drawdown episode length (peak to trough) and average recovery (trough back to prior high, or trough to last bar when still underwater)
 - **Visual Reports** — Equity curves, drawdown charts, metric distributions
 - **Parameter Analysis** — Sensitivity and importance rankings

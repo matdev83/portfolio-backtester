@@ -1,0 +1,98 @@
+{
+  "best_row": {
+    "idx": 0,
+    "simple_high_low_stop_loss": false,
+    "simple_high_low_take_profit": false,
+    "stop_loss_atr_multiple": 0.0,
+    "take_profit_atr_multiple": 0.0,
+    "Sortino": 1.916098886206716,
+    "Sharpe": 1.1787220811937111,
+    "Total Return": 9.709801790958974,
+    "Max Drawdown": -0.1730644965642899
+  },
+  "top_25": [
+    {
+      "idx": 0,
+      "simple_high_low_stop_loss": false,
+      "simple_high_low_take_profit": false,
+      "stop_loss_atr_multiple": 0.0,
+      "take_profit_atr_multiple": 0.0,
+      "Sortino": 1.916098886206716,
+      "Sharpe": 1.1787220811937111,
+      "Total Return": 9.709801790958974,
+      "Max Drawdown": -0.1730644965642899
+    },
+    {
+      "idx": 1,
+      "simple_high_low_stop_loss": false,
+      "simple_high_low_take_profit": false,
+      "stop_loss_atr_multiple": 0.0,
+      "take_profit_atr_multiple": 0.25,
+      "Sortino": 1.813117582803243,
+      "Sharpe": 1.1222600776634524,
+      "Total Return": 7.766343161594861,
+      "Max Drawdown": -0.17306449656428968
+    }
+  ],
+  "elapsed_seconds": 25.51065200002631,
+  "n_evaluations": 2,
+  "grid": {
+    "simple_high_low_stop_loss": [
+      false,
+      true
+    ],
+    "simple_high_low_take_profit": [
+      false,
+      true
+    ],
+    "stop_loss_atr_multiple_levels": 51,
+    "take_profit_atr_multiple_levels": 41,
+    "expected_total_evaluations": 8364
+  },
+  "costs_applied_global_config": {
+    "portfolio_value": 100000.0,
+    "commission_per_share": 0.005,
+    "commission_min_per_order": 1.0,
+    "commission_max_percent_of_trade": 0.005,
+    "slippage_bps": 0.5
+  },
+  "entry_by_month": {
+    "1": 1,
+    "2": 1,
+    "3": 16,
+    "4": 11,
+    "5": 14,
+    "6": 20,
+    "7": 7,
+    "8": 1,
+    "9": 1,
+    "10": 19,
+    "11": 15,
+    "12": 14
+  },
+  "trade_months": {
+    "1": false,
+    "2": false,
+    "3": true,
+    "4": true,
+    "5": true,
+    "6": true,
+    "7": true,
+    "8": false,
+    "9": false,
+    "10": true,
+    "11": true,
+    "12": true
+  },
+  "hold_days": 10,
+  "period": {
+    "start": "2005-01-01",
+    "end": "2024-12-31"
+  },
+  "legacy_sortino": true,
+  "parity_notes": [
+    "Per-month entry days via monkeypatch on SeasonalSignalStrategy.get_entry_date_for_month;",
+    "production class uses a single entry_day for all months.",
+    "No costs_config.transaction_costs_bps: simulation uses detailed commission+slippage."
+  ]
+}

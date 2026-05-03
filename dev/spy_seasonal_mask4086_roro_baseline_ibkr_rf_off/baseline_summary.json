@@ -1,0 +1,93 @@
+{
+  "params_path": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\dev\\spy_intramonth_detailed_ibkr_rf_off_2005_2024_final\\best_subset_month_params.tsv",
+  "bitmask": 4086,
+  "active_calendar_months": [
+    2,
+    3,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+  ],
+  "entry_day_by_month": {
+    "1": 19,
+    "2": 7,
+    "3": 16,
+    "4": 1,
+    "5": 17,
+    "6": 20,
+    "7": 7,
+    "8": 17,
+    "9": 7,
+    "10": 19,
+    "11": 14,
+    "12": 14
+  },
+  "hold_days_by_month": {
+    "1": 14,
+    "2": 6,
+    "3": 11,
+    "4": 13,
+    "5": 6,
+    "6": 18,
+    "7": 10,
+    "8": 5,
+    "9": 6,
+    "10": 8,
+    "11": 5,
+    "12": 6
+  },
+  "period": {
+    "start": "2005-01-01",
+    "end": "2024-12-31"
+  },
+  "costs": {
+    "portfolio_value": 100000.0,
+    "commission_per_share": 0.005,
+    "commission_min_per_order": 1.0,
+    "commission_max_percent_of_trade": 0.005,
+    "slippage_bps": 0.5
+  },
+  "risk_free_metrics_enabled": false,
+  "detailed_path": "SeasonalSignalStrategy.generate_signal_matrix disabled",
+  "metrics_use_carlos_roro_false": {
+    "Total Return": 10.45467192291858,
+    "Ann. Return": 0.12761944026850092,
+    "Ann. Vol": 0.08461803431809983,
+    "Sharpe": 1.508182520392146,
+    "Sortino": 2.6357748873065927,
+    "Calmar": 1.1714651958018518,
+    "Max Drawdown": -0.10894001864148184
+  },
+  "metrics_use_carlos_roro_true": {
+    "Total Return": 3.058722716899749,
+    "Ann. Return": 0.07143931230447587,
+    "Ann. Vol": 0.04934300941157362,
+    "Sharpe": 1.4478101995886667,
+    "Sortino": 2.2463405241192356,
+    "Calmar": 1.0473078327037602,
+    "Max Drawdown": -0.06821233459129783
+  },
+  "drawdown_summary": {
+    "min_underwater_false": -0.10894001864148184,
+    "min_underwater_true": -0.06821233459129783,
+    "max_drawdown_metric_false": -0.10894001864148184,
+    "max_drawdown_metric_true": -0.06821233459129783
+  },
+  "carlos_overlay": {
+    "mdmp_symbol": "MDMP:RORO.CARLOS",
+    "daily_ohlc_has_carlos_ticker_level": true,
+    "sessions_in_calendar": 5242,
+    "sessions_in_output_window": 5116,
+    "risk_off_sessions_window": 1128,
+    "risk_off_share_window": 0.22048475371383894,
+    "roro_like_tickers_in_ohlc": [
+      "MDMP:RORO.CARLOS"
+    ],
+    "max_abs_daily_return_delta_off_minus_on": 0.11687200516462326
+  }
+}

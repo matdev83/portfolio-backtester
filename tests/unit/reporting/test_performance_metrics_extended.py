@@ -167,13 +167,19 @@ def test_calculate_metrics_full_run(random_returns, benchmark_returns):
         "VaR (5%)",
         "CVaR (5%)",
         "Tail Ratio",
+        "Tail Ratio (mean)",
         "Skew",
         "Kurtosis",
         "Deflated Sharpe",
+        "ADF Statistic (equity)",
+        "ADF Statistic (returns)",
+        "Max DD Recovery Time (bars)",
     ]
     for key in expected_keys:
         assert key in metrics
-        assert not np.isnan(metrics[key])
+        assert not np.isnan(metrics[key]), key
+
+    assert metrics.attrs.get("sharpe_path") in ("excess", "legacy_cagr_vol")
 
 
 def test_calculate_metrics_insufficient_data():

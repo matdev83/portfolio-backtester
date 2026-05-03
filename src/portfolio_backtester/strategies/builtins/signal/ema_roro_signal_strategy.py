@@ -47,6 +47,11 @@ class EmaRoroSignalStrategy(EmaCrossoverSignalStrategy):
         )
         return base
 
+    def _leverage_for_signal_row(self, current_date: pd.Timestamp) -> float:
+        if (current_date.day % 2) == 0:
+            return float(self.base_leverage * self.risk_off_leverage_multiplier)
+        return float(self.base_leverage)
+
     def generate_signals(
         self,
         all_historical_data: pd.DataFrame,

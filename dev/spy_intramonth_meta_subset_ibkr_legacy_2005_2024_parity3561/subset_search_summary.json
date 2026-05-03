@@ -1,0 +1,94 @@
+{
+  "best_bitmask": 3561,
+  "best_sortino": 5.877814396435239,
+  "elapsed_seconds": 15.034969299973454,
+  "evaluated_subsets": 4095,
+  "per_month_csv": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\dev\\spy_intramonth_per_month_grid_ibkr_legacy_2005_2024\\per_month_best.csv",
+  "period": {
+    "start": "2005-01-01",
+    "end": "2024-12-31"
+  },
+  "costs": {
+    "portfolio_value": 100000.0,
+    "commission_per_share": 0.005,
+    "commission_min_per_order": 1.0,
+    "commission_max_percent_of_trade": 0.005,
+    "slippage_bps": 0.5
+  },
+  "per_month_entry_hold": {
+    "1": {
+      "entry_day": 11,
+      "hold_days": 1
+    },
+    "2": {
+      "entry_day": 9,
+      "hold_days": 1
+    },
+    "3": {
+      "entry_day": 11,
+      "hold_days": 1
+    },
+    "4": {
+      "entry_day": 1,
+      "hold_days": 1
+    },
+    "5": {
+      "entry_day": 17,
+      "hold_days": 3
+    },
+    "6": {
+      "entry_day": 1,
+      "hold_days": 1
+    },
+    "7": {
+      "entry_day": 2,
+      "hold_days": 1
+    },
+    "8": {
+      "entry_day": 8,
+      "hold_days": 1
+    },
+    "9": {
+      "entry_day": 11,
+      "hold_days": 1
+    },
+    "10": {
+      "entry_day": 11,
+      "hold_days": 1
+    },
+    "11": {
+      "entry_day": 15,
+      "hold_days": 1
+    },
+    "12": {
+      "entry_day": 16,
+      "hold_days": 1
+    }
+  },
+  "best_row": {
+    "bitmask": 3561,
+    "n_months": 8,
+    "months_csv": "January;April;June;July;August;September;November;December",
+    "Sortino": 5.877814396435239,
+    "Sharpe": 1.1322282586520254,
+    "Calmar": 1.7663891746809222,
+    "Total Return": 0.9577839723065749,
+    "Max Drawdown": -0.01969319381927237,
+    "Ann Return": 0.03478584437725596,
+    "Trades": 286,
+    "Total_Cost_frac": 0.024342850540029402
+  },
+  "parity_check": {
+    "bitmask": 3561,
+    "max_abs_ret_diff_common_index": 3.714785368202911e-09,
+    "sortino_framework_common_index": 5.774194937790222,
+    "sortino_vectorized_common_index": 5.877814396435239,
+    "skipped": false
+  },
+  "limitations": [
+    "Union-of-windows target matches patched SeasonalSignalStrategy.generate_signal_matrix OR semantics (per-calendar-month hold_days); differs from generate_signals first-anchor resolution.",
+    "Optional --parity-mask: daily net returns typically match BacktestRunner within ~1e-9 on index overlap; Sortino can still differ slightly due to NaN stripping / steps-per-year inference inside metrics.",
+    "Per-month params come from IBKR cost-aware grid Sortino unless overridden CSV; monthly YAML optimizer summary uses different objectives/costs.",
+    "Commission replication follows spy_intramonth_per_month_grid_ibkr_legacy_2005_2024.py helpers."
+  ]
+}

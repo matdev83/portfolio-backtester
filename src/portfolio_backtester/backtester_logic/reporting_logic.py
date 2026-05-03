@@ -2,6 +2,7 @@ import pandas as pd
 from typing import Optional
 from ..reporting.optimizer_report_generator import create_optimization_report
 from ..reporting.performance_metrics import calculate_metrics
+from ..reporting.risk_free import build_optional_risk_free_series
 from ..interfaces.attribute_accessor_interface import (
     IAttributeAccessor,
     create_attribute_accessor,
@@ -155,7 +156,23 @@ def generate_optimization_report(
     if report_returns is not None and not report_returns.empty:
         benchmark_ticker = _resolve_benchmark_ticker(backtester)
         benchmark_returns = _get_benchmark_returns(backtester, report_returns)
-        performance_metrics = calculate_metrics(report_returns, benchmark_returns, benchmark_ticker)
+        daily_ohlc = getattr(backtester, "daily_data_ohlc", None)
+        rf_opt = (
+            build_optional_risk_free_series(
+                daily_ohlc,
+                backtester.global_config,
+                report_returns.index,
+                scenario_config,
+            )
+            if daily_ohlc is not None
+            else None
+        )
+        performance_metrics = calculate_metrics(
+            report_returns,
+            benchmark_returns,
+            benchmark_ticker,
+            risk_free_rets=rf_opt,
+        )
     else:
         logger.warning("No returns data available for performance metrics calculation")
         performance_metrics = {}

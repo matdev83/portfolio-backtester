@@ -1,0 +1,95 @@
+{
+  "bitmask": 3958,
+  "months": [
+    "February",
+    "March",
+    "May",
+    "June",
+    "July",
+    "September",
+    "October",
+    "November",
+    "December"
+  ],
+  "excluded_months": [
+    "January",
+    "April",
+    "August"
+  ],
+  "entry_by_month": {
+    "1": 19,
+    "2": 7,
+    "3": 16,
+    "4": 1,
+    "5": 17,
+    "6": 20,
+    "7": 7,
+    "8": 17,
+    "9": 7,
+    "10": 19,
+    "11": 14,
+    "12": 14
+  },
+  "hold_by_month": {
+    "1": 13,
+    "2": 5,
+    "3": 10,
+    "4": 12,
+    "5": 5,
+    "6": 17,
+    "7": 9,
+    "8": 14,
+    "9": 5,
+    "10": 7,
+    "11": 6,
+    "12": 5
+  },
+  "costs": {
+    "portfolio_value": 100000.0,
+    "commission_per_share": 0.005,
+    "commission_min_per_order": 1.0,
+    "commission_max_percent_of_trade": 0.005,
+    "slippage_bps": 0.5
+  },
+  "fast_matrix_metrics": {
+    "Total Return": 9.550705327300594,
+    "Ann. Return": 0.12306272788626726,
+    "Ann. Vol": 0.083319589156699,
+    "Sharpe": 1.47699633581754,
+    "Sortino": 2.600844606673288,
+    "Calmar": 1.209852662270514,
+    "Max Drawdown": -0.10171711955017493
+  },
+  "detailed_daily_metrics": {
+    "Total Return": 5.86634602331973,
+    "Ann. Return": 0.09954951517628352,
+    "Ann. Vol": 0.07830255315351248,
+    "Sharpe": 1.2713444347225344,
+    "Sortino": 2.22613870066255,
+    "Calmar": 0.931494725105195,
+    "Max Drawdown": -0.10687072346549387
+  },
+  "return_diff": {
+    "common_rows": 5116,
+    "max_abs_diff": 0.0670955685249711,
+    "sum_abs_diff": 0.9249112416996714,
+    "rows_diff_gt_1e_12": 250
+  },
+  "fast_stats": {
+    "non_zero_return_days": 1263,
+    "first_return": "2005-01-01 00:00:00-05:00",
+    "last_return": "2024-12-31 00:00:00-05:00",
+    "mean_daily_return": 0.00047422744337483524,
+    "down_days": 572,
+    "up_days": 691
+  },
+  "detailed_stats": {
+    "non_zero_return_days": 1139,
+    "first_return": "2005-01-01 00:00:00-05:00",
+    "last_return": "2024-12-31 00:00:00-05:00",
+    "mean_daily_return": 0.0003886416606646486,
+    "down_days": 532,
+    "up_days": 607
+  },
+  "detail_forced_by": "SeasonalSignalStrategy.generate_signal_matrix temporarily disabled; strategy params unchanged."
+}

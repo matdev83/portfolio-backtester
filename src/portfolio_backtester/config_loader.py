@@ -245,6 +245,13 @@ def load_config():
                 "'GLOBAL_CONFIG' section is missing or empty in parameters.yaml."
             )
 
+        from .reporting.risk_free import DEFAULT_RISK_FREE_YIELD_TICKER
+
+        GLOBAL_CONFIG.setdefault("risk_free_metrics_enabled", True)
+        GLOBAL_CONFIG.setdefault("metrics_display_profile", "legacy")
+        if GLOBAL_CONFIG.get("risk_free_metrics_enabled", True):
+            GLOBAL_CONFIG.setdefault("risk_free_yield_ticker", DEFAULT_RISK_FREE_YIELD_TICKER)
+
         # Add Monte Carlo and WFO robustness configurations to global config
         GLOBAL_CONFIG["monte_carlo_config"] = params_data.get("monte_carlo_config", {})
         GLOBAL_CONFIG["wfo_robustness_config"] = params_data.get("wfo_robustness_config", {})

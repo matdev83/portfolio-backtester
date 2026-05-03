@@ -27,6 +27,24 @@ def test_generate_signals_accepts_tz_aware_current_date(sample_historical_data):
     assert not out.isna().any().any()
 
 
+def test_generate_signal_matrix_handles_tz_aware_rebalance_index() -> None:
+    """Regression: naive bdate_range entry/window vs tz-aware scan index must not raise."""
+    tz = "America/New_York"
+    naive_idx = pd.bdate_range("2024-11-01", periods=40)
+    aware_idx = naive_idx.tz_localize(tz)
+    strategy = SeasonalSignalStrategy({"strategy_params": {"entry_day": 2, "hold_days": 4}})
+    mat = strategy.generate_signal_matrix(
+        pd.DataFrame(),
+        pd.DataFrame(),
+        None,
+        aware_idx,
+        ["SPY"],
+    )
+    assert mat is not None
+    assert len(mat) == len(aware_idx)
+    assert mat.index.equals(aware_idx)
+
+
 def test_tunable_parameters_include_calendar_filters_and_direction():
     tunables = SeasonalSignalStrategy.tunable_parameters()
     assert "month_local_seasonal_windows" in tunables
@@ -36,6 +54,7 @@ def test_tunable_parameters_include_calendar_filters_and_direction():
     assert "simple_high_low_take_profit" in tunables
     assert "entry_day" in tunables
     assert "hold_days" in tunables
+    assert tunables["hold_days"]["min"] == 5
     assert "direction" in tunables
     assert tunables["direction"]["type"] == "categorical"
     assert set(tunables["direction"]["values"]) == {"long", "short"}
@@ -186,6 +205,79 @@ def test_cross_month_trade_month_gates_entry_month_not_tail_month(sample_histori
         pd.Timestamp("2023-02-06"),
     )
     assert (sig_feb5 == 0.0).all().all()
+
+
+def test_per_month_hold_extends_january_into_february(sample_historical_data):
+    """January uses a longer mapped hold; February default is shorter — tail still active."""
+    config = {
+        "strategy_params": {
+            "direction": "long",
+            "entry_day": 1,
+            "hold_days": 3,
+            "hold_days_by_month": {1: 12},
+            "month_local_seasonal_windows": False,
+        }
+    }
+    strategy = SeasonalSignalStrategy(config)
+    jan_entry = strategy.get_entry_date_for_month(pd.Timestamp("2023-01-01"), 1)
+    window_end = jan_entry + pd.tseries.offsets.BDay(12 - 1)
+    sig_mid = strategy.generate_signals(
+        sample_historical_data,
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.Timestamp("2023-02-03"),
+    )
+    assert sig_mid.loc["2023-02-03", "AAPL"] == pytest.approx(0.5)
+    sig_after = strategy.generate_signals(
+        sample_historical_data,
+        pd.DataFrame(),
+        pd.DataFrame(),
+        window_end + pd.tseries.offsets.BDay(1),
+    )
+    assert sig_after.loc[sig_after.index[0], "AAPL"] == pytest.approx(0.0)
+
+
+def test_per_month_entry_day_for_february(sample_historical_data):
+    """February uses mapped entry_day while January falls back to strategy default."""
+    config = {
+        "strategy_params": {
+            "direction": "long",
+            "entry_day": 1,
+            "hold_days": 5,
+            "entry_day_by_month": {"feb": 10},
+            "month_local_seasonal_windows": True,
+        }
+    }
+    strategy = SeasonalSignalStrategy(config)
+    jan_entry = strategy.get_entry_date_for_month(pd.Timestamp("2023-01-01"), 1)
+    assert jan_entry.month == 1
+    feb_entry = strategy.get_entry_date_for_month(pd.Timestamp("2023-02-01"), 10)
+    assert feb_entry.month == 2
+
+    sig_jan = strategy.generate_signals(
+        sample_historical_data, pd.DataFrame(), pd.DataFrame(), jan_entry
+    )
+    assert sig_jan.loc[jan_entry, "AAPL"] == pytest.approx(0.5)
+
+    sig_before_feb = strategy.generate_signals(
+        sample_historical_data,
+        pd.DataFrame(),
+        pd.DataFrame(),
+        feb_entry - pd.tseries.offsets.BDay(1),
+    )
+    assert (sig_before_feb == 0.0).all().all()
+
+    sig_feb = strategy.generate_signals(
+        sample_historical_data, pd.DataFrame(), pd.DataFrame(), feb_entry
+    )
+    assert sig_feb.loc[feb_entry, "AAPL"] == pytest.approx(0.5)
+
+
+def test_invalid_month_key_in_entry_day_map_raises():
+    with pytest.raises(ValueError, match="entry_day_by_month"):
+        SeasonalSignalStrategy(
+            {"strategy_params": {"entry_day_by_month": {"invalid": 1}, "entry_day": 1}}
+        )
 
 
 def test_short_strategy_entry_and_exit(sample_historical_data):

@@ -1,0 +1,369 @@
+{
+  "period": {
+    "start": "2005-01-01",
+    "end": "2024-12-31"
+  },
+  "costs": {
+    "portfolio_value": 100000.0,
+    "commission_per_share": 0.005,
+    "commission_min_per_order": 1.0,
+    "commission_max_percent_of_trade": 0.005,
+    "slippage_bps": 0.5
+  },
+  "risk_free": "off (scenario extras + risk_free_rets=None in Sortino)",
+  "detail_path": "precompute_anchor_scan + allocate_from_scan matches SeasonalSignalStrategy._resolve_active_entry_date scan order (k=0 first)",
+  "task_b_elapsed_seconds": 22.185033399960957,
+  "total_elapsed_seconds": 2577.452361799951,
+  "best_bitmask": 3958,
+  "best_sortino_fast_first_anchor_scan": 2.6438280868094086,
+  "best_row": {
+    "bitmask": 3958,
+    "n_months": 9,
+    "months_csv": "February;March;May;June;July;September;October;November;December",
+    "Sortino": 2.6438280868094086,
+    "Sharpe": 1.5045697216749856,
+    "Calmar": 1.252640688580289,
+    "Total Return": 9.550705390749558,
+    "Max Drawdown": -0.10171711747469037,
+    "Ann Return": 0.12741500007389828,
+    "Trades": 320,
+    "Total_Cost_frac": 0.027225436012569146
+  },
+  "top_alternatives": [
+    {
+      "bitmask": 3958,
+      "n_months": 9,
+      "months_csv": "February;March;May;June;July;September;October;November;December",
+      "Sortino": 2.6438280868094086,
+      "Sharpe": 1.5045697216749856,
+      "Calmar": 1.252640688580289,
+      "Total Return": 9.550705390749558,
+      "Max Drawdown": -0.10171711747469037,
+      "Ann Return": 0.12741500007389828,
+      "Trades": 320,
+      "Total_Cost_frac": 0.027225436012569146
+    },
+    {
+      "bitmask": 3966,
+      "n_months": 10,
+      "months_csv": "February;March;April;May;June;July;September;October;November;December",
+      "Sortino": 2.6063084086085135,
+      "Sharpe": 1.5160411983094628,
+      "Calmar": 1.335124577872647,
+      "Total Return": 11.205169393802969,
+      "Max Drawdown": -0.10171711747469014,
+      "Ann Return": 0.13580502353081814,
+      "Trades": 320,
+      "Total_Cost_frac": 0.02722019016727705
+    },
+    {
+      "bitmask": 3702,
+      "n_months": 8,
+      "months_csv": "February;March;May;June;July;October;November;December",
+      "Sortino": 2.5933938921957296,
+      "Sharpe": 1.4237883363417196,
+      "Calmar": 1.143550851383848,
+      "Total Return": 7.687331432943743,
+      "Max Drawdown": -0.10171711747469014,
+      "Ann Return": 0.11631869628849278,
+      "Trades": 280,
+      "Total_Cost_frac": 0.0238509831343047
+    },
+    {
+      "bitmask": 3926,
+      "n_months": 8,
+      "months_csv": "February;March;May;July;September;October;November;December",
+      "Sortino": 2.5921806821490145,
+      "Sharpe": 1.4331008255644113,
+      "Calmar": 1.140468216307567,
+      "Total Return": 7.639515812412569,
+      "Max Drawdown": -0.10171711747469014,
+      "Ann Return": 0.11600513953430713,
+      "Trades": 320,
+      "Total_Cost_frac": 0.027221764794268247
+    },
+    {
+      "bitmask": 3894,
+      "n_months": 8,
+      "months_csv": "February;March;May;June;September;October;November;December",
+      "Sortino": 2.5884722482395737,
+      "Sharpe": 1.4740955624201724,
+      "Calmar": 1.2229981549384772,
+      "Total Return": 9.009943617747387,
+      "Max Drawdown": -0.10171711747469026,
+      "Ann Return": 0.12439984699720652,
+      "Trades": 320,
+      "Total_Cost_frac": 0.027228353127833376
+    },
+    {
+      "bitmask": 3902,
+      "n_months": 9,
+      "months_csv": "February;March;April;May;June;September;October;November;December",
+      "Sortino": 2.55479689646608,
+      "Sharpe": 1.4867391471440077,
+      "Calmar": 1.305261449726979,
+      "Total Return": 10.579610362747891,
+      "Max Drawdown": -0.10171711747469037,
+      "Ann Return": 0.13276743221706377,
+      "Trades": 320,
+      "Total_Cost_frac": 0.027223107282541285
+    },
+    {
+      "bitmask": 3670,
+      "n_months": 7,
+      "months_csv": "February;March;May;July;October;November;December",
+      "Sortino": 2.5485703665830504,
+      "Sharpe": 1.3497238502478393,
+      "Calmar": 1.0324824089746731,
+      "Total Return": 6.11367956007858,
+      "Max Drawdown": -0.10171711747469026,
+      "Ann Return": 0.10502113448422801,
+      "Trades": 280,
+      "Total_Cost_frac": 0.023847311916003804
+    },
+    {
+      "bitmask": 3710,
+      "n_months": 9,
+      "months_csv": "February;March;April;May;June;July;October;November;December",
+      "Sortino": 2.5449090319738126,
+      "Sharpe": 1.4364077691654558,
+      "Calmar": 1.2252229133606776,
+      "Total Return": 9.049598372081384,
+      "Max Drawdown": -0.10171711747469026,
+      "Ann Return": 0.12462614301099029,
+      "Trades": 280,
+      "Total_Cost_frac": 0.023845737289012604
+    },
+    {
+      "bitmask": 3934,
+      "n_months": 9,
+      "months_csv": "February;March;April;May;July;September;October;November;December",
+      "Sortino": 2.54319538624335,
+      "Sharpe": 1.4445112836594423,
+      "Calmar": 1.2221173378582086,
+      "Total Return": 8.994284748334072,
+      "Max Drawdown": -0.10171711747469003,
+      "Ann Return": 0.12431025282277886,
+      "Trades": 320,
+      "Total_Cost_frac": 0.027216518948976157
+    },
+    {
+      "bitmask": 3956,
+      "n_months": 8,
+      "months_csv": "March;May;June;July;September;October;November;December",
+      "Sortino": 2.5428468427904325,
+      "Sharpe": 1.4154573828271124,
+      "Calmar": 1.4544765094591352,
+      "Total Return": 7.7673498018171685,
+      "Max Drawdown": -0.08033115681219083,
+      "Ann Return": 0.11683978056100974,
+      "Trades": 280,
+      "Total_Cost_frac": 0.023768263110165267
+    },
+    {
+      "bitmask": 3962,
+      "n_months": 9,
+      "months_csv": "February;April;May;June;July;September;October;November;December",
+      "Sortino": 2.535267163580284,
+      "Sharpe": 1.485061767257356,
+      "Calmar": 1.5115733213529772,
+      "Total Return": 8.502502598659696,
+      "Max Drawdown": -0.08033115681219105,
+      "Ann Return": 0.12142643351073046,
+      "Trades": 320,
+      "Total_Cost_frac": 0.02721444417182879
+    },
+    {
+      "bitmask": 3638,
+      "n_months": 7,
+      "months_csv": "February;March;May;June;October;November;December",
+      "Sortino": 2.534358727475929,
+      "Sharpe": 1.3924753907586207,
+      "Calmar": 1.114200067060812,
+      "Total Return": 7.242074308007272,
+      "Max Drawdown": -0.10171711747469026,
+      "Ann Return": 0.11333321911153238,
+      "Trades": 280,
+      "Total_Cost_frac": 0.02385390024956893
+    },
+    {
+      "bitmask": 3830,
+      "n_months": 9,
+      "months_csv": "February;March;May;June;July;August;October;November;December",
+      "Sortino": 2.5270219857567753,
+      "Sharpe": 1.471221700627077,
+      "Calmar": 1.2384948437173025,
+      "Total Return": 10.452512711660685,
+      "Max Drawdown": -0.10668698043719349,
+      "Ann Return": 0.13213127516323286,
+      "Trades": 320,
+      "Total_Cost_frac": 0.02723679120823129
+    },
+    {
+      "bitmask": 3838,
+      "n_months": 10,
+      "months_csv": "February;March;April;May;June;July;August;October;November;December",
+      "Sortino": 2.5126694748350724,
+      "Sharpe": 1.4883577601056122,
+      "Calmar": 1.3174653151773557,
+      "Total Return": 12.248389795155665,
+      "Max Drawdown": -0.10668698043719405,
+      "Ann Return": 0.14055639630700822,
+      "Trades": 320,
+      "Total_Cost_frac": 0.027231545362939195
+    },
+    {
+      "bitmask": 3964,
+      "n_months": 9,
+      "months_csv": "March;April;May;June;July;September;October;November;December",
+      "Sortino": 2.5039695526098753,
+      "Sharpe": 1.4292846654379538,
+      "Calmar": 1.5579397841026386,
+      "Total Return": 9.142164481222537,
+      "Max Drawdown": -0.0803311568121905,
+      "Ann Return": 0.12515110510069927,
+      "Trades": 280,
+      "Total_Cost_frac": 0.023763017264873176
+    },
+    {
+      "bitmask": 3446,
+      "n_months": 8,
+      "months_csv": "February;March;May;June;July;September;November;December",
+      "Sortino": 2.5021453285692066,
+      "Sharpe": 1.4425551989381424,
+      "Calmar": 1.0567723425653772,
+      "Total Return": 6.432770489336381,
+      "Max Drawdown": -0.10171711747469037,
+      "Ann Return": 0.1074918365127262,
+      "Trades": 280,
+      "Total_Cost_frac": 0.023836051953524007
+    },
+    {
+      "bitmask": 3942,
+      "n_months": 8,
+      "months_csv": "February;March;June;July;September;October;November;December",
+      "Sortino": 2.499478977156918,
+      "Sharpe": 1.4162379741452853,
+      "Calmar": 1.1496479091070964,
+      "Total Return": 7.782645269279428,
+      "Max Drawdown": -0.10171711747469037,
+      "Ann Return": 0.11693887142517867,
+      "Trades": 280,
+      "Total_Cost_frac": 0.023815292122319233
+    },
+    {
+      "bitmask": 3700,
+      "n_months": 7,
+      "months_csv": "March;May;June;July;October;November;December",
+      "Sortino": 2.491091068820935,
+      "Sharpe": 1.3318918624102727,
+      "Calmar": 1.365916321807575,
+      "Total Return": 6.218936620457364,
+      "Max Drawdown": -0.077491980345195,
+      "Ann Return": 0.10584756076269364,
+      "Trades": 240,
+      "Total_Cost_frac": 0.020393810231900823
+    },
+    {
+      "bitmask": 3646,
+      "n_months": 8,
+      "months_csv": "February;March;April;May;June;October;November;December",
+      "Sortino": 2.4904714269325345,
+      "Sharpe": 1.4064090708007835,
+      "Calmar": 1.1956537056807366,
+      "Total Return": 8.53452014438192,
+      "Max Drawdown": -0.10171711747469026,
+      "Ann Return": 0.1216184484397762,
+      "Trades": 280,
+      "Total_Cost_frac": 0.023848654404276835
+    },
+    {
+      "bitmask": 3924,
+      "n_months": 7,
+      "months_csv": "March;May;July;September;October;November;December",
+      "Sortino": 2.4898744511808233,
+      "Sharpe": 1.3409935906946553,
+      "Calmar": 1.3137735018080536,
+      "Total Return": 6.179203137655807,
+      "Max Drawdown": -0.08033115681219105,
+      "Ann Return": 0.10553694518944412,
+      "Trades": 280,
+      "Total_Cost_frac": 0.023764591891864376
+    }
+  ],
+  "per_month_best": {
+    "1": {
+      "entry_day": 19,
+      "hold_days": 13
+    },
+    "2": {
+      "entry_day": 7,
+      "hold_days": 5
+    },
+    "3": {
+      "entry_day": 16,
+      "hold_days": 10
+    },
+    "4": {
+      "entry_day": 1,
+      "hold_days": 12
+    },
+    "5": {
+      "entry_day": 17,
+      "hold_days": 5
+    },
+    "6": {
+      "entry_day": 20,
+      "hold_days": 17
+    },
+    "7": {
+      "entry_day": 7,
+      "hold_days": 9
+    },
+    "8": {
+      "entry_day": 17,
+      "hold_days": 14
+    },
+    "9": {
+      "entry_day": 7,
+      "hold_days": 5
+    },
+    "10": {
+      "entry_day": 19,
+      "hold_days": 7
+    },
+    "11": {
+      "entry_day": 14,
+      "hold_days": 6
+    },
+    "12": {
+      "entry_day": 14,
+      "hold_days": 5
+    }
+  },
+  "parity_runner_vs_sim": [
+    {
+      "bitmask": 3958,
+      "max_abs_return_diff": 0.06709556580998687,
+      "sortino_sim_common": 2.6438280868094086,
+      "sortino_runner": 2.22613870066255
+    },
+    {
+      "bitmask": 2620,
+      "max_abs_return_diff": 0.0421494345258672,
+      "sortino_sim_common": 2.1443682203245844,
+      "sortino_runner": 1.983989232530229
+    },
+    {
+      "bitmask": 457,
+      "max_abs_return_diff": 0.029342748738872805,
+      "sortino_sim_common": 1.4499924067743473,
+      "sortino_runner": 1.157531175358047
+    }
+  ],
+  "limitations": [
+    "PnL uses bar_close lag on 0/1 targets + IBKR-style per-change costs (meta script pattern).",
+    "Parity checks: sampled bitmasks vs BacktestRunner with generate_signal_matrix disabled.",
+    "Fast scan is Python+numpy; Task A repeats precompute per grid cell (~3840\u00d7 n\u00d7k)."
+  ]
+}

@@ -6,7 +6,7 @@ import logging
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -24,6 +24,7 @@ from portfolio_backtester.reporting.report_directory_utils import (
 )
 from portfolio_backtester.portfolio.rebalancing import rebalance
 from portfolio_backtester.reporting.performance_metrics import calculate_metrics
+from portfolio_backtester.reporting.risk_free import build_optional_risk_free_series
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,7 @@ def evaluate_subsets(
     benchmark_ticker: str,
     metric_key: str,
     normalize_weights: bool,
+    risk_free_rets: Optional[pd.Series] = None,
 ) -> list[UniverseSearchResult]:
     results: list[UniverseSearchResult] = []
     for idx, subset in enumerate(subsets, start=1):
@@ -162,7 +164,13 @@ def evaluate_subsets(
             weights_daily, returns_daily, subset, normalize_weights
         )
         bench = benchmark_returns.reindex(subset_returns.index).fillna(0.0)
-        metrics = calculate_metrics(subset_returns, bench, benchmark_ticker, name="Strategy")
+        metrics = calculate_metrics(
+            subset_returns,
+            bench,
+            benchmark_ticker,
+            name="Strategy",
+            risk_free_rets=risk_free_rets,
+        )
         score = metrics.get(metric_key, np.nan)
         results.append(
             UniverseSearchResult(
@@ -241,6 +249,13 @@ def run_universe_search(args: argparse.Namespace) -> Path:
     returns_daily = rets_daily.reindex(index=daily_ohlc.index, columns=candidates).fillna(0.0)
     benchmark_returns = _benchmark_returns(daily_ohlc, benchmark_ticker)
 
+    risk_free_rets = build_optional_risk_free_series(
+        daily_ohlc,
+        global_config,
+        pd.DatetimeIndex(daily_ohlc.index),
+        scenario,
+    )
+
     baseline_returns = compute_subset_returns(
         weights_daily, returns_daily, candidates, normalize_weights=False
     )
@@ -248,6 +263,7 @@ def run_universe_search(args: argparse.Namespace) -> Path:
         baseline_returns,
         benchmark_returns.reindex(baseline_returns.index).fillna(0.0),
         benchmark_ticker,
+        risk_free_rets=risk_free_rets,
     )
 
     contributions = compute_symbol_contributions(weights_daily, returns_daily)
@@ -267,6 +283,7 @@ def run_universe_search(args: argparse.Namespace) -> Path:
         benchmark_ticker=benchmark_ticker,
         metric_key=args.metric,
         normalize_weights=bool(args.normalize_weights),
+        risk_free_rets=risk_free_rets,
     )
 
     results_sorted = sorted(results, key=lambda r: (-np.inf if np.isnan(r.score) else -r.score))

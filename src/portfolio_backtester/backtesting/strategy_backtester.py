@@ -25,6 +25,7 @@ from ..backtester_logic.portfolio_logic import calculate_portfolio_returns
 from ..backtester_logic.data_manager import prepare_scenario_data
 from ..backtester_logic.strategy_overlays import apply_wfo_scaling_and_kill_switch
 from ..reporting.performance_metrics import calculate_metrics
+from ..reporting.risk_free import build_optional_risk_free_series
 from ..optimization.wfo_window import WFOWindow
 
 logger = logging.getLogger(__name__)
@@ -129,6 +130,17 @@ class StrategyBacktester:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("StrategyBacktester initialized without optimization dependencies")
+
+    def _optional_risk_free_returns(
+        self,
+        daily_data: pd.DataFrame,
+        scenario_for_rf: Union[CanonicalScenarioConfig, Mapping[str, Any]],
+        index: pd.Index,
+    ) -> Optional[pd.Series]:
+        """Implied per-bar risk-free returns when ``risk_free_yield_ticker`` is configured."""
+        return build_optional_risk_free_series(
+            daily_data, self.global_config, index, scenario_for_rf
+        )
 
     def backtest_strategy(
         self,
@@ -303,6 +315,9 @@ class StrategyBacktester:
             benchmark_returns_for_metrics,
             benchmark_ticker,
             trade_stats=trade_stats,
+            risk_free_rets=self._optional_risk_free_returns(
+                daily_data, canonical_config, metrics_returns.index
+            ),
         )
 
         # Create trade history from trade tracker when tracking is enabled
@@ -337,6 +352,7 @@ class StrategyBacktester:
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_full: pd.DataFrame,
+        compute_metrics: bool = True,
     ) -> WindowResult:
         """Evaluate a strategy configuration on a single walk-forward window.
 
@@ -431,8 +447,17 @@ class StrategyBacktester:
             benchmark_slice, str(benchmark_ticker), test_returns.index
         )
 
-        # Calculate metrics for this window
-        metrics = calculate_metrics(test_returns, benchmark_returns, str(benchmark_ticker))
+        metrics: dict[str, float] = {}
+        if compute_metrics:
+            # Window metrics are report detail; optimizers aggregate metrics separately.
+            metrics = calculate_metrics(
+                test_returns,
+                benchmark_returns,
+                str(benchmark_ticker),
+                risk_free_rets=self._optional_risk_free_returns(
+                    daily_slice, strategy_config, test_returns.index
+                ),
+            )
 
         return WindowResult(
             window_returns=test_returns,

@@ -204,6 +204,21 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
                 failed += 1
                 failed_tickers.append(original_ticker)
 
+        result_keys = set(results.keys())
+        not_returned = [cid for cid in canonical_ids if cid not in result_keys]
+        if not_returned:
+            missing_labels = [symbol_map.get(cid, from_canonical_id(cid)) for cid in not_returned]
+            preview = ", ".join(missing_labels[:20])
+            suffix = " ..." if len(missing_labels) > 20 else ""
+            logger.warning(
+                "MDMP omitted %s/%s requested symbols (no dict entry; typical for "
+                "cache_only when those canonical series are not on disk): [%s%s]",
+                len(not_returned),
+                len(canonical_ids),
+                preview,
+                suffix,
+            )
+
         # Log summary
         logger.info(
             f"MDMP fetch complete: {successful}/{len(tickers)} successful, " f"{failed} failed"

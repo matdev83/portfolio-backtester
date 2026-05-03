@@ -1,15 +1,15 @@
 """
 Unit tests for the evaluation_strategy module.
 """
+
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 import pandas as pd
 
 from portfolio_backtester.interfaces.evaluation_strategy import (
     StandardEvaluationStrategy,
     MultiObjectiveEvaluationStrategy,
     EvaluationStrategyFactory,
-    IEvaluationStrategy,
 )
 
 
@@ -23,19 +23,19 @@ class TestStandardEvaluationStrategy:
     @patch("portfolio_backtester.interfaces.evaluation_strategy.calculate_metrics")
     def test_evaluate_performance_series(self, mock_calculate_metrics):
         """Test evaluate_performance with a pandas Series."""
-        mock_calculate_metrics.return_value = {"sharpe_ratio": 2.0}
+        mock_calculate_metrics.return_value = pd.Series({"Sharpe": 2.0})
         returns = pd.Series([0.1, 0.2, 0.3])
         result = self.strategy.evaluate_performance(returns)
-        assert result == {"sharpe_ratio": 2.0}
+        assert result == {"Sharpe": 2.0}
         mock_calculate_metrics.assert_called_once()
 
     @patch("portfolio_backtester.interfaces.evaluation_strategy.calculate_metrics")
     def test_evaluate_performance_dataframe(self, mock_calculate_metrics):
         """Test evaluate_performance with a pandas DataFrame."""
-        mock_calculate_metrics.return_value = {"sharpe_ratio": 2.0}
+        mock_calculate_metrics.return_value = pd.Series({"Sharpe": 2.0})
         returns = pd.DataFrame({"returns": [0.1, 0.2, 0.3]})
         result = self.strategy.evaluate_performance(returns)
-        assert result == {"sharpe_ratio": 2.0}
+        assert result == {"Sharpe": 2.0}
         mock_calculate_metrics.assert_called_once()
 
     def test_evaluate_performance_invalid_data(self):
@@ -56,9 +56,13 @@ class TestMultiObjectiveEvaluationStrategy:
 
     def setup_method(self):
         """Set up the test environment."""
-        self.strategy = MultiObjectiveEvaluationStrategy(objectives=["sharpe_ratio", "calmar_ratio"])
+        self.strategy = MultiObjectiveEvaluationStrategy(
+            objectives=["sharpe_ratio", "calmar_ratio"]
+        )
 
-    @patch("portfolio_backtester.interfaces.evaluation_strategy.StandardEvaluationStrategy.evaluate_performance")
+    @patch(
+        "portfolio_backtester.interfaces.evaluation_strategy.StandardEvaluationStrategy.evaluate_performance"
+    )
     def test_evaluate_performance(self, mock_evaluate_performance):
         """Test that evaluate_performance delegates to the standard strategy."""
         mock_evaluate_performance.return_value = {"sharpe_ratio": 2.0, "calmar_ratio": 3.0}
@@ -67,7 +71,9 @@ class TestMultiObjectiveEvaluationStrategy:
         assert result == {"sharpe_ratio": 2.0, "calmar_ratio": 3.0}
         mock_evaluate_performance.assert_called_once()
 
-    @patch("portfolio_backtester.interfaces.evaluation_strategy.StandardEvaluationStrategy.evaluate_parameters")
+    @patch(
+        "portfolio_backtester.interfaces.evaluation_strategy.StandardEvaluationStrategy.evaluate_parameters"
+    )
     def test_evaluate_parameters(self, mock_evaluate_parameters):
         """Test that evaluate_parameters delegates to the standard strategy."""
         mock_evaluate_parameters.return_value = {"sharpe_ratio": 0.0, "calmar_ratio": 0.0}

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Any, Optional, Union, Mapping, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, Union, Mapping, TYPE_CHECKING
 
 import pandas as pd
 
@@ -12,8 +12,8 @@ if TYPE_CHECKING:
 
 class HelloWorldSignalStrategy(SignalStrategy):
     """Minimal user example strategy.
-...
-    - Intended to satisfy config validation and provide a simple runnable example.
+    ...
+        - Intended to satisfy config validation and provide a simple runnable example.
     """
 
     def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
@@ -54,6 +54,33 @@ class HelloWorldSignalStrategy(SignalStrategy):
                     except Exception:
                         continue
         return df
+
+    def generate_signal_matrix(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        non_universe_historical_data: Optional[pd.DataFrame],
+        rebalance_dates: pd.DatetimeIndex,
+        universe_tickers: List[str],
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
+        use_sparse_nan_for_inactive_rows: bool = False,
+    ) -> Optional[pd.DataFrame]:
+        cols = list(universe_tickers)
+        idx = pd.DatetimeIndex(rebalance_dates)
+        fill_value = float("nan") if use_sparse_nan_for_inactive_rows else 0.0
+        result = pd.DataFrame(fill_value, index=idx, columns=cols, dtype=float)
+        if len(idx) == 0:
+            return result
+
+        close_prices = self._extract_close_frame(all_historical_data)
+        present = [c for c in cols if c in close_prices.columns]
+        if len(present) == 0:
+            return result.fillna(0.0) if not use_sparse_nan_for_inactive_rows else result
+
+        weight = self.leverage / float(len(present))
+        result.loc[:, present] = float(weight)
+        return result
 
     def generate_signals(
         self,

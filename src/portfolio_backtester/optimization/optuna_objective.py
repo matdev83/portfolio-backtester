@@ -5,6 +5,7 @@ import numpy as np
 
 from .. import strategies
 from ..reporting.performance_metrics import calculate_metrics
+from ..reporting.risk_free import build_optional_risk_free_series
 from ..config_loader import OPTIMIZER_PARAMETER_DEFAULTS
 from ..constants import ZERO_RET_EPS
 
@@ -270,7 +271,10 @@ def build_objective(
         trial.set_user_attr("zero_returns", bool(zero_ret))
 
         bench_rets_daily = bench_series_daily.pct_change(fill_method=None).fillna(0)
-        all_calculated_metrics = calculate_metrics(rets, bench_rets_daily, g_cfg["benchmark"])
+        rf_opt = build_optional_risk_free_series(train_data_daily, g_cfg, rets.index, scen_cfg)
+        all_calculated_metrics = calculate_metrics(
+            rets, bench_rets_daily, g_cfg["benchmark"], risk_free_rets=rf_opt
+        )
 
         for constraint in constraints_config:
             metric_name = constraint.get("metric")

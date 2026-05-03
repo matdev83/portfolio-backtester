@@ -1,0 +1,38 @@
+{
+  "best_bitmask": 127,
+  "best_sortino": 1.7510188036898955,
+  "elapsed_seconds": 33.785515399998985,
+  "evaluated_subsets": 128,
+  "summary_csv_used": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\data\\reports\\seasonal_month_spylong_sortino_summary.csv",
+  "period": {
+    "start": "2005-01-01",
+    "end": "2024-12-31"
+  },
+  "hold_days": 10,
+  "legacy_sortino": true,
+  "per_month_entry_day_from_csv": {
+    "1": 14,
+    "2": 3,
+    "3": 16,
+    "4": 11,
+    "5": 14,
+    "6": 20,
+    "7": 7,
+    "8": 17,
+    "9": 4,
+    "10": 19,
+    "11": 15,
+    "12": 14
+  },
+  "best_row": {
+    "bitmask": 127,
+    "n_months": 7,
+    "months_csv": "January;February;March;April;May;June;July",
+    "Sortino": 1.7510188036898955,
+    "Sharpe": 1.1065949298657396,
+    "Calmar": 0.6838747648432619,
+    "Total Return": 4.964900386111065,
+    "Max Drawdown": -0.13108665476714576,
+    "Ann Return": 0.08964685520297166
+  }
+}

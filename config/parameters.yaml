@@ -89,6 +89,12 @@ GLOBAL_CONFIG:
     - "GBTC"
     - "UVXY"
   benchmark: "AMEX:SPY"
+  # Excess Sharpe/Sortino/Deflated Sharpe vs implied per-bar rf from this yield index (see README).
+  # Set risk_free_metrics_enabled: false for legacy CAGR/vol Sharpe globally.
+  risk_free_metrics_enabled: true
+  risk_free_yield_ticker: "^IRX"
+  # Reporting: legacy preserves historic CSV/Rich row names; platform_standard uses clearer labels.
+  metrics_display_profile: legacy
   start_date: "2013-01-01"
   end_date: "2025-06-30"
 

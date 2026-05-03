@@ -18,6 +18,7 @@ def evaluate_walk_forward(
     random_state,
 ):
     from ..reporting.performance_metrics import calculate_metrics
+    from ..reporting.risk_free import build_optional_risk_free_series
 
     _ = get_strategy_method
 
@@ -48,8 +49,14 @@ def evaluate_walk_forward(
     bench_ser = daily_data[global_config["benchmark"]].loc[full_pnl_returns.index]
     bench_period_rets = bench_ser.pct_change(fill_method=None).fillna(0)
 
+    rf_opt = build_optional_risk_free_series(
+        daily_data, global_config, full_pnl_returns.index, scenario_config
+    )
     final_metrics = calculate_metrics(
-        full_pnl_returns, bench_period_rets, global_config["benchmark"]
+        full_pnl_returns,
+        bench_period_rets,
+        global_config["benchmark"],
+        risk_free_rets=rf_opt,
     )
     metric_avgs = [final_metrics.get(m, np.nan) for m in metrics_to_optimize]
 

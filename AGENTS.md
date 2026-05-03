@@ -251,3 +251,13 @@ timing_config:
 ```
 
 When writing code that touches portfolio returns, signal generation, or optimizer evaluation paths, ensure the execution timing mapper is applied consistently.
+
+## Risk-free metrics (Sharpe / Sortino / DSR)
+
+After `load_config()`, `GLOBAL_CONFIG` includes `risk_free_metrics_enabled` (default true) and `risk_free_yield_ticker` (default `^IRX`) unless disabled in `config/parameters.yaml`. **Sharpe**, **Sortino**, and **Deflated Sharpe** then use excess returns over implied per-bar rf from that yield index when data exists; if the yield series is missing or all-NaN, metrics fall back to the legacy CAGR/vol Sharpe path.
+
+**Per-scenario opt-out:** in scenario `extras`, set `risk_free_metrics_enabled: false`, or set `risk_free_yield_ticker` to `null`, `""`, or the sentinel strings `legacy` / `none` / `off` (with the key present) so the scenario does not inherit the global ticker. Tests comparing legacy numbers should use one of these patterns.
+
+**Programmatic tests** with `global_config={}` do not apply loader defaults; pass an explicit ticker or `risk_free_metrics_enabled: false` when Sharpe parity must match legacy-only behavior.
+
+**Reference:** Full definitions (Sharpe RF-on vs legacy path, Sortino, Tail Ratio, “Deflated Sharpe” vs PSR-style output, drawdown units) are in `docs/performance_metrics.md`. Rich console row labels are controlled by `metrics_display_profile` (`legacy` | `platform_standard` | `verbose`) in `GLOBAL_CONFIG` or scenario `extras`; CSV rows keep canonical metric keys.

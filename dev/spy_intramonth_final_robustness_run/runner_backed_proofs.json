@@ -1,0 +1,60 @@
+{
+  "config": "dev/spy_intramonth_detailed_ibkr_rf_off_2005_2024_final/best_subset_month_params.tsv",
+  "bitmask": 4086,
+  "baseline_period": ["2005-01-01", "2024-12-31"],
+  "fast_sim_vs_detailed_runner_baseline_slip_0.5_bps": {
+    "note": "allocate_from_scan target matches detailed_allocation_mask (max abs 0); same IBKR cost constants from month_grid script",
+    "fast_eval_target_net_returns": {
+      "Sortino": 2.152369469563501,
+      "Total Return": 8.093520807222182,
+      "Max Drawdown": -0.11091252975270449,
+      "Trades": 360
+    },
+    "detailed_BacktestRunner_matrix_disabled": {
+      "Sortino": 2.6603522535610957,
+      "Total Return": 10.706511180981876,
+      "Max Drawdown": -0.10796223304274088
+    }
+  },
+  "slippage_sensitivity_BacktestRunner_detailed": [
+    {"slippage_bps": 0.5, "Sortino": 2.6603522535610957, "Total Return": 10.706511180981876, "Max Drawdown": -0.10796223304274088},
+    {"slippage_bps": 1.0, "Sortino": 2.6401720741598362, "Total Return": 10.497910271177489, "Max Drawdown": -0.10814127826559872},
+    {"slippage_bps": 2.5, "Sortino": 2.579541659773026, "Total Return": 9.894087705347475, "Max Drawdown": -0.10867825222092009},
+    {"slippage_bps": 5.0, "Sortino": 2.4782392364335353, "Total Return": 8.957179068067298, "Max Drawdown": -0.10957266993124548}
+  ],
+  "holdout_slice_detailed_runner_net_returns": {
+    "train_2005_2018": {
+      "Sortino": 2.4978231597922758,
+      "Total Return": 3.896673833211148,
+      "Max Drawdown": -0.1017171195501747
+    },
+    "test_2019_2024": {
+      "Sortino": 3.022559921118428,
+      "Total Return": 1.3907067490556018,
+      "Max Drawdown": -0.10796223304274055
+    }
+  },
+  "block_bootstrap_Sortino_on_detailed_daily_net_returns": {
+    "replicates": 800,
+    "seed": 42,
+    "block_21d_q05_median_q95": [1.9862125716131527, 2.647842105809778, 3.4694075928066943],
+    "block_63d_q05_median_q95": [1.9869616351138808, 2.6749531670907727, 3.3892260984698597]
+  },
+  "runner_spotcheck_one_month_param": {
+    "month": 6,
+    "perturb": "entry_day",
+    "results": [
+      {"variation": "base", "Sortino": 2.6603522535610957},
+      {"variation": "June_entry_-1", "Sortino": 2.6297685998983225},
+      {"variation": "June_entry_+1", "Sortino": 2.6603522535610957}
+    ]
+  },
+  "commands_used": [
+    "See chat log: inline -c BacktestRunner slippage/holdout/bootstrap/spotcheck (Windows .venv/Scripts/python.exe)"
+  ],
+  "limitations": [
+    "task_b CSV Sortino/Total Return for mask 4086 matches BacktestRunner today; dev/first-anchor eval_target_net_returns path does not match detailed PnL even with identical 0/1 masks (timing/lag mismatch vs production). Neighborhood grids in spy_intramonth_final_robustness_suite.py use that fast path—treat as non-authoritative until realigned.",
+    "Holdout slices are temporal splits of a single fixed-parameter path (not re-optimized train/test).",
+    "cache_only per GLOBAL_CONFIG."
+  ]
+}

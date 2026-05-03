@@ -125,6 +125,40 @@ def _lookup_metric(metrics: Dict[str, float], name: str, default: float = -1e9) 
     return default
 
 
+def _requested_metric_keys(
+    metrics_to_optimize: List[str], is_multi_objective: bool
+) -> Optional[set[str]]:
+    """Return objective-only metric keys when full optimizer metrics are unnecessary."""
+    requested = {str(metric) for metric in metrics_to_optimize}
+    if not requested:
+        return None
+    allowed = {
+        "Total Return",
+        "Ann. Return",
+        "Ann. Vol",
+        "Sharpe",
+        "Sortino",
+        "Calmar",
+        "Max Drawdown",
+        "total_return",
+        "annual_return",
+        "annualized_return",
+        "volatility",
+        "annual_volatility",
+        "sharpe",
+        "sharpe_ratio",
+        "sortino",
+        "sortino_ratio",
+        "calmar",
+        "calmar_ratio",
+        "max_drawdown",
+        "max_drawdown_ratio",
+    }
+    if is_multi_objective or requested.issubset(allowed):
+        return requested
+    return None
+
+
 def _resolved_walk_forward_enabled(
     canonical_config: "CanonicalScenarioConfig", global_config: Mapping[str, Any]
 ) -> bool:
@@ -359,6 +393,7 @@ class BacktestEvaluator:
                     data.monthly,
                     data.daily,
                     data.returns,
+                    compute_metrics=False,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.error("WFO window evaluation failed: %s", exc, exc_info=True)
@@ -468,7 +503,11 @@ class BacktestEvaluator:
                         "[Trial Progress] Window %d/%d finished: Sharpe=%s",
                         idx,
                         len(enhanced_windows),
-                        _lookup_metric(result.metrics, "Sharpe", float("nan")),
+                        (
+                            _lookup_metric(result.metrics, "Sharpe", float("nan"))
+                            if result.metrics
+                            else "skipped"
+                        ),
                     )
                     window_results.append(result)
 
@@ -478,12 +517,17 @@ class BacktestEvaluator:
 
         # Aggregate results
         nt_fm = num_trials_for_metrics if num_trials_for_metrics is not None else 1
+        requested_metric_keys = _requested_metric_keys(
+            self.metrics_to_optimize, self.is_multi_objective
+        )
         return self._aggregate_window_results(
             window_results,
             parameters,
             data.daily,
             backtester.global_config if hasattr(backtester, "global_config") else {},
             num_trials_for_metrics=nt_fm,
+            requested_metric_keys=requested_metric_keys,
+            scenario_for_rf=canonical_config,
         )
 
     def _aggregate_window_results(
@@ -493,6 +537,8 @@ class BacktestEvaluator:
         daily_data: Optional[pd.DataFrame],
         global_config: Dict[str, Any],
         num_trials_for_metrics: int = 1,
+        requested_metric_keys: Optional[set[str]] = None,
+        scenario_for_rf: Optional[Any] = None,
     ) -> EvaluationResult:
         """Aggregate results from daily evaluation windows.
 
@@ -539,12 +585,20 @@ class BacktestEvaluator:
             except Exception:
                 benchmark_returns = pd.Series(0.0, index=combined_returns.index)
 
+        risk_free_rets = None
+        if daily_data is not None and not daily_data.empty and len(combined_returns) > 0:
+            from ..reporting.risk_free import build_optional_risk_free_series
+
+            risk_free_rets = build_optional_risk_free_series(
+                daily_data, global_config, combined_returns.index, scenario_for_rf
+            )
+
         feature_flags = (
             (global_config or {}).get("feature_flags", {})
             if isinstance(global_config, dict)
             else {}
         )
-        use_fast_optimizer_metrics = bool(feature_flags.get("fast_optimizer_metrics", False))
+        use_fast_optimizer_metrics = bool(feature_flags.get("fast_optimizer_metrics", True))
         if use_fast_optimizer_metrics:
             from ..reporting.fast_objective_metrics import calculate_optimizer_metrics_fast
 
@@ -553,6 +607,8 @@ class BacktestEvaluator:
                 benchmark_returns,
                 benchmark_ticker,
                 num_trials=num_trials_for_metrics,
+                risk_free_rets=risk_free_rets,
+                requested_metrics=requested_metric_keys,
             )
         else:
             from ..reporting.performance_metrics import calculate_metrics
@@ -562,6 +618,7 @@ class BacktestEvaluator:
                 benchmark_returns,
                 benchmark_ticker,
                 num_trials=num_trials_for_metrics,
+                risk_free_rets=risk_free_rets,
             )
         metrics = cast(
             dict[str, float],
@@ -607,7 +664,12 @@ class BacktestEvaluator:
         )
 
     def _calculate_metrics(self, returns: pd.Series, trades: List) -> Dict[str, float]:
-        """Calculate performance metrics from returns and trades.
+        """Lightweight metrics for evaluator internals (not Rich tables).
+
+        Uses simplified annualization (e.g. ``(1 + mean)**252 - 1`` on daily data).
+        User-facing reports and optimization objectives should use
+        :func:`portfolio_backtester.reporting.performance_metrics.calculate_metrics`
+        for parity with CSV/Rich output.
 
         Args:
             returns: Series of portfolio returns

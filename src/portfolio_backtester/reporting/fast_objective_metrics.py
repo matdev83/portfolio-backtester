@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, Optional, cast
 
 import numpy as np
 import pandas as pd
@@ -20,9 +20,11 @@ from .performance_metrics import (
     _infer_steps_per_year,
     _is_all_zero,
     _safe_moment,
+    calculate_max_dd_recovery_bars,
     calculate_max_dd_recovery_time,
     calculate_max_flat_period,
 )
+from .metric_display import SHARPE_PATH_EXCESS, SHARPE_PATH_LEGACY_CAGR_VOL
 
 
 def _total_ret_np(x: np.ndarray) -> float:
@@ -86,6 +88,23 @@ def _sharpe_np(x: np.ndarray, steps_per_year: int) -> float:
     return float(annualized_return / annualized_vol)
 
 
+def _sharpe_excess_traditional_np(excess: np.ndarray, steps_per_year: int) -> float:
+    """Mean annualized excess / vol of excess (ddof=1)."""
+    if excess.size == 0:
+        return float("nan")
+    mean_e = float(np.mean(excess) * float(steps_per_year))
+    std_e = float(np.std(excess, ddof=1) * np.sqrt(float(steps_per_year)))
+    if np.isnan(mean_e) or np.isnan(std_e):
+        return float("nan")
+    if std_e < EPSILON_FOR_DIVISION:
+        if abs(mean_e) < EPSILON_FOR_DIVISION:
+            return 0.0
+        if mean_e > 0:
+            return float("inf")
+        return float("-inf")
+    return float(mean_e / std_e)
+
+
 def _mdd_equity(equity: pd.Series) -> float:
     if equity.empty or equity.isnull().all():
         return float("nan")
@@ -121,19 +140,43 @@ def _stationarity_np(active: pd.Series) -> tuple[float, float]:
         return float("nan"), float("nan")
 
 
-def _deflated_sharpe_np(active: pd.Series, num_trials: int, steps_per_year: int) -> float:
-    if num_trials <= 1 or len(active) < 100:
+def _stationarity_returns_np(active: pd.Series) -> tuple[float, float]:
+    if len(active) < 40:
+        return float("nan"), float("nan")
+    clean = active.dropna()
+    if len(clean) < 40:
+        return float("nan"), float("nan")
+    try:
+        result = adfuller(clean)
+        return float(result[0]), float(result[1])
+    except Exception:
+        return float("nan"), float("nan")
+
+
+def _deflated_sharpe_np(
+    active: pd.Series,
+    num_trials: int,
+    steps_per_year: int,
+    excess: pd.Series | None = None,
+) -> float:
+    if num_trials <= 1:
         return float("nan")
-    arr = active.to_numpy(dtype=np.float64, copy=False)
-    sr = _sharpe_np(arr, steps_per_year)
+    ser = excess if excess is not None and not excess.empty else active
+    if len(ser) < 100:
+        return float("nan")
+    arr = ser.to_numpy(dtype=np.float64, copy=False)
+    if excess is not None and not excess.empty:
+        sr = _sharpe_excess_traditional_np(arr, steps_per_year)
+    else:
+        sr = _sharpe_np(arr, steps_per_year)
     if np.isnan(sr):
         return float("nan")
-    std_rets = float(active.std(ddof=0)) if not pd.isna(active.std(ddof=0)) else 0.0
+    std_rets = float(ser.std(ddof=0)) if not pd.isna(ser.std(ddof=0)) else 0.0
     if std_rets <= EPSILON_FOR_DIVISION:
         return float("nan")
-    sk = _safe_moment(skew, active)
-    k_excess = _safe_moment(kurtosis, active)
-    n = len(active)
+    sk = _safe_moment(skew, ser)
+    k_excess = _safe_moment(kurtosis, ser)
+    n = len(ser)
     emc = 0.5772156649
     max_z = (1 - emc) * norm.ppf(1 - 1 / num_trials) + emc * norm.ppf(1 - 1 / (num_trials * np.e))
     var_sr = (1 / (n - 1)) * (1 - sk * sr + (k_excess / 4) * sr**2)
@@ -204,8 +247,35 @@ def calculate_optimizer_metrics_fast(
     name: str = "Strategy",
     num_trials: int = 1,
     trade_stats: Mapping[str, object] | None = None,
+    risk_free_rets: Optional[pd.Series] = None,
+    requested_metrics: Optional[set[str]] = None,
 ) -> pd.Series:
     """Match :func:`calculate_metrics` outputs while using NumPy for the objective core."""
+
+    requested_metrics = set(requested_metrics or ())
+    minimal_keys = {
+        "Total Return",
+        "Ann. Return",
+        "Ann. Vol",
+        "Sharpe",
+        "Sortino",
+        "Calmar",
+        "Max Drawdown",
+        "total_return",
+        "annual_return",
+        "annualized_return",
+        "volatility",
+        "annual_volatility",
+        "sharpe",
+        "sharpe_ratio",
+        "sortino",
+        "sortino_ratio",
+        "calmar",
+        "calmar_ratio",
+        "max_drawdown",
+        "max_drawdown_ratio",
+    }
+    objective_only = bool(requested_metrics) and requested_metrics.issubset(minimal_keys)
 
     is_all_zero_returns = _is_all_zero(rets)
     active_rets = rets.dropna()
@@ -215,7 +285,14 @@ def calculate_optimizer_metrics_fast(
         metrics = _default_zero_activity_metrics(is_all_zero_returns)
         if not active_bench_rets.empty and is_all_zero_returns:
             metrics.update(_capm_on_zeros(rets, active_bench_rets, bench_ticker_name))
-        return cast(pd.Series, pd.Series(_ensure_expected_keys(metrics), name=name))
+        ser_z = pd.Series(_ensure_expected_keys(metrics), name=name)
+        ser_z.attrs["sharpe_path"] = SHARPE_PATH_LEGACY_CAGR_VOL
+        return cast(pd.Series, ser_z)
+
+    excess_series: pd.Series | None = None
+    if risk_free_rets is not None and not risk_free_rets.empty:
+        rf_al = risk_free_rets.reindex(active_rets.index).ffill().bfill()
+        excess_series = (active_rets.astype(float) - rf_al.astype(float)).dropna()
 
     common_index = pd.DatetimeIndex(active_rets.index).intersection(
         pd.DatetimeIndex(active_bench_rets.index)
@@ -262,13 +339,41 @@ def calculate_optimizer_metrics_fast(
     active_vals = active_rets.to_numpy(dtype=np.float64, copy=False)
     total_return = _total_ret_np(active_vals)
     ann_ret = _ann_np(active_vals, steps_per_year)
-    ann_vol = _ann_vol_np(active_vals, steps_per_year)
-    sharpe_v = _sharpe_np(active_vals, steps_per_year)
-    sortino_v = _sortino_np(active_vals, steps_per_year)
+    if excess_series is not None and not excess_series.empty:
+        steps_ex = _infer_steps_per_year(pd.DatetimeIndex(excess_series.index))
+        excess_vals = excess_series.to_numpy(dtype=np.float64, copy=False)
+        ann_vol = _ann_vol_np(excess_vals, steps_ex)
+        sharpe_v = _sharpe_excess_traditional_np(excess_vals, steps_ex)
+        sortino_v = _sortino_np(excess_vals, steps_ex)
+        dsr_steps = steps_ex
+    else:
+        ann_vol = _ann_vol_np(active_vals, steps_per_year)
+        sharpe_v = _sharpe_np(active_vals, steps_per_year)
+        sortino_v = _sortino_np(active_vals, steps_per_year)
+        dsr_steps = steps_per_year
     calmar_v = _calmar_np(active_vals, rets, steps_per_year)
     max_dd_v = _mdd_equity((1 + rets).cumprod())
 
-    adf_stat, adf_p = _stationarity_np(active_rets)
+    if objective_only:
+        base_metrics_minimal = {
+            "Total Return": total_return,
+            "Ann. Return": ann_ret,
+            "Ann. Vol": ann_vol,
+            "Sharpe": sharpe_v,
+            "Sortino": sortino_v,
+            "Calmar": calmar_v,
+            "Max Drawdown": max_dd_v,
+        }
+        ser_m = pd.Series(base_metrics_minimal, name=name)
+        ser_m.attrs["sharpe_path"] = (
+            SHARPE_PATH_EXCESS
+            if excess_series is not None and not excess_series.empty
+            else SHARPE_PATH_LEGACY_CAGR_VOL
+        )
+        return cast(pd.Series, ser_m)
+
+    adf_eq_stat, adf_eq_p = _stationarity_np(active_rets)
+    adf_ret_stat, adf_ret_p = _stationarity_returns_np(active_rets)
     var_5 = _var_np(active_rets, 0.05)
     cvar_5 = _cvar_np(active_rets, 0.05)
 
@@ -285,7 +390,21 @@ def calculate_optimizer_metrics_fast(
             return float("inf") if upper_tail > 0 else float("nan")
         return float(upper_tail / abs(lower_tail))
 
+    def tail_ratio_mean_fn(rets_s: pd.Series) -> float:
+        if rets_s.empty or rets_s.isnull().all():
+            return float("nan")
+        positive_rets = rets_s[rets_s > 0]
+        negative_rets = rets_s[rets_s < 0]
+        if positive_rets.empty or negative_rets.empty:
+            return float("nan")
+        pos_mean = float(positive_rets.mean())
+        neg_mean = float(negative_rets.mean())
+        if abs(neg_mean) < EPSILON_FOR_DIVISION:
+            return float("inf") if pos_mean > 0 else float("nan")
+        return float(pos_mean / abs(neg_mean))
+
     tail_ratio_95 = tail_ratio(active_rets, 95)
+    tail_ratio_mean_v = tail_ratio_mean_fn(active_rets)
 
     equity_curve = (1 + rets).cumprod()
     try:
@@ -308,15 +427,20 @@ def calculate_optimizer_metrics_fast(
         "VaR (5%)": var_5,
         "CVaR (5%)": cvar_5,
         "Tail Ratio": tail_ratio_95,
+        "Tail Ratio (mean)": tail_ratio_mean_v,
         "Avg DD Duration": float(avg_dd_duration),
         "Avg Recovery Time": float(avg_recovery_time),
         "Skew": float(_safe_moment(skew, active_rets)),
         "Kurtosis": float(_safe_moment(kurtosis, active_rets)),
         "R^2": r_squared,
         "K-Ratio": float(_k_ratio_np(active_rets)),
-        "ADF Statistic": adf_stat,
-        "ADF p-value": adf_p,
-        "Deflated Sharpe": float(_deflated_sharpe_np(active_rets, num_trials, steps_per_year)),
+        "ADF Statistic (equity)": adf_eq_stat,
+        "ADF p-value (equity)": adf_eq_p,
+        "ADF Statistic (returns)": adf_ret_stat,
+        "ADF p-value (returns)": adf_ret_p,
+        "Deflated Sharpe": float(
+            _deflated_sharpe_np(active_rets, num_trials, dsr_steps, excess=excess_series)
+        ),
     }
 
     if trade_stats is not None:
@@ -329,6 +453,7 @@ def calculate_optimizer_metrics_fast(
             name=name,
             num_trials=num_trials,
             trade_stats=trade_stats,
+            risk_free_rets=risk_free_rets,
         )
         for k, v in trade_augmented.items():
             if k not in base_metrics:
@@ -338,6 +463,13 @@ def calculate_optimizer_metrics_fast(
                     base_metrics[k] = float("nan")
 
     base_metrics["Max DD Recovery Time (days)"] = float(calculate_max_dd_recovery_time(rets))
+    base_metrics["Max DD Recovery Time (bars)"] = float(calculate_max_dd_recovery_bars(rets))
     base_metrics["Max Flat Period (days)"] = float(calculate_max_flat_period(rets))
 
-    return cast(pd.Series, pd.Series(_ensure_expected_keys(base_metrics), name=name))
+    ser_out = pd.Series(_ensure_expected_keys(base_metrics), name=name)
+    ser_out.attrs["sharpe_path"] = (
+        SHARPE_PATH_EXCESS
+        if excess_series is not None and not excess_series.empty
+        else SHARPE_PATH_LEGACY_CAGR_VOL
+    )
+    return cast(pd.Series, ser_out)

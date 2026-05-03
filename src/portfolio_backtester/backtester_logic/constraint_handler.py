@@ -9,6 +9,7 @@ import pandas as pd
 import logging
 from typing import Dict, List, Optional, Tuple
 from ..reporting.performance_metrics import calculate_metrics
+from ..reporting.risk_free import build_optional_risk_free_series
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,12 @@ class ConstraintHandler:
                 continue
 
             # Check if constraints are satisfied
-            test_metrics = calculate_metrics(test_rets, benchmark_returns, benchmark_ticker)
+            rf_opt = build_optional_risk_free_series(
+                daily_data, self.global_config, test_rets.index, scenario_config
+            )
+            test_metrics = calculate_metrics(
+                test_rets, benchmark_returns, benchmark_ticker, risk_free_rets=rf_opt
+            )
             test_violations = self._check_constraint_violations(test_metrics, constraints_config)
 
             if not test_violations:

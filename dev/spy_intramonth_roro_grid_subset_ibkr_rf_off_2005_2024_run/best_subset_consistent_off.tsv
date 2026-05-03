@@ -1,0 +1,13 @@
+calendar_month	month_name	active	entry_day	hold_days
+1	January	0	19	13
+2	February	1	7	5
+3	March	1	16	10
+4	April	0	1	12
+5	May	1	17	5
+6	June	1	20	17
+7	July	1	7	9
+8	August	0	17	14
+9	September	0	4	8
+10	October	1	19	7
+11	November	1	14	6
+12	December	1	14	5

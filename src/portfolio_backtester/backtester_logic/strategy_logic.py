@@ -136,6 +136,42 @@ def _try_build_strategy_context_panel(
         return None
 
 
+def _call_batch_signal_generator(
+    strategy: Any,
+    *,
+    asset_data_view: pd.DataFrame,
+    benchmark_data_view: pd.DataFrame,
+    non_universe_data_view: Optional[pd.DataFrame],
+    rebalance_dates: pd.DatetimeIndex,
+    universe_tickers: List[str],
+    wfo_start_date: Optional[pd.Timestamp],
+    wfo_end_date: Optional[pd.Timestamp],
+    use_sparse_nan_for_inactive_rows: bool,
+) -> Optional[pd.DataFrame]:
+    """Use an optional vectorized strategy hook for full signal matrices."""
+    batch_fn = getattr(strategy, "generate_signal_matrix", None)
+    if not callable(batch_fn):
+        return None
+
+    signals = batch_fn(
+        all_historical_data=asset_data_view,
+        benchmark_historical_data=benchmark_data_view,
+        non_universe_historical_data=(
+            non_universe_data_view if non_universe_data_view is not None else pd.DataFrame()
+        ),
+        rebalance_dates=rebalance_dates,
+        universe_tickers=universe_tickers,
+        start_date=wfo_start_date,
+        end_date=wfo_end_date,
+        use_sparse_nan_for_inactive_rows=use_sparse_nan_for_inactive_rows,
+    )
+    if signals is None:
+        return None
+    if not isinstance(signals, pd.DataFrame):
+        return None
+    return signals.reindex(index=rebalance_dates, columns=universe_tickers)
+
+
 def generate_signals(
     strategy,
     scenario_config,
@@ -400,6 +436,24 @@ def generate_signals(
         if use_sparse_nan_for_inactive_rows
         else np.zeros((len(rebalance_dates), num_assets))
     )
+
+    batch_signals = _call_batch_signal_generator(
+        strategy,
+        asset_data_view=asset_data_view,
+        benchmark_data_view=benchmark_data_view,
+        non_universe_data_view=non_universe_data_view,
+        rebalance_dates=rebalance_dates,
+        universe_tickers=list(universe_tickers),
+        wfo_start_date=wfo_start_date,
+        wfo_end_date=wfo_end_date,
+        use_sparse_nan_for_inactive_rows=use_sparse_nan_for_inactive_rows,
+    )
+    if batch_signals is not None:
+        if not use_sparse_nan_for_inactive_rows:
+            batch_signals = batch_signals.fillna(0.0)
+        if cache_store is not None and cache_digest is not None:
+            cache_store.put(cache_digest, batch_signals.copy(deep=True))
+        return batch_signals
 
     for i, current_rebalance_date in enumerate(rebalance_dates):
         if has_timed_out():

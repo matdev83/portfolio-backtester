@@ -1,11 +1,34 @@
 import logging
 import os
-from typing import Mapping, Optional
+from typing import Any, Mapping, Optional
+
 from rich.console import Console
 from rich.table import Table
 import pandas as pd
 
+from .metric_display import (
+    MetricsDisplayProfile,
+    metric_display_label,
+    resolve_metrics_display_profile,
+)
+
 logger = logging.getLogger(__name__)
+
+
+def _first_sharpe_path_for_row(
+    all_period_metrics: dict[str, pd.Series],
+    strategy_display_order: list[str],
+    bench_name: str,
+    bench_metrics: pd.Series,
+) -> Optional[str]:
+    """Prefer first strategy series Sharpe attrs; fall back to benchmark."""
+    for dn in strategy_display_order:
+        s = all_period_metrics.get(dn)
+        if s is not None and isinstance(s, pd.Series) and "Sharpe" in s.index:
+            sp = s.attrs.get("sharpe_path")
+            if sp is not None:
+                return str(sp)
+    return bench_metrics.attrs.get("sharpe_path") if hasattr(bench_metrics, "attrs") else None
 
 
 def _resolve_benchmark_name(backtester) -> str:
@@ -66,7 +89,11 @@ def _apply_metrics_window(
 
 def _format_metric_value(metric_name: str, value):
     percentage_metrics = ["Total Return", "Ann. Return"]
-    high_precision_metrics = ["ADF p-value"]
+    high_precision_metrics = [
+        "ADF p-value",
+        "ADF p-value (equity)",
+        "ADF p-value (returns)",
+    ]
     for direction in ["All", "Long", "Short"]:
         if metric_name == f"Win Rate % ({direction})":
             return f"{value:.2f}%"
@@ -87,7 +114,11 @@ def _format_metric_value(metric_name: str, value):
             f"Avg MAE ({direction})",
         }:
             return f"${value:,.2f}"
-    integer_metrics = {"Max DD Recovery Time (days)", "Max Flat Period (days)"}
+    integer_metrics = {
+        "Max DD Recovery Time (days)",
+        "Max DD Recovery Time (bars)",
+        "Max Flat Period (days)",
+    }
     for direction in ["All", "Long", "Short"]:
         integer_metrics |= {
             f"Number of Trades ({direction})",
@@ -123,11 +154,27 @@ def _add_metrics_rows(
     period_returns: dict,
     backtester,
     all_period_metrics: dict,
+    display_profile: MetricsDisplayProfile,
+    strategy_display_order: list[str],
+    bench_name: str,
 ):
     if bench_metrics.empty:
         return
     for metric_name in bench_metrics.index:
-        row_values = [metric_name]
+        sharpe_path: Optional[str] = None
+        if metric_name == "Sharpe":
+            sharpe_path = _first_sharpe_path_for_row(
+                all_period_metrics,
+                strategy_display_order,
+                bench_name,
+                bench_metrics,
+            )
+        row_label = metric_display_label(
+            metric_name,
+            display_profile,
+            sharpe_path=sharpe_path,
+        )
+        row_values = [row_label]
         for strategy_name_key in period_returns.keys():
             display_name = backtester.results[strategy_name_key]["display_name"]
             strategy_metrics = all_period_metrics.get(display_name, pd.Series(dtype=float))
@@ -151,10 +198,16 @@ def _collect_metrics(
     heavy statsmodels/scipy dependencies at module import time.
     """
     from ..reporting.performance_metrics import calculate_metrics
+    from ..reporting.risk_free import build_optional_risk_free_series
 
     period_returns, bench_period_rets = _apply_metrics_window(
         backtester, period_returns, bench_period_rets
     )
+
+    daily_ohlc = getattr(backtester, "daily_data_ohlc", None)
+    scenario_for_rf = None
+    if hasattr(backtester, "scenarios") and getattr(backtester, "scenarios", None):
+        scenario_for_rf = backtester.scenarios[0]
 
     # Keep benchmark metrics on a common window with reported strategy returns
     # to avoid comparing stitched WFO windows to full-history benchmark metrics.
@@ -173,8 +226,23 @@ def _collect_metrics(
             common_bench_rets = bench_period_rets.reindex(common_index).fillna(0.0)
 
     bench_name = _resolve_benchmark_name(backtester)
+    rf_bench = (
+        build_optional_risk_free_series(
+            daily_ohlc,
+            backtester.global_config,
+            common_bench_rets.index,
+            scenario_for_rf,
+        )
+        if daily_ohlc is not None
+        else None
+    )
     bench_metrics = calculate_metrics(
-        common_bench_rets, common_bench_rets, bench_name, name=bench_name, num_trials=1
+        common_bench_rets,
+        common_bench_rets,
+        bench_name,
+        name=bench_name,
+        num_trials=1,
+        risk_free_rets=rf_bench,
     )
     all_period_metrics = {bench_name: bench_metrics}
 
@@ -186,6 +254,13 @@ def _collect_metrics(
             trade_stats = backtester.results[name].get("trade_stats")
 
         strategy_bench_rets = bench_period_rets.reindex(rets.index).fillna(0.0)
+        rf_s = (
+            build_optional_risk_free_series(
+                daily_ohlc, backtester.global_config, rets.index, scenario_for_rf
+            )
+            if daily_ohlc is not None
+            else None
+        )
         metrics = calculate_metrics(
             rets,
             strategy_bench_rets,
@@ -193,6 +268,7 @@ def _collect_metrics(
             name=display_name,
             num_trials=strategy_num_trials,
             trade_stats=trade_stats,
+            risk_free_rets=rf_s,
         )
         all_period_metrics[display_name] = metrics
     return all_period_metrics
@@ -290,7 +366,23 @@ def generate_performance_table(
     bench_name = _resolve_benchmark_name(backtester)
     table.add_column(bench_name, style="green")
     bench_metrics = all_period_metrics[bench_name]
-    _add_metrics_rows(table, bench_metrics, dict(ordered_names), backtester, all_period_metrics)
+    scenario_for_prof: Any = None
+    if hasattr(backtester, "scenarios") and getattr(backtester, "scenarios", None):
+        scenario_for_prof = backtester.scenarios[0]
+    display_profile: MetricsDisplayProfile = resolve_metrics_display_profile(
+        backtester.global_config, scenario_for_prof
+    )
+    strat_display_order = [d for _, d in ordered_names]
+    _add_metrics_rows(
+        table,
+        bench_metrics,
+        dict(ordered_names),
+        backtester,
+        all_period_metrics,
+        display_profile,
+        strat_display_order,
+        bench_name,
+    )
     console.print(table)
     for name, display_name in ordered_names:
         if hasattr(backtester, "results") and name in backtester.results:
@@ -410,10 +502,11 @@ def generate_enhanced_performance_table(
     num_trials_map: dict,
     report_dir: str,
 ):
+    """Enhanced version that separates main performance metrics from trade statistics."""
     # Lazy import to avoid importing heavy statsmodels/scipy dependency at module import time
     from ..reporting.performance_metrics import calculate_metrics
+    from ..reporting.risk_free import build_optional_risk_free_series
 
-    """Enhanced version that separates main performance metrics from trade statistics."""
     os.makedirs(report_dir, exist_ok=True)
     period_returns, bench_period_rets = _apply_metrics_window(
         backtester, period_returns, bench_period_rets
@@ -423,12 +516,24 @@ def generate_enhanced_performance_table(
     table.add_column("Metric", style="cyan", no_wrap=True)
 
     bench_name = _resolve_benchmark_name(backtester)
+    daily_ohlc = getattr(backtester, "daily_data_ohlc", None)
+    scenario_for_rf = None
+    if hasattr(backtester, "scenarios") and getattr(backtester, "scenarios", None):
+        scenario_for_rf = backtester.scenarios[0]
+    rf_bench = (
+        build_optional_risk_free_series(
+            daily_ohlc, backtester.global_config, bench_period_rets.index, scenario_for_rf
+        )
+        if daily_ohlc is not None
+        else None
+    )
     bench_metrics = calculate_metrics(
         bench_period_rets,
         bench_period_rets,
         bench_name,
         name=bench_name,
         num_trials=1,
+        risk_free_rets=rf_bench,
     )
 
     all_period_metrics = {bench_name: bench_metrics}
@@ -447,6 +552,13 @@ def generate_enhanced_performance_table(
         if hasattr(backtester, "results") and name in backtester.results:
             trade_stats = backtester.results[name].get("trade_stats")
 
+        rf_s = (
+            build_optional_risk_free_series(
+                daily_ohlc, backtester.global_config, rets.index, scenario_for_rf
+            )
+            if daily_ohlc is not None
+            else None
+        )
         metrics = calculate_metrics(
             rets,
             bench_period_rets,
@@ -454,6 +566,7 @@ def generate_enhanced_performance_table(
             name=display_name,
             num_trials=strategy_num_trials,
             trade_stats=trade_stats,
+            risk_free_rets=rf_s,
         )
         all_period_metrics[display_name] = metrics
 
@@ -482,8 +595,10 @@ def generate_enhanced_performance_table(
         "Mean Margin Load",
     ]
 
-    percentage_metrics = ["Total Return", "Ann. Return"]
-    high_precision_metrics = ["ADF p-value"]
+    display_profile: MetricsDisplayProfile = resolve_metrics_display_profile(
+        backtester.global_config, scenario_for_rf
+    )
+    strat_order = [backtester.results[k]["display_name"] for k in period_returns.keys()]
 
     if not bench_metrics.empty:
         for metric_name in bench_metrics.index:
@@ -491,29 +606,34 @@ def generate_enhanced_performance_table(
             if any(pattern in metric_name for pattern in trade_metric_patterns):
                 continue
 
-            row_values = [metric_name]
+            sharpe_path: Optional[str] = None
+            if metric_name == "Sharpe":
+                sharpe_path = _first_sharpe_path_for_row(
+                    all_period_metrics,
+                    strat_order,
+                    bench_name,
+                    bench_metrics,
+                )
+            row_label = metric_display_label(
+                metric_name,
+                display_profile,
+                sharpe_path=sharpe_path,
+            )
+            row_values = [row_label]
             for strategy_name_key in period_returns.keys():
                 display_name = backtester.results[strategy_name_key]["display_name"]
                 strategy_metrics = all_period_metrics.get(display_name, pd.Series(dtype=float))
                 value = _safe_metric(strategy_metrics, metric_name)
-                if value is pd.NA:
-                    row_values.append("N/A")
-                elif metric_name in percentage_metrics:
-                    row_values.append(f"{value:.2%}")
-                elif metric_name in high_precision_metrics:
-                    row_values.append(f"{value:.6f}")
-                else:
-                    row_values.append(f"{value:.4f}")
+                row_values.append(
+                    _format_metric_value(metric_name, value) if value is not pd.NA else "N/A"
+                )
 
             bench_value = _safe_metric(bench_metrics, metric_name)
-            if bench_value is pd.NA:
-                row_values.append("N/A")
-            elif metric_name in percentage_metrics:
-                row_values.append(f"{bench_value:.2%}")
-            elif metric_name in high_precision_metrics:
-                row_values.append(f"{bench_value:.6f}")
-            else:
-                row_values.append(f"{bench_value:.4f}")
+            row_values.append(
+                _format_metric_value(metric_name, bench_value)
+                if bench_value is not pd.NA
+                else "N/A"
+            )
             table.add_row(*row_values)
 
     console.print(table)

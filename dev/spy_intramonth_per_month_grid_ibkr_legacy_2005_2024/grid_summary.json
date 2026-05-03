@@ -1,0 +1,280 @@
+{
+  "period": {
+    "start": "2005-01-01",
+    "end": "2024-12-31"
+  },
+  "grid": {
+    "entry_day_range": [
+      1,
+      20
+    ],
+    "hold_days_range": [
+      1,
+      20
+    ],
+    "evaluations": 4800
+  },
+  "costs": {
+    "portfolio_value": 100000.0,
+    "commission_per_share": 0.005,
+    "commission_min_per_order": 1.0,
+    "commission_max_percent_of_trade": 0.005,
+    "slippage_bps": 0.5
+  },
+  "sortino_definition": "calculate_optimizer_metrics_fast raw returns (risk_free_rets=None); scenario extras risk_free_metrics_disabled_for_objective_alignment",
+  "elapsed_seconds": 52.07277329999488,
+  "per_month_best": [
+    {
+      "calendar_month": 1,
+      "month_name": "January",
+      "entry_day": 11,
+      "hold_days": 1,
+      "Sortino": 1.0613905583779284,
+      "Sharpe": 0.3815587264928653,
+      "Calmar": 0.2349897333970086,
+      "Total Return": 0.04210936576682611,
+      "Max Drawdown": -0.008943467919650616,
+      "Ann Return": 0.0021016231420833975,
+      "Trades": 20,
+      "Total_Cost_frac": 0.0017598736769819997
+    },
+    {
+      "calendar_month": 2,
+      "month_name": "February",
+      "entry_day": 9,
+      "hold_days": 1,
+      "Sortino": 0.7955539459969048,
+      "Sharpe": 0.3436172729567422,
+      "Calmar": 0.1246643176875608,
+      "Total Return": 0.05285282017147308,
+      "Max Drawdown": -0.021055771168144388,
+      "Ann Return": 0.002624903346062135,
+      "Trades": 40,
+      "Total_Cost_frac": 0.0034533612272079676
+    },
+    {
+      "calendar_month": 3,
+      "month_name": "March",
+      "entry_day": 11,
+      "hold_days": 1,
+      "Sortino": 1.6118556174122498,
+      "Sharpe": 0.41211378477405713,
+      "Calmar": 0.335364694255804,
+      "Total Return": 0.16464736431306415,
+      "Max Drawdown": -0.023222727577708713,
+      "Ann Return": 0.007788082933884111,
+      "Trades": 40,
+      "Total_Cost_frac": 0.0034654672152695572
+    },
+    {
+      "calendar_month": 4,
+      "month_name": "April",
+      "entry_day": 1,
+      "hold_days": 1,
+      "Sortino": 2.4074176479553393,
+      "Sharpe": 0.5147526815395855,
+      "Calmar": 0.4502116944326538,
+      "Total Return": 0.11217621998176242,
+      "Max Drawdown": -0.012052466556088492,
+      "Ann Return": 0.005426161390309492,
+      "Trades": 40,
+      "Total_Cost_frac": 0.0034343028911603245
+    },
+    {
+      "calendar_month": 5,
+      "month_name": "May",
+      "entry_day": 17,
+      "hold_days": 3,
+      "Sortino": 1.3489806934237152,
+      "Sharpe": 0.5895430049535363,
+      "Calmar": 0.38617843501830806,
+      "Total Return": 0.19363782753468928,
+      "Max Drawdown": -0.02343497721590959,
+      "Ann Return": 0.009050082825929673,
+      "Trades": 40,
+      "Total_Cost_frac": 0.003411460544343147
+    },
+    {
+      "calendar_month": 6,
+      "month_name": "June",
+      "entry_day": 1,
+      "hold_days": 1,
+      "Sortino": 2.6234337484471464,
+      "Sharpe": 0.47311909920038814,
+      "Calmar": 0.5378629770456063,
+      "Total Return": 0.09522375425497165,
+      "Max Drawdown": -0.00862751740799439,
+      "Ann Return": 0.004640422197576655,
+      "Trades": 40,
+      "Total_Cost_frac": 0.003403439048179878
+    },
+    {
+      "calendar_month": 7,
+      "month_name": "July",
+      "entry_day": 2,
+      "hold_days": 1,
+      "Sortino": 1.3925372927988653,
+      "Sharpe": 0.37121679957371534,
+      "Calmar": 0.38458349954855586,
+      "Total Return": 0.0368419977120682,
+      "Max Drawdown": -0.004792698394469386,
+      "Ann Return": 0.0018431927208257814,
+      "Trades": 26,
+      "Total_Cost_frac": 0.0022292295653522105
+    },
+    {
+      "calendar_month": 8,
+      "month_name": "August",
+      "entry_day": 8,
+      "hold_days": 1,
+      "Sortino": 1.8562636674990707,
+      "Sharpe": 0.35682051926405306,
+      "Calmar": 0.657976987408356,
+      "Total Return": 0.08687904555023396,
+      "Max Drawdown": -0.006458280023588725,
+      "Ann Return": 0.004249399633760476,
+      "Trades": 40,
+      "Total_Cost_frac": 0.0033921100826884805
+    },
+    {
+      "calendar_month": 9,
+      "month_name": "September",
+      "entry_day": 11,
+      "hold_days": 1,
+      "Sortino": 1.9912301701851536,
+      "Sharpe": 0.4626790033453908,
+      "Calmar": 0.3197844493862168,
+      "Total Return": 0.0888221392460784,
+      "Max Drawdown": -0.013573844594600981,
+      "Ann Return": 0.00434070441973855,
+      "Trades": 40,
+      "Total_Cost_frac": 0.003369078080542944
+    },
+    {
+      "calendar_month": 10,
+      "month_name": "October",
+      "entry_day": 11,
+      "hold_days": 1,
+      "Sortino": 1.503701499419186,
+      "Sharpe": 0.4094952535659764,
+      "Calmar": 0.23847244099293585,
+      "Total Return": 0.1108379103456758,
+      "Max Drawdown": -0.022495454897099476,
+      "Ann Return": 0.005364546040557805,
+      "Trades": 40,
+      "Total_Cost_frac": 0.003397761771084799
+    },
+    {
+      "calendar_month": 11,
+      "month_name": "November",
+      "entry_day": 15,
+      "hold_days": 1,
+      "Sortino": 3.628113965900481,
+      "Sharpe": 0.4020060026378478,
+      "Calmar": 0.8725540146956413,
+      "Total Return": 0.14467951973378668,
+      "Max Drawdown": -0.007909415131546305,
+      "Ann Return": 0.006901391926925182,
+      "Trades": 40,
+      "Total_Cost_frac": 0.003394829982940057
+    },
+    {
+      "calendar_month": 12,
+      "month_name": "December",
+      "entry_day": 16,
+      "hold_days": 1,
+      "Sortino": 1.866190887449722,
+      "Sharpe": 0.37610333402746976,
+      "Calmar": 0.44609021412717104,
+      "Total Return": 0.09809612399231926,
+      "Max Drawdown": -0.010702686926424732,
+      "Ann Return": 0.0047743639027448825,
+      "Trades": 40,
+      "Total_Cost_frac": 0.0033599872121835087
+    }
+  ],
+  "overall_best_month": 11,
+  "overall_best_row": {
+    "calendar_month": 11,
+    "month_name": "November",
+    "entry_day": 15,
+    "hold_days": 1,
+    "Sortino": 3.628113965900481,
+    "Sharpe": 0.4020060026378478,
+    "Calmar": 0.8725540146956413,
+    "Total Return": 0.14467951973378668,
+    "Max Drawdown": -0.007909415131546305,
+    "Ann Return": 0.006901391926925182,
+    "Trades": 40,
+    "Total_Cost_frac": 0.003394829982940057
+  },
+  "parity_checks": [
+    {
+      "calendar_month": 1,
+      "entry_day": 4,
+      "hold_days": 7,
+      "max_abs_ret_diff": 1.4282079963123806e-09,
+      "sortino_vectorized_full_window": -0.020846912614121187,
+      "sortino_vectorized_common_index": -0.020846912614121187,
+      "sortino_framework_fast": -0.02050798130164665,
+      "skipped": false
+    },
+    {
+      "calendar_month": 2,
+      "entry_day": 11,
+      "hold_days": 3,
+      "max_abs_ret_diff": 9.15082787322774e-10,
+      "sortino_vectorized_full_window": -0.24008484000802816,
+      "sortino_vectorized_common_index": -0.24008484000802816,
+      "sortino_framework_fast": -0.23618153079725268,
+      "skipped": false
+    },
+    {
+      "calendar_month": 4,
+      "entry_day": 19,
+      "hold_days": 12,
+      "max_abs_ret_diff": 1.8275538860024199e-09,
+      "sortino_vectorized_full_window": -0.16537637051642287,
+      "sortino_vectorized_common_index": -0.16537637051642287,
+      "sortino_framework_fast": -0.16268767499375122,
+      "skipped": false
+    },
+    {
+      "calendar_month": 6,
+      "entry_day": 6,
+      "hold_days": 5,
+      "max_abs_ret_diff": 8.93695450976395e-10,
+      "sortino_vectorized_full_window": -0.07813756479941639,
+      "sortino_vectorized_common_index": -0.07813756479941639,
+      "sortino_framework_fast": -0.07686719492774662,
+      "skipped": false
+    },
+    {
+      "calendar_month": 8,
+      "entry_day": 14,
+      "hold_days": 8,
+      "max_abs_ret_diff": 9.095511011025792e-10,
+      "sortino_vectorized_full_window": 0.08946154649344026,
+      "sortino_vectorized_common_index": 0.08946154649344026,
+      "sortino_framework_fast": 0.08800707338624206,
+      "skipped": false
+    },
+    {
+      "calendar_month": 11,
+      "entry_day": 2,
+      "hold_days": 15,
+      "max_abs_ret_diff": 3.714785368202911e-09,
+      "sortino_vectorized_full_window": 0.30068236990206954,
+      "sortino_vectorized_common_index": 0.30068236990206954,
+      "sortino_framework_fast": 0.29579385302841626,
+      "skipped": false
+    }
+  ],
+  "limitations": [
+    "Vectorized path assumes no simple_high_low or ATR stop/take-profit (matches default-off strategy).",
+    "Single-asset long 0/1 target; commission model matches per-share/min/max/slip scaling used in portfolio_logic for full investment.",
+    "PnL uses weights lagged one session vs returns, matching portfolio_simulation_input.build_weights_arrays (shift(1)).",
+    "Month-only strategies: one entry anchor per calendar year; overlapping cycles across years do not occur for a fixed month.",
+    "Parity probes: max |r_vec - r_fw| on index intersection typ. ~1e-9; full-window Sortino can differ slightly from common-index Sortino if edges differ."
+  ]
+}

@@ -519,6 +519,7 @@ class Backtester:
         if isinstance(stitched_returns, pd.Series):
             from ..backtesting.strategy_backtester import StrategyBacktester, _extract_close_returns
             from ..reporting.performance_metrics import calculate_metrics
+            from ..reporting.risk_free import build_optional_risk_free_series
 
             benchmark_ticker = getattr(
                 scenario_config, "benchmark_ticker", None
@@ -529,8 +530,14 @@ class Backtester:
                 daily_data, str(benchmark_ticker), stitched_returns.index
             )
 
+            rf_opt = build_optional_risk_free_series(
+                daily_data, self.global_config, stitched_returns.index, scenario_config
+            )
             metrics_series = calculate_metrics(
-                stitched_returns, benchmark_returns, str(benchmark_ticker)
+                stitched_returns,
+                benchmark_returns,
+                str(benchmark_ticker),
+                risk_free_rets=rf_opt,
             )
             metrics = {
                 k: float(v) if not pd.isna(v) else float("nan") for k, v in metrics_series.items()

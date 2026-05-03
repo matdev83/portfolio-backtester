@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 import pandas as pd
 import logging
 
-from ..reporting.metrics import calculate_metrics
+from ..reporting.performance_metrics import calculate_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -100,18 +100,20 @@ class StandardEvaluationStrategy(IEvaluationStrategy):
                     returns = returns.iloc[:, 0]
 
             # Calculate standard metrics
-            result = calculate_metrics(
+            result_series = calculate_metrics(
                 returns,
                 benchmark_returns,
                 "SPY",
-                name="Strategy",  # Default benchmark ticker name
+                name="Strategy",
             )
 
-            # Ensure we return Dict[str, float]
-            if not isinstance(result, dict):
+            if not isinstance(result_series, pd.Series):
                 return {"error": 0.0}
 
-            return {k: float(v) if v is not None else 0.0 for k, v in result.items()}
+            return {
+                str(k): float(v) if v is not None and not pd.isna(v) else 0.0
+                for k, v in result_series.items()
+            }
 
         except Exception as e:
             logger.error(f"Failed to evaluate performance: {e}")

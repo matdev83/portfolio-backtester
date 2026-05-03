@@ -31,6 +31,31 @@ OPTIMIZER_PARAMETER_DEFAULTS:
     high: 20
 """
 
+MOCK_PARAMS_YAML_RISK_FREE_DISABLED = """
+GLOBAL_CONFIG:
+  data_source: "mock_source"
+  benchmark: "MOCK_SPY"
+  start_date: "2000-01-01"
+  risk_free_metrics_enabled: false
+OPTIMIZER_PARAMETER_DEFAULTS:
+  leverage:
+    type: "float"
+    low: 0.5
+    high: 2.0
+  num_holdings:
+    type: "int"
+    low: 5
+    high: 15
+  mock_strategy_param1:
+    type: "int"
+    low: 1
+    high: 5
+  sizer_mock_window:
+    type: "int"
+    low: 10
+    high: 20
+"""
+
 MOCK_SCENARIO_1_CONTENT = """
 name: "Test_Scenario_1"
 strategy: "mock_strategy"
@@ -151,9 +176,17 @@ class TestConfigLoader(unittest.TestCase):
 
         self.assertEqual(config_loader.GLOBAL_CONFIG.get("data_source"), "mock_source")
         self.assertEqual(config_loader.GLOBAL_CONFIG.get("benchmark"), "MOCK_SPY")
+        self.assertIs(config_loader.GLOBAL_CONFIG.get("risk_free_metrics_enabled"), True)
+        self.assertEqual(config_loader.GLOBAL_CONFIG.get("risk_free_yield_ticker"), "^IRX")
         self.assertIn("leverage", config_loader.OPTIMIZER_PARAMETER_DEFAULTS)
         self.assertEqual(len(config_loader.BACKTEST_SCENARIOS), 2)
         self.assertEqual(config_loader.BACKTEST_SCENARIOS[0]["name"], "Test_Scenario_1")
+
+    def test_load_config_does_not_inject_yield_ticker_when_rf_disabled(self):
+        scenarios = {"scenario1.yaml": MOCK_SCENARIO_1_CONTENT}
+        self.run_load_config_with_mocks(MOCK_PARAMS_YAML_RISK_FREE_DISABLED, scenarios)
+        self.assertFalse(config_loader.GLOBAL_CONFIG.get("risk_free_metrics_enabled"))
+        self.assertIsNone(config_loader.GLOBAL_CONFIG.get("risk_free_yield_ticker"))
 
     def test_load_config_file_not_found(self):
         """Test FileNotFoundError when a config file is missing."""

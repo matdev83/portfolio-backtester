@@ -632,10 +632,19 @@ class EvaluationEngine:
             return {metric: 0.0 for metric in metrics_list}
 
         from ..reporting.performance_metrics import calculate_metrics
+        from ..reporting.risk_free import build_optional_risk_free_series
 
         benchmark_series = daily_data_ohlc[self.global_config["benchmark"]]
         benchmark_rets = benchmark_series.pct_change(fill_method=None).fillna(0)
-        metrics = calculate_metrics(returns, benchmark_rets, self.global_config["benchmark"])
+        rf_series = build_optional_risk_free_series(
+            daily_data_ohlc, self.global_config, returns.index, temp_scenario_config
+        )
+        metrics = calculate_metrics(
+            returns,
+            benchmark_rets,
+            self.global_config["benchmark"],
+            risk_free_rets=rf_series,
+        )
         if metrics_list is None:
             # Ensure precise type dict[str, float]
             return {k: float(v) for k, v in metrics.items()}

@@ -17,6 +17,7 @@ import yaml
 from ..canonical_config import CanonicalScenarioConfig
 from ..optimization.results import OptimizationResult
 from ..reporting.performance_metrics import calculate_metrics
+from ..reporting.risk_free import build_optional_risk_free_series
 from ..scenario_normalizer import ScenarioNormalizer
 from .artifacts import (
     ResearchArtifactWriter,
@@ -350,6 +351,7 @@ class DoubleOOSWFOProtocol:
         stitched: pd.Series,
         daily_slice: pd.DataFrame,
         global_config: Mapping[str, Any],
+        scenario_config: CanonicalScenarioConfig | None = None,
     ) -> dict[str, float]:
         ticker = self._effective_benchmark_ticker(global_config)
         benchmark_returns = (
@@ -357,7 +359,12 @@ class DoubleOOSWFOProtocol:
             if stitched.empty
             else self._benchmark_returns_aligned(stitched, daily_slice, ticker)
         )
-        metrics_series = calculate_metrics(stitched, benchmark_returns, ticker)
+        rf_opt = build_optional_risk_free_series(
+            daily_slice, dict(global_config), stitched.index, scenario_config
+        )
+        metrics_series = calculate_metrics(
+            stitched, benchmark_returns, ticker, risk_free_rets=rf_opt
+        )
         metrics = {
             k: float(v) if not pd.isna(v) else float("nan") for k, v in metrics_series.items()
         }
@@ -427,7 +434,7 @@ class DoubleOOSWFOProtocol:
             canonical_cell, monthly_slice, daily_slice, rets_slice, args
         )
         stitched = self._optimization_result_to_series(opt_result)
-        metrics = self._metrics_from_returns(stitched, daily_slice, global_config)
+        metrics = self._metrics_from_returns(stitched, daily_slice, global_config, scenario_config)
         passed, fails = (
             constraint_evaluator.evaluate(metrics)
             if constraint_evaluator is not None
@@ -900,7 +907,7 @@ class DoubleOOSWFOProtocol:
                     unseen_result=unseen_result,
                     selection_metric=protocol_config.selection.metric,
                     metrics_from_returns=lambda s: self._metrics_from_returns(
-                        s, daily_ut, global_config
+                        s, daily_ut, global_config, scenario_config
                     ),
                     param_space=param_space,
                     run_with_params_fn=_run_with_sampled_params,
@@ -957,7 +964,7 @@ class DoubleOOSWFOProtocol:
             stitched = pd.Series(dtype=float)
             if isinstance(rets_bt, pd.Series):
                 stitched = rets_bt
-            metrics = self._metrics_from_returns(stitched, daily_ut, global_config)
+            metrics = self._metrics_from_returns(stitched, daily_ut, global_config, scenario_config)
             return UnseenValidationResult(
                 selected_protocol=selected_eff,
                 metrics=metrics,
@@ -977,7 +984,7 @@ class DoubleOOSWFOProtocol:
                 unseen_canon, monthly_ut, daily_ut, rets_ut, args
             )
             stitched = self._optimization_result_to_series(opt_result)
-            metrics = self._metrics_from_returns(stitched, daily_ut, global_config)
+            metrics = self._metrics_from_returns(stitched, daily_ut, global_config, scenario_config)
             return UnseenValidationResult(
                 selected_protocol=selected,
                 metrics=metrics,
@@ -998,7 +1005,7 @@ class DoubleOOSWFOProtocol:
         stitched = pd.Series(dtype=float)
         if isinstance(rets_bt, pd.Series):
             stitched = rets_bt
-        metrics = self._metrics_from_returns(stitched, daily_ut, global_config)
+        metrics = self._metrics_from_returns(stitched, daily_ut, global_config, scenario_config)
         return UnseenValidationResult(
             selected_protocol=selected,
             metrics=metrics,

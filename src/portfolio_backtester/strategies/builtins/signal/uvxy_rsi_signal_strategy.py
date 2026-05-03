@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import Dict, Optional, Any, Union, Mapping, TYPE_CHECKING
+from typing import Dict, List, Optional, Any, Union, Mapping, TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 
 from ..._core.base.base.signal_strategy import SignalStrategy
@@ -12,8 +13,8 @@ if TYPE_CHECKING:
 
 class UvxyRsiSignalStrategy(SignalStrategy):
     """UVXY strategy using SPY RSI(2) signal. Simplified for tests.
-...
-    - Tunable params: rsi_period, rsi_threshold
+    ...
+        - Tunable params: rsi_period, rsi_threshold
     """
 
     def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
@@ -47,6 +48,38 @@ class UvxyRsiSignalStrategy(SignalStrategy):
         rs = (avg_gain / (avg_loss.replace(0, pd.NA))).fillna(0.0)
         rsi = 100 - (100 / (1 + rs))
         return rsi
+
+    def generate_signal_matrix(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        non_universe_historical_data: Optional[pd.DataFrame],
+        rebalance_dates: pd.DatetimeIndex,
+        universe_tickers: List[str],
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
+        use_sparse_nan_for_inactive_rows: bool = False,
+    ) -> Optional[pd.DataFrame]:
+        cols = list(universe_tickers)
+        idx = pd.DatetimeIndex(rebalance_dates)
+        result = pd.DataFrame(0.0, index=idx, columns=cols, dtype=float)
+        if len(idx) == 0 or len(cols) == 0:
+            return result
+        if (
+            non_universe_historical_data is None
+            or non_universe_historical_data.empty
+            or "SPY" not in non_universe_historical_data.columns
+        ):
+            return result
+
+        spy_close = non_universe_historical_data["SPY"].astype(float)
+        rsi = self._compute_rsi2(spy_close)
+        aligned = rsi.reindex(idx)
+        active = aligned.lt(self.rsi_threshold).fillna(False).to_numpy(dtype=bool)
+        ew = 1.0 / float(len(cols))
+        dense = np.where(active[:, np.newaxis], ew, 0.0)
+        result.iloc[:, :] = dense.astype(float)
+        return result
 
     def generate_signals(
         self,

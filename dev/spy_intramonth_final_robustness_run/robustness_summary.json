@@ -1,0 +1,189 @@
+{
+  "bitmask": 4086,
+  "artifacts": {
+    "tsv": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\dev\\spy_intramonth_detailed_ibkr_rf_off_2005_2024_final\\best_subset_month_params.tsv",
+    "pipeline": "C:\\Users\\Mateusz\\source\\repos\\portfolio-backtester\\dev\\spy_intramonth_detailed_ibkr_rf_off_2005_2024_final\\pipeline_summary.json"
+  },
+  "baseline_period": [
+    "2005-01-01",
+    "2024-12-31"
+  ],
+  "parity_max_abs_daily_return_diff": 0.05553718468139825,
+  "baseline_fast_sortino": 2.152369469563501,
+  "baseline_runner_sortino": 2.6603522535610957,
+  "train_holdout": {
+    "train_2005_2018": {
+      "Total Return": 3.896673833211148,
+      "Ann. Return": 0.11820702169516628,
+      "Ann. Vol": 0.08262094605848189,
+      "Sharpe": 1.430714937728931,
+      "Sortino": 2.4978231597922758,
+      "Calmar": 1.1621153078057571,
+      "Max Drawdown": -0.1017171195501747
+    },
+    "holdout_2019_2024": {
+      "Total Return": 1.3907067490556018,
+      "Ann. Return": 0.1540470166140835,
+      "Ann. Vol": 0.08917475618140287,
+      "Sharpe": 1.7274733703865122,
+      "Sortino": 3.022559921118428,
+      "Calmar": 1.42686022947579,
+      "Max Drawdown": -0.10796223304274055
+    }
+  },
+  "slippage_runner": [
+    {
+      "slippage_bps": 0.5,
+      "Sortino": 2.152369469563501,
+      "Sharpe": 1.3056154965867803,
+      "Calmar": 1.0721796069849752,
+      "Total Return": 8.093520807222182,
+      "Max Drawdown": -0.11091252975270449,
+      "Ann Return": 0.11891815255996407,
+      "Trades": 360,
+      "Total_Cost_frac": 0.03046566785142428,
+      "note": "fast simulator; baseline parity checked"
+    },
+    {
+      "slippage_bps": 1.0,
+      "Sortino": 2.1343478676474947,
+      "Sharpe": 1.2943172329160395,
+      "Calmar": 1.061333873163725,
+      "Total Return": 7.932967930338405,
+      "Max Drawdown": -0.11109049651377845,
+      "Ann Return": 0.11790410693664977,
+      "Trades": 360,
+      "Total_Cost_frac": 0.04846566785142428,
+      "note": "fast simulator; baseline parity checked"
+    },
+    {
+      "slippage_bps": 2.5,
+      "Sortino": 2.0802727820512454,
+      "Sharpe": 1.2604586794404669,
+      "Calmar": 1.0290522992580176,
+      "Total Return": 7.468072777205917,
+      "Max Drawdown": -0.11162423649753128,
+      "Ann Return": 0.11486717722070527,
+      "Trades": 360,
+      "Total_Cost_frac": 0.10246566785142427,
+      "note": "fast simulator; baseline parity checked"
+    },
+    {
+      "slippage_bps": 5.0,
+      "Sortino": 1.9901476873143669,
+      "Sharpe": 1.2041583297406433,
+      "Calmar": 0.9760888110181497,
+      "Total Return": 6.746250092266068,
+      "Max Drawdown": -0.11251326896599434,
+      "Ann Return": 0.1098229429287827,
+      "Trades": 360,
+      "Total_Cost_frac": 0.19246566785142427,
+      "note": "fast simulator; baseline parity checked"
+    }
+  ],
+  "param_neighborhood": {
+    "n_variants": 80,
+    "sortino_q05_q95": [
+      1.9957749398057048,
+      2.206734706759647
+    ],
+    "sortino_min": 1.9822250334836078
+  },
+  "joint_mc_perturb_20": {
+    "sortino_q05_q95": [
+      1.1271261327385975,
+      1.9584443112269896
+    ],
+    "sortino_min": 0.870327419855343
+  },
+  "blocked_3y_metrics": [
+    {
+      "block": "2005_2007",
+      "Total Return": 0.21682007141595006,
+      "Ann. Return": 0.06668924513520924,
+      "Ann. Vol": 0.05886828191461957,
+      "Sharpe": 1.1328552994281864,
+      "Sortino": 1.7357966040617325,
+      "Calmar": 1.2153625549208287,
+      "Max Drawdown": -0.054871893876600075
+    },
+    {
+      "block": "2008_2010",
+      "Total Return": 0.7429816730049135,
+      "Ann. Return": 0.1994124691803807,
+      "Ann. Vol": 0.13491990633372578,
+      "Sharpe": 1.478006282387507,
+      "Sortino": 2.656275594637532,
+      "Calmar": 1.9604612287709828,
+      "Max Drawdown": -0.10171711955017482
+    },
+    {
+      "block": "2011_2013",
+      "Total Return": 0.3139630460964411,
+      "Ann. Return": 0.09398581157217256,
+      "Ann. Vol": 0.06257476815038263,
+      "Sharpe": 1.5019761854538787,
+      "Sortino": 2.3495277988465797,
+      "Calmar": 1.4619438064015942,
+      "Max Drawdown": -0.06428825181968367
+    },
+    {
+      "block": "2014_2016",
+      "Total Return": 0.39780413345021226,
+      "Ann. Return": 0.11583662970649478,
+      "Ann. Vol": 0.057075711480474904,
+      "Sharpe": 2.029525812325992,
+      "Sortino": 3.8027593766286145,
+      "Calmar": 3.6562974618170148,
+      "Max Drawdown": -0.03168140199646918
+    },
+    {
+      "block": "2017_2019",
+      "Total Return": 0.4551729248696603,
+      "Ann. Return": 0.1311652381194972,
+      "Ann. Vol": 0.059592978103991764,
+      "Sharpe": 2.201018346332842,
+      "Sortino": 3.9396673778851317,
+      "Calmar": 2.824376319768184,
+      "Max Drawdown": -0.046440425520301365
+    },
+    {
+      "block": "2020_2022",
+      "Total Return": 0.6356993574213086,
+      "Ann. Return": 0.17547359638474802,
+      "Ann. Vol": 0.11539445230621725,
+      "Sharpe": 1.5206415289281094,
+      "Sortino": 2.6804675534681555,
+      "Calmar": 1.6253238881718999,
+      "Max Drawdown": -0.10796223304274066
+    }
+  ],
+  "bootstrap_sortino_daily_blocks": {
+    "block_21d_n250": {
+      "q05_median_q95": [
+        1.9543747105619658,
+        2.620833407424377,
+        3.4296406797032413
+      ]
+    },
+    "block_63d_n250": {
+      "q05_median_q95": [
+        1.9525178252713167,
+        2.6678087304057683,
+        3.334883256789292
+      ]
+    }
+  },
+  "extended_calendar": {
+    "data_min": "1995-01-01",
+    "data_max": "2025-06-30",
+    "note": "skipped in runtime-limited robustness run"
+  },
+  "elapsed_seconds": 80.16143560002092,
+  "limitations": [
+    "Neighborhood/MC use fast first-anchor simulator (IBKR cost lag pattern); parity_mad vs detailed Runner on baseline.",
+    "Block bootstrap is on daily net detailed returns (stationarity not guaranteed).",
+    "cache_only=True; extended window needs sufficient cached OHLC.",
+    "Holdout is time-slice of one full-sample detailed path (fixed params, no re-fit)."
+  ]
+}

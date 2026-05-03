@@ -1,0 +1,301 @@
+{
+  "period": {
+    "start": "2005-01-01",
+    "end": "2024-12-31"
+  },
+  "carlos_symbol": "MDMP:RORO.CARLOS",
+  "costs": {
+    "portfolio_value": 100000.0,
+    "commission_per_share": 0.005,
+    "commission_min_per_order": 1.0,
+    "commission_max_percent_of_trade": 0.005,
+    "slippage_bps": 0.5
+  },
+  "risk_free": "off",
+  "carlos_risk_off_sessions_in_window": 1128,
+  "unrestricted_month_use_carlos_roro_counts": {
+    "False": 5,
+    "True": 7
+  },
+  "subset_best_fast": {
+    "mixed_params_global_roro_off": {
+      "bitmask": 2938,
+      "Sortino_fast": 2.2455467105491205
+    },
+    "mixed_params_global_roro_on": {
+      "bitmask": 3415,
+      "Sortino_fast": 3.225451495940368
+    },
+    "consistent_off": {
+      "bitmask": 3702,
+      "Sortino_fast": 2.5732610615661864
+    },
+    "consistent_on": {
+      "bitmask": 3399,
+      "Sortino_fast": 3.3909550454996316
+    }
+  },
+  "runner_top_candidates": [
+    {
+      "label": "mixed_global_off",
+      "bitmask": 2938,
+      "global_use_carlos_roro": false,
+      "Sortino": 1.9178511192883096,
+      "Total Return": 4.144663717666943,
+      "Max Drawdown": -0.07763993327094032,
+      "Ann. Return": 0.08402544542158297,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "mixed_global_off",
+      "bitmask": 2942,
+      "global_use_carlos_roro": false,
+      "Sortino": 1.8738057072781589,
+      "Total Return": 4.505726633302293,
+      "Max Drawdown": -0.12357655011107327,
+      "Ann. Return": 0.08765329274216405,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "mixed_global_off",
+      "bitmask": 2682,
+      "global_use_carlos_roro": false,
+      "Sortino": 1.9706905425832282,
+      "Total Return": 3.5036184827424295,
+      "Max Drawdown": -0.07763993327094032,
+      "Ann. Return": 0.07694279516439062,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "mixed_global_off",
+      "bitmask": 2874,
+      "global_use_carlos_roro": false,
+      "Sortino": 1.9202264723764748,
+      "Total Return": 4.123888567912327,
+      "Max Drawdown": -0.07763993327094032,
+      "Ann. Return": 0.08380940663246172,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "mixed_global_off",
+      "bitmask": 2934,
+      "global_use_carlos_roro": false,
+      "Sortino": 1.7668469540859737,
+      "Total Return": 3.3059670738098195,
+      "Max Drawdown": -0.12523756558972077,
+      "Ann. Return": 0.07456469570678004,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "mixed_global_on",
+      "bitmask": 3415,
+      "global_use_carlos_roro": true,
+      "Sortino": 2.768893887090496,
+      "Total Return": 2.052848622675359,
+      "Max Drawdown": -0.04970626962819136,
+      "Ann. Return": 0.056513960409470654,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "mixed_global_on",
+      "bitmask": 3399,
+      "global_use_carlos_roro": true,
+      "Sortino": 2.719230370580575,
+      "Total Return": 1.8174825235479575,
+      "Max Drawdown": -0.03375657939016441,
+      "Ann. Return": 0.05234688317626235,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "mixed_global_on",
+      "bitmask": 3335,
+      "global_use_carlos_roro": true,
+      "Sortino": 2.7451095247920696,
+      "Total Return": 1.2727207482161877,
+      "Max Drawdown": -0.029034578336755823,
+      "Ann. Return": 0.04126788236171497,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "mixed_global_on",
+      "bitmask": 3351,
+      "global_use_carlos_roro": true,
+      "Sortino": 2.7571244473567846,
+      "Total Return": 1.4625786843143773,
+      "Max Drawdown": -0.028407774467119618,
+      "Ann. Return": 0.04539108903018918,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "mixed_global_on",
+      "bitmask": 3414,
+      "global_use_carlos_roro": true,
+      "Sortino": 2.698446026445062,
+      "Total Return": 1.7861256237435135,
+      "Max Drawdown": -0.04970626962819169,
+      "Ann. Return": 0.05176690839424025,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "consistent_off",
+      "bitmask": 3702,
+      "global_use_carlos_roro": false,
+      "Sortino": 2.2381134499944078,
+      "Total Return": 5.084107889881582,
+      "Max Drawdown": -0.11405244578311657,
+      "Ann. Return": 0.09301813866956854,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "consistent_off",
+      "bitmask": 3958,
+      "global_use_carlos_roro": false,
+      "Sortino": 2.1686838961498753,
+      "Total Return": 6.130513049739875,
+      "Max Drawdown": -0.11405244578311646,
+      "Ann. Return": 0.1015960457363021,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "consistent_off",
+      "bitmask": 3966,
+      "global_use_carlos_roro": false,
+      "Sortino": 2.1806739764966188,
+      "Total Return": 7.386599632916118,
+      "Max Drawdown": -0.11405244578311657,
+      "Ann. Return": 0.11043536753212746,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "consistent_off",
+      "bitmask": 3710,
+      "global_use_carlos_roro": false,
+      "Sortino": 2.225183751465732,
+      "Total Return": 6.155863349519335,
+      "Max Drawdown": -0.11405244578311635,
+      "Ann. Return": 0.10178863044263653,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "consistent_off",
+      "bitmask": 3670,
+      "global_use_carlos_roro": false,
+      "Sortino": 2.1582592281538817,
+      "Total Return": 3.9247462540433498,
+      "Max Drawdown": -0.11405244578311657,
+      "Ann. Return": 0.0816952248088707,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "consistent_on",
+      "bitmask": 3399,
+      "global_use_carlos_roro": true,
+      "Sortino": 2.897993859930034,
+      "Total Return": 1.684714077618565,
+      "Max Drawdown": -0.046699600685437326,
+      "Ann. Return": 0.049847770672789116,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "consistent_on",
+      "bitmask": 3415,
+      "global_use_carlos_roro": true,
+      "Sortino": 2.9222851899214106,
+      "Total Return": 1.9089890019314089,
+      "Max Drawdown": -0.04410135622364364,
+      "Ann. Return": 0.05400495193444743,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "consistent_on",
+      "bitmask": 3398,
+      "global_use_carlos_roro": true,
+      "Sortino": 2.865495589234625,
+      "Total Return": 1.4501544650854599,
+      "Max Drawdown": -0.04920843543397113,
+      "Ann. Return": 0.04513067069852483,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "consistent_on",
+      "bitmask": 3414,
+      "global_use_carlos_roro": true,
+      "Sortino": 2.8766461850366256,
+      "Total Return": 1.654834811418382,
+      "Max Drawdown": -0.04629483098270204,
+      "Ann. Return": 0.04926917321439728,
+      "runner_daily_bars": 5116
+    },
+    {
+      "label": "consistent_on",
+      "bitmask": 3423,
+      "global_use_carlos_roro": true,
+      "Sortino": 2.8577764536608825,
+      "Total Return": 2.1728124514713727,
+      "Max Drawdown": -0.04410135622364386,
+      "Ann. Return": 0.05852169440374788,
+      "runner_daily_bars": 5116
+    }
+  ],
+  "parity_checks_sample": [
+    {
+      "label": "mixed_off",
+      "bitmask": 2938,
+      "global_use_carlos_roro": false,
+      "max_abs_return_diff": 0.04215520122806756,
+      "sortino_runner": 1.9178511192883096
+    },
+    {
+      "label": "mixed_on",
+      "bitmask": 3415,
+      "global_use_carlos_roro": true,
+      "max_abs_return_diff": 0.02948324432396072,
+      "sortino_runner": 2.768893887090496
+    },
+    {
+      "label": "consistent_off",
+      "bitmask": 3702,
+      "global_use_carlos_roro": false,
+      "max_abs_return_diff": 0.06711987709307869,
+      "sortino_runner": 2.2381134499944078
+    },
+    {
+      "label": "consistent_on",
+      "bitmask": 3399,
+      "global_use_carlos_roro": true,
+      "max_abs_return_diff": 0.02948324432396072,
+      "sortino_runner": 2.897993859930034
+    },
+    {
+      "label": "random_mixed_params",
+      "bitmask": 2620,
+      "global_use_carlos_roro": false,
+      "max_abs_return_diff": 0.04215520122806756
+    },
+    {
+      "label": "random_mixed_params",
+      "bitmask": 2620,
+      "global_use_carlos_roro": true,
+      "max_abs_return_diff": 0.022117461515422192
+    },
+    {
+      "label": "random_mixed_params",
+      "bitmask": 457,
+      "global_use_carlos_roro": false,
+      "max_abs_return_diff": 0.031584517580086055
+    },
+    {
+      "label": "random_mixed_params",
+      "bitmask": 457,
+      "global_use_carlos_roro": true,
+      "max_abs_return_diff": 0.02948324432396072
+    }
+  ],
+  "elapsed_seconds": 634.3883453999879,
+  "limitations": [
+    "Single global use_carlos_roro applies to full strategy; per-month optimal RoRo flags from Task A cannot all be honored simultaneously.",
+    "mixed_params_global_roro_* uses entry/hold from unrestricted per-month winners (RoRo chosen per month in isolation).",
+    "Fast sim uses bar_close lag on 0/1 targets + IBKR-style costs; parity_sample compares vs BacktestRunner detailed path.",
+    "4095 subsets \u00d7 4 variant tracks recorded in task_b_all_subsets_metrics.csv."
+  ]
+}
