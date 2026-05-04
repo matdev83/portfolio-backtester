@@ -13,7 +13,6 @@ from ..timing.trade_execution_timing import (
 )
 from ..trading.trade_tracker import TradeTracker
 from ..trading.unified_commission_calculator import get_unified_commission_calculator
-from ..numba_kernels import trade_lifecycle_kernel
 from ..simulation.kernel import simulate_portfolio
 from .meta_execution import MetaExecutionMode, portfolio_execution_mode_for_strategy
 from .portfolio_simulation_input import (
@@ -233,11 +232,6 @@ def calculate_portfolio_returns(
 
     returns_net_of_costs = sim_result.daily_returns.astype(float)
     transaction_costs = pd.Series(sim_result.total_cost_fraction, index=price_ix, dtype=float)
-    per_asset_transaction_costs = pd.DataFrame(
-        sim_result.per_asset_cost_fraction,
-        index=price_ix,
-        columns=valid_cols,
-    )
 
     merged_flags: dict = {}
     if isinstance(global_config, dict):
@@ -278,36 +272,14 @@ def calculate_portfolio_returns(
 
         common_index = price_ix
         valid_cols_tt = valid_cols
-        prices_arr = (
-            close_prices_df.reindex(index=common_index, columns=valid_cols_tt)
-            .fillna(0.0)
-            .astype(float)
-            .to_numpy()
-        )
-        commissions_arr = (
-            per_asset_transaction_costs.reindex(index=common_index, columns=valid_cols_tt)
-            .fillna(0.0)
-            .astype(float)
-            .to_numpy()
-        )
-        portfolio_values_np = sim_result.portfolio_values.reindex(common_index).to_numpy(
-            dtype=float
-        )
-        positions_np = (
-            sim_result.positions.reindex(index=common_index, columns=valid_cols_tt)
-            .fillna(0.0)
-            .astype(float)
-            .to_numpy()
-        )
-
-        _track_trades_and_populate(
-            trade_tracker=trade_tracker,
-            prices_arr=prices_arr,
-            commissions_arr=commissions_arr,
-            dates=common_index.values.view("i8"),
-            tickers=np.array(valid_cols_tt),
-            portfolio_values=portfolio_values_np,
-            positions=positions_np,
+        close_for_tracker = close_prices_df.reindex(
+            index=common_index, columns=valid_cols_tt
+        ).astype(float)
+        trade_tracker.populate_from_execution_ledger(
+            sim_result.execution_ledger,
+            sim_result.portfolio_values.reindex(common_index),
+            sim_result.positions.reindex(index=common_index, columns=valid_cols_tt),
+            close_for_tracker,
         )
 
     if include_signed_weights:
@@ -551,72 +523,3 @@ def _create_meta_strategy_trade_tracker(strategy, global_config, scenario_config
         logger.debug(f"Framework trade tracker shows {trade_stats.get('all_num_trades', 0)} trades")
 
     return trade_tracker
-
-
-def _track_trades_and_populate(
-    trade_tracker: TradeTracker,
-    prices_arr: np.ndarray,
-    commissions_arr: np.ndarray,
-    dates: np.ndarray,
-    tickers: np.ndarray,
-    portfolio_values: np.ndarray,
-    positions: np.ndarray,
-):
-    n_days, n_assets = positions.shape
-    max_trades = n_days * n_assets
-
-    completed_trades_buffer = np.zeros(
-        max_trades,
-        dtype=[
-            ("ticker_idx", "i8"),
-            ("entry_date", "i8"),
-            ("exit_date", "i8"),
-            ("entry_price", "f8"),
-            ("exit_price", "f8"),
-            ("quantity", "f8"),
-            ("pnl", "f8"),
-            ("commission", "f8"),
-        ],
-    )
-
-    open_positions_buffer = np.zeros(
-        n_assets,
-        dtype=[
-            ("is_open", "?"),
-            ("entry_date", "i8"),
-            ("entry_price", "f8"),
-            ("quantity", "f8"),
-            ("total_commission", "f8"),
-        ],
-    )
-
-    commissions_dollars = commissions_arr * float(trade_tracker.initial_portfolio_value)
-
-    trade_count = trade_lifecycle_kernel(
-        positions=positions,
-        prices=prices_arr,
-        dates=dates,
-        commissions=commissions_dollars,
-        initial_capital=trade_tracker.initial_portfolio_value,
-        out_trades=completed_trades_buffer,
-        out_open_pos=open_positions_buffer,
-    )
-
-    completed_trades_arr = completed_trades_buffer[:trade_count]
-
-    portfolio_values_series = pd.Series(portfolio_values, index=pd.to_datetime(dates))
-    positions_df = pd.DataFrame(positions, index=pd.to_datetime(dates), columns=tickers)
-    prices_df = pd.DataFrame(prices_arr, index=pd.to_datetime(dates), columns=tickers)
-
-    trade_tracker.populate_from_kernel_results(
-        portfolio_values=portfolio_values_series,
-        positions=positions_df,
-        completed_trades=completed_trades_arr,
-        tickers=tickers,
-        prices=prices_df,
-    )
-
-    logger.info(
-        "[TradeTracking] completed_trades=%d",
-        len(trade_tracker.trade_lifecycle_manager.get_completed_trades()),
-    )

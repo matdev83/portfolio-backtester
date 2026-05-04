@@ -225,8 +225,7 @@ class TestPortfolioLogic:
         )
 
         assert tracker is not None
-        # Check if populate_from_kernel_results was called on the tracker
-        mock_tracker.populate_from_kernel_results.assert_called_once()
+        mock_tracker.populate_from_execution_ledger.assert_called_once()
 
     def test_sized_signals_to_weights_daily_month_end_friday_preserves_target_on_signal_day(self):
         thu = pd.Timestamp("2023-09-28")

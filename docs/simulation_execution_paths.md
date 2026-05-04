@@ -16,6 +16,8 @@ This document records **which code paths** produce strategy returns and costs, s
 
 **Invariant:** net-of-cost daily returns and positions for standard strategies come only from this chain unless explicitly documented otherwise.
 
+**Execution ledger and trade tracking (standard only):** `simulate_portfolio` emits a canonical **`execution_ledger`** (`EXECUTION_LEDGER_COLUMNS`) aligned with the share/cash kernel. When `track_trades` is enabled, `calculate_portfolio_returns` builds a **`TradeTracker`** via **`TradeTracker.populate_from_execution_ledger`** on that ledger. Treat ledger row semantics (quantities, cash/position before/after, costs) as **canonical-path contracts** for standard strategies.
+
 ## Meta strategies (`MetaExecutionMode.TRADE_AGGREGATION`)
 
 Meta strategies **do not** use `simulate_portfolio` / `canonical_portfolio_simulation_kernel`. They aggregate sub-strategy trades and rebuild a timeline; see [`meta_execution.py`](../src/portfolio_backtester/backtester_logic/meta_execution.py) and `_calculate_meta_strategy_portfolio_returns` in [`portfolio_logic.py`](../src/portfolio_backtester/backtester_logic/portfolio_logic.py).
@@ -29,6 +31,8 @@ Until meta strategies emit an order or target stream consumable by the canonical
 - **Future unification** would mean converting aggregated child trades into canonical inputs (or equivalent guarantees) and proving parity with integration tests—not deleting this path silently.
 
 **Implication:** parity tests and cost semantics that assert on the canonical kernel apply to **standard** strategies only unless meta execution is explicitly cross-tested or unified.
+
+**Meta vs canonical execution ledger:** Meta strategies remain **`MetaExecutionMode.TRADE_AGGREGATION`**. They **do not** run `simulate_portfolio` and therefore **do not** produce the canonical **`execution_ledger`**. With `track_trades`, meta paths construct a **`TradeTracker`** from **aggregated sub-strategy trades** (`_create_meta_strategy_trade_tracker` in `portfolio_logic.py`), not from **`populate_from_execution_ledger`**. **Do not compare** meta trade rows or timing to canonical ledger invariants until/unless meta is canonicalized and covered by explicit parity tests.
 
 ## Legacy Numba kernels (not the production return path)
 

@@ -5,6 +5,8 @@ import pandas as pd
 import pytest
 
 from portfolio_backtester.backtester_logic.portfolio_simulation_input import (
+    EXECUTION_TIMING_NEXT_BAR_OPEN,
+    PortfolioSimulationInput,
     build_portfolio_simulation_input,
 )
 from portfolio_backtester.simulation.kernel import simulate_portfolio
@@ -22,6 +24,39 @@ def _global_cfg(pv: float = 10_000.0) -> dict:
         "commission_max_percent_of_trade": 0.0,
         "slippage_bps": 0.0,
     }
+
+
+def test_next_bar_open_cash_nav_use_exec_price_for_trade_close_for_valuation():
+    dates = pd.date_range("2023-01-01", periods=3, freq="D")
+    w = np.array([[0.0], [1.0], [1.0]], dtype=np.float64)
+    rb = np.array([False, True, False], dtype=np.bool_)
+    close = np.array([[100.0], [100.0], [100.0]], dtype=np.float64)
+    open_ = np.array([[100.0], [50.0], [100.0]], dtype=np.float64)
+    m = np.ones_like(close, dtype=bool)
+    sim_in = PortfolioSimulationInput(
+        dates=dates,
+        tickers=("X",),
+        weights_target=w,
+        close_prices=close,
+        close_price_mask=m,
+        execution_prices=open_,
+        execution_price_mask=m.copy(),
+        rebalance_mask=rb,
+        execution_timing=EXECUTION_TIMING_NEXT_BAR_OPEN,
+    )
+    pv0 = 100_000.0
+    out = simulate_portfolio(
+        sim_in,
+        global_config=_global_cfg(pv0),
+        scenario_config={"allocation_mode": "reinvestment"},
+    )
+    exec_ix = 1
+    assert _scalar_float(out.positions.iloc[exec_ix, 0]) == pytest.approx(2000.0, rel=0.0, abs=1e-6)
+    assert _scalar_float(out.cash.iloc[exec_ix]) == pytest.approx(0.0, abs=1e-5)
+    assert _scalar_float(out.portfolio_values.iloc[exec_ix]) == pytest.approx(
+        200_000.0, rel=0.0, abs=1e-3
+    )
+    assert _scalar_float(out.daily_returns.iloc[exec_ix]) == pytest.approx(1.0, rel=0.0, abs=1e-6)
 
 
 def test_next_bar_open_rebalance_sizes_from_execution_nav_not_same_day_close():

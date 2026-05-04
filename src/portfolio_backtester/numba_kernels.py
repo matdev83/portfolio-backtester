@@ -373,6 +373,9 @@ def canonical_portfolio_simulation_kernel(
     per_asset_cost_frac = np.zeros((T, N), dtype=np.float64)
     total_cost_frac = np.zeros(T, dtype=np.float64)
     daily_returns = np.zeros(T, dtype=np.float64)
+    max_ledger_rows = T * N
+    ledger = np.zeros((max_ledger_rows, 10), dtype=np.float64)
+    ledger_count = 0
 
     ref_denom = ref_portfolio_value if ref_portfolio_value > eps else 1.0
     last_valid_close = np.zeros(N, dtype=np.float64)
@@ -391,6 +394,7 @@ def canonical_portfolio_simulation_kernel(
     last_positions0 = np.zeros(N, dtype=np.float64)
     positions0 = np.zeros(N, dtype=np.float64)
     day0_cost_dollars = 0.0
+    exec_cash_flow_0 = 0.0
 
     if do_rebalance_0:
         capital_base0 = initial_portfolio_value
@@ -400,6 +404,7 @@ def canonical_portfolio_simulation_kernel(
                 positions0[j] = tdv0[j] / execution_prices[0, j]
             else:
                 positions0[j] = last_positions0[j]
+        running_cash0 = initial_portfolio_value
         for j in range(N):
             if not execution_price_mask[0, j]:
                 continue
@@ -407,6 +412,7 @@ def canonical_portfolio_simulation_kernel(
             if exc_price <= 0.0:
                 continue
             dsh0 = positions0[j] - last_positions0[j]
+            exec_cash_flow_0 += dsh0 * exc_price
             td = abs(dsh0) * exc_price
             c0 = _per_trade_cost_dollars_kernel(
                 td,
@@ -420,10 +426,25 @@ def canonical_portfolio_simulation_kernel(
             )
             day0_cost_dollars += c0
             per_asset_cost_frac[0, j] = c0 / ref_denom
+            ev0 = dsh0 * exc_price
+            cash_after0 = running_cash0 - ev0 - c0
+            if abs(dsh0) > eps:
+                ledger[ledger_count, 0] = 0.0
+                ledger[ledger_count, 1] = float(j)
+                ledger[ledger_count, 2] = dsh0
+                ledger[ledger_count, 3] = exc_price
+                ledger[ledger_count, 4] = ev0
+                ledger[ledger_count, 5] = running_cash0
+                ledger[ledger_count, 6] = cash_after0
+                ledger[ledger_count, 7] = last_positions0[j]
+                ledger[ledger_count, 8] = positions0[j]
+                ledger[ledger_count, 9] = c0
+                ledger_count += 1
+            running_cash0 = cash_after0
         total_cost_frac[0] = day0_cost_dollars / ref_denom
 
     holdings_value0 = np.sum(positions0 * last_valid_close)
-    cash_values[0] = initial_portfolio_value - holdings_value0 - day0_cost_dollars
+    cash_values[0] = initial_portfolio_value - exec_cash_flow_0 - day0_cost_dollars
     portfolio_values[0] = cash_values[0] + holdings_value0
     positions[0] = positions0
 
@@ -472,7 +493,9 @@ def canonical_portfolio_simulation_kernel(
             else:
                 target_positions[j] = last_positions[j]
 
+        exec_cash_flow = 0.0
         day_cost_dollars = 0.0
+        running_cash = cash_values[i - 1]
         for j in range(N):
             if not exec_row_mask[j]:
                 continue
@@ -480,6 +503,7 @@ def canonical_portfolio_simulation_kernel(
             if exc_price <= 0.0:
                 continue
             dsh = target_positions[j] - last_positions[j]
+            exec_cash_flow += dsh * exc_price
             td = abs(dsh) * exc_price
             cday = _per_trade_cost_dollars_kernel(
                 td,
@@ -493,12 +517,27 @@ def canonical_portfolio_simulation_kernel(
             )
             day_cost_dollars += cday
             per_asset_cost_frac[i, j] = cday / ref_denom
+            ev = dsh * exc_price
+            cash_after_ev = running_cash - ev - cday
+            if abs(dsh) > eps:
+                ledger[ledger_count, 0] = float(i)
+                ledger[ledger_count, 1] = float(j)
+                ledger[ledger_count, 2] = dsh
+                ledger[ledger_count, 3] = exc_price
+                ledger[ledger_count, 4] = ev
+                ledger[ledger_count, 5] = running_cash
+                ledger[ledger_count, 6] = cash_after_ev
+                ledger[ledger_count, 7] = last_positions[j]
+                ledger[ledger_count, 8] = target_positions[j]
+                ledger[ledger_count, 9] = cday
+                ledger_count += 1
+            running_cash = cash_after_ev
 
         total_cost_frac[i] = day_cost_dollars / ref_denom
         positions[i] = target_positions
 
         new_holdings = np.sum(positions[i] * last_valid_close)
-        cash_values[i] = portfolio_values[i] - new_holdings - day_cost_dollars
+        cash_values[i] = cash_values[i - 1] - exec_cash_flow - day_cost_dollars
         portfolio_values[i] = cash_values[i] + new_holdings
 
     if initial_portfolio_value > eps:
@@ -516,6 +555,8 @@ def canonical_portfolio_simulation_kernel(
         per_asset_cost_frac,
         total_cost_frac,
         daily_returns,
+        ledger,
+        ledger_count,
     )
 
 

@@ -1,13 +1,62 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Mapping, Optional, cast
+from dataclasses import dataclass, field
+from typing import Any, Final, Mapping, Optional, cast
 
 import numpy as np
 import pandas as pd
 
 from ..backtester_logic.portfolio_simulation_input import PortfolioSimulationInput
 from ..numba_kernels import canonical_portfolio_simulation_kernel
+
+EXECUTION_LEDGER_COLUMNS: Final[tuple[str, ...]] = (
+    "date_idx",
+    "date",
+    "ticker",
+    "quantity",
+    "execution_price",
+    "execution_value",
+    "cash_before",
+    "cash_after",
+    "position_before",
+    "position_after",
+    "cost",
+)
+
+
+def _empty_execution_ledger_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(EXECUTION_LEDGER_COLUMNS))
+
+
+def _execution_ledger_to_df(
+    ledger: np.ndarray,
+    ledger_count: int,
+    dates: pd.DatetimeIndex | pd.Index,
+    tickers: tuple[str, ...],
+) -> pd.DataFrame:
+    if ledger_count <= 0:
+        return _empty_execution_ledger_df()
+    chunk = ledger[: int(ledger_count)]
+    di = chunk[:, 0].astype(np.int64, copy=False)
+    ai = chunk[:, 1].astype(np.int64, copy=False)
+    out_dates = dates.take(di).values
+    out_tickers = np.array([tickers[int(j)] for j in ai], dtype=object)
+    return pd.DataFrame(
+        {
+            "date_idx": di,
+            "date": out_dates,
+            "ticker": out_tickers,
+            "quantity": chunk[:, 2],
+            "execution_price": chunk[:, 3],
+            "execution_value": chunk[:, 4],
+            "cash_before": chunk[:, 5],
+            "cash_after": chunk[:, 6],
+            "position_before": chunk[:, 7],
+            "position_after": chunk[:, 8],
+            "cost": chunk[:, 9],
+        },
+        columns=list(EXECUTION_LEDGER_COLUMNS),
+    )
 
 
 @dataclass(frozen=True)
@@ -18,6 +67,7 @@ class SimulationResult:
     positions: pd.DataFrame
     per_asset_cost_fraction: np.ndarray
     total_cost_fraction: np.ndarray
+    execution_ledger: pd.DataFrame = field(default_factory=_empty_execution_ledger_df)
 
 
 def _resolve_ref_portfolio_value(global_config: Mapping[str, Any] | None) -> float:
@@ -65,7 +115,7 @@ def simulate_portfolio(
     commission_max_percent = float(gc.get("commission_max_percent_of_trade", 0.005))
     slippage_bps = float(gc.get("slippage_bps", 2.5))
 
-    pv, cash, pos, pa_frac, tot_frac, dret = canonical_portfolio_simulation_kernel(
+    pv, cash, pos, pa_frac, tot_frac, dret, led, led_n = canonical_portfolio_simulation_kernel(
         initial_pv,
         alloc,
         sim_input.execution_timing,
@@ -87,6 +137,7 @@ def simulate_portfolio(
 
     idx = sim_input.dates
     cols = list(sim_input.tickers)
+    execution_ledger = _execution_ledger_to_df(led, int(led_n), idx, sim_input.tickers)
     return SimulationResult(
         portfolio_values=pd.Series(pv, index=idx, dtype=float),
         daily_returns=pd.Series(dret, index=idx, dtype=float),
@@ -94,4 +145,5 @@ def simulate_portfolio(
         positions=pd.DataFrame(pos, index=idx, columns=cols),
         per_asset_cost_fraction=pa_frac,
         total_cost_fraction=tot_frac,
+        execution_ledger=execution_ledger,
     )

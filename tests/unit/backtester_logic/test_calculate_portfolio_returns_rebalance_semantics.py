@@ -199,3 +199,34 @@ def test_next_bar_open_executes_at_open_not_close():
     assert float(out.positions.iloc[exec_ix][ticker]) != pytest.approx(
         shares_hyp_close_exec, rel=1e-3
     )
+
+
+def test_next_bar_open_via_calculate_portfolio_returns_nav_return_uses_exec_open():
+    dates = pd.date_range("2023-01-03", periods=3, freq="B")
+    ticker = "X"
+    ohlc = pd.DataFrame(
+        {
+            (ticker, "Open"): [100.0, 50.0, 100.0],
+            (ticker, "Close"): [100.0, 100.0, 100.0],
+        },
+        index=dates,
+    )
+    ohlc.columns = pd.MultiIndex.from_tuples(ohlc.columns, names=["Ticker", "Field"])
+    close_df = ohlc.xs("Close", level="Field", axis=1)
+    rets = close_df.pct_change(fill_method=None).fillna(0.0)
+    sized = pd.DataFrame({ticker: [1.0]}, index=pd.DatetimeIndex([dates[0]]))
+    scenario = {
+        "timing_config": {"mode": "signal_based", "trade_execution_timing": "next_bar_open"},
+    }
+    g = _base_global(100_000.0)
+    rets_net, _ = calculate_portfolio_returns(
+        sized,
+        scenario,
+        ohlc,
+        rets,
+        [ticker],
+        g,
+        track_trades=False,
+    )
+    exec_ix = dates[1]
+    assert float(rets_net.loc[exec_ix]) == pytest.approx(1.0, rel=0.0, abs=1e-5)

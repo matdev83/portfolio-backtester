@@ -24,6 +24,7 @@ A powerful Python tool for backtesting portfolio strategies with walk-forward op
 - [CLI Reference](#cli-reference)
 - [Example Outputs](#example-outputs)
   - [Dual Momentum Top-N Proof Runs](#dual-momentum-top-n-proof-runs)
+  - [Country ETF sleeve: ablation research notes](#country-etf-sleeve-ablation-research-notes)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 - [License](#license)
@@ -192,7 +193,7 @@ config/scenarios/builtins/
 
 Implement signal and portfolio strategies with **`generate_target_weights(context)`**, where `context` is a `StrategyContext` (`portfolio_backtester.strategies._core.target_generation`). The engine evaluates that API on the backtest calendar; it is the supported authoring surface for target weights.
 
-**Portfolio simulation (non-meta)** uses the canonical share/cash path (`simulate_portfolio` → `canonical_portfolio_simulation_kernel`). Rebalances fire on **explicit execution rows** derived from sparse targets (time-based schedules collapse to first event per period first; `trade_execution_timing` may shift events). **Repeated identical targets still create rebalance rows** on each event date, so turnover/costs can apply when prices drift between events. **Day 0** includes entry turnover vs cash. With **`bar_close`**, execution aligns to **close** prices for that bar; with **`next_bar_open`**, fills use the **next session’s open** (requires Open in OHLC or aligned panel). Meta strategies are an explicit exception (**`MetaExecutionMode.TRADE_AGGREGATION`**): they rebuild returns from **`TradeAggregator`** and do not use the canonical kernel.
+**Portfolio simulation (non-meta)** uses the canonical share/cash path (`simulate_portfolio` → `canonical_portfolio_simulation_kernel`). Rebalances fire on **explicit execution rows** derived from sparse targets (time-based schedules collapse to first event per period first; `trade_execution_timing` may shift events). **Repeated identical targets still create rebalance rows** on each event date, so turnover/costs can apply when prices drift between events. **Day 0** includes entry turnover vs cash. With **`bar_close`**, execution aligns to **close** prices for that bar; with **`next_bar_open`**, fills use the **next session’s open** (requires Open in OHLC or aligned panel). Standard strategies therefore expose a canonical **`execution_ledger`** from the simulator; with **`track_trades`**, **`TradeTracker`** is filled via **`populate_from_execution_ledger`** from that ledger. Meta strategies are an explicit exception (**`MetaExecutionMode.TRADE_AGGREGATION`**): they rebuild returns from **`TradeAggregator`**, do not use the canonical kernel or ledger, and populate **`TradeTracker`** (if enabled) from aggregated child trades—**not directly comparable** to canonical execution-ledger invariants until documented parity or canonicalization exists. See **[`docs/simulation_execution_paths.md`](docs/simulation_execution_paths.md)**.
 
 The legacy adapter **`generate_signals`** remains for older callers; new work should target **`generate_target_weights`**.
 
@@ -206,7 +207,7 @@ The legacy adapter **`generate_signals`** remains for older callers; new work sh
 | Meta | Only `*MetaStrategy` classes; returns from trade aggregation |
 | Costs | Included from first investable bar (incl. entry); per global/scenario cost model |
 
-**`track_trades`** only enables populating a `TradeTracker` from the same simulation; it does not switch return math or cost models.
+**`track_trades`** only enables populating a `TradeTracker` from the same simulation path (canonical ledger for standard strategies, aggregated trades for meta); it does not switch return math or cost models.
 
 ---
 
@@ -725,6 +726,27 @@ Notes:
 - `momentum_skip_months` skips the most recent months in the formation window (e.g. skip 1 = use prices ending one month before the rebalance date). This is closer to Jegadeesh & Titman-style momentum.
 - These proof runs use the available MDMP `Close` series, not dividend-adjusted or total-return constituent data, so paper-to-paper comparisons should account for data construction differences.
 - The canonical-style scenario is higher-return and less risk-managed than the production default by design.
+
+### Country ETF sleeve: ablation research notes
+
+**Setup.** Fixed-regional-ETF sleeve using `DualMomentumLaggedPortfolioStrategy` vs **SPY**, **lag 0**, **no** SPY 200-day SMA filter (`use_200sma_filter: false`), MDMP cache-only runs. One-off leave-one-out ablation script: `scripts/country_etf_universe_ablation_sortino.py` — drops each universe symbol in turn, full-sample backtest, ranks by **Sortino** change vs the full list (same locked strategy params as the baseline scenario).
+
+**Ablation takeaway (single-symbol removals).** Largest **positive ΔSortino** when removed (names that hurt Sortino when present in isolation): **VNM**, **EWA**, **ARGT**, **EPOL** stood out; several other symbols showed smaller or tied effects. Ablation is a **first-order** diagnostic only (no interaction terms).
+
+**Universe-pruning experiment.** A follow-on scenario removed the four symbols with the strongest leave-one-out Sortino lift (**ARGT**, **EWA**, **EPOL**, **VNM**), producing a **23-ticker** list:
+
+- Optimize: `config/scenarios/builtins/portfolio/dual_momentum_lagged_portfolio_strategy/country_etf_universe_optimize_no_sma_lag0_reduced_universe.yaml`
+- Full-sample reference backtest with WFO-best params: `config/scenarios/builtins/portfolio/dual_momentum_lagged_portfolio_strategy/country_etf_universe_spy_benchmark_no_sma_lag0_reduced_universe.yaml`
+
+Re-optimization on the pruned universe (**Sortino**, Optuna, seed `42`, `--optuna-trials 150`, `--early-stop-patience 0`, `--mdmp-cache-only`) selected approximately: `lookback_months: 6`, `min_absolute_momentum: 0.08`, `absolute_exit_buffer: 0.01`, `relative_exit_buffer: 0.0` (see `data/reports/.../optimal_params_*_Optimized.txt` for the exact artifact).
+
+**Outcome (full-sample `backtest`, 2013-01-01–2025-06-30).** Compared to the **full 27-name** sleeve with **its own** WFO-best parameters (`config/scenarios/builtins/portfolio/dual_momentum_lagged_portfolio_strategy/country_etf_universe_spy_benchmark_no_sma_lag0.yaml`), the **pruned + re-optimized** path showed **lower total return** and **deeper max drawdown** in our runs (roughly **~108%** cumulative vs **~162%**, and **~−35%** vs **~−22%** max DD — reproduce with your MDMP tree). **Interpretation:** this specific ablation-led pruning **did not improve** headline full-sample performance vs the full-universe baseline **after separate WFO fits**; treat as a **negative result** for that hypothesis, not an implementation bug.
+
+**Caveats.**
+
+- Each universe used a **different** optimized parameter vector — comparisons mix **universe change** and **re-fit** effects.
+- Ablation ranked **Sortino**, not cumulative return or drawdown.
+- The rich table printed at the end of **`optimize`** mode is built from **walk-forward stitched out-of-sample** logic and is **not** the same as a single **full-period `backtest`** with one parameter set; use `backtest` on the benchmark YAML for headline long-horizon totals.
 
 ---
 

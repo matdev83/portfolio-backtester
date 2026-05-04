@@ -190,7 +190,7 @@ def test_trade_tracking_falls_back_close_prep(mock_tt_cls) -> None:
         market_data_panel=panel,
     )
     calculate_portfolio_returns(sized, scenario, daily, rets, ["A", "B"], g, track_trades=True)
-    assert mock_tt.populate_from_kernel_results.call_count == 2
+    assert mock_tt.populate_from_execution_ledger.call_count == 2
 
 
 def test_misaligned_panel_falls_back_to_dataframe() -> None:

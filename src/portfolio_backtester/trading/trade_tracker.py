@@ -21,6 +21,65 @@ from ..interfaces.commission_parameter_handler_interface import (
 logger = logging.getLogger(__name__)
 
 
+def _ledger_sign_nonzero(x: float, eps: float) -> int:
+    if abs(x) <= eps:
+        return 0
+    return 1 if x > 0 else -1
+
+
+def _split_flip_transaction_cost(
+    cost: float,
+    exec_price: float,
+    abs_shares_closed: float,
+    abs_shares_opened: float,
+) -> tuple[float, float]:
+    n_close = abs_shares_closed * exec_price
+    n_open = abs_shares_opened * exec_price
+    tot = n_close + n_open
+    if tot <= 1e-18:
+        return cost, 0.0
+    return cost * (n_close / tot), cost * (n_open / tot)
+
+
+def _partial_close_open_trade(
+    mgr: TradeLifecycleManager,
+    ticker: str,
+    date: pd.Timestamp,
+    exec_price: float,
+    exit_commission: float,
+    close_qty_abs: float,
+) -> None:
+    t = mgr.open_positions[ticker]
+    q_total = abs(t.quantity)
+    if q_total <= 0.0 or close_qty_abs <= 0.0:
+        return
+    inv = 1.0 if t.quantity > 0 else -1.0
+    frac = close_qty_abs / q_total
+    closed = Trade(
+        ticker=ticker,
+        entry_date=t.entry_date,
+        entry_price=t.entry_price,
+        quantity=inv * close_qty_abs,
+        entry_value=t.entry_price * close_qty_abs,
+        commission_entry=t.commission_entry * frac,
+        exit_date=date,
+        exit_price=exec_price,
+        commission_exit=exit_commission,
+        detailed_commission_entry=t.detailed_commission_entry,
+        mfe=0.0,
+        mae=0.0,
+    )
+    closed.finalize()
+    mgr.trades.append(closed)
+    rem = q_total - close_qty_abs
+    if rem <= 1e-9:
+        del mgr.open_positions[ticker]
+    else:
+        t.quantity = inv * rem
+        t.entry_value = abs(t.quantity) * t.entry_price
+        t.commission_entry = t.commission_entry * (rem / q_total)
+
+
 class TradeTracker:
     """
     Comprehensive trade tracking and analysis system.
@@ -196,6 +255,77 @@ class TradeTracker:
             self.trade_lifecycle_manager.trades.append(trade)
 
         logger.info("[TradeTracker] Populated %d trades from kernel.", len(completed_trades))
+
+    def populate_from_execution_ledger(
+        self,
+        execution_ledger: pd.DataFrame,
+        portfolio_values: pd.Series,
+        positions: pd.DataFrame,
+        prices: pd.DataFrame,
+    ) -> None:
+        """Build completed trades from canonical simulator ``execution_ledger`` rows."""
+        self.trade_lifecycle_manager.trades.clear()
+        self.trade_lifecycle_manager.open_positions.clear()
+
+        eps = 1e-9
+        if execution_ledger is not None and not execution_ledger.empty:
+            ledger_sorted = execution_ledger.sort_values(["date_idx", "ticker"], kind="mergesort")
+            mgr = self.trade_lifecycle_manager
+            for _, row in ledger_sorted.iterrows():
+                dqty = float(row["quantity"])
+                if abs(dqty) <= eps:
+                    continue
+                date = pd.Timestamp(row["date"])
+                ticker = str(row["ticker"])
+                exec_price = float(row["execution_price"])
+                cost = float(row["cost"])
+                pos_b = float(row["position_before"])
+                pos_a = float(row["position_after"])
+                sb = _ledger_sign_nonzero(pos_b, eps)
+                sa = _ledger_sign_nonzero(pos_a, eps)
+
+                if sb == 0 and sa != 0:
+                    mgr.open_position(date, ticker, pos_a, exec_price, cost)
+                    continue
+                if sa == 0 and sb != 0:
+                    mgr.close_position(date, ticker, exec_price, cost)
+                    continue
+
+                if sb == sa:
+                    if abs(pos_a) > abs(pos_b) + eps:
+                        t = mgr.open_positions[ticker]
+                        old_abs = abs(t.quantity)
+                        new_abs = abs(pos_a)
+                        add_abs = new_abs - old_abs
+                        inv = 1.0 if t.quantity > 0 else -1.0
+                        e_new = (t.entry_price * old_abs + exec_price * add_abs) / new_abs
+                        t.entry_price = e_new
+                        t.quantity = inv * new_abs
+                        t.entry_value = abs(t.quantity) * t.entry_price
+                        t.commission_entry += cost
+                    elif abs(pos_b) > abs(pos_a) + eps:
+                        _partial_close_open_trade(
+                            mgr,
+                            ticker,
+                            date,
+                            exec_price,
+                            cost,
+                            abs(pos_b) - abs(pos_a),
+                        )
+                    continue
+
+                c_exit, c_entry = _split_flip_transaction_cost(
+                    cost,
+                    exec_price,
+                    abs(pos_b),
+                    abs(pos_a),
+                )
+                mgr.close_position(date, ticker, exec_price, c_exit)
+                mgr.open_position(date, ticker, pos_a, exec_price, c_entry)
+
+        self.portfolio_value_tracker.set_state_from_kernel(portfolio_values, positions, prices)
+        n_done = len(self.trade_lifecycle_manager.get_completed_trades())
+        logger.info("[TradeTracker] Populated %d trades from execution ledger.", n_done)
 
     def get_trade_statistics(self) -> Dict[str, Any]:
         """Calculate comprehensive trade statistics."""

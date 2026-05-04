@@ -59,3 +59,9 @@ def test_resolver_factory_strategy_type_meta_vs_signal() -> None:
 
 def test_meta_execution_mode_enum_documented_trade_aggregation_member() -> None:
     assert MetaExecutionMode.TRADE_AGGREGATION.value == "trade_aggregation"
+
+
+def test_meta_execution_mode_enum_canonical_member_stable() -> None:
+    assert MetaExecutionMode.CANONICAL_SHARE_CASH_SIMULATION.value == (
+        "canonical_share_cash_simulation"
+    )
