@@ -40,9 +40,7 @@ def simulate_portfolio(
     *,
     global_config: Optional[Mapping[str, Any]] = None,
     scenario_config: Optional[Mapping[str, Any]] = None,
-    materialize_trades: bool = False,
 ) -> SimulationResult:
-    _ = materialize_trades
     ref_pv = _resolve_ref_portfolio_value(global_config)
     initial_pv = ref_pv
     alloc = _resolve_allocation_mode_int(scenario_config)
@@ -70,9 +68,13 @@ def simulate_portfolio(
     pv, cash, pos, pa_frac, tot_frac, dret = canonical_portfolio_simulation_kernel(
         initial_pv,
         alloc,
+        sim_input.execution_timing,
         sim_input.weights_target.astype(np.float64),
+        sim_input.execution_prices.astype(np.float64),
+        sim_input.execution_price_mask.astype(np.bool_),
         sim_input.close_prices.astype(np.float64),
-        sim_input.price_mask.astype(np.bool_),
+        sim_input.close_price_mask.astype(np.bool_),
+        sim_input.rebalance_mask.astype(np.bool_),
         use_simple_bps,
         bps_val,
         commission_per_share,

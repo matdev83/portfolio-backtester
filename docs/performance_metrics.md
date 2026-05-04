@@ -123,6 +123,15 @@ After alignment, any bar whose exposure row is **all-NaN** is **excluded** from 
 
 Rich tables format exposure loads and **Time in Market %** as percentages; ratio rows use numeric formatting. **NaN** metric values display as **N/A** (not `nan%`).
 
+## Portfolio simulation semantics (returns path)
+
+This section complements metric definitions above: how **net return series** are produced for reporting.
+
+- **Non-meta strategies** use **`simulate_portfolio`** and the **canonical** share/cash Numba kernel. Costs accrue on **rebalance/execution** events (including **day-0** entry vs cash). Repeated explicit targets on successive dates still incur costs when prices drift between events.
+- **`bar_close`** uses **close** prices for execution on the mapped bar; **`next_bar_open`** uses the **next** session’s **open** (OHLC must expose Open or an aligned panel).
+- **Meta strategies** (`MetaExecutionMode.TRADE_AGGREGATION`) **do not** call `simulate_portfolio`; they aggregate sub-strategy **`TradeAggregator`** activity and derive returns from that ledger.
+- **Authoring surface** for targets is **`generate_target_weights`**. The **`generate_signals`** stack is a **legacy adapter** for older flows.
+
 ## Secondary evaluator metrics
 
 `optimization/evaluator.py` includes a lightweight `_calculate_metrics` used in some evaluator flows; it uses simplified annualization (e.g. `(1 + mean)^252 - 1` style for daily assumptions). **Reporting tables** use `calculate_metrics` in `performance_metrics.py`, not that helper.

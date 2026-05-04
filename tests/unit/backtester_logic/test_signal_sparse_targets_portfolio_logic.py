@@ -8,7 +8,10 @@ import pandas as pd
 import pytest
 
 from portfolio_backtester.backtester_logic.portfolio_logic import _sized_signals_to_weights_daily
-from portfolio_backtester.backtester_logic.strategy_logic import generate_signals
+from portfolio_backtester.backtester_logic.strategy_logic import (
+    LegacyGenerateSignalsAdapter,
+    generate_signals,
+)
 from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
 from portfolio_backtester.timing.trade_execution_timing import (
@@ -87,7 +90,7 @@ def test_skipped_signal_generation_does_not_flatten_after_portfolio_remap(
     )
 
     signals = generate_signals(
-        strategy=strategy,
+        strategy=LegacyGenerateSignalsAdapter(strategy),
         scenario_config=scenario_config,
         price_data_daily_ohlc=ohlc,
         universe_tickers=universe_tickers,
@@ -142,7 +145,7 @@ def test_signal_based_explicit_all_zero_row_is_kept() -> None:
     )
 
     signals = generate_signals(
-        strategy=strategy,
+        strategy=LegacyGenerateSignalsAdapter(strategy),
         scenario_config=scenario_config,
         price_data_daily_ohlc=ohlc,
         universe_tickers=universe_tickers,

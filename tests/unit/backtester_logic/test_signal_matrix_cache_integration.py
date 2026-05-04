@@ -10,6 +10,7 @@ import pandas as pd
 from portfolio_backtester.backtester_logic.strategy_logic import generate_signals
 from portfolio_backtester.optimization.signal_cache import SignalCache, default_never_timed_out
 from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.target_generation import StrategyContext
 
 
 def _make_mi_ohlc(
@@ -60,6 +61,17 @@ class CacheableSignalStrategy(BaseStrategy):
             w[cols[0]] = 1.0
         return pd.DataFrame([w], index=[current_date])
 
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        cols = list(context.universe_tickers)
+        rows: list[dict[str, float]] = []
+        for _d in context.rebalance_dates:
+            CacheableSignalStrategy.calls += 1
+            w = {c: 0.0 for c in cols}
+            if cols:
+                w[cols[0]] = 1.0
+            rows.append(w)
+        return pd.DataFrame(rows, index=context.rebalance_dates, columns=cols)
+
 
 class NotEligibleStrategy(BaseStrategy):
     calls = 0
@@ -79,6 +91,17 @@ class NotEligibleStrategy(BaseStrategy):
         if cols:
             w[cols[0]] = 1.0
         return pd.DataFrame([w], index=[current_date])
+
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        cols = list(context.universe_tickers)
+        rows: list[dict[str, float]] = []
+        for _d in context.rebalance_dates:
+            NotEligibleStrategy.calls += 1
+            w = {c: 0.0 for c in cols}
+            if cols:
+                w[cols[0]] = 1.0
+            rows.append(w)
+        return pd.DataFrame(rows, index=context.rebalance_dates, columns=cols)
 
 
 def test_feature_flag_off_no_cache_repeated_work() -> None:

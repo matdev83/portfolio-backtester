@@ -138,7 +138,7 @@ class BaseMetaStrategy(BaseStrategy, ABC):
         # Trade interceptors for sub-strategies
         self._trade_interceptors: Dict[str, MetaStrategyTradeInterceptor] = {}
 
-        # Portfolio reporting uses TradeAggregator directly (single path)
+        # Portfolio reporting uses TradeAggregator (meta execution: trade aggregation, not canonical sim)
         self._reporter = MetaStrategyReporter(self._trade_aggregator)
 
         # Initialize capital tracking for each sub-strategy

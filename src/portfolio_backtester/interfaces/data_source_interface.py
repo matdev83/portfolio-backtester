@@ -6,13 +6,37 @@ enabling dependency inversion for backtester components.
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
-from typing import Any, Dict, cast
+from pathlib import Path
+from typing import Any, Dict, Union, cast
 
 import pandas as pd
 from ..data_sources.base_data_source import BaseDataSource
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_mdmp_data_dir(mdmp_data_dir: Union[str, os.PathLike[str]]) -> str:
+    """Resolve MDMP disk root for ``MarketDataClient(data_dir=...)``.
+
+    Absolute paths are normalized with :func:`Path.resolve`. Relative paths are
+    resolved from the **portfolio-backtester repository root** (the directory
+    that contains ``src/``), so a sibling checkout
+    ``../market-data-multi-provider/data`` works without duplicating parquet under
+    this repo.
+
+    Args:
+        mdmp_data_dir: Path from ``parameters.yaml`` or ``MDMP_DATA_DIR``.
+
+    Returns:
+        Absolute string path for MDMP.
+    """
+    p = Path(mdmp_data_dir).expanduser()
+    if p.is_absolute():
+        return str(p.resolve())
+    repo_root = Path(__file__).resolve().parents[3]
+    return str((repo_root / p).resolve())
 
 
 class IDataSource(BaseDataSource):
@@ -98,22 +122,36 @@ class ConcreteDataSourceFactory(IDataSourceFactory):
                 allow_fallbacks = bool(data_source_config.get("allow_fallbacks", True))
                 cache_only = bool(data_source_config.get("cache_only", False))
                 preferred_provider = data_source_config.get("preferred_provider")
-                cache_max_age_seconds = data_source_config.get("cache_max_age_seconds", 14400)
+                if "cache_max_age_seconds" in data_source_config:
+                    cms_val = data_source_config["cache_max_age_seconds"]
+                    cache_max_age_seconds = None if cms_val is None else int(cms_val)
+                else:
+                    cache_max_age_seconds = 14400
                 max_workers = data_source_config.get("max_workers")
+                mdmp_data_dir = (
+                    data_source_config.get("mdmp_data_dir")
+                    or data_source_config.get("data_dir")
+                    or os.environ.get("MDMP_DATA_DIR")
+                )
+                if mdmp_data_dir in ("", None):
+                    mdmp_data_dir = None
+                else:
+                    mdmp_data_dir = _resolve_mdmp_data_dir(str(mdmp_data_dir))
                 logger.info(
                     "MDMP effective data_source_config (reproducibility): "
                     "preferred_provider=%r, allow_fallbacks=%s, cache_only=%s, "
-                    "cache_max_age_seconds=%s, max_workers=%s",
+                    "cache_max_age_seconds=%s, max_workers=%s, mdmp_data_dir=%s",
                     preferred_provider,
                     allow_fallbacks,
                     cache_only,
                     cache_max_age_seconds,
                     max_workers,
+                    str(mdmp_data_dir) if mdmp_data_dir else "MDMP default",
                 )
                 return cast(
                     IDataSource,
                     MarketDataMultiProviderDataSource(
-                        data_dir=None,
+                        data_dir=mdmp_data_dir,
                         min_coverage_ratio=min_coverage_ratio,
                         preferred_provider=preferred_provider,
                         allow_fallbacks=allow_fallbacks,

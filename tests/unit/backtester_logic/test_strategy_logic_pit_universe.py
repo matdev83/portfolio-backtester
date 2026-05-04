@@ -4,7 +4,10 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from portfolio_backtester.backtester_logic.strategy_logic import generate_signals
+from portfolio_backtester.backtester_logic.strategy_logic import (
+    LegacyGenerateSignalsAdapter,
+    generate_signals,
+)
 from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
 
 
@@ -77,7 +80,7 @@ def test_generate_signals_point_in_time_method_universe_membership_changes_signa
     scenario_config = {"timing_config": {"rebalance_frequency": "D"}}
 
     signals = generate_signals(
-        strategy=strategy,
+        strategy=LegacyGenerateSignalsAdapter(strategy),
         scenario_config=scenario_config,
         price_data_daily_ohlc=ohlc,
         universe_tickers=universe_tickers,

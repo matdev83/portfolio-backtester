@@ -137,6 +137,9 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# Ruff
+.ruff_cache/
+
 # Pyre type checker
 .pyre/
 
@@ -192,3 +195,12 @@ data/config_validation_cache.json
 
 # cProfile text output from scripts/profile_evaluate_parameters.py
 scripts/profile_evaluate_parameters_*.txt
+
+# Local dev compare grids / runners (generated; not tracked fixtures)
+dev/spy_intramonth_spy_inception_ath_overlay_compare/
+
+# Ephemeral outputs from local research/dev scripts (prefer writing here)
+dev/_outputs/
+
+# Local one-off sweep / grid drivers (not part of packaged tooling)
+dev/spy_intramonth_inception_detailed_ath_threshold_sweep.py

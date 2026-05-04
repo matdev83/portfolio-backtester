@@ -4,6 +4,9 @@ Numba-oriented trade-tracking helper utilities.
 Delegates to :class:`~portfolio_backtester.trading.trade_tracker.TradeTracker`
 and shared portfolio kernels for deterministic trade statistics aligned with core
 portfolio simulation outputs.
+
+Uses the legacy ``trade_tracking_kernel`` from ``numba_kernels`` solely inside this
+adapter; new features should use ``simulate_portfolio`` / ``canonical_portfolio_simulation_kernel``.
 """
 
 import logging

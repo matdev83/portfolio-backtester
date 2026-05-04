@@ -7,7 +7,10 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from portfolio_backtester.backtester_logic.strategy_logic import generate_signals
+from portfolio_backtester.backtester_logic.strategy_logic import (
+    LegacyGenerateSignalsAdapter,
+    generate_signals,
+)
 from portfolio_backtester.optimization.strategy_data_context import StrategyDataContext
 from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
 
@@ -113,14 +116,15 @@ def test_flag_off_no_data_context_passed_to_kwargs_strategy() -> None:
     s._cached_close_prices = {}
     s._cached_universe_prices = {}
 
+    gc: dict = {"feature_flags": {"strategy_data_context": False}}
     generate_signals(
-        strategy=strat,
+        strategy=LegacyGenerateSignalsAdapter(strat, global_config=gc),
         scenario_config={"timing_config": {"rebalance_frequency": "D"}},
         price_data_daily_ohlc=ohlc,
         universe_tickers=["X"],
         benchmark_ticker="SPY",
         has_timed_out=MagicMock(return_value=False),
-        global_config={"feature_flags": {"strategy_data_context": False}},
+        global_config=gc,
     )
     assert "data_context" not in strat.last_kwargs
 
@@ -134,14 +138,15 @@ def test_flag_on_kwargs_strategy_receives_data_context() -> None:
     s._cached_close_prices = {}
     s._cached_universe_prices = {}
 
+    gc = {"feature_flags": {"strategy_data_context": True}}
     generate_signals(
-        strategy=strat,
+        strategy=LegacyGenerateSignalsAdapter(strat, global_config=gc),
         scenario_config={"timing_config": {"rebalance_frequency": "D"}},
         price_data_daily_ohlc=ohlc,
         universe_tickers=["X"],
         benchmark_ticker="SPY",
         has_timed_out=MagicMock(return_value=False),
-        global_config={"feature_flags": {"strategy_data_context": True}},
+        global_config=gc,
     )
     assert "data_context" in strat.last_kwargs
     ctx = strat.last_kwargs["data_context"]
@@ -158,14 +163,15 @@ def test_old_signature_strategy_flag_on_does_not_receive_data_context_kwarg() ->
     s._cached_close_prices = {}
     s._cached_universe_prices = {}
 
+    gc = {"feature_flags": {"strategy_data_context": True}}
     generate_signals(
-        strategy=strat,
+        strategy=LegacyGenerateSignalsAdapter(strat, global_config=gc),
         scenario_config={"timing_config": {"rebalance_frequency": "D"}},
         price_data_daily_ohlc=ohlc,
         universe_tickers=["X"],
         benchmark_ticker="SPY",
         has_timed_out=MagicMock(return_value=False),
-        global_config={"feature_flags": {"strategy_data_context": True}},
+        global_config=gc,
     )
 
 
@@ -179,14 +185,15 @@ def test_explicit_data_context_strategy_receives_context_when_flag_on() -> None:
     s._cached_close_prices = {}
     s._cached_universe_prices = {}
 
+    gc = {"feature_flags": {"strategy_data_context": True}}
     generate_signals(
-        strategy=strat,
+        strategy=LegacyGenerateSignalsAdapter(strat, global_config=gc),
         scenario_config={"timing_config": {"rebalance_frequency": "D"}},
         price_data_daily_ohlc=ohlc,
         universe_tickers=["X"],
         benchmark_ticker="SPY",
         has_timed_out=MagicMock(return_value=False),
-        global_config={"feature_flags": {"strategy_data_context": True}},
+        global_config=gc,
     )
     assert DataCtxStrategy.last_ctx is not None
     assert DataCtxStrategy.last_ctx.panel is not None

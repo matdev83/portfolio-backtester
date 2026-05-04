@@ -77,6 +77,43 @@ To run the optimizer for a specific strategy, you can use the `--scenario-filena
 ./.venv/Scripts/python.exe -m src.portfolio_backtester.backtester --mode optimize --scenario-filename config/scenarios/signal/dummy_strategy/dummy_strategy_test.yaml
 ```
 
+## MDMP cache, data directory, and `--mdmp-cache-only`
+
+Portfolio-backtester reads OHLC through **market-data-multi-provider** (MDMP). For reproducible backtests and full fixed universes (e.g. country/regional ETFs), agents should understand the following.
+
+### Same on-disk tree as the warmer
+
+- **Default in `config/parameters.yaml`:** `mdmp_data_dir: ../market-data-multi-provider/data` (resolved from this repo’s root) so OHLC is read from the **sibling** `market-data-multi-provider` checkout — portfolio-backtester does **not** keep its own MDMP parquet tree.
+- Override with **`MDMP_DATA_DIR`** (absolute path recommended) or `data_source_config.data_dir` / `mdmp_data_dir` if your layout differs.
+- The factory passes the resolved path to `MarketDataClient(data_dir=...)`. If the backtester and a warm/fetch script use different roots, `--mdmp-cache-only` will miss rows that exist elsewhere.
+
+### What `--mdmp-cache-only` implies
+
+- MDMP returns a **subset** of requested symbols; missing keys mean **no usable parquet** (or empty slice) for that canonical id under the configured tree—not a portfolio-backtester “fake” fix.
+- Recent MDMP versions align **NYSE:*** vs **AMEX:*** aliases on read; portfolio-backtester also **re-keys** `fetch_many` / `fetch_many_cached_only` results onto the requested canonical id by **bare ticker** when dict keys differ (`src/portfolio_backtester/data_sources/mdmp_data_source.py`).
+
+### Warming symbols (run inside the **MDMP** repo checkout)
+
+Use the MDMP maintainer script so canonical files exist before cache-only backtests, with **the same** `MDMP_DATA_DIR`:
+
+```bash
+cd <path-to-market-data-multi-provider>
+set MDMP_DATA_DIR=<same path portfolio-backtester uses>
+.venv\Scripts\python.exe scripts/warm_country_etf_symbols.py --refresh
+```
+
+Subset example (five symbols that were still empty on cache-only until warmed):
+
+```bash
+.venv\Scripts\python.exe scripts/warm_country_etf_symbols.py --refresh AMEX:EWI AMEX:EWL AMEX:EWM AMEX:EWU AMEX:EWW
+```
+
+Omit `--refresh` if a first-time materialization without forcing a provider re-pull is enough.
+
+### Non–cache-only runs and TradingView
+
+- If a symbol only resolves via **TradingView**, runs without `--mdmp-cache-only` can still fail on machines where that provider is not installed/configured; prefer Stooq/Yahoo materialization or warm those ids into parquet first.
+
 ## Research Validation Protocol
 
 The backtester includes an opt-in `research_validate` mode for double out-of-sample WFO validation. This is a protocol layer above normal optimization: it searches WFO architecture choices on `global_train_period`, writes protocol artifacts/lock files, then validates the locked setup on `unseen_test_period`.
@@ -251,6 +288,12 @@ timing_config:
 ```
 
 When writing code that touches portfolio returns, signal generation, or optimizer evaluation paths, ensure the execution timing mapper is applied consistently.
+
+### Simulation engines (canonical vs meta)
+
+Standard strategies: net returns and costs come from `calculate_portfolio_returns` → `simulate_portfolio` → `canonical_portfolio_simulation_kernel` (share/cash, `rebalance_mask`, execution vs close prices). Meta strategies resolved to `MetaExecutionMode.TRADE_AGGREGATION` use a **separate** trade-aggregation path documented as an intentional alternate execution model until unified with the canonical engine; do not assume the same invariants without explicit tests (see the Meta section in [docs/simulation_execution_paths.md](docs/simulation_execution_paths.md)).
+
+Legacy Numba helpers `drifting_weights_returns_kernel` / `detailed_commission_slippage_kernel` are **not** imported by production optimizer modules; they remain for tests and verification. See [docs/simulation_execution_paths.md](docs/simulation_execution_paths.md).
 
 ## Risk-free metrics (Sharpe / Sortino / DSR)
 

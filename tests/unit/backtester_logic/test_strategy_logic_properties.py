@@ -15,6 +15,7 @@ from hypothesis import given, settings, strategies as st
 from hypothesis.extra import numpy as hnp
 
 from portfolio_backtester.backtester_logic.strategy_logic import (
+    LegacyGenerateSignalsAdapter,
     generate_signals,
 )
 from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
@@ -211,7 +212,7 @@ def mock_strategies(draw):
     # Mock get_non_universe_data_requirements to return an empty list
     strategy.get_non_universe_data_requirements.return_value = []
 
-    return strategy
+    return LegacyGenerateSignalsAdapter(strategy)
 
 
 @given(ohlc_data_frames(), scenario_configs(), mock_strategies())

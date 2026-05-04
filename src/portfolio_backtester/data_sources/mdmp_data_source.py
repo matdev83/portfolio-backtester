@@ -26,6 +26,61 @@ from .symbol_mapper import from_canonical_id, to_canonical_id
 logger = logging.getLogger(__name__)
 
 
+def bare_ticker_from_canonical_id(canonical_id: str) -> str:
+    """Return the bare symbol (e.g. ``EWI``) from ``EXCHANGE:SYMBOL``."""
+    s = canonical_id.strip()
+    return s.split(":", 1)[1].upper() if ":" in s else s.upper()
+
+
+def align_mdmp_results_to_requested(
+    canonical_ids: List[str],
+    results: Dict[str, pd.DataFrame],
+) -> Dict[str, Optional[pd.DataFrame]]:
+    """Map MDMP result frames onto each *requested* canonical id.
+
+    MDMP may return dict keys that match on-disk layout (e.g. ``NYSE:EWI``) while
+    portfolio-backtester requested another alias (e.g. ``AMEX:EWI`` from
+    :func:`to_canonical_id`). Keys are matched by bare ticker when the exact
+    requested key is absent, so downstream ``symbol_map`` lookups stay correct.
+
+    Args:
+        canonical_ids: Canonical ids passed to ``fetch_many`` / ``fetch_many_cached_only``.
+        results: Raw mapping returned by MDMP.
+
+    Returns:
+        For each *first* occurrence of a canonical id in ``canonical_ids``, the
+        best-matching DataFrame or ``None`` if no row exists for that request token.
+    """
+    pool: Dict[str, pd.DataFrame] = dict(results)
+    out: Dict[str, Optional[pd.DataFrame]] = {}
+
+    for cid in canonical_ids:
+        if cid in out:
+            continue
+        if cid in pool:
+            out[cid] = pool.pop(cid)
+            continue
+        bare = bare_ticker_from_canonical_id(cid)
+        match_key: Optional[str] = None
+        for k in list(pool.keys()):
+            if bare_ticker_from_canonical_id(k) == bare:
+                match_key = k
+                break
+        if match_key is not None:
+            df = pool.pop(match_key)
+            out[cid] = df
+            if match_key != cid and logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "MDMP aligned result key %r onto requested canonical %r (same bare ticker)",
+                    match_key,
+                    cid,
+                )
+        else:
+            out[cid] = None
+
+    return out
+
+
 class MarketDataMultiProviderDataSource(BaseDataSource):
     """Data source using market-data-multi-provider package.
 
@@ -51,7 +106,7 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
         allow_fallbacks: bool = True,
         max_workers: Optional[int] = None,
         cache_only: bool = False,
-        cache_max_age_seconds: int = 14400,
+        cache_max_age_seconds: Optional[int] = 14400,
     ) -> None:
         """Initialize the data source.
 
@@ -66,6 +121,7 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
             max_workers: Max worker threads used by MDMP fetch_many (None = MDMP default).
             cache_only: If true, only use cached MDMP data and skip downloads.
             cache_max_age_seconds: Max cache age in seconds for MDMP cache reads.
+                Use ``None`` to defer to MDMP defaults (e.g. no parquet age filter).
         """
         if MarketDataClient is None:
             raise ImportError(
@@ -90,7 +146,7 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
             self._preferred_provider,
             bool(self._allow_fallbacks),
             bool(self._cache_only),
-            int(self._cache_max_age_seconds),
+            self._cache_max_age_seconds,
             str(self.data_dir) if self.data_dir is not None else "MDMP default",
         )
 
@@ -123,6 +179,19 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
         # Filter out invalid empty tickers
         tickers = [t for t in tickers if t and t.strip()]
 
+        # One row per canonical id (e.g. global benchmark ``AMEX:SPY`` vs scenario ``SPY``).
+        # Otherwise fetch_many returns one frame while len(tickers) counts duplicates and
+        # logs misleading "N-1/N successful".
+        seen_canonical: set[str] = set()
+        deduped: List[str] = []
+        for raw in tickers:
+            cid = to_canonical_id(raw)
+            if cid in seen_canonical:
+                continue
+            seen_canonical.add(cid)
+            deduped.append(raw)
+        tickers = deduped
+
         if not tickers:
             logger.warning("No valid tickers provided after filtering empty strings")
             return pd.DataFrame()
@@ -134,7 +203,7 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
             self._preferred_provider,
             bool(self._allow_fallbacks),
             bool(self._cache_only),
-            int(self._cache_max_age_seconds),
+            self._cache_max_age_seconds,
         )
 
         # Parse dates
@@ -161,30 +230,38 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
                 logger.info("MDMP cache-only enabled: skipping provider downloads.")
                 results = self._fetch_cached_many(canonical_ids, start, end)
             else:
-                results = self.client.fetch_many(
-                    canonical_ids,
+                fetch_kw: Dict[str, Any] = dict(
                     start=start,
                     end=end,
                     preferred_provider=cast(Any, self._preferred_provider),
-                    cache_max_age_seconds=int(self._cache_max_age_seconds),
                     allow_fallbacks=bool(self._allow_fallbacks),
                     use_cache=True,
                     max_workers=self._max_workers,
                     use_canonical=True,
                     min_coverage_ratio=self._min_coverage_ratio,
                 )
+                if self._cache_max_age_seconds is not None:
+                    fetch_kw["cache_max_age_seconds"] = int(self._cache_max_age_seconds)
+                results = self.client.fetch_many(canonical_ids, **fetch_kw)
         except Exception as e:
             logger.error(f"MDMP fetch_many failed: {e}")
             return pd.DataFrame()
 
+        aligned = align_mdmp_results_to_requested(canonical_ids, results)
+
         # Process results into MultiIndex format
-        # results is a dict[str, pd.DataFrame] mapping canonical_id -> DataFrame
         all_ticker_data: List[pd.DataFrame] = []
         successful = 0
         failed = 0
         failed_tickers: List[str] = []
+        processed_canonical: set[str] = set()
 
-        for canonical_id, df in results.items():
+        for canonical_id in canonical_ids:
+            if canonical_id in processed_canonical:
+                continue
+            processed_canonical.add(canonical_id)
+
+            df = aligned.get(canonical_id)
             original_ticker = symbol_map.get(canonical_id, from_canonical_id(canonical_id))
 
             if df is None or df.empty:
@@ -204,17 +281,36 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
                 failed += 1
                 failed_tickers.append(original_ticker)
 
-        result_keys = set(results.keys())
-        not_returned = [cid for cid in canonical_ids if cid not in result_keys]
-        if not_returned:
-            missing_labels = [symbol_map.get(cid, from_canonical_id(cid)) for cid in not_returned]
+        unique_cids = list(dict.fromkeys(canonical_ids))
+        raw_missing_keys = [cid for cid in unique_cids if cid not in results]
+        recovered = len(
+            [
+                cid
+                for cid in raw_missing_keys
+                for _df in [aligned.get(cid)]
+                if _df is not None and not _df.empty
+            ]
+        )
+        if recovered > 0:
+            logger.info(
+                "MDMP bare-ticker alignment recovered %s series whose dict keys "
+                "differed from the requested canonical id (e.g. disk NYSE:* vs request AMEX:*).",
+                recovered,
+            )
+        missing_after_align = [
+            cid for cid in unique_cids for _a in [aligned.get(cid)] if _a is None or _a.empty
+        ]
+        if missing_after_align:
+            missing_labels = [
+                symbol_map.get(cid, from_canonical_id(cid)) for cid in missing_after_align
+            ]
             preview = ", ".join(missing_labels[:20])
             suffix = " ..." if len(missing_labels) > 20 else ""
             logger.warning(
-                "MDMP omitted %s/%s requested symbols (no dict entry; typical for "
-                "cache_only when those canonical series are not on disk): [%s%s]",
-                len(not_returned),
-                len(canonical_ids),
+                "MDMP omitted %s/%s requested symbols after alignment (no usable frame; "
+                "typical for cache_only when those series are not on disk): [%s%s]",
+                len(missing_after_align),
+                len(unique_cids),
                 preview,
                 suffix,
             )
@@ -308,13 +404,13 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
     ) -> Dict[str, pd.DataFrame]:
         """Load cached canonical data from MDMP without downloading."""
         try:
-            results = self.client.fetch_many_cached_only(
-                canonical_ids,
+            fetch_kw: Dict[str, Any] = dict(
                 start=start,
                 end=end,
-                cache_max_age_seconds=int(self._cache_max_age_seconds),
+                cache_max_age_seconds=self._cache_max_age_seconds,
                 max_workers=self._max_workers,
             )
+            results = self.client.fetch_many_cached_only(canonical_ids, **fetch_kw)
         except Exception as e:
             logger.error("MDMP fetch_many_cached_only failed: %s", e)
             return {}
@@ -336,4 +432,8 @@ class MarketDataMultiProviderDataSource(BaseDataSource):
         }
 
 
-__all__ = ["MarketDataMultiProviderDataSource"]
+__all__ = [
+    "MarketDataMultiProviderDataSource",
+    "align_mdmp_results_to_requested",
+    "bare_ticker_from_canonical_id",
+]

@@ -21,14 +21,30 @@ def _base_global(pv: float = 10000.0) -> dict:
     }
 
 
-@pytest.mark.parametrize("tet", ["bar_close", "next_bar_open"])
-def test_array_prep_matches_dataframe_timing_modes(tet: str) -> None:
-    dates = pd.date_range("2023-01-03", periods=8, freq="B")
-    daily = pd.DataFrame(
+def _daily_ohlc_for_timing(tet: str, dates: pd.DatetimeIndex) -> pd.DataFrame:
+    base = pd.DataFrame(
         {"A": np.linspace(100.0, 108.0, len(dates)), "B": np.linspace(50.0, 52.0, len(dates))},
         index=dates,
     )
-    rets = daily.pct_change(fill_method=None).fillna(0.0)
+    if tet == "bar_close":
+        return base
+    tuples: list[tuple[str, str]] = []
+    for t in ["A", "B"]:
+        tuples.extend([(t, "Open"), (t, "Close")])
+    cols = pd.MultiIndex.from_tuples(tuples, names=["Ticker", "Field"])
+    out = pd.DataFrame(index=dates, columns=cols, dtype=np.float64)
+    for sym in ("A", "B"):
+        out[(sym, "Open")] = base[sym].to_numpy(dtype=np.float64)
+        out[(sym, "Close")] = base[sym].to_numpy(dtype=np.float64)
+    return out
+
+
+@pytest.mark.parametrize("tet", ["bar_close", "next_bar_open"])
+def test_array_prep_matches_dataframe_timing_modes(tet: str) -> None:
+    dates = pd.date_range("2023-01-03", periods=8, freq="B")
+    daily = _daily_ohlc_for_timing(tet, dates)
+    close_df = daily if tet == "bar_close" else daily.xs("Close", level="Field", axis=1)
+    rets = close_df.pct_change(fill_method=None).fillna(0.0)
     sized = pd.DataFrame({"A": [0.6, 0.4], "B": [0.4, 0.6]}, index=[dates[0], dates[3]])
     sized = sized.reindex(dates).ffill()
     scenario = {

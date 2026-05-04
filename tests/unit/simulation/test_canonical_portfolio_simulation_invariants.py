@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import inspect
 import numpy as np
 import pandas as pd
 import pytest
 
 from portfolio_backtester.backtester_logic.portfolio_logic import calculate_portfolio_returns
+from portfolio_backtester.simulation.kernel import simulate_portfolio
+
+
+def test_simulate_portfolio_exposes_no_materialize_trades_kwarg() -> None:
+    assert "materialize_trades" not in inspect.signature(simulate_portfolio).parameters
 
 
 def _base_global(portfolio_value: float = 10_000.0) -> dict:
@@ -80,20 +86,33 @@ def test_calculate_portfolio_returns_track_trades_parity_with_missing_prices():
     pd.testing.assert_series_equal(r_off.astype(float), r_on.astype(float), atol=1e-9, rtol=0.0)
 
 
-def test_share_delta_costs_no_trade_when_target_row_repeats_after_price_jump():
+def test_calculate_portfolio_returns_next_bar_open_requires_multiindex_open_or_panel():
+    dates = pd.date_range("2023-01-01", periods=2, freq="D")
+    daily = pd.DataFrame({"A": [100.0, 110.0], "B": [50.0, 50.0]}, index=dates)
+    rets = daily.pct_change(fill_method=None).fillna(0.0)
+    sized = pd.DataFrame({"A": [1.0, 1.0], "B": [0.0, 0.0]}, index=dates)
+    scenario = {
+        "timing_config": {
+            "mode": "signal_based",
+            "trade_execution_timing": "next_bar_open",
+        },
+    }
+    g = _base_global(10_000.0)
+    with pytest.raises(ValueError, match="next_bar_open requires"):
+        calculate_portfolio_returns(sized, scenario, daily, rets, ["A", "B"], g, track_trades=False)
+
+
+def test_duplicate_explicit_sparse_rows_flat_prices_zero_costs_under_costless_config():
     dates = pd.date_range("2023-01-01", periods=3, freq="D")
-    daily = pd.DataFrame({"A": [100.0, 200.0, 200.0]}, index=dates)
+    daily = pd.DataFrame({"A": [100.0, 100.0, 100.0]}, index=dates)
     rets = daily.pct_change(fill_method=None).fillna(0.0)
     sized = pd.DataFrame({"A": [1.0, 1.0, 1.0]}, index=dates)
-    scenario = {
-        "timing_config": {"rebalance_frequency": "D"},
-        "costs_config": {"transaction_costs_bps": 100.0},
-    }
+    scenario = {"timing_config": {"rebalance_frequency": "D"}}
     g = _base_global(10_000.0)
 
     r, _ = calculate_portfolio_returns(sized, scenario, daily, rets, ["A"], g, track_trades=False)
-    assert r.iloc[1] > 0.0
-    assert r.iloc[2] == pytest.approx(0.0)
+    assert r.iloc[1] == pytest.approx(0.0, abs=1e-6)
+    assert r.iloc[2] == pytest.approx(0.0, abs=1e-6)
 
     from portfolio_backtester.simulation.kernel import simulate_portfolio
     from portfolio_backtester.backtester_logic.portfolio_simulation_input import (
@@ -108,17 +127,58 @@ def test_share_delta_costs_no_trade_when_target_row_repeats_after_price_jump():
         price_index=dates,
         valid_cols=valid_cols,
         close_arr=close_arr,
-        price_mask_arr=mask_arr,
+        close_price_mask_arr=mask_arr,
+        sparse_execution_targets=sized.reindex(columns=valid_cols),
+        trade_execution_timing="bar_close",
     )
+    assert bool(sim_in.rebalance_mask.all())
     out = simulate_portfolio(
         sim_in,
         global_config=g,
         scenario_config=scenario,
-        materialize_trades=False,
     )
-    assert out.per_asset_cost_fraction.shape == (len(dates), 1)
-    assert float(out.per_asset_cost_fraction[1, 0]) == pytest.approx(0.0, abs=1e-12)
-    assert float(out.per_asset_cost_fraction[2, 0]) == pytest.approx(0.0, abs=1e-12)
+    assert np.all(out.per_asset_cost_fraction == 0.0)
+
+
+def test_duplicate_explicit_sparse_rows_after_price_jump_can_incur_bps_on_each_event():
+    dates = pd.date_range("2023-01-01", periods=3, freq="D")
+    daily = pd.DataFrame({"A": [100.0, 200.0, 200.0]}, index=dates)
+    rets = daily.pct_change(fill_method=None).fillna(0.0)
+    sized = pd.DataFrame({"A": [1.0, 1.0, 1.0]}, index=dates)
+    scenario = {
+        "timing_config": {"rebalance_frequency": "D"},
+        "costs_config": {"transaction_costs_bps": 100.0},
+    }
+    g = _base_global(10_000.0)
+
+    r, _ = calculate_portfolio_returns(sized, scenario, daily, rets, ["A"], g, track_trades=False)
+    assert r.iloc[1] > 0.0
+
+    from portfolio_backtester.simulation.kernel import simulate_portfolio
+    from portfolio_backtester.backtester_logic.portfolio_simulation_input import (
+        build_close_and_mask_from_dataframe,
+        build_portfolio_simulation_input,
+    )
+
+    valid_cols = ["A"]
+    close_arr, mask_arr = build_close_and_mask_from_dataframe(daily, dates, valid_cols)
+    sim_in = build_portfolio_simulation_input(
+        weights_daily=sized.reindex(columns=valid_cols).ffill().fillna(0.0),
+        price_index=dates,
+        valid_cols=valid_cols,
+        close_arr=close_arr,
+        close_price_mask_arr=mask_arr,
+        sparse_execution_targets=sized.reindex(columns=valid_cols),
+        trade_execution_timing="bar_close",
+    )
+    assert bool(sim_in.rebalance_mask.all())
+    out = simulate_portfolio(
+        sim_in,
+        global_config=g,
+        scenario_config=scenario,
+    )
+    assert float(out.per_asset_cost_fraction[1, 0]) > 0.0
+    assert float(out.per_asset_cost_fraction[2, 0]) >= 0.0
 
 
 def test_share_delta_costs_on_rebalance_not_weight_drift_proxy():
@@ -150,13 +210,14 @@ def test_share_delta_costs_on_rebalance_not_weight_drift_proxy():
         price_index=dates,
         valid_cols=valid_cols,
         close_arr=close_arr,
-        price_mask_arr=mask_arr,
+        close_price_mask_arr=mask_arr,
+        sparse_execution_targets=sized.reindex(columns=valid_cols),
+        trade_execution_timing="bar_close",
     )
     out = simulate_portfolio(
         sim_in,
         global_config=g,
         scenario_config=scenario,
-        materialize_trades=False,
     )
     assert float(np.sum(out.per_asset_cost_fraction[1, :])) > 0.0
     assert float(np.sum(out.per_asset_cost_fraction[2, :])) > 0.0

@@ -7,10 +7,19 @@ GLOBAL_CONFIG:
   data_source: "mdmp"
 
   # MDMP fetch configuration (used when data_source == "mdmp").
-  # Market-data cache directories are owned by MDMP; PB does not set data_dir here.
+  # Canonical OHLC and provider caches live under MDMP's ``data/`` directory — not
+  # under this repository. Set ``mdmp_data_dir`` to that folder (sibling clone default
+  # below) or set env ``MDMP_DATA_DIR`` to the same absolute path. Relative
+  # ``mdmp_data_dir`` values are resolved from this repo's root (the directory that
+  # contains ``src/``).
   # PB may import market_data_multi_provider only via ``data_sources/mdmp_facade.py``
   # — guarded by tests/unit/architecture/.
   data_source_config:
+    # MDMP on-disk root (must match ``market-data-multi-provider`` warmer / fetch_one).
+    # Default: sibling checkout ``../market-data-multi-provider/data`` (Windows: same
+    # parent folder as ``portfolio-backtester`` under ``repos``).
+    mdmp_data_dir: ../market-data-multi-provider/data
+
     # Use stooq for better historical coverage of Russell tickers.
     preferred_provider: "stooq"
 
@@ -23,6 +32,7 @@ GLOBAL_CONFIG:
 
     # Cache max-age (seconds) for MDMP reads; 604800 = 1 week.
     # Increased from 4 hours to tolerate stale caches during testing.
+    # Set to null to use MDMP library defaults (e.g. no parquet age filter on read).
     cache_max_age_seconds: 604800
 
     # If true, only use cached MDMP data and skip downloads.
@@ -88,7 +98,7 @@ GLOBAL_CONFIG:
     - "UNH"
     - "GBTC"
     - "UVXY"
-  benchmark: "AMEX:SPY"
+  benchmark: "SPY"
   # Excess Sharpe/Sortino/Deflated Sharpe vs implied per-bar rf from this yield index (see README).
   # Set risk_free_metrics_enabled: false for legacy CAGR/vol Sharpe globally.
   risk_free_metrics_enabled: true

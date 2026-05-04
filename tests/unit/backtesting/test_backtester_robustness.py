@@ -106,6 +106,20 @@ def test_backtest_with_misaligned_dates(robust_backtester):
 
         mock_strat = MagicMock()
         mock_strat.get_universe.return_value = [("A", 1.0)]
+
+        def _mock_target_weights(ctx):
+            cols = list(ctx.universe_tickers)
+            if not cols:
+                cols = ["A"]
+            w = 1.0 / len(cols)
+            return pd.DataFrame(
+                w,
+                index=ctx.rebalance_dates,
+                columns=cols,
+                dtype=float,
+            )
+
+        mock_strat.generate_target_weights = _mock_target_weights
         mock_get.return_value = mock_strat
         # Mock return to avoid 'None' crash if it gets that far
         mock_calc.return_value = (pd.Series(0.0, index=daily.index), None)

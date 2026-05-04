@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
+from portfolio_backtester.strategies._core.target_generation import StrategyContext
 from portfolio_backtester.universe_loader import clear_universe_cache
 
 
@@ -26,6 +27,35 @@ class DummyStrategy(BaseStrategy):
         weights = {ticker: 1.0 / len(tickers) for ticker in tickers}
         signals = pd.DataFrame(weights, index=[current_date])
         return signals
+
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        targets = pd.DataFrame(
+            0.0,
+            index=context.rebalance_dates,
+            columns=list(context.universe_tickers),
+            dtype=float,
+        )
+        nu_full = context.non_universe_data
+        for current_date in context.rebalance_dates:
+            hist = context.asset_data.loc[context.asset_data.index <= current_date]
+            bench = context.benchmark_data.loc[context.benchmark_data.index <= current_date]
+            if len(nu_full.columns) > 0:
+                nu = nu_full.loc[nu_full.index <= current_date]
+            else:
+                nu = pd.DataFrame()
+            row = self.generate_signals(
+                hist,
+                bench,
+                nu,
+                current_date,
+                start_date=context.wfo_start_date,
+                end_date=context.wfo_end_date,
+            )
+            if not row.empty:
+                targets.loc[current_date, :] = (
+                    row.iloc[0].reindex(targets.columns).fillna(0.0).to_numpy(dtype=float)
+                )
+        return targets
 
 
 class TestConfigurableUniversesIntegration:

@@ -192,7 +192,19 @@ config/scenarios/builtins/
 
 Implement signal and portfolio strategies with **`generate_target_weights(context)`**, where `context` is a `StrategyContext` (`portfolio_backtester.strategies._core.target_generation`). The engine evaluates that API on the backtest calendar; it is the supported authoring surface for target weights.
 
-**Portfolio simulation** uses one canonical share/cash path (`simulate_portfolio` / Numba kernel). Costs follow executed share deltas (per-share minimums, caps, and slippage from global commission settings), or a flat **bps** charge when `costs_config.transaction_costs_bps` is set.
+**Portfolio simulation (non-meta)** uses the canonical share/cash path (`simulate_portfolio` → `canonical_portfolio_simulation_kernel`). Rebalances fire on **explicit execution rows** derived from sparse targets (time-based schedules collapse to first event per period first; `trade_execution_timing` may shift events). **Repeated identical targets still create rebalance rows** on each event date, so turnover/costs can apply when prices drift between events. **Day 0** includes entry turnover vs cash. With **`bar_close`**, execution aligns to **close** prices for that bar; with **`next_bar_open`**, fills use the **next session’s open** (requires Open in OHLC or aligned panel). Meta strategies are an explicit exception (**`MetaExecutionMode.TRADE_AGGREGATION`**): they rebuild returns from **`TradeAggregator`** and do not use the canonical kernel.
+
+The legacy adapter **`generate_signals`** remains for older callers; new work should target **`generate_target_weights`**.
+
+**Strategy author checklist**
+
+| Topic | Rule of thumb |
+|--------|----------------|
+| Targets | Implement / use `generate_target_weights` with `StrategyContext` |
+| Scheduling | Sparse rows = rebalance/cost events; daily ffill fills between events |
+| Timing | `timing_config.trade_execution_timing`: `bar_close` vs `next_bar_open` (open semantics) |
+| Meta | Only `*MetaStrategy` classes; returns from trade aggregation |
+| Costs | Included from first investable bar (incl. entry); per global/scenario cost model |
 
 **`track_trades`** only enables populating a `TradeTracker` from the same simulation; it does not switch return math or cost models.
 

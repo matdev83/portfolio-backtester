@@ -37,6 +37,7 @@ class StrategyContext:
     wfo_start_date: Optional[pd.Timestamp]
     wfo_end_date: Optional[pd.Timestamp]
     use_sparse_nan_for_inactive_rows: bool
+    full_price_panel: Optional[pd.DataFrame] = None
 
     @classmethod
     def from_standard_inputs(
@@ -51,6 +52,7 @@ class StrategyContext:
         wfo_start_date: Optional[pd.Timestamp],
         wfo_end_date: Optional[pd.Timestamp],
         use_sparse_nan_for_inactive_rows: bool,
+        full_price_panel: Optional[pd.DataFrame] = None,
     ) -> StrategyContext:
         nu = (
             non_universe_data
@@ -67,6 +69,7 @@ class StrategyContext:
             wfo_start_date=wfo_start_date,
             wfo_end_date=wfo_end_date,
             use_sparse_nan_for_inactive_rows=use_sparse_nan_for_inactive_rows,
+            full_price_panel=full_price_panel,
         )
 
 

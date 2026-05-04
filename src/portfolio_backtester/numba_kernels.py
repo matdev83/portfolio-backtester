@@ -86,7 +86,9 @@ def drifting_weights_returns_kernel(
     mask: np.ndarray,  # [T, N]
     eps: float = 1e-9,
 ) -> np.ndarray:
-    """Compute daily gross returns assuming buy-and-hold between rebalance dates.
+    """DEPRECATED for new production code: drifting-weight return path; kept for tests/integration.
+
+    Compute daily gross returns assuming buy-and-hold between rebalance dates.
 
     The key idea:
     - On days when the target weights change, we rebalance to those target weights.
@@ -157,7 +159,8 @@ def detailed_commission_slippage_kernel(
     slippage_bps: float,
     price_mask: np.ndarray,  # [T, N] True where price valid (>0) and finite
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """
+    """DEPRECATED for new production code: legacy IBKR-style turnover cost helper; tests only.
+
     Compute per-day total transaction cost fraction of portfolio value using an IBKR-style model.
 
     Returns:
@@ -214,7 +217,9 @@ def trade_tracking_kernel(
     price_mask: np.ndarray,  # [T, N] boolean mask for valid prices
     commissions: np.ndarray,  # [T, N] detailed commission costs as fraction of portfolio
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Vectorized trade tracking with realistic rebalancing semantics.
+    """DEPRECATED for new production paths except ``numba_trade_tracker``: legacy holdings stepping kernel.
+
+    Vectorized trade tracking with realistic rebalancing semantics.
 
     Critical: weights are interpreted as **target weights on rebalancing dates**.
     Between rebalances, the portfolio holds shares constant and weights drift with prices.
@@ -344,9 +349,13 @@ def _per_trade_cost_dollars_kernel(
 def canonical_portfolio_simulation_kernel(
     initial_portfolio_value: float,
     allocation_mode: int,
+    execution_timing: int,
     weights: np.ndarray,
-    prices: np.ndarray,
-    price_mask: np.ndarray,
+    execution_prices: np.ndarray,
+    execution_price_mask: np.ndarray,
+    close_prices: np.ndarray,
+    close_price_mask: np.ndarray,
+    rebalance_mask: np.ndarray,
     use_simple_bps: bool,
     transaction_costs_bps: float,
     commission_per_share: float,
@@ -356,7 +365,7 @@ def canonical_portfolio_simulation_kernel(
     ref_portfolio_value: float,
     eps: float,
 ):
-    """Share/cash path with costs from executed share deltas; returns include embedded costs."""
+    """Share/cash path with execution vs close valuation and rebalance_mask-driven trades."""
     T, N = weights.shape
     portfolio_values = np.zeros(T, dtype=np.float64)
     cash_values = np.zeros(T, dtype=np.float64)
@@ -366,98 +375,113 @@ def canonical_portfolio_simulation_kernel(
     daily_returns = np.zeros(T, dtype=np.float64)
 
     ref_denom = ref_portfolio_value if ref_portfolio_value > eps else 1.0
+    last_valid_close = np.zeros(N, dtype=np.float64)
 
-    last_valid_prices = np.zeros(N, dtype=np.float64)
-
-    capital_base = initial_portfolio_value
-    current_prices0 = prices[0]
-    current_mask0 = price_mask[0]
-
-    target_weights0 = weights[0]
-    target_dollar_values0 = target_weights0 * capital_base
-    safe_prices0 = np.where(current_prices0 > 0, current_prices0, 1.0)
-    target_positions0 = (target_dollar_values0 / safe_prices0) * current_mask0
-
-    positions[0] = target_positions0
     for j in range(N):
-        if current_mask0[j]:
-            last_valid_prices[j] = current_prices0[j]
+        if close_price_mask[0, j]:
+            last_valid_close[j] = close_prices[0, j]
 
+    do_rebalance_0 = rebalance_mask[0]
+    if not do_rebalance_0:
+        for j in range(N):
+            if abs(weights[0, j]) > eps:
+                do_rebalance_0 = True
+                break
+
+    last_positions0 = np.zeros(N, dtype=np.float64)
+    positions0 = np.zeros(N, dtype=np.float64)
     day0_cost_dollars = 0.0
-    for j in range(N):
-        if not current_mask0[j]:
-            continue
-        price = current_prices0[j]
-        if price <= 0.0:
-            continue
-        dsh = target_positions0[j]
-        td = abs(dsh) * price
-        c = _per_trade_cost_dollars_kernel(
-            td,
-            abs(dsh),
-            use_simple_bps,
-            transaction_costs_bps,
-            commission_per_share,
-            commission_min_per_order,
-            commission_max_percent,
-            slippage_bps,
-        )
-        day0_cost_dollars += c
-        per_asset_cost_frac[0, j] = c / ref_denom
 
-    total_cost_frac[0] = day0_cost_dollars / ref_denom
+    if do_rebalance_0:
+        capital_base0 = initial_portfolio_value
+        tdv0 = weights[0] * capital_base0
+        for j in range(N):
+            if execution_price_mask[0, j] and execution_prices[0, j] > 0.0:
+                positions0[j] = tdv0[j] / execution_prices[0, j]
+            else:
+                positions0[j] = last_positions0[j]
+        for j in range(N):
+            if not execution_price_mask[0, j]:
+                continue
+            exc_price = execution_prices[0, j]
+            if exc_price <= 0.0:
+                continue
+            dsh0 = positions0[j] - last_positions0[j]
+            td = abs(dsh0) * exc_price
+            c0 = _per_trade_cost_dollars_kernel(
+                td,
+                abs(dsh0),
+                use_simple_bps,
+                transaction_costs_bps,
+                commission_per_share,
+                commission_min_per_order,
+                commission_max_percent,
+                slippage_bps,
+            )
+            day0_cost_dollars += c0
+            per_asset_cost_frac[0, j] = c0 / ref_denom
+        total_cost_frac[0] = day0_cost_dollars / ref_denom
 
-    holdings_value0 = np.sum(positions[0] * last_valid_prices)
-    cash_values[0] = capital_base - holdings_value0 - day0_cost_dollars
+    holdings_value0 = np.sum(positions0 * last_valid_close)
+    cash_values[0] = initial_portfolio_value - holdings_value0 - day0_cost_dollars
     portfolio_values[0] = cash_values[0] + holdings_value0
+    positions[0] = positions0
 
     for i in range(1, T):
-        last_positions = positions[i - 1]
-        current_prices = prices[i]
-        current_mask = price_mask[i]
-
-        valuation_prices = np.empty(N, dtype=np.float64)
+        prev_last_close = np.empty(N, dtype=np.float64)
         for j in range(N):
-            if current_mask[j]:
-                last_valid_prices[j] = current_prices[j]
-            valuation_prices[j] = last_valid_prices[j]
+            prev_last_close[j] = last_valid_close[j]
 
-        holdings_value = np.sum(last_positions * valuation_prices)
-        portfolio_values[i] = cash_values[i - 1] + holdings_value
+        close_row = close_prices[i]
+        close_row_mask = close_price_mask[i]
+        for j in range(N):
+            if close_row_mask[j]:
+                last_valid_close[j] = close_row[j]
+
+        last_positions = positions[i - 1]
+        holdings_mark = np.sum(last_positions * last_valid_close)
+        portfolio_values[i] = cash_values[i - 1] + holdings_mark
 
         positions[i] = last_positions
         cash_values[i] = cash_values[i - 1]
 
-        if allocation_mode == 0:
-            capital_base = portfolio_values[i]
-
-        rebalance = False
-        for j in range(N):
-            if abs(weights[i, j] - weights[i - 1, j]) > eps:
-                rebalance = True
-                break
-        if not rebalance:
+        if not rebalance_mask[i]:
             continue
 
-        target_weights = weights[i]
-        target_dollar_values = target_weights * capital_base
+        exec_row = execution_prices[i]
+        exec_row_mask = execution_price_mask[i]
+
+        if allocation_mode == 0:
+            if execution_timing == 1:
+                capital_base_use = cash_values[i - 1]
+                for j in range(N):
+                    if exec_row_mask[j] and exec_row[j] > 0.0:
+                        capital_base_use += last_positions[j] * exec_row[j]
+                    else:
+                        capital_base_use += last_positions[j] * prev_last_close[j]
+            else:
+                capital_base_use = portfolio_values[i]
+        else:
+            capital_base_use = initial_portfolio_value
+
+        target_dollar_vals = weights[i] * capital_base_use
         target_positions = np.empty(N, dtype=np.float64)
         for j in range(N):
-            if current_mask[j]:
-                target_positions[j] = target_dollar_values[j] / current_prices[j]
+            if exec_row_mask[j] and exec_row[j] > 0.0:
+                target_positions[j] = target_dollar_vals[j] / exec_row[j]
             else:
                 target_positions[j] = last_positions[j]
 
         day_cost_dollars = 0.0
         for j in range(N):
-            if not current_mask[j]:
+            if not exec_row_mask[j]:
                 continue
-            price = current_prices[j]
-            if price <= 0.0:
+            exc_price = exec_row[j]
+            if exc_price <= 0.0:
                 continue
             dsh = target_positions[j] - last_positions[j]
-            td = abs(dsh) * price
-            c = _per_trade_cost_dollars_kernel(
+            td = abs(dsh) * exc_price
+            cday = _per_trade_cost_dollars_kernel(
                 td,
                 abs(dsh),
                 use_simple_bps,
@@ -467,21 +491,23 @@ def canonical_portfolio_simulation_kernel(
                 commission_max_percent,
                 slippage_bps,
             )
-            day_cost_dollars += c
-            per_asset_cost_frac[i, j] = c / ref_denom
+            day_cost_dollars += cday
+            per_asset_cost_frac[i, j] = cday / ref_denom
 
         total_cost_frac[i] = day_cost_dollars / ref_denom
-
         positions[i] = target_positions
 
-        new_holdings_value = np.sum(positions[i] * valuation_prices)
-        cash_values[i] = portfolio_values[i] - new_holdings_value - day_cost_dollars
-        portfolio_values[i] = cash_values[i] + new_holdings_value
+        new_holdings = np.sum(positions[i] * last_valid_close)
+        cash_values[i] = portfolio_values[i] - new_holdings - day_cost_dollars
+        portfolio_values[i] = cash_values[i] + new_holdings
+
+    if initial_portfolio_value > eps:
+        daily_returns[0] = portfolio_values[0] / initial_portfolio_value - 1.0
 
     for i in range(1, T):
-        prev = portfolio_values[i - 1]
-        if prev > eps:
-            daily_returns[i] = portfolio_values[i] / prev - 1.0
+        prev_pv = portfolio_values[i - 1]
+        if prev_pv > eps:
+            daily_returns[i] = portfolio_values[i] / prev_pv - 1.0
 
     return (
         portfolio_values,

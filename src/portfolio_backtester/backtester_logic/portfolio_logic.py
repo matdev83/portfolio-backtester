@@ -15,9 +15,13 @@ from ..trading.trade_tracker import TradeTracker
 from ..trading.unified_commission_calculator import get_unified_commission_calculator
 from ..numba_kernels import trade_lifecycle_kernel
 from ..simulation.kernel import simulate_portfolio
+from .meta_execution import MetaExecutionMode, portfolio_execution_mode_for_strategy
 from .portfolio_simulation_input import (
     build_portfolio_simulation_input,
+    extract_open_frame_from_ohlc,
+    market_panel_aligns_with_ohlc,
     prepare_close_arrays_for_simulation,
+    prepare_open_arrays_for_simulation,
 )
 
 
@@ -109,10 +113,17 @@ def calculate_portfolio_returns(
     *,
     include_signed_weights: bool = False,
 ):
-    """Portfolio net returns from the canonical share/cash simulator (non-meta strategies)."""
-    # Check if this is a meta strategy - if so, use trade-based returns
+    """Portfolio net returns for standard strategies via the canonical share/cash simulator.
+
+    Meta strategies (``MetaExecutionMode.TRADE_AGGREGATION``) bypass that path and
+    rebuild returns from aggregated sub-strategy trades; see ``meta_execution.py``.
+    """
     strategy_resolver = StrategyResolverFactory.create()
-    if strategy is not None and strategy_resolver.is_meta_strategy(type(strategy)):
+    if (
+        strategy is not None
+        and portfolio_execution_mode_for_strategy(strategy, strategy_resolver=strategy_resolver)
+        == MetaExecutionMode.TRADE_AGGREGATION
+    ):
         return _calculate_meta_strategy_portfolio_returns(
             strategy,
             scenario_config,
@@ -146,8 +157,8 @@ def calculate_portfolio_returns(
         sized_for_daily, universe_tickers, price_data_daily_ohlc.index
     )
 
-    # NOTE: weights_daily is *target* weights. Realistic simulation holds shares constant
-    # between rebalances and only trades when target weights change.
+    # NOTE: weights_daily are targets; turnover is driven by ``rebalance_mask`` from sparse
+    # execution rows (plus required day-0 entry when the mask is otherwise flat False).
 
     if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and (
         "Close" in price_data_daily_ohlc.columns.get_level_values(-1)
@@ -165,25 +176,50 @@ def calculate_portfolio_returns(
         resolved_panel = global_config.get("market_data_panel")
 
     price_ix = pd.DatetimeIndex(price_index)
-    close_arr, price_mask_arr = prepare_close_arrays_for_simulation(
+    close_arr, close_mask_arr = prepare_close_arrays_for_simulation(
         market_data_panel=resolved_panel,
         close_prices_df=close_prices_df,
         price_index=price_ix,
         valid_cols=valid_cols,
     )
+    open_arr_np = None
+    open_mask_np = None
+    if tet == "next_bar_open":
+        open_frame = extract_open_frame_from_ohlc(price_data_daily_ohlc)
+        panel_has_opens = (
+            resolved_panel is not None
+            and market_panel_aligns_with_ohlc(resolved_panel, price_ix, valid_cols)
+            and resolved_panel.open_np is not None
+        )
+        if open_frame is None and not panel_has_opens:
+            raise ValueError(
+                "trade_execution_timing=next_bar_open requires OHLC with MultiIndex Field "
+                "including Open, or an aligned MarketDataPanel providing opens."
+            )
+        open_arr_np, open_mask_np = prepare_open_arrays_for_simulation(
+            market_data_panel=resolved_panel,
+            open_prices_df=open_frame,
+            price_index=price_ix,
+            valid_cols=valid_cols,
+        )
+
+    sparse_exec_targets = sized_for_daily.reindex(columns=valid_cols)
     sim_input = build_portfolio_simulation_input(
         weights_daily=weights_daily,
         price_index=price_ix,
         valid_cols=valid_cols,
         close_arr=close_arr,
-        price_mask_arr=price_mask_arr,
+        close_price_mask_arr=close_mask_arr,
+        open_arr=open_arr_np,
+        open_price_mask_arr=open_mask_np,
+        sparse_execution_targets=sparse_exec_targets,
+        trade_execution_timing=tet,
     )
 
     sim_result = simulate_portfolio(
         sim_input,
         global_config=global_config,
         scenario_config=scenario_config,
-        materialize_trades=track_trades,
     )
 
     signed_weights_out: pd.DataFrame | None = None
@@ -290,7 +326,7 @@ def _calculate_meta_strategy_portfolio_returns(
     *,
     include_signed_weights: bool = False,
 ):
-    """Meta strategies: returns from sub-strategy trade aggregation, not canonical share simulation."""
+    """Meta strategies use ``MetaExecutionMode.TRADE_AGGREGATION`` (trade ledger), not ``simulate_portfolio``."""
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(
             f"Calculating meta strategy portfolio returns for {strategy.__class__.__name__}"
