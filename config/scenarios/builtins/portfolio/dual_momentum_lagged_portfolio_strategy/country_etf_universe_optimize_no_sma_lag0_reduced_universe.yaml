@@ -1,0 +1,125 @@
+# Walk-forward optimization — country/regional ETF sleeve vs SPY (23-ticker universe).
+#
+# Same setup as ``country_etf_universe_optimize_no_sma_lag0.yaml``, but the universe omits
+# leave-one-out ablation names that **raised Sortino when removed** (full-sample, fixed
+# lag-0 / no-SMA params): **ARGT, EWA, EPOL, VNM** (largest positive ΔSortino vs baseline).
+#
+# Run (example): use a real trial budget; ``--optuna-timeout-sec 0`` aborts immediately;
+# default ``--early-stop-patience 10`` can stop each WFO window before all trials complete.
+#
+#   .venv\Scripts\python.exe -m src.portfolio_backtester.backtester --mode optimize ^
+#     --scenario-filename config/scenarios/builtins/portfolio/dual_momentum_lagged_portfolio_strategy/country_etf_universe_optimize_no_sma_lag0_reduced_universe.yaml ^
+#     --mdmp-cache-only --random-seed 42 --optimizer optuna --optuna-trials 150 --early-stop-patience 0
+#
+# Fixed by design for this run:
+# - lag_months: 0 (no confirmation lag)
+# - use_200sma_filter: false (no legacy SPY 200-day SMA RORO)
+# - ranking_method: excess_total_return
+#
+# Optimized:
+# - lookback_months ∈ [3, 12]
+# - min_absolute_momentum (threshold scan; includes slight negatives for borderline names)
+# - absolute_exit_buffer / relative_exit_buffer (hysteresis on held positions only)
+
+name: dual_momentum_lagged_portfolio_country_etf_universe_optimize_no_sma_lag0_reduced_universe
+strategy: DualMomentumLaggedPortfolioStrategy
+
+position_sizer: equal_weight
+rebalance_frequency: ME
+
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+
+universe_config:
+  type: fixed
+  tickers:
+    - EWZ
+    - EWC
+    - ECH
+    - FXI
+    - EWQ
+    - EWG
+    - EWH
+    - INDA
+    - EIDO
+    - EIS
+    - EWI
+    - EWJ
+    - EWM
+    - EWW
+    - EPU
+    - KSA
+    - EWS
+    - EZA
+    - EWY
+    - EWL
+    - EWT
+    - TUR
+    - EWU
+
+benchmark_ticker: SPY
+
+train_window_months: 60
+test_window_months: 12
+walk_forward_type: rolling
+
+optimization_metric: Sortino
+
+strategy_params:
+  lag_months: 0
+  max_holdings: 10
+
+  use_200sma_filter: false
+  sma_period: 200
+
+  ranking_method: excess_total_return
+
+  # Seeds for the sampler (Optuna still explores around these).
+  lookback_months: 6
+  min_absolute_momentum: 0.05
+  absolute_exit_buffer: 0.0
+  relative_exit_buffer: 0.0
+
+  vol_target_enabled: false
+  panic_overlay_enabled: false
+
+  trade_longs: true
+  trade_shorts: false
+
+optimize:
+  - parameter: lookback_months
+    type: int
+    min_value: 3
+    max_value: 12
+    step: 1
+
+  - parameter: min_absolute_momentum
+    type: categorical
+    choices:
+      - -0.03
+      - -0.02
+      - -0.01
+      - 0.0
+      - 0.02
+      - 0.05
+      - 0.08
+      - 0.1
+
+  - parameter: absolute_exit_buffer
+    type: categorical
+    choices:
+      - 0.0
+      - 0.01
+      - 0.02
+      - 0.03
+      - 0.05
+
+  - parameter: relative_exit_buffer
+    type: categorical
+    choices:
+      - 0.0
+      - 0.01
+      - 0.02
+      - 0.03
+      - 0.05
