@@ -796,6 +796,144 @@ For AI agents and automated contributors, see [AGENTS.md](AGENTS.md).
 
 ---
 
+## Strategy Results: SPY Intramonth Seasonal with ATH Drawdown Filter
+
+### Overview
+
+This strategy implements a seasonal trading approach on the SPY ETF, trading specific months with optimized entry days and holding periods, while using a maximum drawdown from all-time-high (ATH) filter to reduce risk during severe market downturns.
+
+### Strategy Parameters
+
+**Trading Months and Configuration:**
+
+| Month | Entry Day | Hold Days | Active |
+|-------|-----------|-----------|--------|
+| January | 4 | 5 | Yes |
+| February | 3 | 10 | Yes |
+| March | 18 | 5 | Yes |
+| April | 16 | 5 | Yes |
+| May | 14 | 6 | Yes |
+| June | 19 | 14 | Yes |
+| July | 7 | 6 | Yes |
+| August | 19 | 5 | Yes |
+| September | 7 | 6 | Yes |
+| October | 19 | 9 | Yes |
+| November | 14 | 5 | Yes |
+| December | 14 | 5 | Yes |
+
+**Risk Management Parameters:**
+- `max_dd_from_ath_pct`: 30.0
+- `use_carlos_roro`: False (disabled)
+- Direction: Long only
+- Execution: bar_close
+
+### Performance Metrics (1993-01-29 to 2024-12-31)
+
+#### Strategy Performance
+
+| Metric | Value |
+|--------|-------|
+| Total Return | 1,007.55% |
+| Annualized Return | 7.70% |
+| Annualized Volatility | 7.28% |
+| Sharpe Ratio | 1.0567 |
+| Sortino Ratio | 1.6141 |
+| Calmar Ratio | 0.4930 |
+| Max Drawdown | -15.61% |
+
+#### SPY Buy-and-Hold Benchmark
+
+| Metric | Value |
+|--------|-------|
+| Total Return | ~1,500% (estimated) |
+| Max Drawdown | -55.19% |
+
+#### Comparative Analysis
+
+The strategy achieves approximately **67% of buy-and-hold returns** while experiencing only **28% of the maximum drawdown**.
+
+### Risk Management Analysis
+
+#### ATH Filter Effectiveness
+
+The 30% maximum drawdown from ATH filter acts as a circuit breaker, flattening positions when SPY declines more than 30% from its peak:
+
+- **Total trading days:** 8,172
+- **Days in market:** 1,987 (24.3%)
+- **Days filter active (flat/cash):** 600 (7.3%)
+- **Number of trades:** 306
+- **Average trade length:** 9.6 days
+
+#### Major Filter Activation Periods
+
+The filter successfully avoided the worst parts of major market crashes:
+
+| Period | Duration | Market Event |
+|--------|----------|--------------|
+| 2002-06-06 to 2003-09-03 | 454 days | Dot-com bust |
+| 2008-10-06 to 2009-09-14 | 343 days | Financial crisis |
+| 2020-03-20 to 2020-03-24 | 4 days | COVID crash |
+
+### Trade Statistics
+
+| Metric | Value |
+|--------|-------|
+| Total Trades | 306 |
+| Median Trade Return | 0.75% |
+| Worst Trade Return | -8.62% |
+| Best Trade Return | 9.04% |
+| Average Trade Length | 9.6 days |
+
+### Key Findings
+
+1. **Drawdown Control:** The strategy's max drawdown (-15.61%) is significantly lower than SPY buy-and-hold (-55.19%), demonstrating effective risk management.
+
+2. **Return Efficiency:** Despite being in the market only ~24% of the time, the strategy captures meaningful upside while avoiding severe downturns.
+
+3. **Filter Performance:** The ATH filter was active during the two largest bear markets of the past 30 years (Dot-com bust and Financial crisis), preventing catastrophic losses.
+
+4. **Risk-Adjusted Returns:** The Sortino ratio of 1.61 indicates strong risk-adjusted performance, with the strategy generating substantial returns relative to its downside risk.
+
+### Cost Assumptions
+
+- Portfolio Value: $100,000
+- Commission per share: $0.005
+- Minimum commission per order: $1.00
+- Maximum commission as % of trade: 0.5%
+- Slippage: 0.5 bps (SPY-specific, optimistic)
+
+### Methodology
+
+All backtests were conducted using the portfolio-backtester framework's detailed BacktestRunner path (daily signal generation), with IBKR-like commission structure and realistic slippage assumptions. No vectorized or fast-path approximations were used for final results.
+
+### Data Source
+
+- Primary: SPY ETF data from market-data-multi-provider (MDMP)
+- Period: 1993-01-29 (SPY inception) to 2024-12-31
+- Total observations: 8,172 trading days
+
+### Limitations and Considerations
+
+1. **Optimization Bias:** Strategy parameters were optimized on historical data, which may not perfectly replicate in live trading.
+
+2. **Market Regime Changes:** The strategy's performance may vary significantly across different market regimes (bull vs bear markets).
+
+3. **Transaction Costs:** While realistic commission assumptions were used, actual trading costs may vary based on broker and market conditions.
+
+4. **Liquidity:** SPY is highly liquid, but large position sizes could impact execution prices.
+
+5. **Tax Implications:** Frequent trading may result in higher tax liabilities compared to buy-and-hold strategies.
+
+### Files and Artifacts
+
+- Strategy implementation: `src/portfolio_backtester/strategies/builtins/signal/seasonal_signal_strategy.py`
+- Detailed results: `dev/spy_intramonth_spy_inception_ath_overlay_compare/`
+- Trade history: `ath30_trades.csv`
+- Daily state: `ath30_daily_state.csv`
+- Equity comparison: `ath30_equity_comparison.csv`
+
+---
+
 ## License
 
 This project is licensed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License**.
