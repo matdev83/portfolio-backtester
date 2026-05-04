@@ -21,8 +21,8 @@ def _resolve_benchmark_ticker(backtester) -> str:
             bench = getattr(scenario, "benchmark_ticker", None)
             if bench:
                 return str(bench)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("benchmark ticker resolution skipped: %s", exc, exc_info=True)
     return str(backtester.global_config.get("benchmark", "SPY"))
 
 

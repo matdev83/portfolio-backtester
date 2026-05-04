@@ -27,6 +27,47 @@ def _ledger_sign_nonzero(x: float, eps: float) -> int:
     return 1 if x > 0 else -1
 
 
+def _populate_mfe_mae_before_close(
+    trade: Trade, prices: pd.DataFrame, exit_date: pd.Timestamp
+) -> None:
+    """Set per-share MFE/MAE on ``trade`` from ``prices`` between entry and exit (inclusive)."""
+    ticker = trade.ticker
+    if ticker not in prices.columns:
+        trade.mfe = 0.0
+        trade.mae = 0.0
+        return
+    px = prices[ticker]
+    entry = pd.Timestamp(trade.entry_date)
+    exit_ts = pd.Timestamp(exit_date)
+    try:
+        window = px.loc[entry:exit_ts]
+    except (TypeError, KeyError):
+        mask = (px.index >= entry) & (px.index <= exit_ts)
+        window = px.loc[mask]
+    if window.empty:
+        trade.mfe = 0.0
+        trade.mae = 0.0
+        return
+    ep = float(trade.entry_price)
+    q = float(trade.quantity)
+    mfe_ps = 0.0
+    mae_ps = 0.0
+    for cur in window.to_numpy(dtype=float, copy=False):
+        if np.isnan(cur):
+            continue
+        cur_f = float(cur)
+        if q > 0.0:
+            pnl_ps = cur_f - ep
+        else:
+            pnl_ps = ep - cur_f
+        if pnl_ps > mfe_ps:
+            mfe_ps = pnl_ps
+        if pnl_ps < mae_ps:
+            mae_ps = pnl_ps
+    trade.mfe = float(mfe_ps)
+    trade.mae = float(mae_ps)
+
+
 def _split_flip_transaction_cost(
     cost: float,
     exec_price: float,
@@ -48,6 +89,7 @@ def _partial_close_open_trade(
     exec_price: float,
     exit_commission: float,
     close_qty_abs: float,
+    prices: pd.DataFrame,
 ) -> None:
     t = mgr.open_positions[ticker]
     q_total = abs(t.quantity)
@@ -69,6 +111,9 @@ def _partial_close_open_trade(
         mfe=0.0,
         mae=0.0,
     )
+    _populate_mfe_mae_before_close(closed, prices, date)
+    closed.mfe = closed.mfe * abs(closed.quantity)
+    closed.mae = closed.mae * abs(closed.quantity)
     closed.finalize()
     mgr.trades.append(closed)
     rem = q_total - close_qty_abs
@@ -315,6 +360,9 @@ class TradeTracker:
                     mgr.open_position(date, ticker, pos_a, exec_price, cost)
                     continue
                 if sa == 0 and sb != 0:
+                    open_trade = mgr.open_positions.get(ticker)
+                    if open_trade is not None:
+                        _populate_mfe_mae_before_close(open_trade, prices, date)
                     mgr.close_position(date, ticker, exec_price, cost)
                     continue
 
@@ -338,6 +386,7 @@ class TradeTracker:
                             exec_price,
                             cost,
                             abs(pos_b) - abs(pos_a),
+                            prices,
                         )
                     continue
 
@@ -347,6 +396,9 @@ class TradeTracker:
                     abs(pos_b),
                     abs(pos_a),
                 )
+                flip_trade = mgr.open_positions.get(ticker)
+                if flip_trade is not None:
+                    _populate_mfe_mae_before_close(flip_trade, prices, date)
                 mgr.close_position(date, ticker, exec_price, c_exit)
                 mgr.open_position(date, ticker, pos_a, exec_price, c_entry)
 

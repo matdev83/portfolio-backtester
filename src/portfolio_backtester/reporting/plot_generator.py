@@ -1,7 +1,7 @@
 import logging
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -187,9 +187,46 @@ def _extract_price_series(daily_data: pd.DataFrame, symbol: str) -> pd.Series | 
         df = pd.DataFrame(series)
         if not df.empty:
             series = df.iloc[:, 0]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("price series coerce failed: %s", exc, exc_info=True)
     return series
+
+
+def _trade_marker_frame(trade_history: pd.DataFrame) -> pd.DataFrame:
+    """Normalize trade rows for marker plotting (qty + ``entry_date`` vs ``date``).
+
+    ``entry_date`` of ``NaT`` is preserved (does not fall back to ``date``); ``None`` falls
+    back to ``date`` when present.
+    """
+    if trade_history.empty:
+        return pd.DataFrame()
+    cols = trade_history.columns
+    records: list[dict[str, Any]] = []
+    for _, row in trade_history.iterrows():
+        if "quantity" in cols:
+            qty = float(row["quantity"])
+        else:
+            qty = float(row.get("position", 0.0) or 0.0)
+        if "entry_date" not in row.index:
+            entry_date = row.get("date")
+        else:
+            ed = row["entry_date"]
+            if ed is None:
+                entry_date = row.get("date")
+            elif pd.isna(ed):
+                entry_date = ed
+            else:
+                entry_date = ed
+        records.append(
+            {
+                "qty": qty,
+                "entry_date": entry_date,
+                "exit_date": row.get("exit_date"),
+                "entry_price": row.get("entry_price"),
+                "exit_price": row.get("exit_price"),
+            }
+        )
+    return pd.DataFrame.from_records(records)
 
 
 def plot_price_with_trades(
@@ -230,13 +267,13 @@ def plot_price_with_trades(
         ax.scatter(date, price, marker=marker, color=color, s=60, alpha=0.8, label=label)
 
     plotted_labels = set()
-    for _, trade in symbol_trades.iterrows():
-        qty = trade["quantity"] if "quantity" in trade else trade.get("position", 0)
-        # Some trade_history implementations may not have entry_price / exit_price if missing; fallback to price_series.loc[date]
-        entry_date = trade.get("entry_date") or trade.get("date")
-        exit_date = trade.get("exit_date")
-        entry_price = trade.get("entry_price")
-        exit_price = trade.get("exit_price")
+    markers = _trade_marker_frame(symbol_trades)
+    for _, trade in markers.iterrows():
+        qty = trade["qty"]
+        entry_date = trade["entry_date"]
+        exit_date = trade["exit_date"]
+        entry_price = trade["entry_price"]
+        exit_price = trade["exit_price"]
 
         if pd.isna(entry_price) and entry_date is not None and entry_date in price_series.index:
             entry_price = price_series.loc[entry_date]

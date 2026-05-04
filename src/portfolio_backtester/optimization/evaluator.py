@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 try:
     # Prefer optional import; used only when parallel path is enabled
     from joblib import Parallel, delayed  # type: ignore
-except Exception:  # pragma: no cover - joblib may not be available in some envs
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - joblib may not be available
     Parallel = None
     delayed = None
 
@@ -62,7 +62,7 @@ def _coerce_trial_values(parameters: Mapping[str, Any]) -> dict[str, Any]:
         elif hasattr(val, "item") and callable(getattr(val, "item", None)):
             try:
                 out[key] = val.item()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 - numpy scalar item() may raise broadly
                 out[key] = val
         else:
             out[key] = val
@@ -276,8 +276,12 @@ class BacktestEvaluator:
                 logger.debug(
                     "Skipping strategy.get_universe() compatibility helper because it requires arguments."
                 )
-            except Exception:
-                logger.debug("Strategy get_universe compatibility helper failed.", exc_info=True)
+            except Exception as exc:
+                logger.debug(
+                    "Strategy get_universe compatibility helper failed: %s",
+                    exc,
+                    exc_info=True,
+                )
 
         # Default fallback - this will be overridden by actual implementation
         return ["SPY", "TLT", "GLD", "VTI", "QQQ"]
@@ -395,7 +399,10 @@ class BacktestEvaluator:
                     data.returns,
                     compute_metrics=False,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - third-party / strategy hooks may raise anything
+                err_msg = f"{type(exc).__name__}: {exc}"
                 logger.error("WFO window evaluation failed: %s", exc, exc_info=True)
                 return WindowResult(
                     window_returns=pd.Series(dtype=float),
@@ -406,6 +413,7 @@ class BacktestEvaluator:
                     test_end=win.test_end,
                     trades=[],
                     final_weights={},
+                    evaluation_error=err_msg,
                 )
 
         # Register window dependencies if using incremental evaluation
@@ -582,7 +590,11 @@ class BacktestEvaluator:
                         .reindex(combined_returns.index)
                         .fillna(0.0)
                     )
-            except Exception:
+            except (KeyError, TypeError, ValueError, AttributeError, IndexError):
+                logger.debug(
+                    "Benchmark extraction failed for aggregated windows; using zeros.",
+                    exc_info=True,
+                )
                 benchmark_returns = pd.Series(0.0, index=combined_returns.index)
 
         risk_free_rets = None
@@ -657,10 +669,18 @@ class BacktestEvaluator:
                 metric_value = -1e9
             aggregated_objective = float(metric_value)
 
+        failure_parts: list[str] = []
+        for w in window_results:
+            err = getattr(w, "evaluation_error", None)
+            if err not in (None, ""):
+                failure_parts.append(str(err))
+        failure_reason = "; ".join(failure_parts) if failure_parts else None
+
         return EvaluationResult(
             objective_value=aggregated_objective,
             metrics=metrics,
             window_results=window_results,
+            failure_reason=failure_reason,
         )
 
     def _calculate_metrics(self, returns: pd.Series, trades: List) -> Dict[str, float]:
@@ -858,6 +878,9 @@ class BacktestEvaluator:
                 data.returns = optimize_dataframe_memory(data.returns)
 
             return data
-        except Exception as e:
-            logger.warning(f"Memory optimization failed: {e}")
+        except Exception:
+            logger.warning(
+                "Memory optimization failed; returning unoptimized OptimizationData.",
+                exc_info=True,
+            )
             return data

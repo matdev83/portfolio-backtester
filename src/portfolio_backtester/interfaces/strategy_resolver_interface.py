@@ -6,7 +6,10 @@ strategy specifications (dict, string) without using isinstance checks.
 """
 
 from abc import ABC, abstractmethod
+import logging
 from typing import Optional, Any, Union, Dict, cast
+
+logger = logging.getLogger(__name__)
 
 
 class IStrategySpecificationResolver(ABC):
@@ -174,7 +177,7 @@ class PolymorphicStrategyResolver:
             if callable(fn):
                 return cast(Dict[str, Any], fn())
         except Exception:
-            pass
+            logger.debug("tunable_parameters() failed for %r", strategy_class, exc_info=True)
         return {}
 
     def is_meta_strategy(self, strategy_class: Any) -> bool:

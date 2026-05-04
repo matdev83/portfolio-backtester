@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from ..canonical_config import CanonicalScenarioConfig
 
 from ..api_stability import api_stable
+from ..interfaces.strategy_runtime_protocol import SupportsStrategyCreation
 from ..backtester_logic.strategy_logic import generate_signals, size_positions
 from ..backtester_logic.portfolio_logic import calculate_portfolio_returns
 from ..backtester_logic.data_manager import prepare_scenario_data
@@ -34,7 +35,7 @@ class BacktestRunner:
         self,
         global_config: Dict[str, Any],
         data_cache: Any,
-        strategy_manager: Any,
+        strategy_manager: SupportsStrategyCreation,
         timeout_checker=None,
     ) -> None:
         """
@@ -48,7 +49,7 @@ class BacktestRunner:
         """
         self.global_config = global_config
         self.data_cache = data_cache
-        self.strategy_manager = strategy_manager
+        self.strategy_manager: SupportsStrategyCreation = strategy_manager
         self.timeout_checker = timeout_checker or (lambda: False)
         self.logger = logger
 
@@ -267,7 +268,7 @@ class BacktestRunner:
             Dictionary containing backtest results
         """
         from ..backtesting.strategy_backtester import StrategyBacktester
-        from ..data_sources.base_data_source import BaseDataSource
+        from ..data_sources.preloaded_frame_data_source import PreloadedFrameDataSource
         from ..canonical_config import CanonicalScenarioConfig
         from ..scenario_normalizer import ScenarioNormalizer
 
@@ -327,17 +328,14 @@ class BacktestRunner:
                 self.logger.warning(
                     f"Study '{study_name}' not found. Using default parameters for scenario '{canonical_config.name}'."
                 )
-            except Exception as e:
-                self.logger.error(f"Error loading Optuna study: {e}. Using default parameters.")
+            except Exception:
+                self.logger.exception(
+                    "Error loading Optuna study; using default parameters for scenario '%s'.",
+                    canonical_config.name,
+                )
 
-        # Create a dummy data source for StrategyBacktester
-        # In the real implementation, this should be the actual data source
-        class DummyDataSource(BaseDataSource):
-            def get_data(self, tickers, start_date, end_date):
-                return daily_data
-
-        dummy_data_source = DummyDataSource()
-        strategy_backtester = StrategyBacktester(self.global_config, dummy_data_source)
+        preloaded_source = PreloadedFrameDataSource(daily_data)
+        strategy_backtester = StrategyBacktester(self.global_config, preloaded_source)
         backtest_result = strategy_backtester.backtest_strategy(
             canonical_config, monthly_data, daily_data, rets_full, track_trades=False
         )

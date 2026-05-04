@@ -6,13 +6,13 @@ behaviour is unchanged; only the physical file location differs.
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime
 from typing import Optional, cast, Union, Dict, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..canonical_config import CanonicalScenarioConfig
-
 
 
 import matplotlib.pyplot as plt
@@ -36,6 +36,8 @@ from rich.progress import (
 
 from ..interfaces.attribute_accessor_interface import IAttributeAccessor
 
+logger = logging.getLogger(__name__)
+
 # NOTE: relative import still works because we are inside
 # `portfolio_backtester.reporting` – the same level as `monte_carlo`.
 
@@ -48,8 +50,8 @@ __all__ = [
 def _plot_series(ax, x, y, color, alpha, lw, label) -> None:
     try:
         ax.plot(x, y, color=color, alpha=alpha, linewidth=lw, label=label)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("MC stage2 plot series skipped: %s", exc, exc_info=True)
 
 
 def _plot_original_series(ax, series: pd.Series | None) -> None:
@@ -136,6 +138,7 @@ def _plot_monte_carlo_robustness_analysis(
 ):
     """Stage-2 comprehensive stress-test after optimisation completes."""
     from ..canonical_config import CanonicalScenarioConfig
+
     logger = self.logger
 
     try:
@@ -168,15 +171,20 @@ def _plot_monte_carlo_robustness_analysis(
             elif u_def:
                 try:
                     from ..universe_resolver import resolve_universe_config
+
                     current_date = None
                     if isinstance(daily_data, pd.DataFrame) and not daily_data.empty:
                         current_date = pd.Timestamp(daily_data.index.max())
                     universe = resolve_universe_config(dict(u_def), current_date=current_date)
                 except Exception as exc:
-                    logger.warning(f"Stage 2 MC: failed to resolve canonical universe_definition: {exc}")
+                    logger.warning(
+                        f"Stage 2 MC: failed to resolve canonical universe_definition: {exc}"
+                    )
         else:
             # Legacy path
-            if isinstance(scenario_config.get("universe"), list) and scenario_config.get("universe"):
+            if isinstance(scenario_config.get("universe"), list) and scenario_config.get(
+                "universe"
+            ):
                 universe = list(scenario_config["universe"])
             elif "universe_config" in scenario_config:
                 try:
@@ -195,7 +203,6 @@ def _plot_monte_carlo_robustness_analysis(
                 except Exception as exc:  # noqa: BLE001
                     logger.warning(f"Stage 2 MC: failed to resolve scenario universe_config: {exc}")
                     universe = []
-
 
         # Exclude the benchmark from the replacement pool if present.
         benchmark_ticker = self.global_config.get("benchmark")

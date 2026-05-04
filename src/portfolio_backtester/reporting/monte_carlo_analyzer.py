@@ -208,9 +208,4 @@ Std Dev of Values: {np.std(trial_values):.3f}"""
 
     except Exception as e:
         logger.error(f"Error creating trial P&L visualization: {e}")
-        try:
-            import traceback
-
-            logger.debug(traceback.format_exc())
-        except Exception:
-            pass
+        logger.debug("trial P&L visualization traceback", exc_info=True)

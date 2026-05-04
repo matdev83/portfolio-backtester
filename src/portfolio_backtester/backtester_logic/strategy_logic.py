@@ -855,8 +855,8 @@ def _generate_meta_strategy_signals(
         configured_freq = scenario_config.get("timing_config", {}).get("rebalance_frequency")
         if configured_freq == "D":
             rebalance_dates = price_data_daily_ohlc.index
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("daily rebalance override skipped: %s", exc, exc_info=True)
 
     # OPTIMIZATION: Pre-calculate unique fields to avoid repeated computation in the loop.
     unique_fields = []

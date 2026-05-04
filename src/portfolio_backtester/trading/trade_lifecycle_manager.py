@@ -46,7 +46,7 @@ class Trade:
                 # Subtract 1 because bdate_range includes both start and end dates
                 # but we want the number of days held, not the number of dates
                 self.duration_days = max(0, len(business_days) - 1)
-            except Exception:
+            except ValueError:
                 # Fallback to calendar days if business day calculation fails
                 self.duration_days = (self.exit_date - self.entry_date).days
 

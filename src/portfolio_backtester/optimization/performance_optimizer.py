@@ -101,8 +101,8 @@ class MemoryOptimizer:
             if hasattr(obj, "cache_clear") and callable(obj.cache_clear):
                 try:
                     obj.cache_clear()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("cache_clear skipped for object: %s", exc, exc_info=True)
 
 
 class DataFrameOptimizer:

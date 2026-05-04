@@ -51,11 +51,13 @@ class EvaluationResult:
         objective_value: Single value or tuple for multi-objective optimization
         metrics: Aggregated performance metrics across all windows
         window_results: List of individual window results
+        failure_reason: Optional summary when one or more windows failed evaluation
     """
 
     objective_value: Union[float, List[float]]
     metrics: Dict[str, float]
     window_results: List[WindowResult]
+    failure_reason: Optional[str] = None
 
 
 @dataclass

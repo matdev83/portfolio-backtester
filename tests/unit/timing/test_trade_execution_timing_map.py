@@ -103,3 +103,36 @@ def test_all_nan_no_op_rows_are_dropped_and_do_not_emit_flattening_row(
     )
     assert calendar_week[1] not in out.index
     pd.testing.assert_frame_equal(out.sort_index(), signal.sort_index())
+
+
+def test_next_bar_open_empty_weights_frame_returns_empty_with_columns(
+    calendar_week: pd.DatetimeIndex,
+) -> None:
+    weights = pd.DataFrame(columns=["AAA"])
+    out = map_sparse_target_weights_to_execution_dates(
+        weights,
+        trade_execution_timing="next_bar_open",
+        calendar=calendar_week,
+    )
+    assert out.empty
+    assert list(out.columns) == ["AAA"]
+
+
+def test_next_bar_open_all_nan_active_row_yields_empty(calendar_week: pd.DatetimeIndex) -> None:
+    weights = pd.DataFrame({"AAA": [float("nan")]}, index=[calendar_week[0]])
+    out = map_sparse_target_weights_to_execution_dates(
+        weights,
+        trade_execution_timing="next_bar_open",
+        calendar=calendar_week,
+    )
+    assert out.empty
+
+
+def test_invalid_trade_execution_timing_raises(calendar_week: pd.DatetimeIndex) -> None:
+    weights = pd.DataFrame({"AAA": [1.0]}, index=[calendar_week[0]])
+    with pytest.raises(ValueError, match="Invalid trade_execution_timing"):
+        map_sparse_target_weights_to_execution_dates(
+            weights,
+            trade_execution_timing="not_a_mode",
+            calendar=calendar_week,
+        )

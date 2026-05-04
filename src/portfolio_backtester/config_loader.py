@@ -96,7 +96,7 @@ def get_ga_optimizer_parameter_defaults():
 # Set up logger
 logger = logging.getLogger(__name__)
 
-# Global configuration variables
+# Global configuration variables (CLI builds AppRuntimeConfig after load_config for clearer injection)
 GLOBAL_CONFIG = {}
 OPTIMIZER_PARAMETER_DEFAULTS: dict[str, Any] = {}
 BACKTEST_SCENARIOS: list[dict[str, Any]] = []

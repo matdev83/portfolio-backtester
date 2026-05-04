@@ -53,6 +53,7 @@ class WindowResult:
         test_end: End date of test period
         trades: List of individual trade records (for daily evaluation)
         final_weights: Final position weights at end of window
+        evaluation_error: When set, window evaluation failed and metrics are sentinel values
     """
 
     window_returns: pd.Series
@@ -63,6 +64,8 @@ class WindowResult:
     test_end: pd.Timestamp
     trades: Optional[List[Any]] = None  # List of Trade objects
     final_weights: Optional[Dict[str, float]] = None
+    # Set when window evaluation failed and a sentinel result was substituted.
+    evaluation_error: Optional[str] = None
 
     @property
     def trade_count(self) -> int:

@@ -202,5 +202,9 @@ dev/spy_intramonth_spy_inception_ath_overlay_compare/
 # Ephemeral outputs from local research/dev scripts (prefer writing here)
 dev/_outputs/
 
+# Cursor project skills generated locally (see scripts/sync_wshobson_cursor_skills.py)
+.cursor/skills/
+.cursor/.wshobson-agents-sync-manifest.json
+
 # Local one-off sweep / grid drivers (not part of packaged tooling)
 dev/spy_intramonth_inception_detailed_ath_threshold_sweep.py

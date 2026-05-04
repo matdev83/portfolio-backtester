@@ -3,16 +3,24 @@ Test coverage validation script.
 Ensures no regression in test coverage during refactoring.
 """
 
+from __future__ import annotations
+
+import json
+import logging
 import subprocess
 import sys
-import json
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# Repository root (this file lives under tests/unit/core/).
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class CoverageValidator:
     """Validates test coverage and ensures no regression."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.min_coverage_threshold = 80.0
         self.critical_modules_threshold = 95.0
         self.critical_modules = [
@@ -21,7 +29,7 @@ class CoverageValidator:
             "src/portfolio_backtester/timing/",
         ]
 
-    def run_coverage_analysis(self):
+    def run_coverage_analysis(self) -> bool:
         """Run coverage analysis and return results."""
         try:
             # Run pytest with coverage
@@ -29,44 +37,48 @@ class CoverageValidator:
                 ["pytest", "--cov=src", "--cov-report=json", "--cov-report=term-missing", "-q"],
                 capture_output=True,
                 text=True,
-                cwd=Path(__file__).parent.parent,
+                cwd=_REPO_ROOT,
             )
 
             if result.returncode != 0:
-                print(f"[-] Tests failed: {result.stderr}")
+                logger.error("Tests failed: %s", result.stderr)
                 return False
 
             # Load coverage data
-            coverage_file = Path(__file__).parent.parent / "coverage.json"
+            coverage_file = _REPO_ROOT / "coverage.json"
             if not coverage_file.exists():
-                print("[-] Coverage file not found")
+                logger.error("Coverage file not found")
                 return False
 
-            with open(coverage_file) as f:
+            with open(coverage_file, encoding="utf-8") as f:
                 coverage_data = json.load(f)
 
             return self.validate_coverage(coverage_data)
 
         except Exception as e:
-            print(f"[-] Coverage analysis failed: {e}")
+            logger.exception("Coverage analysis failed: %s", e)
             return False
 
-    def validate_coverage(self, coverage_data):
+    def validate_coverage(self, coverage_data: dict) -> bool:
         """Validate coverage meets requirements."""
         total_coverage = coverage_data["totals"]["percent_covered"]
 
-        print("\nTest Coverage Analysis")
-        print(f"{'='*50}")
-        print(f"Overall Coverage: {total_coverage:.1f}%")
+        logger.info("\nTest Coverage Analysis")
+        logger.info("%s", "=" * 50)
+        logger.info("Overall Coverage: %.1f%%", total_coverage)
 
         # Check overall coverage
         if total_coverage < self.min_coverage_threshold:
-            print(
-                f"[-] Overall coverage {total_coverage:.1f}% below threshold {self.min_coverage_threshold}%"
+            logger.error(
+                "Overall coverage %.1f%% below threshold %.1f%%",
+                total_coverage,
+                self.min_coverage_threshold,
             )
             return False
-        else:
-            print(f"[+] Overall coverage meets threshold ({self.min_coverage_threshold}%)")
+        logger.info(
+            "Overall coverage meets threshold (%.1f%%)",
+            self.min_coverage_threshold,
+        )
 
         # Check critical modules
         critical_issues = []
@@ -76,19 +88,24 @@ class CoverageValidator:
                 critical_issues.append(f"{module_pattern}: {module_coverage:.1f}%")
 
         if critical_issues:
-            print(f"[-] Critical modules below {self.critical_modules_threshold}% threshold:")
+            logger.error(
+                "Critical modules below %.1f%% threshold:",
+                self.critical_modules_threshold,
+            )
             for issue in critical_issues:
-                print(f"   - {issue}")
+                logger.error("   - %s", issue)
             return False
-        else:
-            print(f"[+] All critical modules meet threshold ({self.critical_modules_threshold}%)")
+        logger.info(
+            "All critical modules meet threshold (%.1f%%)",
+            self.critical_modules_threshold,
+        )
 
         # Report top uncovered files
         self.report_uncovered_files(coverage_data)
 
         return True
 
-    def get_module_coverage(self, coverage_data, module_pattern):
+    def get_module_coverage(self, coverage_data: dict, module_pattern: str) -> float:
         """Get coverage for modules matching pattern."""
         matching_files = []
         for file_path in coverage_data["files"]:
@@ -104,9 +121,9 @@ class CoverageValidator:
         if total_statements == 0:
             return 100.0
 
-        return (covered_statements / total_statements) * 100
+        return float((covered_statements / total_statements) * 100)
 
-    def report_uncovered_files(self, coverage_data):
+    def report_uncovered_files(self, coverage_data: dict) -> None:
         """Report files with lowest coverage."""
         file_coverages = []
         for file_path, file_data in coverage_data["files"].items():
@@ -117,24 +134,24 @@ class CoverageValidator:
         # Sort by coverage (lowest first)
         file_coverages.sort(key=lambda x: x[1])
 
-        print("\nFiles with Lowest Coverage:")
-        print(f"{'='*50}")
+        logger.info("\nFiles with Lowest Coverage:")
+        logger.info("%s", "=" * 50)
         for file_path, coverage in file_coverages[:10]:  # Top 10 lowest
             if coverage < 90:  # Only show files below 90%
-                print(f"   {coverage:5.1f}% - {file_path}")
+                logger.info("   %5.1f%% - %s", coverage, file_path)
 
-    def validate_test_count(self):
+    def validate_test_count(self) -> bool:
         """Validate that we have sufficient test count."""
         try:
             result = subprocess.run(
                 ["pytest", "--collect-only", "-q"],
                 capture_output=True,
                 text=True,
-                cwd=Path(__file__).parent.parent,
+                cwd=_REPO_ROOT,
             )
 
             if result.returncode != 0:
-                print(f"[-] Test collection failed: {result.stderr}")
+                logger.error("Test collection failed: %s", result.stderr)
                 return False
 
             # Count collected tests
@@ -152,59 +169,58 @@ class CoverageValidator:
                             except ValueError:
                                 continue
 
-            print("\nTest Count Analysis")
-            print(f"{'='*50}")
-            print(f"Total Tests Collected: {test_count}")
+            logger.info("\nTest Count Analysis")
+            logger.info("%s", "=" * 50)
+            logger.info("Total Tests Collected: %s", test_count)
 
             # Validate minimum test count
             min_tests = 200  # Expect at least 200 tests
             if test_count < min_tests:
-                print(f"[-] Test count {test_count} below minimum {min_tests}")
+                logger.error("Test count %s below minimum %s", test_count, min_tests)
                 return False
-            else:
-                print(f"[+] Test count meets minimum requirement ({min_tests})")
+            logger.info("Test count meets minimum requirement (%s)", min_tests)
 
             return True
 
         except Exception as e:
-            print(f"[-] Test count validation failed: {e}")
+            logger.exception("Test count validation failed: %s", e)
             return False
 
-    def validate_test_organization(self):
+    def validate_test_organization(self) -> bool:
         """Validate test organization structure."""
-        print("\nTest Organization Validation")
-        print(f"{'='*50}")
+        logger.info("\nTest Organization Validation")
+        logger.info("%s", "=" * 50)
 
         required_dirs = ["tests/unit", "tests/integration", "tests/fixtures", "tests/base"]
 
         missing_dirs = []
         for dir_path in required_dirs:
-            full_path = Path(__file__).parent.parent / dir_path
+            full_path = _REPO_ROOT / dir_path
             if not full_path.exists():
                 missing_dirs.append(dir_path)
 
         if missing_dirs:
-            print("[-] Missing required directories:")
+            logger.error("Missing required directories:")
             for dir_path in missing_dirs:
-                print(f"   - {dir_path}")
+                logger.error("   - %s", dir_path)
             return False
-        else:
-            print("[+] All required directories exist")
+        logger.info("All required directories exist")
 
         # Count files in each category
-        unit_tests = len(list(Path("tests/unit").rglob("test_*.py")))
-        integration_tests = len(list(Path("tests/integration").rglob("test_*.py")))
+        unit_tests = len(list((_REPO_ROOT / "tests/unit").rglob("test_*.py")))
+        integration_tests = len(list((_REPO_ROOT / "tests/integration").rglob("test_*.py")))
 
-        print(f"   Unit tests: {unit_tests}")
-        print(f"   Integration tests: {integration_tests}")
+        logger.info("   Unit tests: %s", unit_tests)
+        logger.info("   Integration tests: %s", integration_tests)
 
         return True
 
 
-def main():
+def main() -> int:
     """Main validation function."""
-    print("Starting Test Suite Validation")
-    print("=" * 60)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logger.info("Starting Test Suite Validation")
+    logger.info("%s", "=" * 60)
 
     validator = CoverageValidator()
 
@@ -221,16 +237,15 @@ def main():
             if not validation_func():
                 all_passed = False
         except Exception as e:
-            print(f"[-] {name} validation failed with error: {e}")
+            logger.exception("%s validation failed with error: %s", name, e)
             all_passed = False
 
-    print(f"\n{'='*60}")
+    logger.info("\n%s", "=" * 60)
     if all_passed:
-        print("SUCCESS: All validations passed! Test suite refactoring successful.")
+        logger.info("SUCCESS: All validations passed! Test suite refactoring successful.")
         return 0
-    else:
-        print("FAILED: Some validations failed. Please review and fix issues.")
-        return 1
+    logger.error("FAILED: Some validations failed. Please review and fix issues.")
+    return 1
 
 
 if __name__ == "__main__":

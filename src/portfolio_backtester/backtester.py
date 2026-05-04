@@ -346,9 +346,14 @@ def main(args: Optional[List[str]] = None) -> None:
     try:
         # Load global configuration and scenarios (call through module for test patching)
         config_loader.load_config()
-        # Read from module attributes so test patches on config_loader are respected
-        GLOBAL_CONFIG_RELOADED = config_loader.GLOBAL_CONFIG
-        BACKTEST_SCENARIOS_RELOADED = config_loader.BACKTEST_SCENARIOS
+        from portfolio_backtester.app_runtime_config import AppRuntimeConfig
+
+        runtime = AppRuntimeConfig(
+            global_config=config_loader.GLOBAL_CONFIG,
+            scenarios=list(config_loader.BACKTEST_SCENARIOS),
+        )
+        GLOBAL_CONFIG_RELOADED = runtime.global_config
+        BACKTEST_SCENARIOS_RELOADED = runtime.scenarios
 
         # Apply performance tweaks from config
         performance_config = GLOBAL_CONFIG_RELOADED.get("performance", {})

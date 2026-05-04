@@ -75,6 +75,8 @@ __all__ = [
 # Thin facade – identical external behaviour, minimal internal code
 # ---------------------------------------------------------------------------
 
+logger = logging.getLogger(__name__)
+
 
 def _resolve_benchmark_ticker(backtester: Any) -> str:
     try:
@@ -87,8 +89,8 @@ def _resolve_benchmark_ticker(backtester: Any) -> str:
                 bench = scenario.get("benchmark_ticker")
                 if bench:
                     return str(bench)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("benchmark ticker resolution skipped: %s", exc, exc_info=True)
     return str(backtester.global_config.get("benchmark", "SPY"))
 
 
@@ -107,7 +109,6 @@ def _benchmark_returns(daily_data_for_display: pd.DataFrame, benchmark_ticker: s
         if not rets.empty and not rets.eq(0.0).all():
             return rets
 
-    logger = logging.getLogger(__name__)
     logger.warning(
         "Benchmark %s not found in price data; skipping benchmark returns.", benchmark_ticker
     )

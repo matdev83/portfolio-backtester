@@ -23,6 +23,22 @@ from ...strategies._core.target_generation import StrategyContext
 from ...risk_management.stop_loss_handlers import AtrBasedStopLoss, NoStopLoss
 
 
+def _slice_historical_to_date(
+    df: pd.DataFrame,
+    as_of: pd.Timestamp,
+    calendar_index: pd.Index,
+) -> pd.DataFrame:
+    """Slice ``df`` to rows on or before ``as_of``, optionally capped by ``calendar_index`` max."""
+    if df is None or len(df) == 0:
+        return pd.DataFrame()
+    end = pd.Timestamp(as_of)
+    out = df.loc[df.index <= end]
+    if calendar_index is not None and len(calendar_index) > 0:
+        cal_max = pd.Timestamp(calendar_index.max())
+        out = out.loc[out.index <= cal_max]
+    return out
+
+
 class DummySignalStrategy(SignalStrategy):
     """Dummy strategy for testing purposes."""
 
@@ -144,7 +160,11 @@ class DummySignalStrategy(SignalStrategy):
             for current_date in context.rebalance_dates:
                 hist = context.asset_data.loc[context.asset_data.index <= current_date]
                 bench = context.benchmark_data.loc[context.benchmark_data.index <= current_date]
-                nu = context.non_universe_data.loc[context.non_universe_data.index <= current_date]
+                nu = _slice_historical_to_date(
+                    context.non_universe_data,
+                    current_date,
+                    context.asset_data.index,
+                )
                 row = self.generate_signals(
                     hist,
                     bench,

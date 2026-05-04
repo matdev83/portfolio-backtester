@@ -146,8 +146,8 @@ class AdaptiveBatchSizer:
                     range_size = max(max_val - min_val, 1e-10)
                     normalized_variance = min(1.0, variance / (range_size**2))
                     variances.append(normalized_variance)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.opt(exception=True).debug("variance normalization skipped: {!r}", exc)
             # Handle categorical parameters
             else:
                 # Use unique value ratio as diversity measure

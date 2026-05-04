@@ -356,8 +356,8 @@ class OptunaParameterGenerator(ParameterGenerator):
 
                     if self.study is not None:
                         self.study.sampler = RandomSampler(seed=self._optuna_seed)
-                except Exception:
-                    pass
+                except (ImportError, AttributeError, TypeError, ValueError) as exc:
+                    logger.debug("Could not switch Optuna study to RandomSampler: %s", exc)
                 self._fast_sampler_enabled = True
 
             if self.study is not None:
@@ -500,8 +500,8 @@ class OptunaParameterGenerator(ParameterGenerator):
                         trial_state = self._current_trial.state.name
                     else:
                         trial_state = str(self._current_trial.state)
-            except Exception:
-                pass
+            except (AttributeError, TypeError, ValueError) as exc:
+                logger.debug("Could not read trial state for history entry: %s", exc)
 
             history_entry = {
                 "evaluation": self.current_evaluation,
@@ -614,9 +614,9 @@ class OptunaParameterGenerator(ParameterGenerator):
                 best_trial=best_trial,
             )
 
-        except Exception as e:
+        except Exception:
             # Return empty result on error
-            logger.error(f"Failed to get best result: {e}")
+            logger.exception("Failed to get best optimization result; returning sentinel.")
             result_best_value: Union[float, List[float]] = (
                 -1e9 if not self.is_multi_objective else [-1e9] * len(self.metrics_to_optimize)
             )
@@ -697,7 +697,11 @@ class OptunaParameterGenerator(ParameterGenerator):
                 importance = optuna_importance.get_param_importances(self.study)
                 return dict(importance)  # Convert to regular dict
         except (ValueError, RuntimeError, AttributeError, AssertionError) as e:
-            logger.warning(f"Could not calculate parameter importance due to unexpected error: {e}")
+            logger.warning(
+                "Could not calculate parameter importance due to unexpected error: %s",
+                e,
+                exc_info=True,
+            )
             # Fallback: return all parameter names with equal importance summing to 1.0
             param_names = []
             if self.study is not None and len(self.study.best_trial.params) > 0:
@@ -720,13 +724,20 @@ class OptunaParameterGenerator(ParameterGenerator):
                 raise
             else:
                 # Actual TypeError in production code
-                logger.warning(f"Could not calculate parameter importance: {e}")
+                logger.warning(
+                    "Could not calculate parameter importance: %s",
+                    e,
+                    exc_info=True,
+                )
                 return None
         except Exception as e:
             # For unexpected exceptions, log and return None
             # but allow mocks and patched functions to work normally
             logger.warning(
-                f"Could not calculate parameter importance due to unexpected error: {type(e).__name__}: {e}"
+                "Could not calculate parameter importance due to unexpected error: %s: %s",
+                type(e).__name__,
+                e,
+                exc_info=True,
             )
             return None
 

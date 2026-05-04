@@ -7,8 +7,12 @@ without using isinstance checks for DataFrame validation and MultiIndex handling
 
 from abc import ABC, abstractmethod
 from typing import Any, Tuple, List, Optional
+import logging
+
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 class IDataFrameValidator(ABC):
@@ -168,8 +172,8 @@ class UniversalColumnProcessor(IColumnProcessor):
                     result = df.xs(field, level=-1, axis=1)
                     if isinstance(result, pd.DataFrame):
                         return result
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("MultiIndex xs field extraction failed: %s", exc, exc_info=True)
 
         # For simple columns or when field extraction fails, return a copy
         return df.copy()

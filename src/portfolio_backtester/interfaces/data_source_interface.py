@@ -64,6 +64,10 @@ class IDataSource(BaseDataSource):
         pass
 
 
+# Alias for type hints and imports expecting the historical ``PriceDataSource`` name.
+PriceDataSource = IDataSource
+
+
 class IDataSourceFactory(ABC):
     """
     Abstract factory interface for creating data source instances.

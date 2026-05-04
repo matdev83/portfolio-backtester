@@ -493,7 +493,11 @@ class ParallelOptimizationRunner:
                 current_hash = generate_context_hash(self.scenario_config, strategy_path)
                 study.set_user_attr("context_hash", current_hash)
         except Exception as e:
-            logger.warning(f"Could not set context hash for study: {e}")
+            logger.warning(
+                "Could not set context hash for study: %s",
+                e,
+                exc_info=True,
+            )
 
     def _get_requested_trials(self) -> int:
         """Determines the number of trials to run, capping at the space size."""

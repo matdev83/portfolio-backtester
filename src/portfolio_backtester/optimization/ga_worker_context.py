@@ -32,8 +32,8 @@ def _init_worker_logging() -> None:
         # We avoid altering global logging configuration too aggressively; loguru used at call site
         logger.remove()
         logger.add(lambda _: None)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("worker loguru reconfiguration skipped: {!r}", exc)
 
 
 def ensure_initialized(
@@ -43,7 +43,6 @@ def ensure_initialized(
     evaluator: "BacktestEvaluator",
     worker_id: Optional[int] = None,
 ) -> None:
-
     """Initialize worker-local singletons if not set."""
     global _initialized, _scenario_config, _data, _backtester, _evaluator, _worker_id
 
@@ -67,7 +66,6 @@ def evaluate_with_context(
     evaluator: "BacktestEvaluator",
     previous_parameters: Optional[Dict[str, Any]] = None,
 ) -> "EvaluationResult":
-
     """Top-level function for joblib: lazily init context and evaluate params."""
     ensure_initialized(scenario_config, data, backtester, evaluator)
 
@@ -96,7 +94,6 @@ def evaluate_with_context_memmap(
     evaluator: "BacktestEvaluator",
     previous_parameters: Optional[Dict[str, Any]] = None,
 ) -> "EvaluationResult":
-
     """Initialize context from memory-mapped data and evaluate params."""
     global _initialized, _scenario_config, _data, _backtester, _evaluator
 

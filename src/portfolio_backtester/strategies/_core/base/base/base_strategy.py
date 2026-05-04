@@ -27,46 +27,39 @@ from .....timing.trade_execution_timing import (
 from .....risk_off_signals import IRiskOffSignalGenerator
 from .....risk_management.stop_loss_handlers import BaseStopLoss, NoStopLoss
 from .....risk_management.take_profit_handlers import BaseTakeProfit, NoTakeProfit
+from .strategy_trade_direction import (
+    validate_signals_trade_direction,
+    validate_trade_direction_configuration,
+)
 
 if TYPE_CHECKING:
     from .....canonical_config import CanonicalScenarioConfig
     from .....timing.timing_controller import TimingController
 
 
-# Custom exception classes for trade direction validation
-class TradeDirectionConfigurationError(ValueError):
-    """Raised when trade direction configuration is invalid."""
-
-    def __init__(self, strategy_class, trade_longs, trade_shorts, details):
-        self.strategy_class = strategy_class
-        self.trade_longs = trade_longs
-        self.trade_shorts = trade_shorts
-        self.details = details
-        message = f"Invalid trade direction configuration in {strategy_class}: {details}"
-        super().__init__(message)
-
-
-class TradeDirectionViolationError(ValueError):
-    """Raised when a strategy violates its trade direction constraints."""
-
-    def __init__(
-        self,
-        strategy_class,
-        trade_longs,
-        trade_shorts,
-        violation_details,
-        violated_signals=None,
-    ):
-        self.strategy_class = strategy_class
-        self.trade_longs = trade_longs
-        self.trade_shorts = trade_shorts
-        self.violation_details = violation_details
-        self.violated_signals = violated_signals
-        message = f"Trade direction violation in {strategy_class}: {violation_details}"
-        super().__init__(message)
-
-
 logger = logging.getLogger(__name__)
+
+
+def _first_valid_index_per_column(close_df: pd.DataFrame) -> pd.Series:
+    """Return the first labeled index with a non-NA value per column.
+
+    Matches ``DataFrame.apply(lambda s: s.first_valid_index())`` including
+    all-NA columns mapping to ``None``.
+    """
+    if close_df.size == 0:
+        return pd.Series(index=close_df.columns, dtype=object)
+    values = close_df.to_numpy()
+    mask = ~pd.isna(values)
+    _, n_cols = values.shape
+    out: list[Any] = []
+    for j in range(n_cols):
+        col_mask = mask[:, j]
+        if not np.any(col_mask):
+            out.append(None)
+        else:
+            pos = int(np.argmax(col_mask))
+            out.append(close_df.index[pos])
+    return cast(pd.Series, pd.Series(out, index=close_df.columns))
 
 
 class BaseStrategy(ABC):
@@ -144,57 +137,13 @@ class BaseStrategy(ABC):
 
     def _initialize_timing_controller(self) -> None:
         """Initialize the appropriate timing controller based on configuration."""
+        from ..strategy_timing_setup import create_timing_controller_from_strategy_config
 
-        try:
-            # Prefer timing_config from canonical object if available
-            timing_config: Optional[Dict[str, Any]] = None
-            if self.canonical_config and self.canonical_config.timing_config:
-                timing_config = dict(self.canonical_config.timing_config)
-            else:
-                # Fallback to strategy_params (legacy/test path)
-                timing_config_val = self.strategy_params.get("timing_config")
-                timing_config = (
-                    cast(Dict[str, Any], timing_config_val)
-                    if timing_config_val is not None
-                    else None
-                )
-
-            # If no timing_config provided, create a simple default based on strategy type
-            if timing_config is None:
-                # Simple default: portfolio strategies use time_based, signal strategies use signal_based
-                if "Signal" in self.__class__.__name__:
-                    timing_config = {
-                        "mode": "signal_based",
-                        "scan_frequency": "D",
-                        "min_holding_period": 1,
-                    }
-                else:
-                    timing_config = {
-                        "mode": "time_based",
-                        "rebalance_frequency": self.strategy_params.get(
-                            "rebalance_frequency", "ME"
-                        ),
-                    }
-                self.strategy_params["timing_config"] = timing_config
-
-            # Use factory to create timing controller with proper interface integration
-            from .....timing.custom_timing_registry import TimingControllerFactory
-
-            self._timing_controller = TimingControllerFactory.create_controller(timing_config)
-
-        except Exception as e:
-            # Fallback to time-based timing if initialization fails
-            logger.error(f"Failed to initialize timing controller: {e}")
-            logger.info("Falling back to time-based timing with monthly frequency")
-            fallback_config = {"mode": "time_based", "rebalance_frequency": "M"}
-
-            # Use factory for fallback too
-            from .....timing.custom_timing_registry import TimingControllerFactory
-
-            self._timing_controller = TimingControllerFactory.create_controller(fallback_config)
-
-            # Update strategy config with fallback timing config
-            self.strategy_params["timing_config"] = fallback_config
+        self._timing_controller = create_timing_controller_from_strategy_config(
+            strategy_class_name=self.__class__.__name__,
+            canonical_config=self.canonical_config,
+            strategy_params=self.strategy_params,
+        )
 
     def get_timing_controller(self) -> Optional["TimingController"]:
         """Get the timing controller for this strategy."""
@@ -245,49 +194,20 @@ class BaseStrategy(ABC):
 
     def _initialize_providers(self) -> None:
         """Initialize provider interfaces - required for strategy functionality."""
-        # Import here to avoid circular imports
-        from .....interfaces.universe_provider_interface import UniverseProviderFactory
-        from .....interfaces.position_sizer_provider_interface import (
-            PositionSizerProviderFactory,
-        )
-        from .....interfaces.stop_loss_provider_interface import StopLossProviderFactory
-        from .....interfaces.take_profit_provider_interface import (
-            TakeProfitProviderFactory,
-        )
+        from ..strategy_provider_setup import build_default_strategy_providers
 
-        # Use canonical config if available for provider initialization to ensure consistency
         provider_init_arg: Union[Mapping[str, Any], CanonicalScenarioConfig] = (
             self.canonical_config if self.canonical_config else self.strategy_params
         )
 
         try:
-            # Initialize universe provider - REQUIRED
-            self._universe_provider = UniverseProviderFactory.create_config_provider(
-                provider_init_arg
-            )
-
-            # Initialize position sizer provider - REQUIRED
-            self._position_sizer_provider = PositionSizerProviderFactory.get_default_provider(
-                provider_init_arg
-            )
-
-            # Initialize stop loss provider - REQUIRED
-            self._stop_loss_provider = StopLossProviderFactory.get_default_provider(
-                provider_init_arg
-            )
-
-            # Initialize take profit provider - REQUIRED
-            self._take_profit_provider = TakeProfitProviderFactory.get_default_provider(
-                provider_init_arg
-            )
-
-            # Initialize risk-off signal provider - REQUIRED
-            from .....risk_off_signals import RiskOffSignalProviderFactory
-
-            self._risk_off_signal_provider = RiskOffSignalProviderFactory.get_default_provider(
-                provider_init_arg
-            )
-
+            (
+                self._universe_provider,
+                self._position_sizer_provider,
+                self._stop_loss_provider,
+                self._take_profit_provider,
+                self._risk_off_signal_provider,
+            ) = build_default_strategy_providers(provider_init_arg)
         except Exception as e:
             raise RuntimeError(f"Failed to initialize required provider interfaces: {e}") from e
 
@@ -317,37 +237,14 @@ class BaseStrategy(ABC):
         )
 
     def _validate_trade_direction_configuration(self) -> None:
-        """
-        Validate that trade direction configuration is sensible.
+        """Validate that trade direction configuration is sensible.
 
         Raises:
             TradeDirectionConfigurationError: If configuration is invalid
         """
-        # Must allow at least one trade direction
-        if not self.trade_longs and not self.trade_shorts:
-            raise TradeDirectionConfigurationError(
-                strategy_class=self.__class__.__name__,
-                trade_longs=self.trade_longs,
-                trade_shorts=self.trade_shorts,
-                details="Both trade_longs and trade_shorts are False - strategy cannot trade!",
-            )
-
-        # Validate parameter types
-        if not isinstance(self.trade_longs, bool):
-            raise TradeDirectionConfigurationError(
-                strategy_class=self.__class__.__name__,
-                trade_longs=self.trade_longs,
-                trade_shorts=self.trade_shorts,
-                details=f"trade_longs must be boolean, got {type(self.trade_longs).__name__}",
-            )
-
-        if not isinstance(self.trade_shorts, bool):
-            raise TradeDirectionConfigurationError(
-                strategy_class=self.__class__.__name__,
-                trade_longs=self.trade_longs,
-                trade_shorts=self.trade_shorts,
-                details=f"trade_shorts must be boolean, got {type(self.trade_shorts).__name__}",
-            )
+        validate_trade_direction_configuration(
+            self.__class__.__name__, self.trade_longs, self.trade_shorts
+        )
 
     def _validate_signal_constraints(self, signals: pd.DataFrame) -> None:
         """
@@ -363,36 +260,9 @@ class BaseStrategy(ABC):
         Raises:
             TradeDirectionViolationError: If signals violate trade direction constraints
         """
-        if signals.empty:
-            return  # No signals to validate
-
-        # Check for positive weights (long positions) when trade_longs=False
-        if not self.trade_longs:
-            positive_mask = signals > 0
-            if positive_mask.any().any():  # Only raise if there are actual positive values
-                positive_signals = signals[positive_mask]
-                violation_count = positive_mask.sum().sum()
-                raise TradeDirectionViolationError(
-                    strategy_class=self.__class__.__name__,
-                    trade_longs=self.trade_longs,
-                    trade_shorts=self.trade_shorts,
-                    violation_details=f"Generated {violation_count} positive (long) signals when trade_longs=False",
-                    violated_signals=positive_signals,
-                )
-
-        # Check for negative weights (short positions) when trade_shorts=False
-        if not self.trade_shorts:
-            negative_mask = signals < 0
-            if negative_mask.any().any():  # Only raise if there are actual negative values
-                negative_signals = signals[negative_mask]
-                violation_count = negative_mask.sum().sum()
-                raise TradeDirectionViolationError(
-                    strategy_class=self.__class__.__name__,
-                    trade_longs=self.trade_longs,
-                    trade_shorts=self.trade_shorts,
-                    violation_details=f"Generated {violation_count} negative (short) signals when trade_shorts=False",
-                    violated_signals=negative_signals,
-                )
+        validate_signals_trade_direction(
+            self.__class__.__name__, self.trade_longs, self.trade_shorts, signals
+        )
 
     def supports_daily_signals(self) -> bool:
         """
@@ -665,6 +535,10 @@ class BaseStrategy(ABC):
         try:
             handler = self.get_stop_loss_handler()
         except Exception:
+            logger.debug(
+                "Stop-loss handler unavailable; returning weights unchanged.",
+                exc_info=True,
+            )
             return weights
 
         # No-op when using NoStopLoss
@@ -694,6 +568,10 @@ class BaseStrategy(ABC):
             )
             return adjusted
         except Exception:
+            logger.debug(
+                "Stop-loss application failed; returning weights unchanged.",
+                exc_info=True,
+            )
             return weights
 
     def _apply_signal_strategy_take_profit(
@@ -711,6 +589,10 @@ class BaseStrategy(ABC):
         try:
             handler = self.get_take_profit_handler()
         except Exception:
+            logger.debug(
+                "Take-profit handler unavailable; returning weights unchanged.",
+                exc_info=True,
+            )
             return weights
 
         if isinstance(handler, NoTakeProfit):
@@ -739,6 +621,10 @@ class BaseStrategy(ABC):
             )
             return adjusted
         except Exception:
+            logger.debug(
+                "Take-profit application failed; returning weights unchanged.",
+                exc_info=True,
+            )
             return weights
 
     # ------------------------------------------------------------------ #
@@ -1077,7 +963,7 @@ class BaseStrategy(ABC):
             or "index_min" not in bounds_entry
             or index_min < pd.Timestamp(bounds_entry["index_min"])
         ):
-            first_valid = close_df.apply(lambda s: s.first_valid_index())
+            first_valid = _first_valid_index_per_column(cast(pd.DataFrame, close_df))
             bounds_cache[bounds_key] = {"index_min": index_min, "first_valid": first_valid}
         else:
             first_valid = bounds_entry["first_valid"]
@@ -1095,7 +981,7 @@ class BaseStrategy(ABC):
         enough_history = available_months >= int(min_periods_required)
 
         # Bitwise & handles both Series (aligned) and scalar cases
-        valid_mask = has_recent & pd.Series(enough_history)
+        valid_mask = has_recent & pd.Series(enough_history)  # type: ignore[call-overload, operator]
 
         if isinstance(valid_mask, pd.Series):
             valid_assets = [str(t) for t, ok in valid_mask.items() if bool(ok)]

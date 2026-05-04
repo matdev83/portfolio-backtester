@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from ..canonical_config import CanonicalScenarioConfig
 
 
-
 class PopulationOrchestrator(OptimizationOrchestrator):
     """Coordinates population-based optimization process."""
 
@@ -44,7 +43,6 @@ class PopulationOrchestrator(OptimizationOrchestrator):
         data: Any,
         backtester: "Backtester",
     ) -> "OptimizationResult":
-
         """Run the population-based optimization process with a progress bar."""
         from ..canonical_config import CanonicalScenarioConfig
         from ..scenario_normalizer import ScenarioNormalizer
@@ -54,12 +52,15 @@ class PopulationOrchestrator(OptimizationOrchestrator):
             logger.warning(
                 "ACCIDENTAL BYPASS: Raw scenario dictionary passed to PopulationOrchestrator.optimize. "
                 "All scenarios should be canonicalized at the boundary. "
-                "Scenario: {}", scenario_config.get('name', 'unnamed')
+                "Scenario: {}",
+                scenario_config.get("name", "unnamed"),
             )
             normalizer = ScenarioNormalizer()
             # Assuming global_config is available via backtester or something
             global_config = getattr(backtester, "global_config", {})
-            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=global_config
+            )
         else:
             canonical_config = scenario_config
 
@@ -70,12 +71,10 @@ class PopulationOrchestrator(OptimizationOrchestrator):
         # Assuming max_generations is available for GA, otherwise needs a more general approach
         ga_settings = canonical_config.extras.get("ga_settings", {})
 
-            
         max_generations = ga_settings.get(
             "max_generations",
             optimization_config.get("ga_settings", {}).get("max_generations", 100),
         )
-
 
         with tqdm(total=max_generations, desc="Genetic Optimization", unit="gen") as pbar:
             while (
@@ -117,8 +116,8 @@ class PopulationOrchestrator(OptimizationOrchestrator):
                     dedup_stats.get("duplicate_trials_detected"),
                     dedup_stats.get("cache_hits"),
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("GA dedup stats unavailable: %s", exc, exc_info=True)
 
         logger.info("Population-based optimization finished.")
         return self.parameter_generator.get_best_result()

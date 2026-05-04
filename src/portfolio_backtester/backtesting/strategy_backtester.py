@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, Optional, TYPE_CHECKING, Union, cast, Ma
 if TYPE_CHECKING:
     from ..canonical_config import CanonicalScenarioConfig
 
+from ..interfaces.data_source_interface import PriceDataSource
 from .results import BacktestResult, WindowResult
 from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
 from ..strategies._core.registry import get_strategy_registry
@@ -27,6 +28,7 @@ from ..backtester_logic.strategy_overlays import apply_wfo_scaling_and_kill_swit
 from ..reporting.performance_metrics import calculate_metrics
 from ..reporting.risk_free import build_optional_risk_free_series
 from ..optimization.wfo_window import WFOWindow
+from .wfo_mask_builder import build_wfo_test_mask
 
 logger = logging.getLogger(__name__)
 
@@ -71,35 +73,6 @@ def _extract_close_returns(price_data: pd.DataFrame, ticker: str, index: pd.Inde
     return benchmark_returns
 
 
-def _build_wfo_test_mask(overlay_diagnostics: Dict[str, Any], index: pd.Index) -> pd.Series:
-    windows = overlay_diagnostics.get("windows", []) if overlay_diagnostics else []
-    if not windows:
-        return pd.Series(False, index=index)
-
-    try:
-        idx = pd.DatetimeIndex(index)
-    except Exception:
-        return pd.Series(False, index=index)
-
-    if idx.tz is not None:
-        idx = idx.tz_convert(None)
-
-    mask_vals = pd.Series(False, index=index)
-    for window in windows:
-        test_start = window.get("test_start")
-        test_end = window.get("test_end")
-        if not test_start or not test_end:
-            continue
-        try:
-            start_ts = pd.Timestamp(test_start)
-            end_ts = pd.Timestamp(test_end)
-        except Exception:
-            continue
-        mask_vals |= (idx >= start_ts) & (idx <= end_ts)
-
-    return mask_vals
-
-
 class StrategyBacktester:
     """Pure backtesting engine that contains only backtesting logic.
 
@@ -116,7 +89,7 @@ class StrategyBacktester:
     def __init__(
         self,
         global_config: Dict[str, Any],
-        data_source: Any,
+        data_source: PriceDataSource | None,
         *,
         data_cache: Optional[Any] = None,
     ) -> None:
@@ -128,7 +101,7 @@ class StrategyBacktester:
             data_cache: Optional shared cache manager; defaults to a new manager instance.
         """
         self.global_config = global_config
-        self.data_source = data_source
+        self.data_source: PriceDataSource | None = data_source
 
         # Initialize strategy registry (SOLID-compliant, supports aliases)
         self._registry = get_strategy_registry()
@@ -314,7 +287,7 @@ class StrategyBacktester:
         benchmark_returns_for_metrics = benchmark_returns
         if overlay_diagnostics and isinstance(overlay_config, Mapping):
             if overlay_config.get("metrics_window") == "wfo_test":
-                test_mask = _build_wfo_test_mask(overlay_diagnostics, portfolio_returns.index)
+                test_mask = build_wfo_test_mask(overlay_diagnostics, portfolio_returns.index)
                 if test_mask.any():
                     metrics_returns = portfolio_returns.loc[test_mask]
                     benchmark_returns_for_metrics = benchmark_returns.loc[test_mask]
@@ -548,22 +521,26 @@ class StrategyBacktester:
                 dynamic_map = {cls.__name__: cls for cls in _all_subclasses(BaseStrategy)}
                 strategy_class = dynamic_map.get(str(strategy_name))
             except Exception:
+                logger.debug(
+                    "Dynamic strategy subclass scan failed; registry-only resolution.",
+                    exc_info=True,
+                )
                 strategy_class = None
 
             if strategy_class is None:
                 raise ValueError(f"Unsupported strategy: {strategy_name}")
 
-        # Diagnostic: log resolved class details before instantiation
-        if logger.isEnabledFor(logging.DEBUG):
-            try:
-                logger.debug(
-                    "Resolved strategy_class: %s type=%s module=%s",
-                    strategy_class,
-                    type(strategy_class),
-                    getattr(strategy_class, "__module__", None),
-                )
-            except Exception:
-                pass
+            # Diagnostic: log resolved class details before instantiation
+            if logger.isEnabledFor(logging.DEBUG):
+                try:
+                    logger.debug(
+                        "Resolved strategy_class: %s type=%s module=%s",
+                        strategy_class,
+                        type(strategy_class),
+                        getattr(strategy_class, "__module__", None),
+                    )
+                except (TypeError, ValueError, AttributeError):
+                    logger.debug("Could not log strategy_class details", exc_info=True)
 
         # Prefer passing the canonical config if available to support new features
         # BaseStrategy.__init__ handles both dict and CanonicalScenarioConfig
@@ -580,8 +557,8 @@ class StrategyBacktester:
                         BaseStrategy,
                         getattr(BaseStrategy, "__module__", None),
                     )
-                except Exception:
-                    pass
+                except (TypeError, ValueError, AttributeError):
+                    logger.debug("Could not log instance type details", exc_info=True)
             raise TypeError("Strategy factory did not return a BaseStrategy instance")
 
         self.strategy = instance

@@ -181,8 +181,8 @@ class PopulationEvaluator:
                 try:
                     if self._deduplicator.is_duplicate(params):
                         pass
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Deduplicator.is_duplicate check failed: %s", exc, exc_info=True)
                 to_eval_params.append(params)
                 to_eval_keys.append(key)
 
@@ -221,8 +221,8 @@ class PopulationEvaluator:
                     # For multi-objective, store first element as a proxy
                     elif isinstance(objective_value, list) and objective_value:
                         self._deduplicator.add_trial(params, float(objective_value[0]))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Deduplicator.add_trial skipped: %s", exc, exc_info=True)
 
         # Map results back to original population order
         results: List[EvaluationResult] = []

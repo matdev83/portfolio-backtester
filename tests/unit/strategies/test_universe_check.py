@@ -1,15 +1,14 @@
+"""Tests for BaseStrategy universe resolution from global_config."""
+
 import pytest
 
 from portfolio_backtester.strategies._core.base.base_strategy import BaseStrategy
 
 
 class MockStrategyForTest(BaseStrategy):
+    """Minimal strategy for universe checks."""
+
     pass
-
-
-"""
-Test script to verify the universe check functionality.
-"""
 
 
 def test_empty_universe_raises_error():

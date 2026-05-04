@@ -6,7 +6,7 @@ Ensures backward compatibility while testing new architecture.
 import pytest
 import tempfile
 import os
-from portfolio_backtester.timing.config_schema_refactored import (
+from portfolio_backtester.timing.config_schema import (
     TimingConfigSchema,
     validate_timing_config,
 )

@@ -108,8 +108,11 @@ class Backtester:
                         "Applying scenario data_source_config override: %s",
                         self.global_config["data_source_config"],
                     )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed applying scenario data_source_config override: %s", exc)
+        except Exception:
+            logger.warning(
+                "Failed applying scenario data_source_config override.",
+                exc_info=True,
+            )
 
         # Initialize timing and timeout management using DIP
         self._timeout_start_time: float = time.time()
@@ -194,9 +197,11 @@ class Backtester:
             from ..interfaces import create_strategy_resolver
 
             _ = create_strategy_resolver()
-        except Exception:
-            # Non-fatal if resolver cannot be created here; will be created on demand elsewhere
-            pass
+        except (ImportError, AttributeError, TypeError, RuntimeError) as exc:
+            logger.debug(
+                "Non-fatal: strategy resolver eager init skipped; will be created on demand (%s).",
+                exc,
+            )
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Backtester initialized with all specialized components")
@@ -329,7 +334,7 @@ class Backtester:
         if not scenarios_to_run:
             return
 
-        # Prepare data using DataFetcher
+        # Prepare data using DataFetcher (broad catch: MDMP/providers raise heterogeneous errors)
         try:
             daily_ohlc, monthly_data, daily_closes = self.data_fetcher.prepare_data_for_backtesting(
                 scenarios_to_run, self.strategy_manager.get_strategy

@@ -1,0 +1,132 @@
+# Walk-forward optimization — S&P 500 sector ETF sleeve vs AMEX:SPY (11-name fixed universe).
+#
+# Run (example):
+#   .\.venv\Scripts\python.exe -m src.portfolio_backtester.backtester --mode optimize ^
+#     --scenario-filename config/scenarios/builtins/portfolio/dual_momentum_lagged_portfolio_strategy/dual_momentum_sp500_sectors_spy_optimize.yaml ^
+#     --mdmp-cache-only --random-seed 42 --optimizer optuna --optuna-trials 100 --early-stop-patience 15 --n-jobs 1
+#
+# Fixed by design:
+# - vol_target_enabled: false (keep first optimization pass interpretable)
+# - ranking_method: optimized (excess vs residual)
+# - trade_longs: true, trade_shorts: false
+
+name: dual_momentum_lagged_portfolio_dual_momentum_sp500_sectors_spy_optimize
+strategy: DualMomentumLaggedPortfolioStrategy
+
+position_sizer: equal_weight
+rebalance_frequency: ME
+
+timing_config:
+  mode: time_based
+  rebalance_frequency: ME
+
+universe_config:
+  type: fixed
+  tickers:
+    - AMEX:XLB
+    - AMEX:FDN
+    - AMEX:XLE
+    - AMEX:XLF
+    - AMEX:XLI
+    - AMEX:XLK
+    - AMEX:XLP
+    - AMEX:IYR
+    - AMEX:XLU
+    - AMEX:XLV
+    - AMEX:XLY
+
+benchmark_ticker: AMEX:SPY
+
+train_window_months: 60
+test_window_months: 12
+walk_forward_type: rolling
+
+optimization_metric: Sortino
+
+strategy_params:
+  lookback_months: 6
+  lag_months: 0
+  momentum_skip_months: 0
+  max_holdings: 5
+  min_absolute_momentum: 0.02
+
+  use_200sma_filter: false
+  sma_period: 200
+
+  ranking_method: excess_total_return
+  absolute_exit_buffer: 0.02
+  relative_exit_buffer: 0.01
+
+  vol_target_enabled: false
+  panic_overlay_enabled: false
+
+  trade_longs: true
+  trade_shorts: false
+
+optimize:
+  - parameter: lag_months
+    type: categorical
+    choices: [0, 1]
+
+  - parameter: use_200sma_filter
+    type: categorical
+    choices: [true, false]
+
+  - parameter: max_holdings
+    type: int
+    min_value: 5
+    max_value: 6
+    step: 1
+
+  - parameter: lookback_months
+    type: int
+    min_value: 3
+    max_value: 12
+    step: 1
+
+  - parameter: momentum_skip_months
+    type: int
+    min_value: 0
+    max_value: 2
+    step: 1
+
+  - parameter: min_absolute_momentum
+    type: categorical
+    choices:
+      - -0.03
+      - -0.02
+      - -0.01
+      - 0.0
+      - 0.02
+      - 0.05
+      - 0.08
+      - 0.1
+
+  - parameter: absolute_exit_buffer
+    type: categorical
+    choices:
+      - 0.0
+      - 0.01
+      - 0.02
+      - 0.03
+      - 0.05
+
+  - parameter: relative_exit_buffer
+    type: categorical
+    choices:
+      - 0.0
+      - 0.01
+      - 0.02
+      - 0.03
+      - 0.05
+
+  - parameter: ranking_method
+    type: categorical
+    choices: [excess_total_return, residual_momentum]
+
+  # Only affects behavior when use_200sma_filter is true; harmless otherwise.
+  - parameter: sma_period
+    type: int
+    min_value: 150
+    max_value: 250
+    step: 25
