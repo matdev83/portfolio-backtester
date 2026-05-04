@@ -12,6 +12,7 @@ from pandas.tseries.offsets import BDay
 from portfolio_backtester.risk_management.atr_service import calculate_atr_fast
 
 from ..._core.base.base.signal_strategy import SignalStrategy
+from ..._core.target_generation import StrategyContext, default_benchmark_ticker
 
 if TYPE_CHECKING:
     from portfolio_backtester.canonical_config import CanonicalScenarioConfig
@@ -25,15 +26,14 @@ _DEFAULT_CARLOS_RORO_SYMBOL = "MDMP:RORO.CARLOS"
 class SeasonalSignalStrategy(SignalStrategy):
     """Intramonth seasonality: Nth business-day entry and a fixed business-day hold window.
 
-    **Default (``month_local_seasonal_windows: false``):** Each session checks whether
-    ``current_date`` falls inside **any** recent calendar month's anchored window
-    ``[entry_m, entry_m + BDay(hold_days - 1)]``, where ``entry_m`` is that month's
-    prescribed business-day entry. Holds therefore **continue across month boundaries**
-    when the hold window spans them.
+    Full-period authoring API: :py:meth:`generate_target_weights`.
 
-    **Cross-month cycle identity:** When multiple backward-scanned anchor months could
-    apply, the **first** match in the same order as the internal month scan (current
-    calendar month first, then prior months) defines the active cycle for SL/TP replay.
+    **Default (``month_local_seasonal_windows: false``):** For each evaluation date we walk
+    backward from ``current_date``'s calendar month and take the **first** anchor whose
+    seasonal window covers ``current_date`` (see :py:meth:`_resolve_active_entry_date` and
+    :py:meth:`generate_signals`). Holdings may extend across calendar month boundaries, but
+    overlapping candidate anchors are never union-blended—the first-scan anchor owns each
+    row.
 
     **Legacy opt-in (``month_local_seasonal_windows: true``):** The anchor is always
     recomputed from **``current_date``'s** calendar month only (no carry from the prior
@@ -724,6 +724,47 @@ class SeasonalSignalStrategy(SignalStrategy):
 
         return locked
 
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        idx = pd.DatetimeIndex(context.rebalance_dates)
+        cols = list(context.universe_tickers)
+        fv = np.nan if context.use_sparse_nan_for_inactive_rows else 0.0
+        result = pd.DataFrame(fv, index=idx, columns=cols, dtype=float)
+        if len(idx) == 0 or len(cols) == 0:
+            return result
+
+        asset_full = context.asset_data
+        bench_full = context.benchmark_data
+        nu_full = context.non_universe_data
+
+        if asset_full.shape[1] == 0 or asset_full.empty:
+            work_asset = pd.DataFrame(1.0, index=idx, columns=cols)
+        else:
+            work_asset = asset_full
+        work_benchmark = bench_full
+
+        for rd in idx:
+            row_ts = pd.Timestamp(rd)
+            sl_asset = work_asset.loc[work_asset.index <= row_ts]
+            if work_benchmark.shape[1] > 0:
+                sl_benchmark = work_benchmark.loc[work_benchmark.index <= row_ts]
+            else:
+                sl_benchmark = pd.DataFrame()
+            nu_arg = None
+            if not nu_full.empty and nu_full.shape[1] > 0:
+                nu_slice = nu_full.loc[nu_full.index <= row_ts]
+                nu_arg = nu_slice if nu_slice.shape[0] > 0 else None
+
+            row = self.generate_signals(
+                sl_asset,
+                sl_benchmark,
+                non_universe_historical_data=nu_arg,
+                current_date=row_ts,
+            ).iloc[0]
+            aligned = row.reindex(cols)
+            result.loc[row_ts, :] = aligned.fillna(0.0).to_numpy(dtype=float)
+
+        return result
+
     def generate_signal_matrix(
         self,
         all_historical_data: pd.DataFrame,
@@ -734,78 +775,19 @@ class SeasonalSignalStrategy(SignalStrategy):
         start_date: Optional[pd.Timestamp] = None,
         end_date: Optional[pd.Timestamp] = None,
         use_sparse_nan_for_inactive_rows: bool = False,
-    ) -> Optional[pd.DataFrame]:
-        """Build the full signal matrix without one strategy call per scan date."""
-        if (
-            self.simple_high_low_stop_loss
-            or self.simple_high_low_take_profit
-            or self.stop_loss_atr_multiple > 0
-            or self.take_profit_atr_multiple > 0
-        ):
-            return None
-
-        index = pd.DatetimeIndex(rebalance_dates)
-        index_cmp = self._index_calendar_naive(index)
-        # Inactive seasonal scan dates are explicit flat signals, not skipped scans.
-        result = pd.DataFrame(0.0, index=index, columns=list(universe_tickers), dtype=float)
-        if len(index) == 0 or len(universe_tickers) == 0:
-            return result
-
-        active = np.zeros(len(index), dtype=bool)
-        unique_months = pd.PeriodIndex(index_cmp, freq="M").unique()
-        for period in unique_months:
-            month_start = pd.Timestamp(year=int(period.year), month=int(period.month), day=1)
-            if not self.month_local_seasonal_windows:
-                # Allow prior-month windows to cover sessions at the start of this month.
-                k_max = min(24, max(3, (self._max_hold_days_for_scan() + 10) // 15 + 2))
-                anchors = [month_start - pd.DateOffset(months=k) for k in range(k_max)]
-            else:
-                anchors = [month_start]
-
-            for anchor in anchors:
-                anchor_month = int(anchor.month)
-                entry_day_anchor = self._entry_day_for_calendar_month(anchor_month)
-                hold_anchor = self._hold_days_for_calendar_month(anchor_month)
-                entry_date = self.get_entry_date_for_month(anchor, entry_day_anchor)
-                if not self._month_allowed_for_calendar_month(int(entry_date.month)):
-                    continue
-                if hold_anchor <= 0:
-                    continue
-                window_end = entry_date + BDay(hold_anchor - 1)
-                active |= np.asarray(
-                    (index_cmp >= entry_date) & (index_cmp <= window_end),
-                    dtype=bool,
-                )
-
-        roro_flat = self._carlos_roro_risk_off_mask(index_cmp, non_universe_historical_data)
-        window_mx = np.tile(active.reshape(-1, 1), (1, len(universe_tickers)))
-        if roro_flat is not None:
-            window_mx &= ~roro_flat.reshape(-1, 1)
-
-        n_dates, ntick = window_mx.shape
-        if self.direction == "long" and float(self.max_dd_from_ath_pct) > 0.0:
-            hist_close = self._universe_hist_close_subset(all_historical_data, universe_tickers)
-            closes_at_scan, ath_mx = self._close_and_ath_on_scan_using_full_hist(
-                hist_close, index_cmp
-            )
-            den = ath_mx.to_numpy(dtype=float)
-            cur = closes_at_scan.to_numpy(dtype=float)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                dd = (den - cur) / den * 100.0
-            finite_ath = np.isfinite(den) & (den > 0.0) & np.isfinite(cur)
-            dd_ok = finite_ath & np.isfinite(dd) & ~(dd > float(self.max_dd_from_ath_pct))
-        else:
-            dd_ok = np.ones((n_dates, ntick), dtype=bool)
-
-        eligible_np = np.asarray(window_mx & dd_ok, dtype=np.float64)
-        row_den = eligible_np.sum(axis=1)
-        denom_row = np.where(row_den <= 0.0, np.nan, row_den)
-        contrib = np.nan_to_num(
-            eligible_np / denom_row[:, np.newaxis], nan=0.0, posinf=0.0, neginf=0.0
+    ) -> pd.DataFrame:
+        ctx = StrategyContext.from_standard_inputs(
+            asset_data=all_historical_data,
+            benchmark_data=benchmark_historical_data,
+            non_universe_data=non_universe_historical_data,
+            rebalance_dates=rebalance_dates,
+            universe_tickers=universe_tickers,
+            benchmark_ticker=default_benchmark_ticker(benchmark_historical_data, universe_tickers),
+            wfo_start_date=start_date,
+            wfo_end_date=end_date,
+            use_sparse_nan_for_inactive_rows=use_sparse_nan_for_inactive_rows,
         )
-        scale = -1.0 if self.direction == "short" else 1.0
-        result[:] = contrib * scale
-        return result
+        return self.generate_target_weights(ctx)
 
     def generate_signals(
         self,

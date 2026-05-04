@@ -17,6 +17,7 @@ from ..optimization.signal_cache import (
     strategy_allows_signal_matrix_cache,
 )
 from ..optimization.strategy_data_context import StrategyDataContext
+from ..strategies._core.target_generation import StrategyContext
 
 
 # Removed legacy position sizer imports - now using strategy provider interfaces
@@ -136,7 +137,7 @@ def _try_build_strategy_context_panel(
         return None
 
 
-def _call_batch_signal_generator(
+def _call_generate_target_weights(
     strategy: Any,
     *,
     asset_data_view: pd.DataFrame,
@@ -144,32 +145,33 @@ def _call_batch_signal_generator(
     non_universe_data_view: Optional[pd.DataFrame],
     rebalance_dates: pd.DatetimeIndex,
     universe_tickers: List[str],
+    benchmark_ticker: str,
     wfo_start_date: Optional[pd.Timestamp],
     wfo_end_date: Optional[pd.Timestamp],
     use_sparse_nan_for_inactive_rows: bool,
 ) -> Optional[pd.DataFrame]:
-    """Use an optional vectorized strategy hook for full signal matrices."""
-    batch_fn = getattr(strategy, "generate_signal_matrix", None)
-    if not callable(batch_fn):
+    """Prefer ``strategy.generate_target_weights`` for deterministic full-scan targets."""
+    target_fn = getattr(strategy, "generate_target_weights", None)
+    if not callable(target_fn):
         return None
-
-    signals = batch_fn(
-        all_historical_data=asset_data_view,
-        benchmark_historical_data=benchmark_data_view,
-        non_universe_historical_data=(
-            non_universe_data_view if non_universe_data_view is not None else pd.DataFrame()
-        ),
+    nu = non_universe_data_view if non_universe_data_view is not None else pd.DataFrame()
+    ctx = StrategyContext.from_standard_inputs(
+        asset_data=asset_data_view,
+        benchmark_data=benchmark_data_view,
+        non_universe_data=nu,
         rebalance_dates=rebalance_dates,
         universe_tickers=universe_tickers,
-        start_date=wfo_start_date,
-        end_date=wfo_end_date,
+        benchmark_ticker=str(benchmark_ticker),
+        wfo_start_date=wfo_start_date,
+        wfo_end_date=wfo_end_date,
         use_sparse_nan_for_inactive_rows=use_sparse_nan_for_inactive_rows,
     )
-    if signals is None:
+    weights = target_fn(ctx)
+    if weights is None:
         return None
-    if not isinstance(signals, pd.DataFrame):
+    if not isinstance(weights, pd.DataFrame):
         return None
-    return signals.reindex(index=rebalance_dates, columns=universe_tickers)
+    return weights.reindex(index=rebalance_dates, columns=universe_tickers)
 
 
 def generate_signals(
@@ -437,23 +439,24 @@ def generate_signals(
         else np.zeros((len(rebalance_dates), num_assets))
     )
 
-    batch_signals = _call_batch_signal_generator(
+    dense_targets = _call_generate_target_weights(
         strategy,
         asset_data_view=asset_data_view,
         benchmark_data_view=benchmark_data_view,
         non_universe_data_view=non_universe_data_view,
         rebalance_dates=rebalance_dates,
         universe_tickers=list(universe_tickers),
+        benchmark_ticker=str(benchmark_ticker),
         wfo_start_date=wfo_start_date,
         wfo_end_date=wfo_end_date,
         use_sparse_nan_for_inactive_rows=use_sparse_nan_for_inactive_rows,
     )
-    if batch_signals is not None:
+    if dense_targets is not None:
         if not use_sparse_nan_for_inactive_rows:
-            batch_signals = batch_signals.fillna(0.0)
+            dense_targets = dense_targets.fillna(0.0)
         if cache_store is not None and cache_digest is not None:
-            cache_store.put(cache_digest, batch_signals.copy(deep=True))
-        return batch_signals
+            cache_store.put(cache_digest, dense_targets.copy(deep=True))
+        return dense_targets
 
     for i, current_rebalance_date in enumerate(rebalance_dates):
         if has_timed_out():

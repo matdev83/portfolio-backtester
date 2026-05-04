@@ -89,6 +89,33 @@ class DualMomentumLaggedPortfolioStrategy(BaseMomentumPortfolioStrategy):
         # Track the last signal calculation results for lag verification
         self._previous_signal_dates: Dict[str, pd.Timestamp] = {}
 
+    def _checkpoint_target_weights_scan(self) -> dict[str, Any]:
+        ckpt = super()._checkpoint_target_weights_scan()
+        ckpt["__dual_pending_buy"] = {k: list(v) for k, v in self._pending_buy_signals.items()}
+        ckpt["__dual_pending_sell"] = {k: list(v) for k, v in self._pending_sell_signals.items()}
+        ckpt["__dual_holdings"] = set(self._current_holdings)
+        ckpt["__dual_prev_sig"] = dict(self._previous_signal_dates)
+        return ckpt
+
+    def _restore_target_weights_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        super()._restore_target_weights_checkpoint(checkpoint)
+        if "__dual_pending_buy" in checkpoint:
+            self._pending_buy_signals = {
+                k: deque(v) for k, v in checkpoint["__dual_pending_buy"].items()
+            }
+            self._pending_sell_signals = {
+                k: deque(v) for k, v in checkpoint["__dual_pending_sell"].items()
+            }
+            self._current_holdings = set(checkpoint["__dual_holdings"])
+            self._previous_signal_dates = dict(checkpoint["__dual_prev_sig"])
+
+    def _reset_target_weights_scan_state(self) -> None:
+        super()._reset_target_weights_scan_state()
+        self._pending_buy_signals = {}
+        self._pending_sell_signals = {}
+        self._current_holdings = set()
+        self._previous_signal_dates = {}
+
     @classmethod
     def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:
         """Return optimizable parameters for this strategy."""

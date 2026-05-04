@@ -108,9 +108,6 @@ Cache-only knobs:
 ## Performance & Debugging Notes
 
 - Optimization writes a debug log file (`optimizer_debug.log`) for deep diagnostics.
-- Numba walk-forward fast paths can be toggled:
-  - `ENABLE_NUMBA_WALKFORWARD=1` forces fast path
-  - `DISABLE_NUMBA_WALKFORWARD=1` forces non-Numba path
 - Thread caps for numerical libs can be applied from config (see `backtester.py` performance tweaks).
 
 ## API Stability

@@ -313,6 +313,186 @@ def trade_tracking_kernel(
     return portfolio_values, cash_values, positions
 
 
+@njit(cache=True, fastmath=False)
+def _per_trade_cost_dollars_kernel(
+    trade_value: float,
+    abs_share_delta: float,
+    use_simple_bps: bool,
+    transaction_costs_bps: float,
+    commission_per_share: float,
+    commission_min_per_order: float,
+    commission_max_percent: float,
+    slippage_bps: float,
+) -> float:
+    if trade_value <= 0.0 or (not np.isfinite(trade_value)):
+        return 0.0
+    if use_simple_bps:
+        return trade_value * (transaction_costs_bps / 10000.0)
+    if abs_share_delta <= 0.0:
+        return 0.0
+    commission_trade = abs_share_delta * commission_per_share
+    if commission_trade < commission_min_per_order:
+        commission_trade = commission_min_per_order
+    max_commission = trade_value * commission_max_percent
+    if commission_trade > max_commission:
+        commission_trade = max_commission
+    slippage_amount = trade_value * (slippage_bps / 10000.0)
+    return commission_trade + slippage_amount
+
+
+@njit(cache=True, fastmath=False)
+def canonical_portfolio_simulation_kernel(
+    initial_portfolio_value: float,
+    allocation_mode: int,
+    weights: np.ndarray,
+    prices: np.ndarray,
+    price_mask: np.ndarray,
+    use_simple_bps: bool,
+    transaction_costs_bps: float,
+    commission_per_share: float,
+    commission_min_per_order: float,
+    commission_max_percent: float,
+    slippage_bps: float,
+    ref_portfolio_value: float,
+    eps: float,
+):
+    """Share/cash path with costs from executed share deltas; returns include embedded costs."""
+    T, N = weights.shape
+    portfolio_values = np.zeros(T, dtype=np.float64)
+    cash_values = np.zeros(T, dtype=np.float64)
+    positions = np.zeros((T, N), dtype=np.float64)
+    per_asset_cost_frac = np.zeros((T, N), dtype=np.float64)
+    total_cost_frac = np.zeros(T, dtype=np.float64)
+    daily_returns = np.zeros(T, dtype=np.float64)
+
+    ref_denom = ref_portfolio_value if ref_portfolio_value > eps else 1.0
+
+    last_valid_prices = np.zeros(N, dtype=np.float64)
+
+    capital_base = initial_portfolio_value
+    current_prices0 = prices[0]
+    current_mask0 = price_mask[0]
+
+    target_weights0 = weights[0]
+    target_dollar_values0 = target_weights0 * capital_base
+    safe_prices0 = np.where(current_prices0 > 0, current_prices0, 1.0)
+    target_positions0 = (target_dollar_values0 / safe_prices0) * current_mask0
+
+    positions[0] = target_positions0
+    for j in range(N):
+        if current_mask0[j]:
+            last_valid_prices[j] = current_prices0[j]
+
+    day0_cost_dollars = 0.0
+    for j in range(N):
+        if not current_mask0[j]:
+            continue
+        price = current_prices0[j]
+        if price <= 0.0:
+            continue
+        dsh = target_positions0[j]
+        td = abs(dsh) * price
+        c = _per_trade_cost_dollars_kernel(
+            td,
+            abs(dsh),
+            use_simple_bps,
+            transaction_costs_bps,
+            commission_per_share,
+            commission_min_per_order,
+            commission_max_percent,
+            slippage_bps,
+        )
+        day0_cost_dollars += c
+        per_asset_cost_frac[0, j] = c / ref_denom
+
+    total_cost_frac[0] = day0_cost_dollars / ref_denom
+
+    holdings_value0 = np.sum(positions[0] * last_valid_prices)
+    cash_values[0] = capital_base - holdings_value0 - day0_cost_dollars
+    portfolio_values[0] = cash_values[0] + holdings_value0
+
+    for i in range(1, T):
+        last_positions = positions[i - 1]
+        current_prices = prices[i]
+        current_mask = price_mask[i]
+
+        valuation_prices = np.empty(N, dtype=np.float64)
+        for j in range(N):
+            if current_mask[j]:
+                last_valid_prices[j] = current_prices[j]
+            valuation_prices[j] = last_valid_prices[j]
+
+        holdings_value = np.sum(last_positions * valuation_prices)
+        portfolio_values[i] = cash_values[i - 1] + holdings_value
+
+        positions[i] = last_positions
+        cash_values[i] = cash_values[i - 1]
+
+        if allocation_mode == 0:
+            capital_base = portfolio_values[i]
+
+        rebalance = False
+        for j in range(N):
+            if abs(weights[i, j] - weights[i - 1, j]) > eps:
+                rebalance = True
+                break
+        if not rebalance:
+            continue
+
+        target_weights = weights[i]
+        target_dollar_values = target_weights * capital_base
+        target_positions = np.empty(N, dtype=np.float64)
+        for j in range(N):
+            if current_mask[j]:
+                target_positions[j] = target_dollar_values[j] / current_prices[j]
+            else:
+                target_positions[j] = last_positions[j]
+
+        day_cost_dollars = 0.0
+        for j in range(N):
+            if not current_mask[j]:
+                continue
+            price = current_prices[j]
+            if price <= 0.0:
+                continue
+            dsh = target_positions[j] - last_positions[j]
+            td = abs(dsh) * price
+            c = _per_trade_cost_dollars_kernel(
+                td,
+                abs(dsh),
+                use_simple_bps,
+                transaction_costs_bps,
+                commission_per_share,
+                commission_min_per_order,
+                commission_max_percent,
+                slippage_bps,
+            )
+            day_cost_dollars += c
+            per_asset_cost_frac[i, j] = c / ref_denom
+
+        total_cost_frac[i] = day_cost_dollars / ref_denom
+
+        positions[i] = target_positions
+
+        new_holdings_value = np.sum(positions[i] * valuation_prices)
+        cash_values[i] = portfolio_values[i] - new_holdings_value - day_cost_dollars
+        portfolio_values[i] = cash_values[i] + new_holdings_value
+
+    for i in range(1, T):
+        prev = portfolio_values[i - 1]
+        if prev > eps:
+            daily_returns[i] = portfolio_values[i] / prev - 1.0
+
+    return (
+        portfolio_values,
+        cash_values,
+        positions,
+        per_asset_cost_frac,
+        total_cost_frac,
+        daily_returns,
+    )
+
+
 @njit(cache=True, fastmath=True)
 def trade_lifecycle_kernel(
     positions: np.ndarray,
@@ -417,83 +597,6 @@ def trade_lifecycle_kernel(
                         out_open_pos[j]["total_commission"] += commission
 
     return trade_count
-
-
-@njit(cache=True, fastmath=False)
-def run_backtest_numba(
-    prices: np.ndarray,  # [T, N] price matrix
-    signals: np.ndarray,  # [T, N] signal matrix
-    start_indices: np.ndarray,  # [W] start indices for each window
-    end_indices: np.ndarray,  # [W] end indices for each window
-) -> np.ndarray:
-    """
-    Run backtest across multiple WFO windows using Numba for optimal performance.
-
-    Args:
-        prices: Price matrix [time, assets]
-        signals: Signal matrix [time, assets]
-        start_indices: Start index for each window
-        end_indices: End index for each window
-
-    Returns:
-        Array of portfolio returns for each window
-    """
-    n_windows = len(start_indices)
-    window_returns: np.ndarray = np.zeros(n_windows, dtype=np.float32)
-
-    for w in range(n_windows):
-        start_idx = start_indices[w]
-        end_idx = end_indices[w]
-
-        if start_idx >= end_idx or end_idx > len(prices):
-            window_returns[w] = np.nan
-            continue
-
-        # Extract window data
-        window_prices = prices[start_idx:end_idx]
-        window_signals = signals[start_idx:end_idx]
-
-        # Calculate returns for this window
-        window_return = _calculate_window_return_numba(window_prices, window_signals)
-        window_returns[w] = window_return
-
-    return window_returns
-
-
-@njit(cache=True, fastmath=False)
-def _calculate_window_return_numba(prices: np.ndarray, signals: np.ndarray) -> np.float32:
-    """Calculate portfolio return for a single window."""
-    n_days, n_assets = prices.shape
-
-    if n_days <= 1:
-        return np.float32(np.nan)
-
-    portfolio_return = 0.0
-
-    for day in range(1, n_days):
-        daily_return = 0.0
-        total_weight = 0.0
-
-        # Calculate weighted return for this day
-        for asset in range(n_assets):
-            if (
-                not np.isnan(signals[day - 1, asset])
-                and not np.isnan(prices[day - 1, asset])
-                and not np.isnan(prices[day, asset])
-                and prices[day - 1, asset] > 0
-            ):
-                weight = signals[day - 1, asset]
-                asset_return = (prices[day, asset] - prices[day - 1, asset]) / prices[
-                    day - 1, asset
-                ]
-                daily_return += weight * asset_return
-                total_weight += abs(weight)
-
-        # Normalize if needed and accumulate
-        if total_weight > 0:
-            portfolio_return += daily_return
-
-    return np.float32(portfolio_return / max(1, n_days - 1))  # Average daily return
 
 
 # NumPy fallback function removed - using only optimized Numba implementation

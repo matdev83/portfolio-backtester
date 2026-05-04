@@ -23,7 +23,7 @@ def test_calculate_portfolio_returns_standard(sample_data):
         "timing_config": {"rebalance_frequency": "D"},
         "costs_config": {"transaction_costs_bps": 0.0},
     }
-    global_config = {"feature_flags": {"ndarray_simulation": True}}
+    global_config = {}
 
     returns, tracker = calculate_portfolio_returns(
         sized_signals, scenario_config, price_data, rets_daily, ["A"], global_config
@@ -42,7 +42,7 @@ def test_calculate_portfolio_returns_with_trade_tracking(sample_data):
         "timing_config": {"rebalance_frequency": "D"},
         "allocation_mode": "fixed_capital",
     }
-    global_config = {"feature_flags": {"ndarray_simulation": True}, "portfolio_value": 10000.0}
+    global_config = {"portfolio_value": 10000.0}
 
     returns, tracker = calculate_portfolio_returns(
         sized_signals,

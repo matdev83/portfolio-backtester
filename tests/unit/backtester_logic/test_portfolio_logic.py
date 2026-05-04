@@ -28,7 +28,7 @@ class TestPortfolioLogic:
             "timing_config": {"rebalance_frequency": "D"},
             "costs_config": {"transaction_costs_bps": 0.0},
         }
-        global_config = {"feature_flags": {"ndarray_simulation": True}, "portfolio_value": 10000.0}
+        global_config = {"portfolio_value": 10000.0}
 
         # Returns should be 0 since price is constant 100.0
         returns, tracker = calculate_portfolio_returns(
@@ -56,7 +56,7 @@ class TestPortfolioLogic:
             "timing_config": {"rebalance_frequency": "D"},
             "costs_config": {"transaction_costs_bps": 0.0},
         }
-        global_config = {"feature_flags": {"ndarray_simulation": True}}
+        global_config = {}
 
         # calculate_portfolio_returns uses shifted weights (previous day's weight)
         # Day 0: Weight NaN (shift) -> 0.0. Ret 0.0. Port Ret 0.0.
@@ -71,6 +71,27 @@ class TestPortfolioLogic:
         assert returns.iloc[1] == pytest.approx(0.1)
         assert returns.iloc[2] == pytest.approx(0.1)
 
+    def test_calculate_portfolio_returns_none_rets_daily_matches_canonical(self):
+        dates = pd.date_range("2023-01-01", periods=3)
+        daily = pd.DataFrame({"A": [100.0, 110.0, 121.0]}, index=dates)
+        rets = daily.pct_change(fill_method=None).fillna(0.0)
+        sized_signals = pd.DataFrame({"A": [1.0, 1.0, 1.0]}, index=dates)
+        scenario_config = {
+            "timing_config": {"rebalance_frequency": "D"},
+            "costs_config": {"transaction_costs_bps": 0.0},
+        }
+        global_config: dict = {}
+        kwargs = dict(
+            sized_signals=sized_signals,
+            scenario_config=scenario_config,
+            price_data_daily_ohlc=daily,
+            universe_tickers=["A"],
+            global_config=global_config,
+        )
+        r_with, _ = calculate_portfolio_returns(**kwargs, rets_daily=rets)
+        r_none, _ = calculate_portfolio_returns(**kwargs, rets_daily=None)
+        pd.testing.assert_series_equal(r_with, r_none, check_names=False)
+
     def test_time_based_pipeline_calls_rebalance_before_execution_map(self, sample_data):
         daily, rets = sample_data
         sized_signals = pd.DataFrame(0.5, index=daily.index, columns=["A", "B"])
@@ -78,7 +99,7 @@ class TestPortfolioLogic:
             "timing_config": {"mode": "time_based", "rebalance_frequency": "D"},
             "costs_config": {"transaction_costs_bps": 0.0},
         }
-        global_config = {"feature_flags": {"ndarray_simulation": True}, "portfolio_value": 10000.0}
+        global_config = {"portfolio_value": 10000.0}
         order: list[str] = []
         real_rebalance = portfolio_logic.rebalance_to_first_event_per_period
         real_map = portfolio_logic.map_sparse_target_weights_to_execution_dates
@@ -111,7 +132,7 @@ class TestPortfolioLogic:
             "timing_config": {"mode": "signal_based", "scan_frequency": "D"},
             "costs_config": {"transaction_costs_bps": 0.0},
         }
-        global_config = {"feature_flags": {"ndarray_simulation": True}, "portfolio_value": 10000.0}
+        global_config = {"portfolio_value": 10000.0}
         order: list[str] = []
         real_map = portfolio_logic.map_sparse_target_weights_to_execution_dates
 
@@ -135,7 +156,7 @@ class TestPortfolioLogic:
         daily, rets = sample_data
         sized_signals = pd.DataFrame(0.5, index=daily.index, columns=["A", "B"])
         scenario_config = {"costs_config": {"transaction_costs_bps": 0.0}}
-        global_config = {"feature_flags": {"ndarray_simulation": True}, "portfolio_value": 10000.0}
+        global_config = {"portfolio_value": 10000.0}
         with patch.object(portfolio_logic, "rebalance_to_first_event_per_period") as mock_rebalance:
             calculate_portfolio_returns(
                 sized_signals, scenario_config, daily, rets, ["A", "B"], global_config
@@ -170,7 +191,7 @@ class TestPortfolioLogic:
             "timing_config": {"mode": "signal_based", "scan_frequency": "D"},
             "costs_config": {"transaction_costs_bps": 0.0},
         }
-        global_config = {"feature_flags": {"ndarray_simulation": True}, "portfolio_value": 10000.0}
+        global_config = {"portfolio_value": 10000.0}
         r_time, _ = calculate_portfolio_returns(
             sized_up, scenario_time, alt, rets_alt, ["A", "B"], global_config
         )
@@ -178,18 +199,6 @@ class TestPortfolioLogic:
             sized_up, scenario_sig, alt, rets_alt, ["A", "B"], global_config
         )
         assert not r_time.equals(r_sig)
-
-    def test_calculate_portfolio_returns_disabled_ndarray_error(self, sample_data):
-        daily, rets = sample_data
-        sized_signals = pd.DataFrame(0.5, index=daily.index, columns=["A", "B"])
-
-        # Explicitly disable ndarray simulation to trigger error
-        global_config = {"feature_flags": {"ndarray_simulation": False}}
-
-        with pytest.raises(
-            RuntimeError, match="legacy Pandas-based portfolio simulation has been removed"
-        ):
-            calculate_portfolio_returns(sized_signals, {}, daily, rets, ["A", "B"], global_config)
 
     @patch("portfolio_backtester.backtester_logic.portfolio_logic.TradeTracker")
     def test_calculate_portfolio_returns_track_trades(self, mock_tracker_cls, sample_data):
@@ -252,6 +261,7 @@ class TestPortfolioLogic:
         mon = pd.Timestamp("2023-10-02")
         idx = pd.DatetimeIndex([thu, fri, mon])
         daily = pd.DataFrame(100.0, index=idx, columns=["A"])
+        daily.loc[mon, "A"] = 110.0
         rets = pd.DataFrame(0.0, index=idx, columns=["A"])
         rets.loc[mon, "A"] = 0.1
         sized = pd.DataFrame({"A": [1.0]}, index=[fri])
@@ -259,7 +269,7 @@ class TestPortfolioLogic:
             "timing_config": {"mode": "time_based", "rebalance_frequency": "ME"},
             "costs_config": {"transaction_costs_bps": 0.0},
         }
-        global_config = {"feature_flags": {"ndarray_simulation": True}, "portfolio_value": 10000.0}
+        global_config = {"portfolio_value": 10000.0}
         returns, _ = calculate_portfolio_returns(
             sized, scenario_config, daily, rets, ["A"], global_config
         )
@@ -267,41 +277,19 @@ class TestPortfolioLogic:
         assert returns.loc[fri] == pytest.approx(0.0)
         assert returns.loc[mon] == pytest.approx(0.1)
 
-    def test_calculate_portfolio_returns_nan_masks_false_before_fill(self):
+    def test_close_nan_yields_invalid_price_mask_for_simulation_arrays(self):
         dates = pd.date_range("2023-01-01", periods=4)
         daily = pd.DataFrame(
             {"A": [100.0, 110.0, 121.0, 133.1], "B": [50.0, 55.0, 60.5, 66.55]},
             index=dates,
         )
-        rets = daily.pct_change(fill_method=None)
-        rets.loc[dates[2], "B"] = np.nan
+        daily.loc[dates[2], "B"] = np.nan
 
-        sized_signals = pd.DataFrame(0.5, index=dates, columns=["A", "B"])
-        scenario_config = {
-            "timing_config": {"rebalance_frequency": "D"},
-            "costs_config": {"transaction_costs_bps": 0.0},
-        }
-        global_config = {"feature_flags": {"ndarray_simulation": True}}
+        from portfolio_backtester.backtester_logic.portfolio_simulation_input import (
+            build_close_and_mask_from_dataframe,
+        )
 
-        captured: dict = {}
-
-        def capture_kernel(w, r, m):
-            captured["mask"] = np.array(m, copy=True)
-            captured["r"] = np.array(r, copy=True)
-            from portfolio_backtester.numba_kernels import drifting_weights_returns_kernel
-
-            return drifting_weights_returns_kernel(w, r, m)
-
-        with patch(
-            "portfolio_backtester.backtester_logic.portfolio_logic.drifting_weights_returns_kernel",
-            side_effect=capture_kernel,
-        ):
-            calculate_portfolio_returns(
-                sized_signals, scenario_config, daily, rets, ["A", "B"], global_config
-            )
-
-        mask = captured["mask"]
-        r_k = captured["r"]
+        close_arr, mask = build_close_and_mask_from_dataframe(daily, dates, ["A", "B"])
         assert mask.shape == (4, 2)
         assert not mask[2, 1]
-        assert r_k[2, 1] == pytest.approx(0.0)
+        assert close_arr[2, 1] == pytest.approx(0.0)

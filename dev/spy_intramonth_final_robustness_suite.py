@@ -501,7 +501,7 @@ def main() -> int:
             "eval_target_net_returns / first-anchor mask in dev month_grid no longer matches production BacktestRunner P&L on identical masks (checked: Sortino ~2.15 vs ~2.66; Total Return ~8.09 vs ~10.71). Parameter neighborhood and joint MC in this suite use that fast path—non-authoritative until P&L timing is realigned.",
             "Block bootstrap is on daily net detailed returns (stationarity not guaranteed).",
             "cache_only=True; extended window needs sufficient cached OHLC.",
-            "Holdout is time-slice of one full-sample detailed path (fixed params, no re-fit).",
+            "Holdout is time-slice of one full-sample BacktestRunner run (fixed params, no re-fit).",
         ],
     }
 

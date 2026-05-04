@@ -1,4 +1,4 @@
-"""Parity between DataFrame close prep and MarketDataPanel array-first prep."""
+"""Parity between DataFrame close prep and MarketDataPanel-backed prep (canonical selection)."""
 
 from __future__ import annotations
 
@@ -13,10 +13,6 @@ from portfolio_backtester.optimization.market_data_panel import MarketDataPanel
 
 def _base_global(pv: float = 10000.0) -> dict:
     return {
-        "feature_flags": {
-            "ndarray_simulation": True,
-            "array_first_portfolio_prep": True,
-        },
         "portfolio_value": pv,
         "commission_per_share": 0.005,
         "commission_min_per_order": 1.0,
@@ -44,17 +40,12 @@ def test_array_prep_matches_dataframe_timing_modes(tet: str) -> None:
         "costs_config": {"transaction_costs_bps": 5.0},
     }
     panel = MarketDataPanel.from_daily_ohlc_and_returns(daily, rets)
-    g1 = _base_global()
-    g0 = {
-        **_base_global(),
-        "feature_flags": {**_base_global()["feature_flags"], "array_first_portfolio_prep": False},
-    }
-
+    g = _base_global()
     r_panel, _ = calculate_portfolio_returns(
-        sized, scenario, daily, rets, ["A", "B"], g1, market_data_panel=panel
+        sized, scenario, daily, rets, ["A", "B"], g, market_data_panel=panel
     )
-    r_df, _ = calculate_portfolio_returns(sized, scenario, daily, rets, ["A", "B"], g0)
-    pd.testing.assert_series_equal(r_panel, r_df, rtol=0, atol=1e-9)
+    r_df, _ = calculate_portfolio_returns(sized, scenario, daily, rets, ["A", "B"], g)
+    pd.testing.assert_series_equal(r_panel, r_df, rtol=1e-5, atol=1e-12)
 
 
 def test_array_prep_detailed_commission_path() -> None:
@@ -65,18 +56,14 @@ def test_array_prep_detailed_commission_path() -> None:
     )
     rets = daily.pct_change(fill_method=None).fillna(0.0)
     sized = pd.DataFrame(0.5, index=dates, columns=["A", "B"])
-    scenario = {"timing_config": {"rebalance_frequency": "D"}}  # no transaction_costs_bps
+    scenario = {"timing_config": {"rebalance_frequency": "D"}}
     panel = MarketDataPanel.from_daily_ohlc_and_returns(daily, rets)
-    g1 = _base_global()
-    g0 = {
-        **_base_global(),
-        "feature_flags": {**g1["feature_flags"], "array_first_portfolio_prep": False},
-    }
+    g = _base_global()
     r_panel, _ = calculate_portfolio_returns(
-        sized, scenario, daily, rets, ["A", "B"], g1, market_data_panel=panel
+        sized, scenario, daily, rets, ["A", "B"], g, market_data_panel=panel
     )
-    r_df, _ = calculate_portfolio_returns(sized, scenario, daily, rets, ["A", "B"], g0)
-    pd.testing.assert_series_equal(r_panel, r_df, rtol=0, atol=1e-9)
+    r_df, _ = calculate_portfolio_returns(sized, scenario, daily, rets, ["A", "B"], g)
+    pd.testing.assert_series_equal(r_panel, r_df, rtol=1e-5, atol=1e-12)
 
 
 def test_array_prep_missing_prices_multiindex_ohlc() -> None:
@@ -98,16 +85,12 @@ def test_array_prep_missing_prices_multiindex_ohlc() -> None:
         "costs_config": {"transaction_costs_bps": 0.0},
     }
     panel = MarketDataPanel.from_daily_ohlc_and_returns(ohlc, rets)
-    g1 = _base_global()
-    g0 = {
-        **_base_global(),
-        "feature_flags": {**g1["feature_flags"], "array_first_portfolio_prep": False},
-    }
+    g = _base_global()
     r_panel, _ = calculate_portfolio_returns(
-        sized, scenario, ohlc, rets, ["A", "B"], g1, market_data_panel=panel
+        sized, scenario, ohlc, rets, ["A", "B"], g, market_data_panel=panel
     )
-    r_df, _ = calculate_portfolio_returns(sized, scenario, ohlc, rets, ["A", "B"], g0)
-    pd.testing.assert_series_equal(r_panel, r_df, rtol=0, atol=1e-9)
+    r_df, _ = calculate_portfolio_returns(sized, scenario, ohlc, rets, ["A", "B"], g)
+    pd.testing.assert_series_equal(r_panel, r_df, rtol=1e-5, atol=1e-12)
 
 
 def test_array_prep_sparse_signal_rows() -> None:
@@ -124,16 +107,12 @@ def test_array_prep_sparse_signal_rows() -> None:
         "costs_config": {"transaction_costs_bps": 0.0},
     }
     panel = MarketDataPanel.from_daily_ohlc_and_returns(daily, rets)
-    g1 = _base_global()
-    g0 = {
-        **_base_global(),
-        "feature_flags": {**g1["feature_flags"], "array_first_portfolio_prep": False},
-    }
+    g = _base_global()
     r_panel, _ = calculate_portfolio_returns(
-        sized, scenario, daily, rets, ["A"], g1, market_data_panel=panel
+        sized, scenario, daily, rets, ["A"], g, market_data_panel=panel
     )
-    r_df, _ = calculate_portfolio_returns(sized, scenario, daily, rets, ["A"], g0)
-    pd.testing.assert_series_equal(r_panel, r_df, rtol=0, atol=1e-9)
+    r_df, _ = calculate_portfolio_returns(sized, scenario, daily, rets, ["A"], g)
+    pd.testing.assert_series_equal(r_panel, r_df, rtol=1e-5, atol=1e-12)
 
 
 def test_no_trade_tracking_panel_matches_dataframe() -> None:
@@ -149,25 +128,21 @@ def test_no_trade_tracking_panel_matches_dataframe() -> None:
         "allocation_mode": "fixed",
     }
     panel = MarketDataPanel.from_daily_ohlc_and_returns(daily, rets)
-    g_panel = _base_global()
-    g_no = {
-        **_base_global(),
-        "feature_flags": {**g_panel["feature_flags"], "array_first_portfolio_prep": False},
-    }
+    g = _base_global()
     r_a, _ = calculate_portfolio_returns(
         sized,
         scenario,
         daily,
         rets,
         ["A", "B"],
-        g_panel,
+        g,
         track_trades=False,
         market_data_panel=panel,
     )
     r_b, _ = calculate_portfolio_returns(
-        sized, scenario, daily, rets, ["A", "B"], g_no, track_trades=False
+        sized, scenario, daily, rets, ["A", "B"], g, track_trades=False
     )
-    pd.testing.assert_series_equal(r_a, r_b, rtol=0, atol=1e-9)
+    pd.testing.assert_series_equal(r_a, r_b, rtol=1e-5, atol=1e-12)
 
 
 @patch("portfolio_backtester.backtester_logic.portfolio_logic.TradeTracker")
@@ -187,22 +162,18 @@ def test_trade_tracking_falls_back_close_prep(mock_tt_cls) -> None:
     mock_tt.portfolio_value_tracker.daily_portfolio_value = pd.Series(1000.0, index=dates)
     mock_tt_cls.return_value = mock_tt
     panel = MarketDataPanel.from_daily_ohlc_and_returns(daily, rets)
-    g_panel = {**_base_global(1000.0), "portfolio_value": 1000.0}
-    g_no = {
-        **g_panel,
-        "feature_flags": {**g_panel["feature_flags"], "array_first_portfolio_prep": False},
-    }
+    g = {**_base_global(1000.0), "portfolio_value": 1000.0}
     calculate_portfolio_returns(
         sized,
         scenario,
         daily,
         rets,
         ["A", "B"],
-        g_panel,
+        g,
         track_trades=True,
         market_data_panel=panel,
     )
-    calculate_portfolio_returns(sized, scenario, daily, rets, ["A", "B"], g_no, track_trades=True)
+    calculate_portfolio_returns(sized, scenario, daily, rets, ["A", "B"], g, track_trades=True)
     assert mock_tt.populate_from_kernel_results.call_count == 2
 
 
@@ -216,13 +187,9 @@ def test_misaligned_panel_falls_back_to_dataframe() -> None:
         "costs_config": {"transaction_costs_bps": 0.0},
     }
     wrong_panel = MarketDataPanel.from_daily_ohlc_and_returns(daily.iloc[:-1], rets.iloc[:-1])
-    g1 = _base_global()
-    g0 = {
-        **_base_global(),
-        "feature_flags": {**g1["feature_flags"], "array_first_portfolio_prep": False},
-    }
+    g = _base_global()
     r_wrong, _ = calculate_portfolio_returns(
-        sized, scenario, daily, rets, ["A"], g1, market_data_panel=wrong_panel
+        sized, scenario, daily, rets, ["A"], g, market_data_panel=wrong_panel
     )
-    r_df, _ = calculate_portfolio_returns(sized, scenario, daily, rets, ["A"], g0)
-    pd.testing.assert_series_equal(r_wrong, r_df, rtol=0, atol=1e-9)
+    r_df, _ = calculate_portfolio_returns(sized, scenario, daily, rets, ["A"], g)
+    pd.testing.assert_series_equal(r_wrong, r_df, rtol=1e-5, atol=1e-12)

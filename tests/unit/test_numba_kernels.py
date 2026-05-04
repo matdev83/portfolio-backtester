@@ -2,8 +2,6 @@ import numpy as np
 from portfolio_backtester.numba_kernels import (
     trade_tracking_kernel,
     trade_lifecycle_kernel,
-    run_backtest_numba,
-    _calculate_window_return_numba,
 )
 
 
@@ -196,36 +194,3 @@ class TestNumbaKernelsExtended:
         assert t2["exit_price"] == 105.0
         assert t2["quantity"] == -10.0
         assert t2["pnl"] == 100.0
-
-    def test_run_backtest_numba_simple(self):
-        # 3 Days, 1 Asset
-        prices = np.array([[100.0], [110.0], [121.0]], dtype=np.float64)  # +10%  # +10%
-
-        signals = np.array([[1.0], [1.0], [1.0]], dtype=np.float64)  # Full long
-
-        # Window: Day 0 to Day 3 (exclusive)
-        start_indices = np.array([0], dtype=np.int64)
-        end_indices = np.array([3], dtype=np.int64)
-
-        returns = run_backtest_numba(prices, signals, start_indices, end_indices)
-
-        # _calculate_window_return_numba logic:
-        # Day 1 (from 0 to 1): Return (110-100)/100 = 0.1. Signal[0] = 1.0. Daily = 0.1 * 1.0 = 0.1.
-        # Day 2 (from 1 to 2): Return (121-110)/110 = 0.1. Signal[1] = 1.0. Daily = 0.1 * 1.0 = 0.1.
-        # Avg = (0.1 + 0.1) / (3-1) = 0.2 / 2 = 0.1
-
-        assert len(returns) == 1
-        assert np.isclose(returns[0], 0.1)
-
-    def test_calculate_window_return_numba_nans(self):
-        prices = np.array([[100.0], [np.nan], [100.0]], dtype=np.float64)
-
-        signals = np.array([[1.0], [1.0], [1.0]], dtype=np.float64)
-
-        ret = _calculate_window_return_numba(prices, signals)
-
-        # Should skip NaN days and divide by total days - 1
-        # Day 1: NaN price -> skip
-        # Day 2: NaN prev price -> skip
-        # Result 0.0
-        assert ret == 0.0

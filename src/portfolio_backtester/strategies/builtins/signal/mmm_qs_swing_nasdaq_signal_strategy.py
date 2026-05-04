@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from ..._core.base.base.signal_strategy import SignalStrategy
+from ..._core.target_generation import StrategyContext
 from ....risk_management.atr_service import calculate_atr_fast
 
 if TYPE_CHECKING:
@@ -142,6 +143,8 @@ class _BracketState:
 
 class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
     """Daily long-only swing signals with calendar filters and ATR stop/limit brackets.
+
+    Full-period authoring API: :py:meth:`generate_target_weights`.
 
     Scenarios should set ``timing_config.trade_execution_timing: bar_close`` (on bar close)
     to match the Pine-style same-bar fill assumption; built-in YAMLs ship with that default.
@@ -344,6 +347,32 @@ class MmmQsSwingNasdaqSignalStrategy(SignalStrategy):
             self.drawdown_from_ath_min_pct,
             self.drawdown_from_ath_max_dist_from_min_dd_pct,
         )
+
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        """Full-scan targets matching sequential legacy ``generate_signals`` semantics."""
+        self._bracket = _BracketState()
+        cols = list(context.universe_tickers)
+        idx = pd.DatetimeIndex(context.rebalance_dates)
+        fill_value = float("nan") if context.use_sparse_nan_for_inactive_rows else 0.0
+        out = pd.DataFrame(fill_value, index=idx, columns=cols, dtype=float)
+        if len(idx) == 0 or len(cols) == 0:
+            return out
+        nu_full = context.non_universe_data
+        for d in idx:
+            if d not in context.asset_data.index:
+                continue
+            nu_slice = nu_full.loc[:d] if len(nu_full.columns) > 0 else pd.DataFrame()
+            sig = self.generate_signals(
+                context.asset_data.loc[:d],
+                context.benchmark_data.loc[:d],
+                nu_slice,
+                current_date=d,
+            )
+            if d not in sig.index:
+                continue
+            out.loc[d, :] = sig.loc[d].reindex(cols)
+
+        return out
 
     def generate_signals(
         self,

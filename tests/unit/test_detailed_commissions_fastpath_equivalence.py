@@ -55,13 +55,13 @@ def test_detailed_commissions_matches_calculator_series(use_numba):
     # We pass weights_daily and prices daily, calculator derives quantities from weights diff and prices
     turnover_series = pd.Series(
         1.0, index=dates, dtype=float
-    )  # not used in detailed path except as fallback
+    )  # not used by the per-share commission path except as fallback
     ref_total_costs, breakdown, _ = calc.calculate_portfolio_commissions(
         turnover=turnover_series,
         weights_daily=weights,
         price_data=prices,
         portfolio_value=float(global_config["portfolio_value"]),
-        transaction_costs_bps=None,  # force detailed path
+        transaction_costs_bps=None,  # use per-share commission model (not flat bps)
     )
     ref_total_costs = ref_total_costs.astype(float).reindex(dates).fillna(0.0)
 

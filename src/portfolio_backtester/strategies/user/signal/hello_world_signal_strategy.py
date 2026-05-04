@@ -5,6 +5,7 @@ from typing import Dict, Any, List, Optional, Union, Mapping, TYPE_CHECKING
 import pandas as pd
 
 from ..._core.base.base.signal_strategy import SignalStrategy
+from ..._core.target_generation import StrategyContext, default_benchmark_ticker
 
 if TYPE_CHECKING:
     from portfolio_backtester.canonical_config import CanonicalScenarioConfig
@@ -12,6 +13,8 @@ if TYPE_CHECKING:
 
 class HelloWorldSignalStrategy(SignalStrategy):
     """Minimal user example strategy.
+
+    Full-period authoring API: :py:meth:`generate_target_weights`.
     ...
         - Intended to satisfy config validation and provide a simple runnable example.
     """
@@ -55,6 +58,23 @@ class HelloWorldSignalStrategy(SignalStrategy):
                         continue
         return df
 
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        cols = list(context.universe_tickers)
+        idx = pd.DatetimeIndex(context.rebalance_dates)
+        fill_value = float("nan") if context.use_sparse_nan_for_inactive_rows else 0.0
+        result = pd.DataFrame(fill_value, index=idx, columns=cols, dtype=float)
+        if len(idx) == 0:
+            return result
+
+        close_prices = self._extract_close_frame(context.asset_data)
+        present = [c for c in cols if c in close_prices.columns]
+        if len(present) == 0:
+            return result.fillna(0.0) if not context.use_sparse_nan_for_inactive_rows else result
+
+        weight = self.leverage / float(len(present))
+        result.loc[:, present] = float(weight)
+        return result
+
     def generate_signal_matrix(
         self,
         all_historical_data: pd.DataFrame,
@@ -66,21 +86,18 @@ class HelloWorldSignalStrategy(SignalStrategy):
         end_date: Optional[pd.Timestamp] = None,
         use_sparse_nan_for_inactive_rows: bool = False,
     ) -> Optional[pd.DataFrame]:
-        cols = list(universe_tickers)
-        idx = pd.DatetimeIndex(rebalance_dates)
-        fill_value = float("nan") if use_sparse_nan_for_inactive_rows else 0.0
-        result = pd.DataFrame(fill_value, index=idx, columns=cols, dtype=float)
-        if len(idx) == 0:
-            return result
-
-        close_prices = self._extract_close_frame(all_historical_data)
-        present = [c for c in cols if c in close_prices.columns]
-        if len(present) == 0:
-            return result.fillna(0.0) if not use_sparse_nan_for_inactive_rows else result
-
-        weight = self.leverage / float(len(present))
-        result.loc[:, present] = float(weight)
-        return result
+        ctx = StrategyContext.from_standard_inputs(
+            asset_data=all_historical_data,
+            benchmark_data=benchmark_historical_data,
+            non_universe_data=non_universe_historical_data,
+            rebalance_dates=rebalance_dates,
+            universe_tickers=universe_tickers,
+            benchmark_ticker=default_benchmark_ticker(benchmark_historical_data, universe_tickers),
+            wfo_start_date=start_date,
+            wfo_end_date=end_date,
+            use_sparse_nan_for_inactive_rows=use_sparse_nan_for_inactive_rows,
+        )
+        return self.generate_target_weights(ctx)
 
     def generate_signals(
         self,

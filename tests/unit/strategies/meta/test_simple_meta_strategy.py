@@ -1,7 +1,9 @@
 """Tests for SimpleMetaStrategy class."""
 
+import pandas as pd
 from unittest.mock import Mock, patch
 
+from portfolio_backtester.strategies._core.target_generation import StrategyContext
 from portfolio_backtester.strategies.builtins.meta.simple_meta_strategy import SimpleMetaStrategy
 
 
@@ -94,3 +96,32 @@ class TestSimpleMetaStrategy:
         # tunable_parameters now returns dict, check keys
         assert isinstance(params, dict)
         assert expected_base_params.issubset(set(params.keys()))
+
+    def test_generate_target_weights_returns_none_meta_opt_out(self) -> None:
+        config = {
+            "initial_capital": 1000000,
+            "allocations": [
+                {
+                    "strategy_id": "strategy1",
+                    "strategy_class": "FixedWeightPortfolioStrategy",
+                    "strategy_params": {"weights": {"AAA": 1.0}},
+                    "weight": 1.0,
+                },
+            ],
+        }
+        strategy = SimpleMetaStrategy(config)
+        idx = pd.date_range("2024-01-02", periods=5, freq="B")
+        universe = ["AAA"]
+        asset = pd.DataFrame({universe[0]: 1.0}, index=idx)
+        ctx = StrategyContext.from_standard_inputs(
+            asset_data=asset,
+            benchmark_data=asset,
+            non_universe_data=pd.DataFrame(),
+            rebalance_dates=pd.DatetimeIndex(idx),
+            universe_tickers=universe,
+            benchmark_ticker=universe[0],
+            wfo_start_date=None,
+            wfo_end_date=None,
+            use_sparse_nan_for_inactive_rows=False,
+        )
+        assert strategy.generate_target_weights(ctx) is None

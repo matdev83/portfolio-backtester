@@ -2,6 +2,7 @@ import pandas as pd
 from typing import Any, Dict, Optional
 
 from ...strategies._core.base.base.base_strategy import BaseStrategy
+from ...strategies._core.target_generation import StrategyContext
 
 
 class StopLossTesterStrategy(BaseStrategy):
@@ -41,6 +42,18 @@ class StopLossTesterStrategy(BaseStrategy):
                 "step": 0.5,
             },
         }
+
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        """Return full-scan equal-weight targets for stop-loss diagnostics."""
+        assets = list(context.universe_tickers)
+        if not assets:
+            return pd.DataFrame(index=context.rebalance_dates)
+        return pd.DataFrame(
+            1.0 / len(assets),
+            index=context.rebalance_dates,
+            columns=assets,
+            dtype=float,
+        )
 
     def generate_signals(
         self,

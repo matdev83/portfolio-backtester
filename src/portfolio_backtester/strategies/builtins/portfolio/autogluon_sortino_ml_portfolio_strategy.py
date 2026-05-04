@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import logging
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, cast, Union, Mapping, TYPE_CHECKING
@@ -9,8 +10,10 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
+from portfolio_backtester.backtester_logic.strategy_logic import _expanding_iloc_ends
 from portfolio_backtester.numba_optimized import rolling_sortino_batch
 from portfolio_backtester.strategies._core.base import PortfolioStrategy
+from portfolio_backtester.strategies._core.target_generation import StrategyContext
 
 if TYPE_CHECKING:
     from portfolio_backtester.canonical_config import CanonicalScenarioConfig
@@ -27,7 +30,9 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
     optionally scaled by volatility targeting (allowing gross exposure to drift).
     """
 
-    def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]) -> None:
+    def __init__(
+        self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]
+    ) -> None:
         super().__init__(strategy_config)
 
         params = self._get_params_dict()
@@ -65,6 +70,20 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
             params.setdefault(key, value)
 
         self._predictor_cache: dict[str, Any] = {}
+        self._pretrained = False
+
+    def _checkpoint_target_weights_scan(self) -> dict[str, Any]:
+        return {
+            "_predictor_cache": dict(self._predictor_cache),
+            "_pretrained": bool(self._pretrained),
+        }
+
+    def _restore_target_weights_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        self._predictor_cache = checkpoint["_predictor_cache"]
+        self._pretrained = checkpoint["_pretrained"]
+
+    def _reset_target_weights_scan_state(self) -> None:
+        self._predictor_cache = {}
         self._pretrained = False
 
     @classmethod
@@ -238,6 +257,57 @@ class AutogluonSortinoMlPortfolioStrategy(PortfolioStrategy):
         output.loc[current_date, weights.index] = weights
         output = self._enforce_trade_direction_constraints(output)
         return output
+
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        cols = list(context.universe_tickers)
+        idx = pd.DatetimeIndex(context.rebalance_dates)
+        fill_value = float("nan") if context.use_sparse_nan_for_inactive_rows else 0.0
+        out = pd.DataFrame(fill_value, index=idx, columns=cols, dtype=float)
+        if len(idx) == 0 or len(cols) == 0:
+            return out
+
+        asset = context.asset_data
+        bench = context.benchmark_data
+        nu = context.non_universe_data
+        expanding_ends, date_masks = _expanding_iloc_ends(asset.index, idx)
+        sig = inspect.signature(self.generate_signals)
+        has_nu = "non_universe_historical_data" in sig.parameters
+        wfo_start = context.wfo_start_date
+        wfo_end = context.wfo_end_date
+
+        checkpoint = self._checkpoint_target_weights_scan()
+        try:
+            self._reset_target_weights_scan_state()
+            for i, d in enumerate(idx):
+                if expanding_ends is not None:
+                    end = int(expanding_ends[i])
+                    ahist = asset.iloc[:end]
+                    bhist = bench.iloc[:end]
+                    nu_hist = nu.iloc[:end] if len(nu.index) > 0 else nu
+                else:
+                    assert date_masks is not None
+                    mask = date_masks[d]
+                    ahist = asset.loc[mask]
+                    bhist = bench.loc[mask]
+                    nu_hist = nu.loc[mask] if len(nu.index) > 0 else nu
+                kw: Dict[str, Any] = {}
+                if has_nu:
+                    kw["non_universe_historical_data"] = None if nu_hist.empty else nu_hist
+                row_df = self.generate_signals(
+                    all_historical_data=ahist,
+                    benchmark_historical_data=bhist,
+                    current_date=d,
+                    start_date=wfo_start,
+                    end_date=wfo_end,
+                    **kw,
+                )
+                if row_df is None or row_df.empty:
+                    continue
+                row_series = row_df.iloc[0].reindex(cols)
+                out.loc[d, :] = row_series.astype(float)
+        finally:
+            self._restore_target_weights_checkpoint(checkpoint)
+        return out
 
     def _get_params_dict(self) -> Dict[str, Any]:
         params_any = self.strategy_config.get("strategy_params", self.strategy_config)

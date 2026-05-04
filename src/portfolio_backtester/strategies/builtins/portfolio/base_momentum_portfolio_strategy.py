@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from abc import abstractmethod
 from typing import Any, Optional, cast, Union, Mapping, TYPE_CHECKING
 
@@ -8,6 +9,7 @@ import pandas as pd
 import logging
 
 from portfolio_backtester.strategies._core.base import PortfolioStrategy
+from portfolio_backtester.strategies._core.target_generation import StrategyContext
 from portfolio_backtester.utils.portfolio_utils import default_candidate_weights
 from portfolio_backtester.utils.portfolio_utils import apply_leverage_and_smoothing
 from portfolio_backtester.utils.price_data_utils import extract_current_prices
@@ -16,6 +18,23 @@ if TYPE_CHECKING:
     from portfolio_backtester.canonical_config import CanonicalScenarioConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _tw_expanding_iloc_ends(
+    idx: pd.Index, rebalance_dates: pd.DatetimeIndex
+) -> tuple[Optional[np.ndarray], Optional[dict[Any, Any]]]:
+    ends: Optional[np.ndarray] = None
+    if isinstance(idx, pd.DatetimeIndex) and idx.is_monotonic_increasing and idx.is_unique:
+        try:
+            ends = np.asarray(idx.searchsorted(rebalance_dates, side="right"), dtype=np.int64)
+        except Exception:  # noqa: BLE001
+            ends = None
+
+    if ends is not None:
+        return ends, None
+
+    masks: dict[Any, Any] = {d: idx <= d for d in rebalance_dates}
+    return None, masks
 
 
 class BaseMomentumPortfolioStrategy(PortfolioStrategy):
@@ -33,6 +52,7 @@ class BaseMomentumPortfolioStrategy(PortfolioStrategy):
         self.current_derisk_flag: bool = False
         self.consecutive_periods_under_sma: int = 0
         self.entry_prices: Optional[pd.Series] = None
+        self._generate_target_weights_scan_active: bool = False
 
         params_dict_to_update = self.strategy_config
         if "strategy_params" in self.strategy_config:
@@ -40,9 +60,10 @@ class BaseMomentumPortfolioStrategy(PortfolioStrategy):
                 self.strategy_config["strategy_params"] = {}
             # Ensure it's a mutable dict for setdefault calls
             if not isinstance(self.strategy_config["strategy_params"], dict):
-                self.strategy_config["strategy_params"] = dict(self.strategy_config["strategy_params"])
+                self.strategy_config["strategy_params"] = dict(
+                    self.strategy_config["strategy_params"]
+                )
             params_dict_to_update = self.strategy_config["strategy_params"]
-
 
         defaults = {
             "num_holdings": None,
@@ -59,6 +80,92 @@ class BaseMomentumPortfolioStrategy(PortfolioStrategy):
         }
         for k, v in defaults.items():
             params_dict_to_update.setdefault(k, v)
+
+    def _checkpoint_target_weights_scan(self) -> dict[str, Any]:
+        return {
+            "__tbwm_w_prev": None if self.w_prev is None else self.w_prev.copy(),
+            "__tbwm_current_derisk_flag": bool(self.current_derisk_flag),
+            "__tbwm_consecutive_periods_under_sma": int(self.consecutive_periods_under_sma),
+            "__tbwm_entry_prices": None if self.entry_prices is None else self.entry_prices.copy(),
+            "__tbwm_generate_target_weights_scan_active": bool(
+                getattr(self, "_generate_target_weights_scan_active", False)
+            ),
+        }
+
+    def _restore_target_weights_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        self.w_prev = checkpoint["__tbwm_w_prev"]
+        self.current_derisk_flag = checkpoint["__tbwm_current_derisk_flag"]
+        self.consecutive_periods_under_sma = checkpoint["__tbwm_consecutive_periods_under_sma"]
+        self.entry_prices = checkpoint["__tbwm_entry_prices"]
+        self._generate_target_weights_scan_active = checkpoint[
+            "__tbwm_generate_target_weights_scan_active"
+        ]
+
+    def _reset_target_weights_scan_state(self) -> None:
+        self.w_prev = None
+        self.current_derisk_flag = False
+        self.consecutive_periods_under_sma = 0
+        self.entry_prices = None
+
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        cols = list(context.universe_tickers)
+        idx = pd.DatetimeIndex(context.rebalance_dates)
+        fill_value = float("nan") if context.use_sparse_nan_for_inactive_rows else 0.0
+        out = pd.DataFrame(fill_value, index=idx, columns=cols, dtype=float)
+        if len(idx) == 0 or len(cols) == 0:
+            return out
+
+        checkpoint = self._checkpoint_target_weights_scan()
+        try:
+            self._reset_target_weights_scan_state()
+
+            asset_panel = context.asset_data
+            bench_panel = context.benchmark_data
+            nu_panel = context.non_universe_data
+            has_nu = nu_panel is not None and nu_panel.shape[1] > 0
+
+            expanding_ends, date_masks = _tw_expanding_iloc_ends(asset_panel.index, idx)
+
+            sig = inspect.signature(self.generate_signals)
+            has_nu_param = "non_universe_historical_data" in sig.parameters
+
+            self._generate_target_weights_scan_active = True
+            try:
+                for i, d in enumerate(idx):
+                    if expanding_ends is not None:
+                        end = int(expanding_ends[i])
+                        ahist = asset_panel.iloc[:end]
+                        bhist = bench_panel.iloc[:end]
+                        nu_hist = nu_panel.iloc[:end] if has_nu else pd.DataFrame()
+                    else:
+                        assert date_masks is not None
+                        mask = date_masks[d]
+                        ahist = asset_panel.loc[mask]
+                        bhist = bench_panel.loc[mask]
+                        nu_hist = nu_panel.loc[mask] if has_nu else pd.DataFrame()
+
+                    call_kw: dict[str, Any] = {}
+                    if has_nu_param:
+                        call_kw["non_universe_historical_data"] = nu_hist
+
+                    row_df = self.generate_signals(
+                        all_historical_data=ahist,
+                        benchmark_historical_data=bhist,
+                        current_date=d,
+                        start_date=context.wfo_start_date,
+                        end_date=context.wfo_end_date,
+                        **call_kw,
+                    )
+                    if row_df is None or row_df.empty:
+                        continue
+                    row_series = row_df.iloc[0].reindex(cols)
+                    out.loc[d, :] = pd.to_numeric(row_series, errors="coerce").astype(float).values
+            finally:
+                self._generate_target_weights_scan_active = False
+        finally:
+            self._restore_target_weights_checkpoint(checkpoint)
+
+        return out
 
     @abstractmethod
     def _calculate_scores(

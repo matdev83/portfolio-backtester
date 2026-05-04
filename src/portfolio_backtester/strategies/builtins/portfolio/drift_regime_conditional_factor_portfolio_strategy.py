@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any, Dict, List, Optional, cast, Union, Mapping, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+
+from portfolio_backtester.backtester_logic.strategy_logic import _expanding_iloc_ends
 from portfolio_backtester.strategies._core.base import PortfolioStrategy
+from portfolio_backtester.strategies._core.target_generation import StrategyContext
 
 if TYPE_CHECKING:
     from portfolio_backtester.canonical_config import CanonicalScenarioConfig
@@ -322,6 +326,52 @@ class DriftRegimeConditionalFactorPortfolioStrategy(PortfolioStrategy):
         output.index = pd.Index([current_date])
 
         return self._enforce_trade_direction_constraints(output)
+
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        cols = list(context.universe_tickers)
+        idx = pd.DatetimeIndex(context.rebalance_dates)
+        fill_value = float("nan") if context.use_sparse_nan_for_inactive_rows else 0.0
+        out = pd.DataFrame(fill_value, index=idx, columns=cols, dtype=float)
+        if len(idx) == 0 or len(cols) == 0:
+            return out
+
+        asset = context.asset_data
+        bench = context.benchmark_data
+        nu = context.non_universe_data
+        expanding_ends, date_masks = _expanding_iloc_ends(asset.index, idx)
+        sig = inspect.signature(self.generate_signals)
+        has_nu = "non_universe_historical_data" in sig.parameters
+        wfo_start = context.wfo_start_date
+        wfo_end = context.wfo_end_date
+
+        for i, d in enumerate(idx):
+            if expanding_ends is not None:
+                end = int(expanding_ends[i])
+                ahist = asset.iloc[:end]
+                bhist = bench.iloc[:end]
+                nu_hist = nu.iloc[:end] if len(nu.index) > 0 else nu
+            else:
+                assert date_masks is not None
+                mask = date_masks[d]
+                ahist = asset.loc[mask]
+                bhist = bench.loc[mask]
+                nu_hist = nu.loc[mask] if len(nu.index) > 0 else nu
+            kw: Dict[str, Any] = {}
+            if has_nu:
+                kw["non_universe_historical_data"] = None if nu_hist.empty else nu_hist
+            row_df = self.generate_signals(
+                all_historical_data=ahist,
+                benchmark_historical_data=bhist,
+                current_date=d,
+                start_date=wfo_start,
+                end_date=wfo_end,
+                **kw,
+            )
+            if row_df is None or row_df.empty:
+                continue
+            row_series = row_df.iloc[0].reindex(cols)
+            out.loc[d, :] = row_series.astype(float)
+        return out
 
     def _empty_weights(self, data: pd.DataFrame, date: pd.Timestamp) -> pd.DataFrame:
         """Return zero weights for all assets."""

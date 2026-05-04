@@ -1008,7 +1008,7 @@ def main() -> int:
         "limitations": [
             "Single global use_carlos_roro applies to full strategy; per-month optimal RoRo flags from Task A cannot all be honored simultaneously.",
             "mixed_params_global_roro_* uses entry/hold from unrestricted per-month winners (RoRo chosen per month in isolation).",
-            "Fast sim uses bar_close lag on 0/1 targets + IBKR-style costs; parity_sample compares vs BacktestRunner detailed path.",
+            "Fast sim uses bar_close lag on 0/1 targets + IBKR-style costs; parity_sample compares vs BacktestRunner canonical path.",
             "4095 subsets × 4 variant tracks recorded in task_b_all_subsets_metrics.csv.",
         ],
     }

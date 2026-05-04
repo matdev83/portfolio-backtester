@@ -6,9 +6,38 @@ import numpy as np
 import pandas as pd
 
 from ..._core.base.base.signal_strategy import SignalStrategy
+from ..._core.target_generation import StrategyContext
 
 if TYPE_CHECKING:
     from portfolio_backtester.canonical_config import CanonicalScenarioConfig
+
+
+def _target_weights_from_legacy_signal_scan(
+    strategy: SignalStrategy,
+    context: StrategyContext,
+) -> pd.DataFrame:
+    cols = list(context.universe_tickers)
+    idx = pd.DatetimeIndex(context.rebalance_dates)
+    fill_value = float("nan") if context.use_sparse_nan_for_inactive_rows else 0.0
+    out = pd.DataFrame(fill_value, index=idx, columns=cols, dtype=float)
+    if len(idx) == 0 or len(cols) == 0:
+        return out
+    nu_full = context.non_universe_data
+    for d in idx:
+        if d not in context.asset_data.index:
+            continue
+        nu_slice = nu_full.loc[:d] if len(nu_full.columns) > 0 else pd.DataFrame()
+        sig = strategy.generate_signals(
+            context.asset_data.loc[:d],
+            context.benchmark_data.loc[:d],
+            nu_slice,
+            current_date=d,
+        )
+        if d not in sig.index:
+            continue
+        out.loc[d, :] = sig.loc[d].reindex(cols)
+
+    return out
 
 
 def donchian_position_close_breakout(
@@ -101,7 +130,10 @@ def _logistic_weight(sig_0_100: pd.Series, *, center: float, slope: float) -> pd
 
 
 class DonchianAsriSignalStrategy(SignalStrategy):
-    """Donchian channel strategy with optional ASRI filter and sizing."""
+    """Donchian channel strategy with optional ASRI filter and sizing.
+
+    Full-period authoring API: :py:meth:`generate_target_weights`.
+    """
 
     def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
@@ -192,6 +224,10 @@ class DonchianAsriSignalStrategy(SignalStrategy):
             return None
         return pd.to_numeric(close[self.asri_symbol], errors="coerce")
 
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        """Full-scan targets aligned with sequential legacy ``generate_signals`` rows."""
+        return _target_weights_from_legacy_signal_scan(self, context)
+
     def generate_signals(
         self,
         all_historical_data: pd.DataFrame,
@@ -213,7 +249,9 @@ class DonchianAsriSignalStrategy(SignalStrategy):
             return result
 
         asri_hist = (
-            asri_series.loc[:current_date].dropna() if asri_series is not None else pd.Series(dtype="float64")
+            asri_series.loc[:current_date].dropna()
+            if asri_series is not None
+            else pd.Series(dtype="float64")
         )
         if (self.use_asri_filter or self.use_asri_sizing) and asri_hist.empty:
             return result
@@ -225,7 +263,9 @@ class DonchianAsriSignalStrategy(SignalStrategy):
             risk_on = (asri_series < thr).reindex(close_prices.index).fillna(False)
             if self.use_asri_sizing:
                 center = float(asri_hist.quantile(self.asri_size_center_quantile))
-                size_weight = _logistic_weight(asri_series, center=center, slope=self.asri_size_slope)
+                size_weight = _logistic_weight(
+                    asri_series, center=center, slope=self.asri_size_slope
+                )
 
         for ticker in tickers:
             close = close_prices[ticker].loc[:current_date]
@@ -247,7 +287,11 @@ class DonchianAsriSignalStrategy(SignalStrategy):
             if current_date not in pos_series.index:
                 continue
             pos = float(pos_series.loc[current_date])
-            if self.use_asri_sizing and size_weight is not None and current_date in size_weight.index:
+            if (
+                self.use_asri_sizing
+                and size_weight is not None
+                and current_date in size_weight.index
+            ):
                 pos *= float(size_weight.loc[current_date])
             result.loc[current_date, ticker] = pos * self.leverage
 
@@ -255,7 +299,10 @@ class DonchianAsriSignalStrategy(SignalStrategy):
 
 
 class AsriThresholdSignalStrategy(SignalStrategy):
-    """Simple ASRI threshold risk-on signal (no Donchian logic)."""
+    """Simple ASRI threshold risk-on signal (no Donchian logic).
+
+    Full-period authoring API: :py:meth:`generate_target_weights`.
+    """
 
     def __init__(self, strategy_config: Union[Mapping[str, Any], "CanonicalScenarioConfig"]):
         super().__init__(strategy_config)
@@ -288,6 +335,10 @@ class AsriThresholdSignalStrategy(SignalStrategy):
 
     def get_non_universe_data_requirements(self) -> list[str]:
         return [self.asri_symbol]
+
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        """Full-scan targets aligned with sequential legacy ``generate_signals`` rows."""
+        return _target_weights_from_legacy_signal_scan(self, context)
 
     def _extract_close_frame(self, df: pd.DataFrame) -> pd.DataFrame:
         if isinstance(df.columns, pd.MultiIndex):
@@ -336,7 +387,11 @@ class AsriThresholdSignalStrategy(SignalStrategy):
         if hist.empty:
             return result
         thr = float(hist.quantile(self.asri_threshold_quantile))
-        risk_on = bool(asri_series.loc[current_date] < thr) if current_date in asri_series.index else False
+        risk_on = (
+            bool(asri_series.loc[current_date] < thr)
+            if current_date in asri_series.index
+            else False
+        )
         if risk_on and tickers:
             weight = self.leverage / float(len(tickers))
             result.loc[current_date, :] = weight

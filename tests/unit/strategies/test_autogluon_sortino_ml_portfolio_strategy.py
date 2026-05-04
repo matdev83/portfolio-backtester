@@ -1,12 +1,64 @@
+from __future__ import annotations
+
+import inspect
+from typing import Any
+
+import numpy as np
 import pandas as pd
 import pytest
-import numpy as np
-
 from unittest.mock import patch
 
+from portfolio_backtester.backtester_logic.strategy_logic import _expanding_iloc_ends
+from portfolio_backtester.strategies._core.target_generation import StrategyContext
 from portfolio_backtester.strategies.builtins.portfolio.autogluon_sortino_ml_portfolio_strategy import (
     AutogluonSortinoMlPortfolioStrategy,
 )
+
+
+def _legacy_expected_weights_autogluon(
+    strategy: AutogluonSortinoMlPortfolioStrategy,
+    *,
+    asset_panel: pd.DataFrame,
+    benchmark_panel: pd.DataFrame,
+    rebalance_dates: pd.DatetimeIndex,
+    universe_tickers: list[str],
+    use_sparse_nan: bool,
+    wfo_start: pd.Timestamp | None,
+    wfo_end: pd.Timestamp | None,
+) -> pd.DataFrame:
+    cols = list(universe_tickers)
+    idx = pd.DatetimeIndex(rebalance_dates)
+    fill_value = float("nan") if use_sparse_nan else 0.0
+    expected = pd.DataFrame(fill_value, index=idx, columns=cols, dtype=float)
+    expanding_ends, date_masks = _expanding_iloc_ends(asset_panel.index, idx)
+    sig = inspect.signature(strategy.generate_signals)
+    has_nu_param = "non_universe_historical_data" in sig.parameters
+    for i, d in enumerate(idx):
+        if expanding_ends is not None:
+            end = int(expanding_ends[i])
+            ahist = asset_panel.iloc[:end]
+            bhist = benchmark_panel.iloc[:end]
+        else:
+            assert date_masks is not None
+            mask = date_masks[d]
+            ahist = asset_panel.loc[mask]
+            bhist = benchmark_panel.loc[mask]
+        kw: dict[str, Any] = {}
+        if has_nu_param:
+            kw["non_universe_historical_data"] = None
+        row_df = strategy.generate_signals(
+            all_historical_data=ahist,
+            benchmark_historical_data=bhist,
+            current_date=d,
+            start_date=wfo_start,
+            end_date=wfo_end,
+            **kw,
+        )
+        if row_df is None or row_df.empty:
+            continue
+        row_series = row_df.iloc[0].reindex(cols)
+        expected.loc[d, :] = row_series.astype(float)
+    return expected
 
 
 @pytest.fixture
@@ -252,3 +304,57 @@ def test_forward_labels_use_future_returns_only():
     assert not labels.empty
     assert captured_starts
     assert captured_starts[0] > training_date
+
+
+def test_autogluon_strategy_exposes_generate_target_weights(
+    momentum_test_data: dict[str, pd.DataFrame],
+) -> None:
+    strategy = AutogluonSortinoMlPortfolioStrategy(_make_strategy_config())
+    assert callable(getattr(strategy, "generate_target_weights", None))
+
+
+def test_autogluon_generate_target_weights_matches_legacy_generate_signals(
+    momentum_test_data: dict[str, pd.DataFrame],
+) -> None:
+    daily = momentum_test_data["daily_ohlc_data"]
+    bench = momentum_test_data["benchmark_ohlc_data"]
+    ix = pd.DatetimeIndex(daily.index)
+    rebalance_dates = ix[[-55, -40, -25, -1]]
+
+    universe_tickers = ["StockA", "StockB", "StockC", "StockD"]
+    ctx = StrategyContext.from_standard_inputs(
+        asset_data=daily,
+        benchmark_data=bench,
+        non_universe_data=pd.DataFrame(),
+        rebalance_dates=rebalance_dates,
+        universe_tickers=universe_tickers,
+        benchmark_ticker="SPY",
+        wfo_start_date=None,
+        wfo_end_date=None,
+        use_sparse_nan_for_inactive_rows=False,
+    )
+    cfg = _make_strategy_config()
+    with patch.object(
+        AutogluonSortinoMlPortfolioStrategy,
+        "_get_or_train_predictor",
+        return_value=DummyPredictor(0.1),
+    ):
+        tw_strat = AutogluonSortinoMlPortfolioStrategy(dict(cfg))
+        tw = tw_strat.generate_target_weights(ctx)
+        leg_strat = AutogluonSortinoMlPortfolioStrategy(dict(cfg))
+        expected = _legacy_expected_weights_autogluon(
+            leg_strat,
+            asset_panel=daily,
+            benchmark_panel=bench,
+            rebalance_dates=rebalance_dates,
+            universe_tickers=universe_tickers,
+            use_sparse_nan=False,
+            wfo_start=None,
+            wfo_end=None,
+        )
+    pd.testing.assert_frame_equal(
+        tw.fillna(0.0),
+        expected.fillna(0.0),
+        rtol=0.0,
+        atol=1e-9,
+    )

@@ -88,7 +88,7 @@ class TestParallelOptimizationEnhanced:
                 "scan_frequency": "D",
                 "mode": "signal_based",
             },
-            "feature_flags": {"prepared_arrays": True, "ndarray_simulation": True},
+            "feature_flags": {"prepared_arrays": True},
         }
 
     @pytest.fixture
@@ -99,7 +99,7 @@ class TestParallelOptimizationEnhanced:
             "strategy": "MonthlyStrategy",
             "strategy_params": {},
             "timing": {"rebalance_frequency": "M"},
-            "feature_flags": {"prepared_arrays": True, "ndarray_simulation": True},
+            "feature_flags": {"prepared_arrays": True},
         }
 
     @pytest.fixture
@@ -313,9 +313,7 @@ class TestParallelOptimizationEnhanced:
             )
 
             # Verify enhanced logging
-            mock_logger.info.assert_any_call(
-                "Launching %d worker processes for %d trials", 2, 5
-            )
+            mock_logger.info.assert_any_call("Launching %d worker processes for %d trials", 2, 5)
 
             # Verify processes were started
             assert mock_process.start.call_count == 2

@@ -5,7 +5,6 @@ Factory for creating performance optimizers for different optimizers.
 from typing import Dict, Any, Optional
 from .deduplication import GenericTrialDeduplicator
 from .parallel_execution import GenericParallelRunner
-from .vectorized_tracking import VectorizedTradeTracker
 from .interfaces import AbstractPerformanceOptimizer
 
 
@@ -31,18 +30,15 @@ class PerformanceOptimizerFactory:
         if config is None:
             config = {}
 
-        # Check if performance optimizations are enabled
         if not config.get("enable_performance_optimizations", True):
             return None
 
-        # Create components based on optimizer type
         if optimizer_type == "optuna":
             return OptunaPerformanceOptimizer(config)
-        elif optimizer_type == "genetic":
+        if optimizer_type == "genetic":
             return GeneticPerformanceOptimizer(config)
-        else:
-            # Return generic performance optimizer for unknown optimizer types
-            return GenericPerformanceOptimizer(config)
+
+        return GenericPerformanceOptimizer(config)
 
 
 class GenericPerformanceOptimizer(AbstractPerformanceOptimizer):
@@ -62,23 +58,6 @@ class GenericPerformanceOptimizer(AbstractPerformanceOptimizer):
             enable_deduplication=self.config.get("enable_deduplication", True)
         )
         self.parallel_runner = GenericParallelRunner(n_jobs=self.config.get("n_jobs", 1))
-        self.trade_tracker = VectorizedTradeTracker(
-            portfolio_value=self.config.get("portfolio_value", 100000.0)
-        )
-
-    def optimize_trade_tracking(self, weights: Any, prices: Any, costs: Any) -> Dict[str, Any]:
-        """
-        Optimize trade tracking performance.
-
-        Args:
-            weights: Portfolio weights
-            prices: Asset prices
-            costs: Transaction costs
-
-        Returns:
-            Dictionary of optimized trade statistics
-        """
-        return self.trade_tracker.track_trades_optimized(weights, prices, costs)
 
     def deduplicate_parameters(self, params: Dict[str, Any]) -> bool:
         """

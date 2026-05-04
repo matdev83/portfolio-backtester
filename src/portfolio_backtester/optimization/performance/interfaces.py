@@ -1,28 +1,11 @@
 """Abstract interfaces for performance optimization components."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
+from typing import Any, Dict, Optional
 
 
 class AbstractPerformanceOptimizer(ABC):
     """Abstract base class for performance optimizers."""
-
-    @abstractmethod
-    def optimize_trade_tracking(self, weights: Any, prices: Any, costs: Any) -> Dict[str, Any]:
-        """Optimize trade tracking performance.
-
-        Args:
-            weights: Portfolio weights
-            prices: Asset prices
-            costs: Transaction costs
-
-        Returns:
-            Dictionary of optimized trade statistics
-        """
-        pass
 
     @abstractmethod
     def deduplicate_parameters(self, params: Dict[str, Any]) -> bool:
@@ -47,24 +30,6 @@ class AbstractPerformanceOptimizer(ABC):
 
         Returns:
             Optimization result
-        """
-        pass
-
-
-class AbstractTradeTracker(ABC):
-    """Abstract base class for trade trackers."""
-
-    @abstractmethod
-    def track_trades_optimized(self, weights: Any, prices: Any, costs: Any) -> Dict[str, Any]:
-        """Track trades with optimized performance.
-
-        Args:
-            weights: Portfolio weights
-            prices: Asset prices
-            costs: Transaction costs
-
-        Returns:
-            Dictionary of trade statistics
         """
         pass
 

@@ -66,6 +66,26 @@ class MomentumBetaFilteredPortfolioStrategy(MomentumUnfilteredAtrPortfolioStrate
             {}
         )  # Track entry dates for time-based exit
 
+    def _checkpoint_target_weights_scan(self) -> dict[str, Any]:
+        ckpt = super()._checkpoint_target_weights_scan()
+        ckpt["__beta_assets_excl"] = set(self._assets_to_exclude_from_longs)
+        ckpt["__beta_short_assets"] = list(self._short_assets)
+        ckpt["__beta_short_entries"] = dict(self._short_entry_dates)
+        return ckpt
+
+    def _restore_target_weights_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        super()._restore_target_weights_checkpoint(checkpoint)
+        if "__beta_assets_excl" in checkpoint:
+            self._assets_to_exclude_from_longs = set(checkpoint["__beta_assets_excl"])
+            self._short_assets = list(checkpoint["__beta_short_assets"])
+            self._short_entry_dates = dict(checkpoint["__beta_short_entries"])
+
+    def _reset_target_weights_scan_state(self) -> None:
+        super()._reset_target_weights_scan_state()
+        self._assets_to_exclude_from_longs = set()
+        self._short_assets = []
+        self._short_entry_dates = {}
+
     # ------------------------------------------------------------------
     # Optimiser support
     # ------------------------------------------------------------------

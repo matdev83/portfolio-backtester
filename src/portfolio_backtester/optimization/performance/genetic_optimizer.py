@@ -6,14 +6,11 @@ genetic algorithm optimization while maintaining the abstract interface.
 """
 
 import logging
-from typing import Dict, Any, Optional
-from .base_optimizer import BasePerformanceOptimizer
-from .interfaces import (
-    AbstractTradeTracker,
-    AbstractTrialDeduplicator,
-    AbstractParallelRunner,
-)
+from typing import Any, Dict, Optional
+
 from ..population_diversity import PopulationDiversityManager
+from .base_optimizer import BasePerformanceOptimizer
+from .interfaces import AbstractParallelRunner, AbstractTrialDeduplicator
 
 logger = logging.getLogger(__name__)
 
@@ -23,49 +20,26 @@ class GeneticPerformanceOptimizer(BasePerformanceOptimizer):
     Performance optimizer specifically designed for Genetic Algorithm optimization.
 
     This implementation provides genetic algorithm-specific optimizations including
-    vectorized trade tracking, chromosome deduplication, and parallel population evaluation.
+    chromosome deduplication and parallel population evaluation.
     """
 
     def __init__(
         self,
-        enable_vectorized_tracking: bool = True,
         enable_deduplication: bool = True,
         enable_parallel_execution: bool = True,
         n_jobs: int = 1,
     ):
         super().__init__(
-            enable_vectorized_tracking=enable_vectorized_tracking,
             enable_deduplication=enable_deduplication,
             enable_parallel_execution=enable_parallel_execution,
             n_jobs=n_jobs,
         )
 
-        # Initialize genetic algorithm-specific components
-        self._trade_tracker: Optional[AbstractTradeTracker] = None
         self._deduplicator: Optional[AbstractTrialDeduplicator] = None
         self._parallel_runner: Optional[AbstractParallelRunner] = None
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("GeneticPerformanceOptimizer initialized")
-
-    def get_trade_tracker(self) -> Optional[AbstractTradeTracker]:
-        """Get the trade tracker implementation for genetic algorithms."""
-        if not self.enable_vectorized_tracking:
-            return None
-
-        if self._trade_tracker is None:
-            try:
-                from .vectorized_tracking import VectorizedTradeTracker
-
-                self._trade_tracker = VectorizedTradeTracker()
-
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug("Vectorized trade tracker created for genetic algorithm")
-            except ImportError as e:
-                logger.warning(f"Failed to create vectorized trade tracker: {e}")
-                return None
-
-        return self._trade_tracker
 
     def get_deduplicator(self) -> Optional[AbstractTrialDeduplicator]:
         """Get the deduplicator implementation for genetic algorithms."""
@@ -100,19 +74,6 @@ class GeneticPerformanceOptimizer(BasePerformanceOptimizer):
                 return None
 
         return self._parallel_runner
-
-    def _optimize_trade_tracking_impl(
-        self, weights: Any, prices: Any, costs: Any
-    ) -> Dict[str, Any]:
-        """Implementation of trade tracking optimization.
-
-        For genetic algorithms, we delegate to the trade tracker if available.
-        """
-        trade_tracker = self.get_trade_tracker()
-        if trade_tracker is not None:
-            return trade_tracker.track_trades_optimized(weights, prices, costs)
-        # Fallback to default behavior if no tracker available
-        return {}
 
     def _deduplicate_parameters_impl(self, params: Dict[str, Any]) -> bool:
         """Implementation of parameter deduplication.

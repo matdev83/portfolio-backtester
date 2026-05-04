@@ -7,11 +7,14 @@ if TYPE_CHECKING:
 import pandas as pd
 
 
+from ..._core.target_generation import StrategyContext
 from .ema_crossover_signal_strategy import EmaCrossoverSignalStrategy
 
 
 class EmaRoroSignalStrategy(EmaCrossoverSignalStrategy):
     """EMA crossover with RoRo-style leverage modulation (simplified).
+
+    Full-period authoring API: :py:meth:`generate_target_weights`.
 
     Exposes tunable_parameters including risk_off_leverage_multiplier as tests expect.
     """
@@ -51,6 +54,10 @@ class EmaRoroSignalStrategy(EmaCrossoverSignalStrategy):
         if (current_date.day % 2) == 0:
             return float(self.base_leverage * self.risk_off_leverage_multiplier)
         return float(self.base_leverage)
+
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        """Dense targets using RoRo leverage via ``_leverage_for_signal_row``."""
+        return super().generate_target_weights(context)
 
     def generate_signals(
         self,

@@ -10,6 +10,7 @@ A powerful Python tool for backtesting portfolio strategies with walk-forward op
 - [Key Features](#key-features)
 - [Setup](#setup)
 - [Available Strategies](#available-strategies)
+- [Strategy authoring & simulation](#strategy-authoring--simulation-engine)
 - [Usage](#usage)
   - [Running a Backtest](#running-a-backtest)
   - [Running Optimization](#running-optimization)
@@ -184,6 +185,16 @@ config/scenarios/builtins/
     ├── ema_crossover_signal_strategy/
     └── ...
 ```
+
+---
+
+## Strategy authoring & simulation engine
+
+Implement signal and portfolio strategies with **`generate_target_weights(context)`**, where `context` is a `StrategyContext` (`portfolio_backtester.strategies._core.target_generation`). The engine evaluates that API on the backtest calendar; it is the supported authoring surface for target weights.
+
+**Portfolio simulation** uses one canonical share/cash path (`simulate_portfolio` / Numba kernel). Costs follow executed share deltas (per-share minimums, caps, and slippage from global commission settings), or a flat **bps** charge when `costs_config.transaction_costs_bps` is set.
+
+**`track_trades`** only enables populating a `TradeTracker` from the same simulation; it does not switch return math or cost models.
 
 ---
 

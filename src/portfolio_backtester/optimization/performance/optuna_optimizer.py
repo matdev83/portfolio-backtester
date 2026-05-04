@@ -9,9 +9,8 @@ import logging
 from typing import Dict, Any, Optional
 from .base_optimizer import BasePerformanceOptimizer
 from .interfaces import (
-    AbstractTradeTracker,
-    AbstractTrialDeduplicator,
     AbstractParallelRunner,
+    AbstractTrialDeduplicator,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,50 +21,26 @@ class OptunaPerformanceOptimizer(BasePerformanceOptimizer):
     Performance optimizer specifically designed for Optuna optimization engine.
 
     This implementation provides Optuna-specific optimizations including
-    vectorized trade tracking, trial deduplication, and parallel execution.
+    trial deduplication and parallel execution.
     """
 
     def __init__(
         self,
-        enable_vectorized_tracking: bool = True,
         enable_deduplication: bool = True,
         enable_parallel_execution: bool = True,
         n_jobs: int = 1,
     ):
         super().__init__(
-            enable_vectorized_tracking=enable_vectorized_tracking,
             enable_deduplication=enable_deduplication,
             enable_parallel_execution=enable_parallel_execution,
             n_jobs=n_jobs,
         )
 
-        # Initialize Optuna-specific components with precise optional typing
-        self._trade_tracker: Optional[AbstractTradeTracker] = None
         self._deduplicator: Optional[AbstractTrialDeduplicator] = None
         self._parallel_runner: Optional[AbstractParallelRunner] = None
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("OptunaPerformanceOptimizer initialized")
-
-    def get_trade_tracker(self) -> Optional[AbstractTradeTracker]:
-        """Get the trade tracker implementation for Optuna."""
-        if not self.enable_vectorized_tracking:
-            return None
-
-        if self._trade_tracker is None:
-            try:
-                from .vectorized_tracking import VectorizedTradeTracker
-
-                tracker: AbstractTradeTracker = VectorizedTradeTracker()
-                self._trade_tracker = tracker
-
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug("Vectorized trade tracker created for Optuna")
-            except ImportError as e:
-                logger.warning(f"Failed to create vectorized trade tracker: {e}")
-                return None
-
-        return self._trade_tracker
 
     def get_deduplicator(self) -> Optional[AbstractTrialDeduplicator]:
         """Get the deduplicator implementation for Optuna."""
@@ -74,7 +49,6 @@ class OptunaPerformanceOptimizer(BasePerformanceOptimizer):
 
         if self._deduplicator is None:
             try:
-                # OptunaTrialDeduplicator implements AbstractTrialDeduplicator
                 dedup = OptunaTrialDeduplicator(enable_deduplication=True)
                 self._deduplicator = dedup
 
@@ -103,6 +77,18 @@ class OptunaPerformanceOptimizer(BasePerformanceOptimizer):
                 return None
 
         return self._parallel_runner
+
+    def _deduplicate_parameters_impl(self, params: Dict[str, Any]) -> bool:
+        deduplicator = self.get_deduplicator()
+        if deduplicator is not None:
+            return deduplicator.is_duplicate(params)
+        return False
+
+    def _run_parallel_optimization_impl(self, config: Dict[str, Any]) -> Any:
+        parallel_runner = self.get_parallel_runner()
+        if parallel_runner is not None:
+            return parallel_runner.run(config)
+        raise NotImplementedError("Parallel optimization not available for Optuna configuration")
 
     def supports_optimizer(self, optimizer_type: str) -> bool:
         """Check if this performance optimizer supports the given optimizer type."""

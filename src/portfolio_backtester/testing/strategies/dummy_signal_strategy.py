@@ -19,6 +19,7 @@ import pandas as pd
 import numpy as np
 
 from ...strategies._core.base.base.signal_strategy import SignalStrategy
+from ...strategies._core.target_generation import StrategyContext
 from ...risk_management.stop_loss_handlers import AtrBasedStopLoss, NoStopLoss
 
 
@@ -128,6 +129,38 @@ class DummySignalStrategy(SignalStrategy):
             )
 
         return pd.DataFrame([weights], index=[current_date])
+
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        """Return a deterministic full-scan target matrix for testing scenarios."""
+        checkpoint = self.rng.bit_generator.state
+        self.rng = np.random.default_rng(self.seed)
+        try:
+            targets = pd.DataFrame(
+                0.0,
+                index=context.rebalance_dates,
+                columns=context.universe_tickers,
+                dtype=float,
+            )
+            for current_date in context.rebalance_dates:
+                hist = context.asset_data.loc[context.asset_data.index <= current_date]
+                bench = context.benchmark_data.loc[context.benchmark_data.index <= current_date]
+                nu = context.non_universe_data.loc[context.non_universe_data.index <= current_date]
+                row = self.generate_signals(
+                    hist,
+                    bench,
+                    nu,
+                    current_date=current_date,
+                    start_date=context.wfo_start_date,
+                    end_date=context.wfo_end_date,
+                )
+                if not row.empty:
+                    targets.loc[current_date, :] = (
+                        row.iloc[0].reindex(targets.columns).fillna(0.0).to_numpy(dtype=float)
+                    )
+            return targets
+        finally:
+            self.rng = np.random.default_rng()
+            self.rng.bit_generator.state = checkpoint
 
     def __str__(self):
         return f"DummySignalStrategy({self.symbol})"

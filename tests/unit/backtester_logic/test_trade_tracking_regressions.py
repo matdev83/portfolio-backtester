@@ -29,7 +29,6 @@ def test_trade_tracking_matches_untracked_path_without_costs() -> None:
         "costs_config": {"transaction_costs_bps": 0.0},
     }
     global_config = {
-        "feature_flags": {"ndarray_simulation": True},
         "portfolio_value": 1000.0,
     }
 
@@ -65,7 +64,6 @@ def test_trade_tracking_charges_initial_entry_costs_on_day_zero() -> None:
         "costs_config": {"transaction_costs_bps": 100.0},
     }
     global_config = {
-        "feature_flags": {"ndarray_simulation": True},
         "portfolio_value": 1000.0,
     }
 
@@ -94,7 +92,6 @@ def test_trade_tracking_missing_held_price_matches_untracked_path() -> None:
         "costs_config": {"transaction_costs_bps": 0.0},
     }
     global_config = {
-        "feature_flags": {"ndarray_simulation": True},
         "portfolio_value": 1000.0,
     }
 
@@ -131,7 +128,6 @@ def test_trade_tracking_reports_commissions_in_dollars_not_fractions() -> None:
         "costs_config": {"transaction_costs_bps": 100.0},
     }
     global_config = {
-        "feature_flags": {"ndarray_simulation": True},
         "portfolio_value": 1000.0,
     }
 

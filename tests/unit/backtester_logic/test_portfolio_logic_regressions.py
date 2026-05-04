@@ -19,7 +19,6 @@ def test_signal_based_intramonth_weights_are_not_rebucketed_to_month_end() -> No
         "costs_config": {"transaction_costs_bps": 0.0},
     }
     global_config = {
-        "feature_flags": {"ndarray_simulation": True},
         "portfolio_value": 10000.0,
     }
 

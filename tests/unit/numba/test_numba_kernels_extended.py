@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 from portfolio_backtester.numba_kernels import (
     _weights_diff_abs,
     _masked_weighted_sum,
@@ -201,63 +200,3 @@ def test_trade_lifecycle_kernel_basic():
     assert trade["pnl"] == (110 - 100) * 10.0  # 100.0
     # Commission: Open (Day 1) + Close (Day 2) = 1.0 + 1.0 = 2.0
     assert trade["commission"] == 2.0
-
-
-def test_calculate_window_return_numba():
-    # 2 days, 1 asset
-    # Day 0: Price 100. Signal 1.0.
-    # Day 1: Price 110. Signal 1.0. Return (110-100)/100 = 0.1.
-
-    prices = np.array([[100.0], [110.0]], dtype=np.float64)
-
-    signals = np.array(
-        [
-            [1.0],
-            [
-                1.0
-            ],  # Signal at Day 1 doesn't affect Day 1 return (lagged logic usually applies, but kernel uses signals[day-1])
-            # Kernel: weight = signals[day-1, asset]
-        ],
-        dtype=np.float64,
-    )
-
-    # Kernel logic:
-    # for day in range(1, n_days):
-    #   weight = signals[day-1] (Day 0 signal) = 1.0
-    #   ret = (price[day] - price[day-1])/price[day-1] = 0.1
-    #   daily_return += 1.0 * 0.1 = 0.1
-    #   total_weight += 1.0
-    # Portfolio return += daily_return (0.1)
-    # Result = portfolio_return / (n_days - 1) = 0.1 / 1 = 0.1
-
-    from portfolio_backtester.numba_kernels import _calculate_window_return_numba
-
-    ret = _calculate_window_return_numba(prices, signals)
-    assert ret == pytest.approx(0.1)
-
-
-def test_run_backtest_numba():
-    # 3 days total
-    # Window 1: Day 0 to 2
-    # Window 2: Day 1 to 3
-
-    prices = np.array([[100.0], [110.0], [121.0]], dtype=np.float64)  # +10%  # +10%
-
-    signals = np.ones((3, 1), dtype=np.float64)
-
-    start_indices = np.array([0, 1], dtype=np.int64)
-    end_indices = np.array([2, 3], dtype=np.int64)
-
-    from portfolio_backtester.numba_kernels import run_backtest_numba
-
-    returns = run_backtest_numba(prices, signals, start_indices, end_indices)
-
-    assert len(returns) == 2
-
-    # Window 0: indices 0 to 2 (exclusive) -> Days 0, 1
-    # Ret: (110-100)/100 = 0.1. Avg = 0.1.
-    assert returns[0] == pytest.approx(0.1)
-
-    # Window 1: indices 1 to 3 -> Days 1, 2
-    # Ret: (121-110)/110 = 0.1. Avg = 0.1.
-    assert returns[1] == pytest.approx(0.1)

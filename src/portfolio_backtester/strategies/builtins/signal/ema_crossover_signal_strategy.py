@@ -9,10 +9,13 @@ import pandas as pd
 
 
 from ..._core.base.base.signal_strategy import SignalStrategy
+from ..._core.target_generation import StrategyContext, default_benchmark_ticker
 
 
 class EmaCrossoverSignalStrategy(SignalStrategy):
     """Simple EMA crossover signal strategy (builtins implementation).
+
+    Full-period authoring API: :py:meth:`generate_target_weights`.
 
     Provides tunable parameters: fast_ema_days, slow_ema_days, leverage.
     """
@@ -89,28 +92,18 @@ class EmaCrossoverSignalStrategy(SignalStrategy):
     def _leverage_for_signal_row(self, current_date: pd.Timestamp) -> float:
         return float(self.leverage)
 
-    def generate_signal_matrix(
-        self,
-        all_historical_data: pd.DataFrame,
-        benchmark_historical_data: pd.DataFrame,
-        non_universe_historical_data: Optional[pd.DataFrame],
-        rebalance_dates: pd.DatetimeIndex,
-        universe_tickers: List[str],
-        start_date: Optional[pd.Timestamp] = None,
-        end_date: Optional[pd.Timestamp] = None,
-        use_sparse_nan_for_inactive_rows: bool = False,
-    ) -> Optional[pd.DataFrame]:
-        cols = list(universe_tickers)
+    def generate_target_weights(self, context: StrategyContext) -> pd.DataFrame:
+        cols = list(context.universe_tickers)
         close_prices = (
-            self._extract_close_frame(all_historical_data).astype(float).reindex(columns=cols)
+            self._extract_close_frame(context.asset_data).astype(float).reindex(columns=cols)
         )
         min_periods = max(self.fast_ema_days, self.slow_ema_days)
         cum_non_na = close_prices.notna().cumsum()
         fast = close_prices.ewm(span=self.fast_ema_days).mean()
         slow = close_prices.ewm(span=self.slow_ema_days).mean()
 
-        idx = pd.DatetimeIndex(rebalance_dates)
-        fill_value = np.nan if use_sparse_nan_for_inactive_rows else 0.0
+        idx = pd.DatetimeIndex(context.rebalance_dates)
+        fill_value = np.nan if context.use_sparse_nan_for_inactive_rows else 0.0
         result = pd.DataFrame(fill_value, index=idx, columns=cols, dtype=float)
         if len(idx) == 0 or len(cols) == 0:
             return result
@@ -130,6 +123,30 @@ class EmaCrossoverSignalStrategy(SignalStrategy):
         dense = np.where(comp.to_numpy(dtype=bool), w_per_row[:, np.newaxis], 0.0)
         result.iloc[:, :] = dense.astype(float)
         return result
+
+    def generate_signal_matrix(
+        self,
+        all_historical_data: pd.DataFrame,
+        benchmark_historical_data: pd.DataFrame,
+        non_universe_historical_data: Optional[pd.DataFrame],
+        rebalance_dates: pd.DatetimeIndex,
+        universe_tickers: List[str],
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
+        use_sparse_nan_for_inactive_rows: bool = False,
+    ) -> Optional[pd.DataFrame]:
+        ctx = StrategyContext.from_standard_inputs(
+            asset_data=all_historical_data,
+            benchmark_data=benchmark_historical_data,
+            non_universe_data=non_universe_historical_data,
+            rebalance_dates=rebalance_dates,
+            universe_tickers=universe_tickers,
+            benchmark_ticker=default_benchmark_ticker(benchmark_historical_data, universe_tickers),
+            wfo_start_date=start_date,
+            wfo_end_date=end_date,
+            use_sparse_nan_for_inactive_rows=use_sparse_nan_for_inactive_rows,
+        )
+        return self.generate_target_weights(ctx)
 
     def generate_signals(
         self,

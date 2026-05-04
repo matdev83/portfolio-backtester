@@ -17,6 +17,7 @@ from .trade_interceptor import MetaStrategyTradeInterceptor
 
 # Removed duplicate PortfolioValueTracker import to avoid dual-paths; meta strategies rely on TradeAggregator
 from .meta_reporting import MetaStrategyReporter
+from ...target_generation import StrategyContext
 
 
 # Custom exception for naming convention validation
@@ -935,6 +936,21 @@ class BaseMetaStrategy(BaseStrategy, ABC):
             max_periods = max(max_periods, strategy_periods)
 
         return max_periods
+
+    def generate_target_weights(self, context: StrategyContext) -> Optional[pd.DataFrame]:
+        """Declare non-participation in the deterministic target-weight API.
+
+        Meta portfolio returns are built from aggregated sub-strategy trades, not
+        from a dense weight matrix from this hook.
+
+        Args:
+            context: Unused; present for API symmetry with portfolio/signal strategies.
+
+        Returns:
+            ``None`` always (same effect as lacking the method for
+            ``_call_generate_target_weights`` fallbacks).
+        """
+        return None
 
     @classmethod
     def tunable_parameters(cls) -> Dict[str, Dict[str, Any]]:

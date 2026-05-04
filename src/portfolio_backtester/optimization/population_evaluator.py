@@ -8,7 +8,6 @@ from loguru import logger
 from .results import EvaluationResult, OptimizationData
 from .performance.deduplication_factory import DeduplicationFactory
 from .data_context import DataContextManager
-from .performance.factory import PerformanceOptimizerFactory
 from .adaptive_batch_sizing import AdaptiveBatchSizer
 from .hybrid_parallelism import HybridParallelismManager
 from .gpu_acceleration import GPUAccelerationManager
@@ -113,17 +112,6 @@ class PopulationEvaluator:
         self._data_context_manager: Optional[DataContextManager] = None
         self._using_memmap = False
 
-        # Performance optimizer for vectorized trade tracking
-        self._performance_optimizer = PerformanceOptimizerFactory.create_performance_optimizer(
-            optimizer_type="genetic",
-            config={
-                "enable_performance_optimizations": True,
-                "enable_vectorized_tracking": True,
-                "enable_deduplication": True,
-                "n_jobs": self.n_jobs,
-            },
-        )
-
     @staticmethod
     def _params_key(params: Dict[str, Any]) -> Tuple[str, ...]:
         """Create a deterministic, hashable key for a parameter dict."""
@@ -158,15 +146,11 @@ class PopulationEvaluator:
             # Assuming global_config is available via backtester or something
             # For GA, we might need a better way to get global_config if it's not on backtester
             global_config = getattr(backtester, "global_config", {})
-            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=global_config
+            )
         else:
             canonical_config = scenario_config
-            
-        # Ensure vectorized trade tracking is enabled for the backtester
-
-        if hasattr(backtester, "use_vectorized_tracking") and self._performance_optimizer:
-            backtester.use_vectorized_tracking = True
-            logger.debug("Enabled vectorized trade tracking for backtester")
 
         # Batch de-duplication: identify unique parameter sets before dispatch
         unique_params: Dict[Tuple[str, ...], Dict[str, Any]] = {}
@@ -224,7 +208,6 @@ class PopulationEvaluator:
                     to_eval_params, canonical_config, data, backtester
                 )
 
-
             # Update unique results and cache
             for params, key, result in zip(to_eval_params, to_eval_keys, evaluated):
                 unique_results[key] = result
@@ -258,7 +241,6 @@ class PopulationEvaluator:
             stats["batch_dedup_enabled"] = True
             stats["params_only_dispatch"] = self._workers_initialized
             stats["using_memmap"] = self._using_memmap
-            stats["vectorized_tracking_enabled"] = self._performance_optimizer is not None
 
             # Add adaptive batch sizing stats
             if self._enable_adaptive_batch_sizing:
@@ -349,7 +331,9 @@ class PopulationEvaluator:
         if not isinstance(scenario_config, CanonicalScenarioConfig):
             normalizer = ScenarioNormalizer()
             global_config = getattr(backtester, "global_config", {})
-            canonical_config = normalizer.normalize(scenario=scenario_config, global_config=global_config)
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=global_config
+            )
         else:
             canonical_config = scenario_config
 
@@ -360,7 +344,7 @@ class PopulationEvaluator:
             # AdaptiveBatchSizer expects a Dict[str, Any] mapping param names to their config
             # But canonical_config.optimize is a List[Mapping[str, Any]]
             # We should reconstruct the dict format if possible, or skip adaptive sizing if not easily mapable.
-            
+
             # Reconstruct legacy-style parameter space for the batch sizer
             parameter_space_dict = {}
             if canonical_config.optimize:
@@ -377,7 +361,6 @@ class PopulationEvaluator:
                     population=population,
                     execution_time_ms=self._last_evaluation_time,
                 )
-
 
                 # Use adaptive batch size or fall back to provided/default
                 batch_size = self._joblib_batch_size or batch_config["batch_size"]

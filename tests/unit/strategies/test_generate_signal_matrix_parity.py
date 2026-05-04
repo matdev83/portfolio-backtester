@@ -1,4 +1,4 @@
-"""Parity checks between ``generate_signal_matrix`` and expanding-window ``generate_signals``."""
+"""Parity checks for full-scan ``generate_target_weights`` vs expanding ``generate_signals``."""
 
 from __future__ import annotations
 
@@ -6,6 +6,11 @@ from typing import cast
 
 import pandas as pd
 import pytest
+
+from portfolio_backtester.strategies._core.target_generation import (
+    StrategyContext,
+    default_benchmark_ticker,
+)
 
 from portfolio_backtester.strategies.builtins.portfolio.fixed_weight_portfolio_strategy import (
     FixedWeightPortfolioStrategy,
@@ -42,14 +47,18 @@ def _assert_matrix_parity(
     *,
     use_sparse_nan: bool = False,
 ) -> None:
-    mat = strategy.generate_signal_matrix(
-        all_historical_data=asset_df,
-        benchmark_historical_data=benchmark_df,
-        non_universe_historical_data=non_uni,
+    ctx = StrategyContext.from_standard_inputs(
+        asset_data=asset_df,
+        benchmark_data=benchmark_df,
+        non_universe_data=non_uni,
         rebalance_dates=rebalance_dates,
         universe_tickers=universe_tickers,
+        benchmark_ticker=default_benchmark_ticker(benchmark_df, universe_tickers),
+        wfo_start_date=None,
+        wfo_end_date=None,
         use_sparse_nan_for_inactive_rows=use_sparse_nan,
     )
+    mat = strategy.generate_target_weights(ctx)
     assert mat is not None
     for rd in rebalance_dates:
         hist = _slice_expanding(asset_df, pd.Timestamp(rd))
