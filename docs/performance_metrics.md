@@ -85,6 +85,44 @@ That output is **PSR-like** (a probability that the true Sharpe exceeds a hurdle
 - **`Max DD Recovery Time (days)`**: longest recovery span measured in **calendar days** between index timestamps (trading-day-only calendars shorten gaps versus real time).
 - **`Max DD Recovery Time (bars)`**: same episodes counted in **observation bars**, comparable to **Avg DD Duration** / **Avg Recovery Time**.
 
+## Exposure and capital utilization (realized weights)
+
+These metrics summarize **how capital was deployed over time** using **realized holdings**, not returns-based guesses.
+
+**Inputs**
+
+- **`calculate_metrics(..., exposure=...)`** accepts either:
+  - A **`pd.DataFrame`** of **signed dollar weights per asset**: columns are tickers, rows are bars aligned to strategy returns; each cell is approximately `(position_shares × close) / portfolio_value` on that bar (same construction as `StrategyBacktester` passes through from `calculate_portfolio_returns(..., include_signed_weights=True)`).
+  - A **`pd.Series`** of **gross exposure only** (sum of absolute weights if you already aggregated externally).
+- If **`exposure` is omitted / `None`**, all exposure metric keys are present but set to **NaN** — **returns are never used to infer exposure.**
+
+**Alignment**
+
+Exposure rows are **reindexed** to **`active_rets.index`** — the timestamps of **`rets.dropna()`** (bars with a defined strategy return). Exposure aggregates omit bars where the strategy return is NaN; this matches how other headline metrics in `calculate_metrics` use `active_rets`.
+
+**Missing / unknown weights**
+
+After alignment, any bar whose exposure row is **all-NaN** is **excluded** from exposure means and from the **Time in Market %** denominator. Row-wise gross/net/long/short use **nan-skipping** sums when some asset cells are NaN but the row is not entirely NaN. **Explicit zeros** mean flat/cash for that asset (not “unknown”). Gross-only series apply the same rule: NaN gross observations are excluded.
+
+**Optimizer trial evaluation**
+
+`EvaluationEngine.evaluate_trial_parameters` uses `BacktestRunner.run_scenario_with_signed_weights` so realized weights are passed into `calculate_metrics` when available (same construction as `calculate_portfolio_returns(..., include_signed_weights=True)`). Meta strategies fill weights from `TradeAggregator` NAV shares after `update_portfolio_values_with_market_data`.
+
+**Definitions (observation bars only — see above)**
+
+| Metric | Definition |
+|--------|------------|
+| **Time in Market %** | Among observed exposure bars: fraction with gross exposure > ε (stored as **0–1**; tables format as percent). |
+| **Avg Gross Exposure** | Mean gross exposure \(\sum_i \|w_i\|\) over observed bars (fraction of NAV). |
+| **Avg Net Exposure** | Mean \(\sum_i w_i\) when a weight matrix is supplied; **NaN** if only a gross series was passed. |
+| **Max Gross Exposure** | Maximum gross exposure over observed bars. |
+| **Avg Long Exposure** | Mean \(\sum_i \max(w_i, 0)\) (**NaN** if only gross passed). |
+| **Avg Short Exposure** | Mean \(\sum_i \|\\min(w_i, 0)\|\) (**NaN** if only gross passed). |
+| **Return / Avg Gross Exposure** | **Total Return** ÷ **Avg Gross Exposure** (undefined → **NaN** if average gross ≤ ε). |
+| **Ann. Return / Avg Gross Exposure** | **Ann. Return** ÷ **Avg Gross Exposure** (same guard). |
+
+Rich tables format exposure loads and **Time in Market %** as percentages; ratio rows use numeric formatting. **NaN** metric values display as **N/A** (not `nan%`).
+
 ## Secondary evaluator metrics
 
 `optimization/evaluator.py` includes a lightweight `_calculate_metrics` used in some evaluator flows; it uses simplified annualization (e.g. `(1 + mean)^252 - 1` style for daily assumptions). **Reporting tables** use `calculate_metrics` in `performance_metrics.py`, not that helper.

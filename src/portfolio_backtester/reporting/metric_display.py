@@ -74,7 +74,16 @@ def metric_display_label(
 
 def formatting_rules_for_label(display_label: str) -> tuple[set[str], set[str]]:
     """Return (percentage_metric_names, high_precision_metric_names) for a display label."""
-    percentage_metrics = {"Total Return", "Ann. Return"}
+    percentage_metrics = {
+        "Total Return",
+        "Ann. Return",
+        "Time in Market %",
+        "Avg Gross Exposure",
+        "Avg Net Exposure",
+        "Max Gross Exposure",
+        "Avg Long Exposure",
+        "Avg Short Exposure",
+    }
     high_precision = {
         "ADF p-value",
         "ADF p-value (equity)",

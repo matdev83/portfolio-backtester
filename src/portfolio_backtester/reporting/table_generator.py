@@ -88,7 +88,18 @@ def _apply_metrics_window(
 
 
 def _format_metric_value(metric_name: str, value):
-    percentage_metrics = ["Total Return", "Ann. Return"]
+    if pd.isna(value):
+        return "N/A"
+    percentage_metrics = [
+        "Total Return",
+        "Ann. Return",
+        "Time in Market %",
+        "Avg Gross Exposure",
+        "Avg Net Exposure",
+        "Max Gross Exposure",
+        "Avg Long Exposure",
+        "Avg Short Exposure",
+    ]
     high_precision_metrics = [
         "ADF p-value",
         "ADF p-value (equity)",

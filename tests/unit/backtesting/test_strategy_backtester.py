@@ -11,13 +11,9 @@ import numpy as np
 from unittest.mock import Mock, patch
 
 from portfolio_backtester.backtesting.strategy_backtester import StrategyBacktester
-from portfolio_backtester.backtesting.results import BacktestResult, WindowResult
 from portfolio_backtester.optimization.wfo_window import WFOWindow
 from portfolio_backtester.strategies._core.base.base.base_strategy import BaseStrategy
 from portfolio_backtester.strategies._core.registry import get_strategy_registry
-from portfolio_backtester.strategies.user.signal.momentum_signal_strategy import (
-    MomentumSignalStrategy,
-)
 
 
 class TestStrategyBacktester:
@@ -48,7 +44,11 @@ class TestStrategyBacktester:
         # Make mock_strategy inherit from BaseStrategy
         mock_strategy = Mock(spec=BaseStrategy)
 
-        with patch.object(self.backtester._registry, "get_strategy_class", return_value=lambda params: mock_strategy):
+        with patch.object(
+            self.backtester._registry,
+            "get_strategy_class",
+            return_value=lambda params: mock_strategy,
+        ):
             result = self.backtester._get_strategy(
                 "DummyStrategyForTestingSignalStrategy",
                 params,
@@ -72,7 +72,9 @@ class TestStrategyBacktester:
             def __init__(self, params):
                 pass
 
-        with patch.object(self.backtester._registry, "get_strategy_class", return_value=MockNonStrategy):
+        with patch.object(
+            self.backtester._registry, "get_strategy_class", return_value=MockNonStrategy
+        ):
             with pytest.raises(TypeError, match="did not return a BaseStrategy instance"):
                 self.backtester._get_strategy("bad_strategy", {}, {})
 
@@ -124,10 +126,11 @@ class TestStrategyBacktester:
         """Test backtest_strategy with no tickers in the universe."""
         daily_df, monthly_df, returns_df = self.sample_price_data()
         strategy_config = self.strategy_config()
-        strategy_config["universe"] = []
 
-        # Force get_universe to return empty to trigger the no-tickers path
-        with patch("tests.unit.backtesting.test_strategy_backtester.MomentumSignalStrategy.get_universe", return_value=[]):
+        mock_strategy = Mock(spec=BaseStrategy)
+        mock_strategy.get_universe.return_value = []
+
+        with patch.object(self.backtester, "_get_strategy", return_value=mock_strategy):
             result = self.backtester.backtest_strategy(
                 strategy_config, monthly_df, daily_df, returns_df
             )
@@ -146,17 +149,20 @@ class TestStrategyBacktester:
         strategy_config = self.strategy_config()
 
         # Mock what _run_scenario_for_window would do
-        window_returns = pd.Series([0.01, -0.01, 0.02], index=pd.to_datetime(['2020-07-01', '2020-07-02', '2020-07-03']))
-        
-        from portfolio_backtester.optimization.wfo_window import WFOWindow
+        window_returns = pd.Series(
+            [0.01, -0.01, 0.02], index=pd.to_datetime(["2020-07-01", "2020-07-02", "2020-07-03"])
+        )
+
         window = WFOWindow(
             train_start=pd.Timestamp("2020-01-01"),
             train_end=pd.Timestamp("2020-06-30"),
             test_start=pd.Timestamp("2020-07-01"),
             test_end=pd.Timestamp("2020-12-31"),
         )
-        
-        with patch.object(self.backtester, '_run_scenario_for_window', return_value=window_returns):
+
+        with patch.object(
+            self.backtester, "_run_scenario_for_window", return_value=(window_returns, None)
+        ):
             result = self.backtester.evaluate_window(
                 strategy_config, window, monthly_df, daily_df, returns_df
             )
@@ -169,15 +175,16 @@ class TestStrategyBacktester:
         daily_df, monthly_df, returns_df = self.sample_price_data()
         strategy_config = self.strategy_config()
 
-        from portfolio_backtester.optimization.wfo_window import WFOWindow
         window = WFOWindow(
             train_start=pd.Timestamp("2020-01-01"),
             train_end=pd.Timestamp("2020-06-30"),
             test_start=pd.Timestamp("2020-07-01"),
             test_end=pd.Timestamp("2020-12-31"),
         )
-        
-        with patch.object(self.backtester, '_run_scenario_for_window', return_value=pd.Series(dtype=float)):
+
+        with patch.object(
+            self.backtester, "_run_scenario_for_window", return_value=(pd.Series(dtype=float), None)
+        ):
             result = self.backtester.evaluate_window(
                 strategy_config, window, monthly_df, daily_df, returns_df
             )
@@ -190,9 +197,7 @@ class TestStrategyBacktester:
         """Test _create_charts_data with some sample returns."""
         returns = pd.Series([0.01, -0.02, 0.03, 0.01])
         benchmark_returns = pd.Series([0.005, -0.01, 0.02, 0.005])
-        charts_data = self.backtester._create_charts_data(
-            returns, benchmark_returns
-        )
+        charts_data = self.backtester._create_charts_data(returns, benchmark_returns)
         assert "portfolio_cumulative" in charts_data
         assert "benchmark_cumulative" in charts_data
         assert "drawdown" in charts_data
@@ -204,9 +209,7 @@ class TestStrategyBacktester:
         # Cumulative returns: 1.1, 1.21, 1.089, 0.9801, 1.07811, 1.185921
         # Drawdown from peak at 1.21 to trough at 0.9801
         expected_drawdown = (0.9801 - 1.21) / 1.21
-        assert np.isclose(
-            self.backtester._calculate_max_drawdown(returns), expected_drawdown
-        )
+        assert np.isclose(self.backtester._calculate_max_drawdown(returns), expected_drawdown)
 
     def test_calculate_max_drawdown_empty(self):
         """Test _calculate_max_drawdown with empty returns."""
@@ -219,9 +222,7 @@ class TestStrategyBacktester:
             {"AAPL": [0.5, 0], "GOOGL": [0, 0.5]},
             index=daily_df.index[:2],
         )
-        trade_history = self.backtester._create_trade_history(
-            sized_signals, daily_df
-        )
+        trade_history = self.backtester._create_trade_history(sized_signals, daily_df)
         assert not trade_history.empty
         assert "date" in trade_history.columns
         assert "ticker" in trade_history.columns

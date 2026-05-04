@@ -2,6 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from portfolio_backtester.reporting.performance_metrics import (
+    EXPOSURE_CANONICAL_KEYS,
     calculate_metrics,
     _is_all_zero,
     _safe_moment,
@@ -178,6 +179,10 @@ def test_calculate_metrics_full_run(random_returns, benchmark_returns):
     for key in expected_keys:
         assert key in metrics
         assert not np.isnan(metrics[key]), key
+
+    for key in EXPOSURE_CANONICAL_KEYS:
+        assert key in metrics
+        assert np.isnan(metrics[key]), key
 
     assert metrics.attrs.get("sharpe_path") in ("excess", "legacy_cagr_vol")
 

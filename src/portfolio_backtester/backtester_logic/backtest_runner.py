@@ -55,6 +55,153 @@ class BacktestRunner:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("BacktestRunner initialized")
 
+    def _run_scenario_to_returns_and_signed_weights(
+        self,
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
+        price_data_monthly_closes: pd.DataFrame,
+        price_data_daily_ohlc: pd.DataFrame,
+        rets_daily: Optional[pd.DataFrame],
+        verbose: bool,
+        *,
+        include_signed_weights: bool,
+    ) -> tuple[Optional[pd.Series], Optional[pd.DataFrame]]:
+        """Shared scenario pipeline; optional realized weights for exposure metrics."""
+        from ..canonical_config import CanonicalScenarioConfig
+        from ..scenario_normalizer import ScenarioNormalizer
+
+        if not isinstance(scenario_config, CanonicalScenarioConfig):
+            logger.warning(
+                "ACCIDENTAL BYPASS: Raw scenario dictionary passed to BacktestRunner.run_scenario. "
+                "All scenarios should be canonicalized at the boundary. "
+                "Scenario: %s",
+                scenario_config.get("name", "unnamed"),
+            )
+            normalizer = ScenarioNormalizer()
+            canonical_config = normalizer.normalize(
+                scenario=scenario_config, global_config=self.global_config
+            )
+        else:
+            canonical_config = scenario_config
+
+        if verbose:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Running scenario: %s", canonical_config.name)
+
+        strategy = self.strategy_manager.get_strategy(canonical_config.strategy, canonical_config)
+
+        from ..backtester_logic.strategy_logic import _strategy_supports_method_dynamic_universe
+
+        if _strategy_supports_method_dynamic_universe(strategy):
+            if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
+                all_fetched = list(
+                    price_data_daily_ohlc.columns.get_level_values("Ticker").unique()
+                )
+            else:
+                all_fetched = list(price_data_daily_ohlc.columns)
+            benchmark_ticker_tmp = canonical_config.benchmark_ticker or self.global_config.get(
+                "benchmark", "SPY"
+            )
+            universe_tickers = [t for t in all_fetched if t != benchmark_ticker_tmp]
+            logger.info(
+                "Dynamic universe: derived %d universe_tickers from prefetched price data columns.",
+                len(universe_tickers),
+            )
+        else:
+            universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
+
+        missing_cols = [t for t in universe_tickers if t not in price_data_monthly_closes.columns]
+        if missing_cols:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "Tickers %s not found in price data; they will be skipped for this run.",
+                    missing_cols,
+                )
+            universe_tickers = [t for t in universe_tickers if t not in missing_cols]
+
+        if not universe_tickers:
+            logger.warning(
+                "No universe tickers remain after filtering for missing data. Skipping scenario."
+            )
+            return None, None
+
+        benchmark_ticker = canonical_config.benchmark_ticker or self.global_config.get(
+            "benchmark", "SPY"
+        )
+
+        price_data_monthly_inner, rets_inner = prepare_scenario_data(
+            price_data_daily_ohlc, self.data_cache
+        )
+
+        signals = generate_signals(
+            strategy,
+            canonical_config,
+            price_data_daily_ohlc,
+            universe_tickers,
+            benchmark_ticker,
+            self.timeout_checker,
+            global_config=self.global_config,
+        )
+
+        sized_signals = size_positions(
+            signals,
+            canonical_config,
+            price_data_monthly_inner,
+            price_data_daily_ohlc,
+            universe_tickers,
+            benchmark_ticker,
+            strategy,
+        )
+
+        pkg = calculate_portfolio_returns(
+            sized_signals,
+            canonical_config,
+            price_data_daily_ohlc,
+            rets_inner,
+            universe_tickers,
+            self.global_config,
+            track_trades=False,
+            strategy=strategy,
+            include_signed_weights=include_signed_weights,
+        )
+        portfolio_rets_net = pkg[0]
+        signed_weights = pkg[2] if len(pkg) > 2 else None
+
+        if verbose:
+            if logger.isEnabledFor(logging.DEBUG):
+                scenario_name = canonical_config.name
+                logger.debug(
+                    "Portfolio net returns calculated for %s. First few net returns: %s",
+                    scenario_name,
+                    portfolio_rets_net.head().to_dict(),
+                )
+                logger.debug(
+                    "Net returns index: %s to %s",
+                    portfolio_rets_net.index.min(),
+                    portfolio_rets_net.index.max(),
+                )
+
+        if not isinstance(portfolio_rets_net, (pd.Series, type(None))):
+            raise TypeError("run_scenario must return a pd.Series or None")
+        return portfolio_rets_net, signed_weights
+
+    def run_scenario_with_signed_weights(
+        self,
+        scenario_config: Union[Dict[str, Any], "CanonicalScenarioConfig"],
+        price_data_monthly_closes: pd.DataFrame,
+        price_data_daily_ohlc: pd.DataFrame,
+        rets_daily: Optional[pd.DataFrame] = None,
+        verbose: bool = True,
+    ) -> tuple[Optional[pd.Series], Optional[pd.DataFrame]]:
+        """Like ``run_scenario`` but also returns signed NAV weights when available."""
+        return self._run_scenario_to_returns_and_signed_weights(
+            scenario_config,
+            price_data_monthly_closes,
+            price_data_daily_ohlc,
+            rets_daily,
+            verbose,
+            include_signed_weights=True,
+        )
+
     def _get_default_optuna_storage_url(self) -> str:
         """Get the default Optuna storage URL."""
         from ..constants import DEFAULT_OPTUNA_STORAGE_URL
@@ -86,129 +233,14 @@ class BacktestRunner:
         Returns:
             Portfolio returns as pandas Series, or None if scenario fails
         """
-        from ..canonical_config import CanonicalScenarioConfig
-        from ..scenario_normalizer import ScenarioNormalizer
-
-        # Ensure we are working with a canonical config internally
-        if not isinstance(scenario_config, CanonicalScenarioConfig):
-            logger.warning(
-                "ACCIDENTAL BYPASS: Raw scenario dictionary passed to BacktestRunner.run_scenario. "
-                "All scenarios should be canonicalized at the boundary. "
-                "Scenario: %s",
-                scenario_config.get("name", "unnamed"),
-            )
-            normalizer = ScenarioNormalizer()
-            canonical_config = normalizer.normalize(
-                scenario=scenario_config, global_config=self.global_config
-            )
-        else:
-            canonical_config = scenario_config
-
-        if verbose:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Running scenario: {canonical_config.name}")
-
-        # Instantiate strategy using full canonical config to support new features
-        strategy = self.strategy_manager.get_strategy(canonical_config.strategy, canonical_config)
-
-        # Resolve universe tickers.
-        # For dynamic method universes (e.g. get_top_weight_sp500_components), DataFetcher has
-        # already prefetched the union of all tickers that can appear over the full date range.
-        # Using strategy.get_universe() here would snapshot the universe at global start_date,
-        # producing a stale single-date Top-N list instead of the full tradable set.
-        # We therefore derive universe_tickers from the already-fetched price data columns.
-        from ..backtester_logic.strategy_logic import _strategy_supports_method_dynamic_universe
-
-        if _strategy_supports_method_dynamic_universe(strategy):
-            if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
-                all_fetched = list(
-                    price_data_daily_ohlc.columns.get_level_values("Ticker").unique()
-                )
-            else:
-                all_fetched = list(price_data_daily_ohlc.columns)
-            # Exclude benchmark from universe_tickers
-            benchmark_ticker_tmp = canonical_config.benchmark_ticker or self.global_config.get(
-                "benchmark", "SPY"
-            )
-            universe_tickers = [t for t in all_fetched if t != benchmark_ticker_tmp]
-            logger.info(
-                "Dynamic universe: derived %d universe_tickers from prefetched price data columns.",
-                len(universe_tickers),
-            )
-        else:
-            universe_tickers = [item[0] for item in strategy.get_universe(self.global_config)]
-
-        # Note: We NO LONGER persist resolved universe back into scenario_config mid-run
-        # as per requirement 2.3 to prevent mid-run mutation.
-        # If downstream components need it, it should be passed explicitly.
-
-        missing_cols = [t for t in universe_tickers if t not in price_data_monthly_closes.columns]
-        if missing_cols:
-            if logger.isEnabledFor(logging.WARNING):
-                logger.warning(
-                    f"Tickers {missing_cols} not found in price data; they will be skipped for this run."
-                )
-            universe_tickers = [t for t in universe_tickers if t not in missing_cols]
-
-        if not universe_tickers:
-            logger.warning(
-                "No universe tickers remain after filtering for missing data. Skipping scenario."
-            )
-            return None
-
-        benchmark_ticker = canonical_config.benchmark_ticker or self.global_config.get(
-            "benchmark", "SPY"
-        )
-
-        price_data_monthly_closes, rets_daily = prepare_scenario_data(
-            price_data_daily_ohlc, self.data_cache
-        )
-
-        # Pass a callable to lazily check timeout status during signal generation
-        signals = generate_signals(
-            strategy,
-            canonical_config,
-            price_data_daily_ohlc,
-            universe_tickers,
-            benchmark_ticker,
-            self.timeout_checker,
-            global_config=self.global_config,
-        )
-
-        sized_signals = size_positions(
-            signals,
-            canonical_config,
+        portfolio_rets_net, _ = self._run_scenario_to_returns_and_signed_weights(
+            scenario_config,
             price_data_monthly_closes,
             price_data_daily_ohlc,
-            universe_tickers,
-            benchmark_ticker,
-            strategy,
-        )
-
-        # Calculate portfolio returns (no trade tracking for optimization)
-        portfolio_rets_net, _ = calculate_portfolio_returns(
-            sized_signals,
-            canonical_config,
-            price_data_daily_ohlc,
             rets_daily,
-            universe_tickers,
-            self.global_config,
-            track_trades=False,
-            strategy=strategy,
+            verbose,
+            include_signed_weights=False,
         )
-
-        if verbose:
-            if logger.isEnabledFor(logging.DEBUG):
-                scenario_name = canonical_config.name
-                logger.debug(
-                    f"Portfolio net returns calculated for {scenario_name}. First few net returns: {portfolio_rets_net.head().to_dict()}"
-                )
-                logger.debug(
-                    f"Net returns index: {portfolio_rets_net.index.min()} to {portfolio_rets_net.index.max()}"
-                )
-
-        if not isinstance(portfolio_rets_net, (pd.Series, type(None))):
-            raise TypeError("run_scenario must return a pd.Series or None")
         return portfolio_rets_net
 
     def run_backtest_mode(

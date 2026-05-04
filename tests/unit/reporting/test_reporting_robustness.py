@@ -125,6 +125,9 @@ def test_safe_metric_robustness():
 
 def test_format_metric_value_robustness():
     assert _format_metric_value("Total Return", 0.5) == "50.00%"
+    assert _format_metric_value("Time in Market %", 0.6025) == "60.25%"
+    assert _format_metric_value("Avg Gross Exposure", float("nan")) == "N/A"
+    assert _format_metric_value("Avg Gross Exposure", 1.25) == "125.00%"
     assert _format_metric_value("Sharpe", 1.5) == "1.5000"
     assert _format_metric_value("Number of Trades (All)", 10.0) == "10"
     assert _format_metric_value("Unknown Metric", 1.23456) == "1.2346"

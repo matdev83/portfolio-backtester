@@ -266,6 +266,22 @@ class Backtester:
         )
         return result
 
+    def _run_scenario_with_signed_weights_for_eval(
+        self,
+        scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
+        price_data_monthly_closes: pd.DataFrame,
+        price_data_daily_ohlc: pd.DataFrame,
+        rets_daily: Optional[pd.DataFrame] = None,
+        verbose: bool = True,
+    ) -> tuple[Optional[pd.Series], Optional[pd.DataFrame]]:
+        return self.backtest_runner.run_scenario_with_signed_weights(
+            scenario_config,
+            price_data_monthly_closes,
+            price_data_daily_ohlc,
+            rets_daily,
+            verbose=verbose,
+        )
+
     def evaluate_trial_parameters(
         self,
         scenario_config: Union[Dict[str, Any], CanonicalScenarioConfig],
@@ -293,7 +309,7 @@ class Backtester:
             self.monthly_data,
             self.daily_data_ohlc,
             self.rets_full,
-            self.run_scenario,
+            self._run_scenario_with_signed_weights_for_eval,
         )
 
     def run(self) -> None:
@@ -636,7 +652,3 @@ class Backtester:
     def evaluate_fast(self, *args, **kwargs):
         """Delegates to EvaluationEngine."""
         return self.evaluation_engine.evaluate_fast(*args, **kwargs)
-
-    def evaluate_fast_numba(self, *args, **kwargs):
-        """Delegates to EvaluationEngine."""
-        return self.evaluation_engine.evaluate_fast_numba(*args, **kwargs)

@@ -158,6 +158,31 @@ class TestTradeAggregationMathematics:
         expected_day2 = (1000000.0 - 150000.0 - 15.0) + (1000 * 160.0)  # Cash + position value
         assert abs(day2_value - expected_day2) < 1.0
 
+    def test_get_signed_weights_dataframe_nav_weights(self, aggregator):
+        trade = TradeRecord(
+            date=pd.Timestamp("2023-01-01"),
+            asset="AAPL",
+            quantity=1000,
+            price=150.0,
+            side=TradeSide.BUY,
+            strategy_id="momentum",
+            allocated_capital=600000.0,
+            transaction_cost=15.0,
+            trade_value=150000.0,
+        )
+        aggregator.track_sub_strategy_trade(trade)
+        market_data = pd.DataFrame(
+            {"AAPL": [150.0, 160.0]}, index=pd.date_range("2023-01-01", periods=2, freq="D")
+        )
+        aggregator.update_portfolio_values_with_market_data(market_data)
+        cal = pd.DatetimeIndex(market_data.index)
+        w = aggregator.get_signed_weights_dataframe(cal)
+        timeline = aggregator.get_portfolio_timeline()
+        ts0 = pd.Timestamp("2023-01-01")
+        tv = float(timeline.loc[ts0, "portfolio_value"])
+        expected_w = (1000.0 * 150.0) / tv
+        assert abs(float(w.loc[ts0, "AAPL"]) - expected_w) < 1e-9
+
     def test_performance_calculation_accuracy(self, aggregator):
         """Test accuracy of performance calculations."""
         # Add trades that should result in known performance

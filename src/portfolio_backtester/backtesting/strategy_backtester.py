@@ -31,6 +31,14 @@ from ..optimization.wfo_window import WFOWindow
 logger = logging.getLogger(__name__)
 
 
+def _metrics_series_to_float_dict(series: pd.Series) -> dict[str, float]:
+    """Normalize calculate_metrics output for WindowResult typing."""
+    out: dict[str, float] = {}
+    for key, val in series.items():
+        out[str(key)] = float(val) if pd.notna(val) else float("nan")
+    return out
+
+
 def _extract_close_returns(price_data: pd.DataFrame, ticker: str, index: pd.Index) -> pd.Series:
     """Return close-to-close returns for a ticker from OHLC or close-only data."""
     if price_data is None or price_data.empty:
@@ -276,7 +284,7 @@ class StrategyBacktester:
             )
 
         # Calculate portfolio returns (optionally with trade tracking)
-        portfolio_returns, trade_tracker = calculate_portfolio_returns(
+        portfolio_pkg = calculate_portfolio_returns(
             sized_signals,
             canonical_config,
             daily_data,
@@ -285,7 +293,11 @@ class StrategyBacktester:
             self.global_config,
             track_trades=track_trades,
             strategy=strategy,
+            include_signed_weights=True,
         )
+        portfolio_returns = portfolio_pkg[0]
+        trade_tracker = portfolio_pkg[1]
+        signed_weights = portfolio_pkg[2] if len(portfolio_pkg) > 2 else None
 
         trade_stats = trade_tracker.get_trade_statistics() if trade_tracker else None
 
@@ -318,6 +330,11 @@ class StrategyBacktester:
             risk_free_rets=self._optional_risk_free_returns(
                 daily_data, canonical_config, metrics_returns.index
             ),
+            exposure=(
+                signed_weights.reindex(metrics_returns.index)
+                if signed_weights is not None
+                else None
+            ),
         )
 
         # Create trade history from trade tracker when tracking is enabled
@@ -343,6 +360,7 @@ class StrategyBacktester:
             performance_stats=performance_stats,
             charts_data=charts_data,
             trade_stats=trade_stats,
+            signed_weights=signed_weights,
         )
 
     def evaluate_window(
@@ -420,11 +438,18 @@ class StrategyBacktester:
         )
 
         # Run scenario for this window
-        window_returns = self._run_scenario_for_window(
+        run_window = self._run_scenario_for_window(
             strategy_config, monthly_slice, daily_slice, cached_window_returns
         )
 
-        if window_returns is None or window_returns.empty:
+        if run_window is None:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(f"No returns generated for window {train_start}-{test_end}")
+            return self._create_empty_window_result(train_start, train_end, test_start, test_end)
+
+        window_returns, signed_weights_full = run_window
+
+        if window_returns.empty:
             if logger.isEnabledFor(logging.WARNING):
                 logger.warning(f"No returns generated for window {train_start}-{test_end}")
             return self._create_empty_window_result(train_start, train_end, test_start, test_end)
@@ -435,6 +460,12 @@ class StrategyBacktester:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Test returns empty for window {train_start}-{test_end}")
             return self._create_empty_window_result(train_start, train_end, test_start, test_end)
+
+        exposure_for_metrics = (
+            signed_weights_full.reindex(test_returns.index)
+            if signed_weights_full is not None
+            else None
+        )
 
         # Calculate benchmark returns for this window
         benchmark_ticker = (
@@ -447,16 +478,18 @@ class StrategyBacktester:
             benchmark_slice, str(benchmark_ticker), test_returns.index
         )
 
-        metrics: dict[str, float] = {}
+        metrics = {}
         if compute_metrics:
-            # Window metrics are report detail; optimizers aggregate metrics separately.
-            metrics = calculate_metrics(
-                test_returns,
-                benchmark_returns,
-                str(benchmark_ticker),
-                risk_free_rets=self._optional_risk_free_returns(
-                    daily_slice, strategy_config, test_returns.index
-                ),
+            metrics = _metrics_series_to_float_dict(
+                calculate_metrics(
+                    test_returns,
+                    benchmark_returns,
+                    str(benchmark_ticker),
+                    risk_free_rets=self._optional_risk_free_returns(
+                        daily_slice, strategy_config, test_returns.index
+                    ),
+                    exposure=exposure_for_metrics,
+                )
             )
 
         return WindowResult(
@@ -560,7 +593,7 @@ class StrategyBacktester:
         monthly_data: pd.DataFrame,
         daily_data: pd.DataFrame,
         rets_daily: Optional[pd.DataFrame] = None,
-    ) -> Optional[pd.Series]:
+    ) -> Optional[tuple[pd.Series, Optional[pd.DataFrame]]]:
         """Run a scenario for a specific window (extracted from core.py run_scenario).
 
         Args:
@@ -570,7 +603,7 @@ class StrategyBacktester:
             rets_daily: Daily returns data
 
         Returns:
-            Portfolio returns series or None if failed
+            Tuple of (portfolio returns series, signed weights aligned to returns index), or None if failed.
         """
         from ..canonical_config import CanonicalScenarioConfig
         from ..scenario_normalizer import ScenarioNormalizer
@@ -666,7 +699,7 @@ class StrategyBacktester:
         )
 
         # Calculate portfolio returns (no trade tracking for window evaluation)
-        result = calculate_portfolio_returns(
+        portfolio_pkg = calculate_portfolio_returns(
             sized_signals,
             canonical_config,
             daily_data,
@@ -675,15 +708,12 @@ class StrategyBacktester:
             self.global_config,
             track_trades=False,
             strategy=strategy,
+            include_signed_weights=True,
         )
+        portfolio_returns = portfolio_pkg[0]
+        signed_weights_full = portfolio_pkg[2] if len(portfolio_pkg) > 2 else None
 
-        # Handle both old and new return formats
-        if isinstance(result, tuple):
-            portfolio_returns, _ = result
-        else:
-            portfolio_returns = result
-
-        return portfolio_returns  # type: ignore[no-any-return]
+        return portfolio_returns, signed_weights_full
 
     def _create_empty_backtest_result(self) -> BacktestResult:
         """Create an empty BacktestResult for error cases."""

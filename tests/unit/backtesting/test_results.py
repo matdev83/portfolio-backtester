@@ -50,6 +50,7 @@ class TestBacktestResult:
         pd.testing.assert_frame_equal(result.trade_history, trade_history)
         assert result.performance_stats == performance_stats
         assert result.charts_data == charts_data
+        assert result.signed_weights is None
 
     def test_backtest_result_empty(self):
         """Test BacktestResult with empty data."""

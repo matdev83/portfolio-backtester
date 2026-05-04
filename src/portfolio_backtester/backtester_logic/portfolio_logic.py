@@ -13,12 +13,8 @@ from ..timing.trade_execution_timing import (
 )
 from ..trading.trade_tracker import TradeTracker
 from ..trading.unified_commission_calculator import get_unified_commission_calculator
-from ..numba_kernels import (
-    detailed_commission_slippage_kernel,
-    drifting_weights_returns_kernel,
-    trade_tracking_kernel,
-    trade_lifecycle_kernel,
-)
+from ..numba_kernels import trade_lifecycle_kernel
+from ..simulation.kernel import simulate_portfolio
 from .portfolio_simulation_input import (
     build_portfolio_simulation_input,
     prepare_close_arrays_for_simulation,
@@ -110,7 +106,10 @@ def calculate_portfolio_returns(
     track_trades=False,
     strategy=None,
     market_data_panel=None,
+    *,
+    include_signed_weights: bool = False,
 ):
+    """Portfolio net returns from the canonical share/cash simulator (non-meta strategies)."""
     # Check if this is a meta strategy - if so, use trade-based returns
     strategy_resolver = StrategyResolverFactory.create()
     if strategy is not None and strategy_resolver.is_meta_strategy(type(strategy)):
@@ -122,6 +121,7 @@ def calculate_portfolio_returns(
             universe_tickers,
             global_config,
             track_trades,
+            include_signed_weights=include_signed_weights,
         )
 
     logger.debug("sized_signals shape: %s", sized_signals.shape)
@@ -149,205 +149,116 @@ def calculate_portfolio_returns(
     # NOTE: weights_daily is *target* weights. Realistic simulation holds shares constant
     # between rebalances and only trades when target weights change.
 
-    if rets_daily is None:
-        logger.error("rets_daily is None before reindexing in run_scenario.")
-        return pd.Series(0.0, index=price_data_daily_ohlc.index), None
-
-    aligned_rets_daily = rets_daily.reindex(price_data_daily_ohlc.index)
-
-    # Fast path: ndarray/Numba kernel if enabled
-    feature_flags = (
-        (global_config or {}).get("feature_flags", {}) if isinstance(global_config, dict) else {}
-    )
-    # Enable ndarray/Numba fast path by default; allow users to disable via config
-    use_ndarray_sim = bool(feature_flags.get("ndarray_simulation", True))
-
-    # Ensure variable is defined for all branches
-    transaction_costs: pd.Series | None = None
-
-    if use_ndarray_sim:
-        # The ndarray simulation is now the only path. If it fails, the system will raise an exception.
-        if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and (
-            "Close" in price_data_daily_ohlc.columns.get_level_values(-1)
-        ):
-            close_prices_df = price_data_daily_ohlc.xs("Close", level="Field", axis=1)
-            price_index = close_prices_df.index
-        else:
-            close_prices_df = price_data_daily_ohlc
-            price_index = price_data_daily_ohlc.index
-
-        valid_cols = [t for t in universe_tickers if t in aligned_rets_daily.columns]
-
-        array_first_portfolio_prep = bool(feature_flags.get("array_first_portfolio_prep", False))
-        resolved_panel = market_data_panel
-        if resolved_panel is None and isinstance(global_config, dict):
-            resolved_panel = global_config.get("market_data_panel")
-
-        price_ix = pd.DatetimeIndex(price_index)
-        close_arr, price_mask_arr = prepare_close_arrays_for_simulation(
-            market_data_panel=resolved_panel,
-            array_first_portfolio_prep=array_first_portfolio_prep,
-            track_trades=track_trades,
-            close_prices_df=close_prices_df,
-            price_index=price_ix,
-            valid_cols=valid_cols,
-        )
-        sim_input = build_portfolio_simulation_input(
-            weights_daily=weights_daily,
-            aligned_rets_daily=aligned_rets_daily,
-            price_index=price_ix,
-            valid_cols=valid_cols,
-            close_arr=close_arr,
-            price_mask_arr=price_mask_arr,
-        )
-        weights_current = sim_input.weights_target
-        w_for_returns = sim_input.weights_lagged_for_returns
-        r = sim_input.asset_returns
-        m = sim_input.returns_finite_mask
-
-        costs_config = scenario_config.get("costs_config") if scenario_config is not None else None
-        transaction_costs_bps = None
-        if isinstance(costs_config, dict):
-            raw_bps = costs_config.get("transaction_costs_bps")
-            if raw_bps is not None:
-                try:
-                    transaction_costs_bps = float(raw_bps)
-                except (TypeError, ValueError):
-                    logger.warning(
-                        "Invalid transaction_costs_bps in costs_config: %s",
-                        raw_bps,
-                    )
-
-        if transaction_costs_bps is not None:
-            weights_df = weights_daily.reindex(index=price_ix, columns=valid_cols).fillna(0.0)
-            delta_weights = weights_df.diff().abs()
-            if not delta_weights.empty:
-                delta_weights.iloc[0] = weights_df.iloc[0].abs()
-            delta_weights = delta_weights.fillna(0.0)
-            transaction_costs = delta_weights.sum(axis=1) * (transaction_costs_bps / 10000.0)
-            per_asset_transaction_costs = delta_weights * (transaction_costs_bps / 10000.0)
-        else:
-            # Read commission params from global_config
-            commission_per_share = (
-                float(global_config.get("commission_per_share", 0.005))
-                if isinstance(global_config, dict)
-                else 0.005
-            )
-            commission_min_per_order = (
-                float(global_config.get("commission_min_per_order", 1.0))
-                if isinstance(global_config, dict)
-                else 1.0
-            )
-            commission_max_percent = (
-                float(global_config.get("commission_max_percent_of_trade", 0.005))
-                if isinstance(global_config, dict)
-                else 0.005
-            )
-            slippage_bps = (
-                float(global_config.get("slippage_bps", 2.5))
-                if isinstance(global_config, dict)
-                else 2.5
-            )
-            portfolio_value = (
-                float(global_config.get("portfolio_value", 100000.0))
-                if isinstance(global_config, dict)
-                else 100000.0
-            )
-
-            tc_frac, tc_frac_detailed = detailed_commission_slippage_kernel(
-                weights_current=weights_current,
-                close_prices=close_arr,
-                portfolio_value=portfolio_value,
-                commission_per_share=commission_per_share,
-                commission_min_per_order=commission_min_per_order,
-                commission_max_percent=commission_max_percent,
-                slippage_bps=slippage_bps,
-                price_mask=price_mask_arr,
-            )
-
-            transaction_costs = pd.Series(tc_frac, index=price_ix, dtype=float)
-            per_asset_transaction_costs = pd.DataFrame(
-                tc_frac_detailed, index=price_ix, columns=valid_cols
-            )
-
-        # --- Return simulation (fast + realistic): drift weights between rebalances ---
-        gross_arr = drifting_weights_returns_kernel(w_for_returns, r, m)
-        gross_returns_series = pd.Series(gross_arr, index=price_ix, dtype=float)
-
-        returns_net_of_costs = (gross_returns_series - transaction_costs).astype(float)
-
-        # Optional, compact diagnostics (kept small by design)
-        merged_flags: dict = {}
-        if isinstance(global_config, dict):
-            merged_flags.update(global_config.get("feature_flags", {}) or {})
-        merged_flags.update(scenario_config.get("feature_flags", {}) or {})
-        if bool(merged_flags.get("pnl_sanity", False)):
-            w_sums = (
-                weights_daily.reindex(index=price_ix, columns=valid_cols).fillna(0.0).sum(axis=1)
-            )
-            logger.info(
-                "[PnL sanity] tickers=%d weights_sum[min=%.4f max=%.4f] ret[min=%.4f max=%.4f] tc_max=%.6f",
-                len(valid_cols),
-                float(w_sums.min()) if len(w_sums) else float("nan"),
-                float(w_sums.max()) if len(w_sums) else float("nan"),
-                float(returns_net_of_costs.min()) if len(returns_net_of_costs) else float("nan"),
-                float(returns_net_of_costs.max()) if len(returns_net_of_costs) else float("nan"),
-                (
-                    float(transaction_costs.max())
-                    if transaction_costs is not None and len(transaction_costs)
-                    else float("nan")
-                ),
-            )
-
+    if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and (
+        "Close" in price_data_daily_ohlc.columns.get_level_values(-1)
+    ):
+        close_prices_df = price_data_daily_ohlc.xs("Close", level="Field", axis=1)
+        price_index = close_prices_df.index
     else:
-        # The fallback path has been intentionally removed.
-        # If use_ndarray_sim is False, this will now raise an error.
-        raise RuntimeError(
-            "The legacy Pandas-based portfolio simulation has been removed. "
-            "Please enable 'ndarray_simulation' in the feature flags."
+        close_prices_df = price_data_daily_ohlc
+        price_index = price_data_daily_ohlc.index
+
+    valid_cols = [t for t in universe_tickers if t in close_prices_df.columns]
+
+    resolved_panel = market_data_panel
+    if resolved_panel is None and isinstance(global_config, dict):
+        resolved_panel = global_config.get("market_data_panel")
+
+    price_ix = pd.DatetimeIndex(price_index)
+    close_arr, price_mask_arr = prepare_close_arrays_for_simulation(
+        market_data_panel=resolved_panel,
+        close_prices_df=close_prices_df,
+        price_index=price_ix,
+        valid_cols=valid_cols,
+    )
+    sim_input = build_portfolio_simulation_input(
+        weights_daily=weights_daily,
+        price_index=price_ix,
+        valid_cols=valid_cols,
+        close_arr=close_arr,
+        price_mask_arr=price_mask_arr,
+    )
+
+    sim_result = simulate_portfolio(
+        sim_input,
+        global_config=global_config,
+        scenario_config=scenario_config,
+        materialize_trades=track_trades,
+    )
+
+    signed_weights_out: pd.DataFrame | None = None
+    if include_signed_weights:
+        close_aligned = close_prices_df.reindex(index=price_ix, columns=valid_cols).astype(float)
+        pos_aligned = sim_result.positions.reindex(index=price_ix, columns=valid_cols).fillna(0.0)
+        pv_aligned = sim_result.portfolio_values.reindex(price_ix).astype(float)
+        pv_safe = pv_aligned.replace(0.0, np.nan)
+        dollar_positions = pos_aligned.multiply(close_aligned, axis=0)
+        signed_weights_out = dollar_positions.div(pv_safe, axis=0).fillna(0.0)
+
+    returns_net_of_costs = sim_result.daily_returns.astype(float)
+    transaction_costs = pd.Series(sim_result.total_cost_fraction, index=price_ix, dtype=float)
+    per_asset_transaction_costs = pd.DataFrame(
+        sim_result.per_asset_cost_fraction,
+        index=price_ix,
+        columns=valid_cols,
+    )
+
+    merged_flags: dict = {}
+    if isinstance(global_config, dict):
+        merged_flags.update(global_config.get("feature_flags", {}) or {})
+    if isinstance(scenario_config, dict):
+        merged_flags.update(scenario_config.get("feature_flags", {}) or {})
+    if bool(merged_flags.get("pnl_sanity", False)):
+        w_sums = weights_daily.reindex(index=price_ix, columns=valid_cols).fillna(0.0).sum(axis=1)
+        logger.info(
+            "[PnL sanity] tickers=%d weights_sum[min=%.4f max=%.4f] ret[min=%.4f max=%.4f] tc_max=%.6f",
+            len(valid_cols),
+            float(w_sums.min()) if len(w_sums) else float("nan"),
+            float(w_sums.max()) if len(w_sums) else float("nan"),
+            float(returns_net_of_costs.min()) if len(returns_net_of_costs) else float("nan"),
+            float(returns_net_of_costs.max()) if len(returns_net_of_costs) else float("nan"),
+            (
+                float(transaction_costs.max())
+                if transaction_costs is not None and len(transaction_costs)
+                else float("nan")
+            ),
         )
 
-    # Initialize trade tracker if requested
     trade_tracker = None
     if track_trades:
-        initial_portfolio_value = global_config.get("portfolio_value", 100000.0)
+        initial_portfolio_value = (
+            global_config.get("portfolio_value", 100000.0)
+            if isinstance(global_config, dict)
+            else 100000.0
+        )
 
-        # Get allocation mode from scenario config (strategy-level setting)
-        allocation_mode = scenario_config.get("allocation_mode", "reinvestment")
+        allocation_mode = (
+            scenario_config.get("allocation_mode", "reinvestment")
+            if isinstance(scenario_config, dict)
+            else "reinvestment"
+        )
 
         trade_tracker = TradeTracker(initial_portfolio_value, allocation_mode)
 
-        # PREPARE DATA FOR TRADE TRACKING (NUMPY FAST PATH)
-        # Align all dataframes to a common index and columns
-        valid_cols = list(weights_daily.columns.intersection(close_prices_df.columns))
-        common_index = weights_daily.index.intersection(close_prices_df.index)
-
-        weights_arr = (
-            weights_daily.reindex(index=common_index, columns=valid_cols).fillna(0.0).to_numpy()
-        )
+        common_index = price_ix
+        valid_cols_tt = valid_cols
         prices_arr = (
-            close_prices_df.reindex(index=common_index, columns=valid_cols).fillna(0.0).to_numpy()
-        )
-        commissions_arr = (
-            per_asset_transaction_costs.reindex(index=common_index, columns=valid_cols)
-            .fillna(0.0)
-            .to_numpy()
-        )
-
-        weights_arr = (
-            weights_daily.reindex(index=common_index, columns=valid_cols)
-            .fillna(0.0)
-            .astype(float)
-            .to_numpy()
-        )
-        prices_arr = (
-            close_prices_df.reindex(index=common_index, columns=valid_cols)
+            close_prices_df.reindex(index=common_index, columns=valid_cols_tt)
             .fillna(0.0)
             .astype(float)
             .to_numpy()
         )
         commissions_arr = (
-            per_asset_transaction_costs.reindex(index=common_index, columns=valid_cols)
+            per_asset_transaction_costs.reindex(index=common_index, columns=valid_cols_tt)
+            .fillna(0.0)
+            .astype(float)
+            .to_numpy()
+        )
+        portfolio_values_np = sim_result.portfolio_values.reindex(common_index).to_numpy(
+            dtype=float
+        )
+        positions_np = (
+            sim_result.positions.reindex(index=common_index, columns=valid_cols_tt)
             .fillna(0.0)
             .astype(float)
             .to_numpy()
@@ -355,23 +266,16 @@ def calculate_portfolio_returns(
 
         _track_trades_and_populate(
             trade_tracker=trade_tracker,
-            weights_arr=weights_arr,
             prices_arr=prices_arr,
             commissions_arr=commissions_arr,
             dates=common_index.values.view("i8"),
-            tickers=np.array(valid_cols),
+            tickers=np.array(valid_cols_tt),
+            portfolio_values=portfolio_values_np,
+            positions=positions_np,
         )
 
-        # If trade tracking was used, the portfolio value series is the source of truth for returns
-        pv_series = trade_tracker.portfolio_value_tracker.daily_portfolio_value
-        if isinstance(pv_series, pd.Series) and not pv_series.empty:
-            returns_net_of_costs = (
-                pv_series.pct_change(fill_method=None)
-                .reindex(price_data_daily_ohlc.index)
-                .fillna(0.0)
-                .astype(float)
-            )
-
+    if include_signed_weights:
+        return returns_net_of_costs, trade_tracker, signed_weights_out
     return returns_net_of_costs, trade_tracker
 
 
@@ -383,13 +287,10 @@ def _calculate_meta_strategy_portfolio_returns(
     universe_tickers,
     global_config,
     track_trades=False,
+    *,
+    include_signed_weights: bool = False,
 ):
-    """
-    Calculate portfolio returns for meta strategies using their aggregated trade history.
-
-    Meta strategies track actual trades from sub-strategies, so we use their
-    trade aggregator to calculate returns instead of the standard signal-based approach.
-    """
+    """Meta strategies: returns from sub-strategy trade aggregation, not canonical share simulation."""
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(
             f"Calculating meta strategy portfolio returns for {strategy.__class__.__name__}"
@@ -407,7 +308,8 @@ def _calculate_meta_strategy_portfolio_returns(
     if not all_trades:
         if logger.isEnabledFor(logging.WARNING):
             logger.warning("Meta strategy has no trades - returning zero returns")
-        return pd.Series(0.0, index=price_data_daily_ohlc.index), None
+        out_z = pd.Series(0.0, index=price_data_daily_ohlc.index)
+        return (out_z, None, None) if include_signed_weights else (out_z, None)
 
     # Extract market data for portfolio valuation
     if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
@@ -426,7 +328,8 @@ def _calculate_meta_strategy_portfolio_returns(
     if portfolio_timeline.empty:
         if logger.isEnabledFor(logging.WARNING):
             logger.warning("Meta strategy has no portfolio timeline - returning zero returns")
-        return pd.Series(0.0, index=price_data_daily_ohlc.index), None
+        out_z = pd.Series(0.0, index=price_data_daily_ohlc.index)
+        return (out_z, None, None) if include_signed_weights else (out_z, None)
 
     # Align returns with the price data index
     portfolio_returns = (
@@ -447,6 +350,12 @@ def _calculate_meta_strategy_portfolio_returns(
             strategy, global_config, scenario_config
         )
 
+    signed_weights_out = None
+    if include_signed_weights:
+        signed_weights_out = trade_aggregator.get_signed_weights_dataframe(
+            pd.DatetimeIndex(price_data_daily_ohlc.index)
+        )
+        return portfolio_returns, trade_tracker, signed_weights_out
     return portfolio_returns, trade_tracker
 
 
@@ -610,38 +519,13 @@ def _create_meta_strategy_trade_tracker(strategy, global_config, scenario_config
 
 def _track_trades_and_populate(
     trade_tracker: TradeTracker,
-    weights_arr: np.ndarray,
     prices_arr: np.ndarray,
     commissions_arr: np.ndarray,
     dates: np.ndarray,
     tickers: np.ndarray,
+    portfolio_values: np.ndarray,
+    positions: np.ndarray,
 ):
-    """
-    Orchestrates the trade tracking process by calling the high-performance
-    Numba kernel and then populating the TradeTracker object with the results.
-    Args:
-        trade_tracker: The TradeTracker object to populate.
-        weights_arr: NumPy array of asset weights.
-        prices_arr: NumPy array of asset prices.
-        commissions_arr: NumPy array of commissions.
-        dates: NumPy array of dates for the backtest period.
-        tickers: NumPy array of ticker symbols.
-    """
-    price_mask = prices_arr > 0
-    allocation_mode_map = {"reinvestment": 0, "fixed": 1}
-    allocation_mode = allocation_mode_map.get(trade_tracker.allocation_mode, 0)
-
-    # Call the Numba kernel to get portfolio values and positions
-    portfolio_values, _, positions = trade_tracking_kernel(
-        initial_portfolio_value=trade_tracker.initial_portfolio_value,
-        allocation_mode=allocation_mode,
-        weights=weights_arr,
-        prices=prices_arr,
-        price_mask=price_mask,
-        commissions=commissions_arr,
-    )
-
-    # Call the new kernel to get completed trade data
     n_days, n_assets = positions.shape
     max_trades = n_days * n_assets
 
@@ -684,12 +568,10 @@ def _track_trades_and_populate(
 
     completed_trades_arr = completed_trades_buffer[:trade_count]
 
-    # Convert kernel output to DataFrames for the TradeTracker
     portfolio_values_series = pd.Series(portfolio_values, index=pd.to_datetime(dates))
     positions_df = pd.DataFrame(positions, index=pd.to_datetime(dates), columns=tickers)
     prices_df = pd.DataFrame(prices_arr, index=pd.to_datetime(dates), columns=tickers)
 
-    # Populate the trade tracker with the results from the kernels
     trade_tracker.populate_from_kernel_results(
         portfolio_values=portfolio_values_series,
         positions=positions_df,

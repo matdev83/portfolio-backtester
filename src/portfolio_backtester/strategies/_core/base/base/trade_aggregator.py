@@ -6,6 +6,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from collections import defaultdict
 
+import numpy as np
 import pandas as pd
 from .....pandas_utils import extract_numeric_scalar
 from .....interfaces.validator_interface import (
@@ -75,6 +76,7 @@ class TradeAggregator:
 
         # Performance tracking
         self._portfolio_values: Dict[pd.Timestamp, float] = {}
+        self._daily_weights_by_date: Dict[pd.Timestamp, Dict[str, float]] = {}
         self._cash_balance = initial_capital
 
         # Strategy allocation tracking
@@ -438,7 +440,10 @@ class TradeAggregator:
             market_data: DataFrame with dates as index and assets as columns containing prices
         """
         if market_data.empty or not self._trade_history:
+            self._daily_weights_by_date.clear()
             return
+
+        self._daily_weights_by_date.clear()
 
         # Get all dates from market data
         all_dates = market_data.index
@@ -506,6 +511,29 @@ class TradeAggregator:
             total_value = float(cash_balance) + float(position_value)
             self._portfolio_values[date] = total_value
 
+            if total_value > 1e-15:
+                weights_row: Dict[str, float] = {}
+                for asset, quantity in current_positions.items():
+                    if date not in market_data.index:
+                        continue
+                    price_cell = None
+                    if isinstance(market_data.columns, pd.MultiIndex):
+                        col_key = (asset, "Close")
+                        if col_key not in market_data.columns:
+                            continue
+                        price_cell = market_data.loc[date, col_key]
+                    else:
+                        if asset not in market_data.columns:
+                            continue
+                        price_cell = market_data.loc[date, asset]
+                    price_float = extract_numeric_scalar(price_cell)
+                    if price_float is None:
+                        continue
+                    weights_row[asset] = (float(quantity) * float(price_float)) / total_value
+                self._daily_weights_by_date[date] = weights_row
+            else:
+                self._daily_weights_by_date[date] = {}
+
         # Keep current_capital consistent with the latest recomputed value
         if self._portfolio_values:
             latest_date = max(self._portfolio_values.keys())
@@ -532,6 +560,27 @@ class TradeAggregator:
         df["cumulative_return"] = (df["portfolio_value"] / self.initial_capital) - 1
 
         return df
+
+    def get_signed_weights_dataframe(self, calendar_index: pd.DatetimeIndex) -> pd.DataFrame:
+        """NAV share weights per asset; dates absent from daily snapshots are all-NaN rows."""
+        if len(calendar_index) == 0:
+            return pd.DataFrame(index=calendar_index)
+        all_assets: set[str] = set()
+        for row in self._daily_weights_by_date.values():
+            all_assets.update(row.keys())
+        cols = sorted(all_assets)
+        if not cols:
+            return pd.DataFrame(index=calendar_index)
+        data: Dict[str, List[float]] = {c: [] for c in cols}
+        for ts in calendar_index:
+            if ts not in self._daily_weights_by_date:
+                for c in cols:
+                    data[c].append(np.nan)
+                continue
+            row = self._daily_weights_by_date[ts]
+            for c in cols:
+                data[c].append(float(row.get(c, 0.0)))
+        return pd.DataFrame(data, index=calendar_index)
 
     def export_trades_to_dataframe(self) -> pd.DataFrame:
         """

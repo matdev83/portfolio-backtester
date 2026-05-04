@@ -24,6 +24,7 @@ class BacktestResult:
         trade_history: DataFrame containing all trade records
         performance_stats: Additional performance statistics
         charts_data: Data for generating performance charts
+        signed_weights: Optional realized dollar weights / NAV per asset when available
         trade_stats: Dictionary of detailed trade statistics split by direction
     """
 
@@ -33,6 +34,7 @@ class BacktestResult:
     performance_stats: Dict[str, Any]
     charts_data: Dict[str, Any]
     trade_stats: Optional[Dict[str, Any]] = None
+    signed_weights: Optional[pd.DataFrame] = None
 
 
 @dataclass

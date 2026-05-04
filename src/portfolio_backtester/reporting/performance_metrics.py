@@ -17,7 +17,7 @@ Requires ``num_trials > 1`` and sufficient history for a defined value.
 
 import logging
 import warnings
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -67,6 +67,96 @@ def _infer_steps_per_year(idxs: pd.DatetimeIndex) -> int:
 
 
 EPSILON_FOR_DIVISION = 1e-15  # Small epsilon to prevent division by zero or near-zero
+
+EXPOSURE_CANONICAL_KEYS: tuple[str, ...] = (
+    "Time in Market %",
+    "Avg Gross Exposure",
+    "Avg Net Exposure",
+    "Max Gross Exposure",
+    "Avg Long Exposure",
+    "Avg Short Exposure",
+    "Return / Avg Gross Exposure",
+    "Ann. Return / Avg Gross Exposure",
+)
+
+
+def _nan_exposure_metrics_dict() -> dict[str, float]:
+    return {k: np.nan for k in EXPOSURE_CANONICAL_KEYS}
+
+
+def _compute_exposure_metrics(
+    exposure: Union[pd.Series, pd.DataFrame, None],
+    active_ret_index: pd.Index,
+    *,
+    total_return: float,
+    ann_return: float,
+) -> dict[str, float]:
+    """Exposure metrics from realized weights or gross exposure; never inferred from returns.
+
+    Alignment:
+        Exposure rows are ``reindex``ed to ``active_ret_index`` — the same timestamps as
+        ``rets.dropna()`` (non-NaN strategy returns). Leading/trailing NaNs in returns do not
+        contribute to exposure aggregates.
+
+    Missing weights:
+        Rows that are **all-NaN** after alignment are **excluded** from means and from the
+        time-in-market denominator. Partial NaNs within an otherwise observed row use
+        nan-skipping sums per row. **Explicit zeros** mean flat/cash for that asset.
+
+    Gross-only series:
+        NaN gross observations are excluded the same way as all-NaN weight rows.
+    """
+    out = _nan_exposure_metrics_dict()
+    if exposure is None:
+        return out
+
+    idx = active_ret_index
+    if isinstance(exposure, pd.DataFrame):
+        aligned = exposure.reindex(idx).astype(float)
+        observed = ~aligned.isna().all(axis=1)
+        if not bool(observed.any()):
+            return out
+        sub = aligned.loc[observed]
+        gross = sub.abs().sum(axis=1, skipna=True)
+        net_s = sub.sum(axis=1, skipna=True)
+        long_s = sub.clip(lower=0.0).sum(axis=1, skipna=True)
+        short_s = (-sub.clip(upper=0.0)).sum(axis=1, skipna=True)
+        avg_net = float(net_s.mean())
+        avg_long = float(long_s.mean())
+        avg_short = float(short_s.mean())
+    else:
+        gross_full = exposure.reindex(idx).astype(float)
+        observed_g = gross_full.notna()
+        if not bool(observed_g.any()):
+            return out
+        gross = gross_full.loc[observed_g]
+        avg_net = np.nan
+        avg_long = np.nan
+        avg_short = np.nan
+
+    avg_gross = float(gross.mean())
+    max_gross = float(gross.max())
+    in_mkt_share = float((gross > EPSILON_FOR_DIVISION).mean())
+
+    out["Time in Market %"] = in_mkt_share
+    out["Avg Gross Exposure"] = avg_gross
+    out["Max Gross Exposure"] = max_gross
+    out["Avg Net Exposure"] = avg_net
+    out["Avg Long Exposure"] = avg_long
+    out["Avg Short Exposure"] = avg_short
+
+    if not np.isfinite(avg_gross) or avg_gross <= EPSILON_FOR_DIVISION:
+        out["Return / Avg Gross Exposure"] = np.nan
+        out["Ann. Return / Avg Gross Exposure"] = np.nan
+        return out
+
+    out["Return / Avg Gross Exposure"] = (
+        np.nan if not np.isfinite(total_return) else float(total_return) / avg_gross
+    )
+    out["Ann. Return / Avg Gross Exposure"] = (
+        np.nan if not np.isfinite(ann_return) else float(ann_return) / avg_gross
+    )
+    return out
 
 
 def _is_all_zero(series: pd.Series) -> bool:
@@ -232,6 +322,7 @@ def _ensure_expected_keys(metrics_dict: dict) -> dict:
         "Tail Ratio (mean)",
         "Deflated Sharpe",
         "Max DD Recovery Time (bars)",
+        *EXPOSURE_CANONICAL_KEYS,
     ]
     for k in expected:
         metrics_dict.setdefault(k, np.nan)
@@ -304,6 +395,7 @@ def calculate_metrics(
     num_trials=1,
     trade_stats=None,
     risk_free_rets: Optional[pd.Series] = None,
+    exposure: Union[pd.Series, pd.DataFrame, None] = None,
 ):
     is_all_zero_returns = _is_all_zero(rets)
     # IMPORTANT:
@@ -889,6 +981,15 @@ def calculate_metrics(
             "Max DD Recovery Time (bars)": max_dd_recovery_bars,
             "Max Flat Period (days)": max_flat_period,
         }
+    )
+
+    base_metrics.update(
+        _compute_exposure_metrics(
+            exposure,
+            active_rets.index,
+            total_return=float(base_metrics["Total Return"]),
+            ann_return=float(base_metrics["Ann. Return"]),
+        )
     )
 
     metrics = pd.Series(base_metrics, name=name)

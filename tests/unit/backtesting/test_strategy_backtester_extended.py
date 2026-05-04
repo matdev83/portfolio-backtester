@@ -147,7 +147,7 @@ def test_run_scenario_for_window_uses_scenario_reference_ticker(backtester):
         ),
         patch(
             "portfolio_backtester.backtesting.strategy_backtester.calculate_portfolio_returns",
-            return_value=(pd.Series(0.0, index=dates), None),
+            return_value=(pd.Series(0.0, index=dates), None, None),
         ),
     ):
         backtester._run_scenario_for_window(
