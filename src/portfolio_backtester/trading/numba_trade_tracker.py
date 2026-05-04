@@ -7,6 +7,9 @@ portfolio simulation outputs.
 
 Uses the legacy ``trade_tracking_kernel`` from ``numba_kernels`` solely inside this
 adapter; new features should use ``simulate_portfolio`` / ``canonical_portfolio_simulation_kernel``.
+
+This module is **not** imported by ``calculate_portfolio_returns`` or the optimizer stack;
+it exists for tests and the ``track_trades_canonical`` helper (see ``docs/simulation_execution_paths.md``).
 """
 
 import logging

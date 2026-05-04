@@ -205,6 +205,8 @@ The legacy adapter **`generate_signals`** remains for older callers; new work sh
 | Scheduling | Sparse rows = rebalance/cost events; daily ffill fills between events |
 | Timing | `timing_config.trade_execution_timing`: `bar_close` vs `next_bar_open` (open semantics) |
 | Meta | Only `*MetaStrategy` classes; returns from trade aggregation |
+| Returns labeling | `calculate_portfolio_returns` sets `Series.attrs["portfolio_backtester.execution_model"]` to `canonical_share_cash_simulation` (standard) or `trade_aggregation` (meta) |
+| Hot loops | Optional `StrategyContext.universe_close_np` / `rebalance_session_mask_np` for NumPy-first weight code |
 | Costs | Included from first investable bar (incl. entry); per global/scenario cost model |
 
 **`track_trades`** only enables populating a `TradeTracker` from the same simulation path (canonical ledger for standard strategies, aggregated trades for meta); it does not switch return math or cost models.

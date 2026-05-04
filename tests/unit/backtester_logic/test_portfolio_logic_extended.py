@@ -1,6 +1,11 @@
 import pytest
 import pandas as pd
 from unittest.mock import MagicMock, patch
+
+from portfolio_backtester.backtester_logic.meta_execution import (
+    PORTFOLIO_EXECUTION_MODEL_ATTR,
+    MetaExecutionMode,
+)
 from portfolio_backtester.backtester_logic.portfolio_logic import calculate_portfolio_returns
 
 
@@ -31,6 +36,9 @@ def test_calculate_portfolio_returns_standard(sample_data):
 
     assert isinstance(returns, pd.Series)
     assert tracker is None
+    assert returns.attrs[PORTFOLIO_EXECUTION_MODEL_ATTR] == (
+        MetaExecutionMode.CANONICAL_SHARE_CASH_SIMULATION.value
+    )
     # Check that returns are calculated (first day 0 due to shift)
     assert returns.iloc[0] == 0.0
     assert returns.iloc[1] > 0
@@ -79,3 +87,6 @@ def test_calculate_meta_strategy_portfolio_returns(mock_factory, sample_data):
     )
 
     assert (returns == 0.01).all()
+    assert (
+        returns.attrs[PORTFOLIO_EXECUTION_MODEL_ATTR] == MetaExecutionMode.TRADE_AGGREGATION.value
+    )

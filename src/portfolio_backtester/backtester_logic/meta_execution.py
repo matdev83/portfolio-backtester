@@ -5,6 +5,11 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
+import pandas as pd
+
+# Pandas ``Series.attrs`` key for ``calculate_portfolio_returns`` outputs (standard vs meta).
+PORTFOLIO_EXECUTION_MODEL_ATTR = "portfolio_backtester.execution_model"
+
 
 class MetaExecutionMode(Enum):
     """High-level portfolio return path.
@@ -20,6 +25,12 @@ class MetaExecutionMode(Enum):
 
     CANONICAL_SHARE_CASH_SIMULATION = "canonical_share_cash_simulation"
     TRADE_AGGREGATION = "trade_aggregation"
+
+
+def attach_portfolio_execution_model(series: pd.Series, mode: MetaExecutionMode) -> pd.Series:
+    """Record which portfolio simulation path produced *series* (in-place ``attrs``)."""
+    series.attrs[PORTFOLIO_EXECUTION_MODEL_ATTR] = mode.value
+    return series
 
 
 def portfolio_execution_mode_for_strategy(

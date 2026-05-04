@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
+import numpy as np
 import pandas as pd
 
 
@@ -38,6 +39,27 @@ class StrategyContext:
     wfo_end_date: Optional[pd.Timestamp]
     use_sparse_nan_for_inactive_rows: bool
     full_price_panel: Optional[pd.DataFrame] = None
+
+    @property
+    def universe_close_np(self) -> np.ndarray:
+        """Close (or sole price) matrix aligned to ``universe_tickers`` columns, shape (T, N).
+
+        Float64; missing cells are NaN. Prefer this over repeated per-date pandas slices in
+        hot ``generate_target_weights`` loops when full scans already materialized ``asset_data``.
+        """
+        cols = list(self.universe_tickers)
+        sub = self.asset_data.reindex(columns=cols)
+        numeric = sub.apply(pd.to_numeric, errors="coerce")
+        return np.ascontiguousarray(numeric.to_numpy(dtype=np.float64, copy=True))
+
+    @property
+    def rebalance_session_mask_np(self) -> np.ndarray:
+        """Boolean length ``len(asset_data.index)``: True on rows whose session date is in
+        ``rebalance_dates``.
+        """
+        ix = self.asset_data.index
+        mask = np.asarray(ix.isin(self.rebalance_dates), dtype=np.bool_)
+        return np.ascontiguousarray(mask)
 
     @classmethod
     def from_standard_inputs(

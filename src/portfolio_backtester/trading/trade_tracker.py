@@ -218,8 +218,13 @@ class TradeTracker:
         tickers: np.ndarray,
         prices: pd.DataFrame,
     ):
-        """
-        Populates the TradeTracker from the raw output of the Numba kernels.
+        """Populate from ``trade_lifecycle_kernel`` structured trades (legacy / non-canonical).
+
+        **Not** used by ``calculate_portfolio_returns`` for standard strategies, which must use
+        :meth:`populate_from_execution_ledger` with the canonical simulator ledger. This path
+        infers lifecycle from positions plus a single **close** price panel and remains for
+        unit tests and the :mod:`portfolio_backtester.trading.numba_trade_tracker` adapter only.
+
         Args:
             portfolio_values: A Series of daily portfolio values.
             positions: A DataFrame of daily asset positions.

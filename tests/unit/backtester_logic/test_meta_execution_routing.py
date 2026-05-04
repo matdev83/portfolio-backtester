@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pandas as pd
 
 from portfolio_backtester.backtester_logic.meta_execution import (
+    PORTFOLIO_EXECUTION_MODEL_ATTR,
     MetaExecutionMode,
+    attach_portfolio_execution_model,
     portfolio_execution_mode_for_strategy,
 )
 from portfolio_backtester.interfaces.strategy_resolver import StrategyResolverFactory
@@ -65,3 +68,11 @@ def test_meta_execution_mode_enum_canonical_member_stable() -> None:
     assert MetaExecutionMode.CANONICAL_SHARE_CASH_SIMULATION.value == (
         "canonical_share_cash_simulation"
     )
+
+
+def test_attach_portfolio_execution_model_sets_series_attrs() -> None:
+    s = attach_portfolio_execution_model(
+        pd.Series([0.1, 0.2]),
+        MetaExecutionMode.TRADE_AGGREGATION,
+    )
+    assert s.attrs[PORTFOLIO_EXECUTION_MODEL_ATTR] == "trade_aggregation"

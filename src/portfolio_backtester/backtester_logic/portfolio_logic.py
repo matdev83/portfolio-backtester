@@ -14,7 +14,11 @@ from ..timing.trade_execution_timing import (
 from ..trading.trade_tracker import TradeTracker
 from ..trading.unified_commission_calculator import get_unified_commission_calculator
 from ..simulation.kernel import simulate_portfolio
-from .meta_execution import MetaExecutionMode, portfolio_execution_mode_for_strategy
+from .meta_execution import (
+    MetaExecutionMode,
+    attach_portfolio_execution_model,
+    portfolio_execution_mode_for_strategy,
+)
 from .portfolio_simulation_input import (
     build_portfolio_simulation_input,
     extract_open_frame_from_ohlc,
@@ -113,6 +117,10 @@ def calculate_portfolio_returns(
     include_signed_weights: bool = False,
 ):
     """Portfolio net returns for standard strategies via the canonical share/cash simulator.
+
+    The returned ``pandas.Series`` includes ``attrs["portfolio_backtester.execution_model"]``
+    set to ``MetaExecutionMode.CANONICAL_SHARE_CASH_SIMULATION.value`` for standard strategies,
+    or ``MetaExecutionMode.TRADE_AGGREGATION.value`` for meta strategies (see ``meta_execution``).
 
     Meta strategies (``MetaExecutionMode.TRADE_AGGREGATION``) bypass that path and
     rebuild returns from aggregated sub-strategy trades; see ``meta_execution.py``.
@@ -230,7 +238,10 @@ def calculate_portfolio_returns(
         dollar_positions = pos_aligned.multiply(close_aligned, axis=0)
         signed_weights_out = dollar_positions.div(pv_safe, axis=0).fillna(0.0)
 
-    returns_net_of_costs = sim_result.daily_returns.astype(float)
+    returns_net_of_costs = attach_portfolio_execution_model(
+        sim_result.daily_returns.astype(float),
+        MetaExecutionMode.CANONICAL_SHARE_CASH_SIMULATION,
+    )
     transaction_costs = pd.Series(sim_result.total_cost_fraction, index=price_ix, dtype=float)
 
     merged_flags: dict = {}
@@ -316,7 +327,10 @@ def _calculate_meta_strategy_portfolio_returns(
     if not all_trades:
         if logger.isEnabledFor(logging.WARNING):
             logger.warning("Meta strategy has no trades - returning zero returns")
-        out_z = pd.Series(0.0, index=price_data_daily_ohlc.index)
+        out_z = attach_portfolio_execution_model(
+            pd.Series(0.0, index=price_data_daily_ohlc.index),
+            MetaExecutionMode.TRADE_AGGREGATION,
+        )
         return (out_z, None, None) if include_signed_weights else (out_z, None)
 
     # Extract market data for portfolio valuation
@@ -336,12 +350,19 @@ def _calculate_meta_strategy_portfolio_returns(
     if portfolio_timeline.empty:
         if logger.isEnabledFor(logging.WARNING):
             logger.warning("Meta strategy has no portfolio timeline - returning zero returns")
-        out_z = pd.Series(0.0, index=price_data_daily_ohlc.index)
+        out_z = attach_portfolio_execution_model(
+            pd.Series(0.0, index=price_data_daily_ohlc.index),
+            MetaExecutionMode.TRADE_AGGREGATION,
+        )
         return (out_z, None, None) if include_signed_weights else (out_z, None)
 
     # Align returns with the price data index
-    portfolio_returns = (
-        portfolio_timeline["returns"].reindex(price_data_daily_ohlc.index).fillna(0.0)
+    portfolio_returns = attach_portfolio_execution_model(
+        portfolio_timeline["returns"]
+        .reindex(price_data_daily_ohlc.index)
+        .fillna(0.0)
+        .astype(float),
+        MetaExecutionMode.TRADE_AGGREGATION,
     )
 
     if logger.isEnabledFor(logging.DEBUG):
@@ -349,7 +370,9 @@ def _calculate_meta_strategy_portfolio_returns(
         logger.debug(
             f"Returns range: {portfolio_returns.min():.6f} to {portfolio_returns.max():.6f}"
         )
-        logger.debug(f"Total return: {(1 + portfolio_returns).prod() - 1:.6f}")
+        tr_np = portfolio_returns.to_numpy(dtype=np.float64, copy=False)
+        total_rt = float(np.prod(1.0 + tr_np) - 1.0)
+        logger.debug("Total return: %.6f", total_rt)
 
     # Create trade tracker if requested
     trade_tracker = None
