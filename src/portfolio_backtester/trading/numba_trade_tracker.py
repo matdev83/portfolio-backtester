@@ -135,6 +135,7 @@ def track_trades_canonical(
         completed_trades=completed_trades_arr,
         tickers=np.asarray(valid_cols, dtype=object),
         prices=prices_df,
+        allow_legacy_close_trade_inference=True,
     )
 
     return tracker.get_trade_statistics()

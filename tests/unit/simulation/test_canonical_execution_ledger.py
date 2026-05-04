@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from itertools import permutations
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -335,7 +337,7 @@ def test_invalid_execution_masked_day_then_valid_open_emits_single_fill_row():
 
 
 def test_same_day_multi_asset_ledger_row_shuffle_trade_tracker_replay_invariant():
-    """Kernel emits fills in column order; replay sorts by (date_idx, ticker) for determinism."""
+    """Kernel emits fills in column order; replay uses stable (date, ticker, price, qty) sort."""
     dates = pd.date_range("2023-01-01", periods=1, freq="D")
     w = np.array([[0.5, 0.5]], dtype=np.float64)
     rb = np.array([True], dtype=np.bool_)
@@ -377,3 +379,88 @@ def test_same_day_multi_asset_ledger_row_shuffle_trade_tracker_replay_invariant(
     tt2.populate_from_execution_ledger(shuffled, pv, pos, close_df)
     assert _open_snapshot(tt1) == _open_snapshot(tt2)
     assert set(_open_snapshot(tt1).keys()) == {"A", "Z"}
+
+
+def test_execution_ledger_replay_sort_keys_monotonic():
+    """After applying the replay sort key, ledger rows are lexicographically non-decreasing."""
+    dates = pd.date_range("2023-01-01", periods=1, freq="D")
+    w = np.array([[0.25, 0.25, 0.5]], dtype=np.float64)
+    rb = np.array([True], dtype=np.bool_)
+    close = np.array([[40.0, 10.0, 80.0]], dtype=np.float64)
+    m = np.ones_like(close, dtype=bool)
+    sim_in = PortfolioSimulationInput(
+        dates=dates,
+        tickers=("C", "B", "A"),
+        weights_target=w,
+        close_prices=close,
+        close_price_mask=m,
+        execution_prices=close.copy(),
+        execution_price_mask=m.copy(),
+        rebalance_mask=rb,
+        execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+    )
+    g = _zero_cost_global(10_000.0)
+    sc: dict = {"allocation_mode": "reinvestment"}
+    out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
+    ld = out.execution_ledger.sort_values(
+        ["date_idx", "ticker", "execution_price", "quantity"],
+        kind="mergesort",
+    )
+    tuples = list(
+        zip(
+            ld["date_idx"].astype(int),
+            ld["ticker"].astype(str),
+            ld["execution_price"].astype(float),
+            ld["quantity"].astype(float),
+        )
+    )
+    assert tuples == sorted(tuples)
+
+
+def test_three_asset_same_day_ledger_permutations_trade_tracker_replay_invariant():
+    """All permutations of same-day fills yield identical open-position state."""
+    dates = pd.date_range("2023-01-01", periods=1, freq="D")
+    w = np.array([[1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]], dtype=np.float64)
+    rb = np.array([True], dtype=np.bool_)
+    close = np.array([[30.0, 60.0, 90.0]], dtype=np.float64)
+    m = np.ones_like(close, dtype=bool)
+    sim_in = PortfolioSimulationInput(
+        dates=dates,
+        tickers=("Z", "M", "A"),
+        weights_target=w,
+        close_prices=close,
+        close_price_mask=m,
+        execution_prices=close.copy(),
+        execution_price_mask=m.copy(),
+        rebalance_mask=rb,
+        execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+    )
+    g = _zero_cost_global(10_000.0)
+    sc: dict = {"allocation_mode": "reinvestment"}
+    out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
+    raw = out.execution_ledger.copy()
+    assert len(raw) == 3
+    assert list(raw["ticker"]) == ["Z", "M", "A"]
+
+    idx = out.portfolio_values.index
+    close_df = pd.DataFrame(close, index=idx, columns=["Z", "M", "A"])
+    pv = out.portfolio_values
+    pos = out.positions
+
+    def _open_snapshot(tt: TradeTracker) -> dict[str, tuple[float, float]]:
+        return {
+            t: (float(tr.quantity), float(tr.entry_price))
+            for t, tr in tt.trade_lifecycle_manager.get_open_positions().items()
+        }
+
+    ref = TradeTracker(10_000.0, "reinvestment")
+    ref.populate_from_execution_ledger(raw, pv, pos, close_df)
+    expected = _open_snapshot(ref)
+
+    for perm in permutations(range(3)):
+        shuffled = raw.iloc[list(perm)].reset_index(drop=True)
+        tt = TradeTracker(10_000.0, "reinvestment")
+        tt.populate_from_execution_ledger(shuffled, pv, pos, close_df)
+        assert _open_snapshot(tt) == expected
+
+    assert set(expected.keys()) == {"A", "M", "Z"}

@@ -65,7 +65,7 @@ Production full-scan generation requires [`generate_target_weights`](../src/port
 The following are **not** the canonical portfolio return path and **must not** be wired back into ``calculate_portfolio_returns`` for standard strategies:
 
 - [`trade_lifecycle_kernel`](../src/portfolio_backtester/numba_kernels.py): reconstructs round-trips from **daily positions** and a **single price matrix** (typically closes).
-- [`TradeTracker.populate_from_kernel_results`](../src/portfolio_backtester/trading/trade_tracker.py): consumes that kernel’s structured output.
+- [`TradeTracker.populate_from_kernel_results`](../src/portfolio_backtester/trading/trade_tracker.py): consumes that kernel’s structured output. Callers must pass ``allow_legacy_close_trade_inference=True`` or a :class:`RuntimeError` is raised (prevents silent production regression).
 - [`trading/numba_trade_tracker.py`](../src/portfolio_backtester/trading/numba_trade_tracker.py): adapter for tests / ``track_trades_canonical``; **not** imported by production portfolio simulation.
 
 Production standard trade rows must come from the **execution ledger** via ``populate_from_execution_ledger``.

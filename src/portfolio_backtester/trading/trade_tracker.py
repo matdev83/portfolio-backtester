@@ -217,7 +217,9 @@ class TradeTracker:
         completed_trades: np.ndarray,
         tickers: np.ndarray,
         prices: pd.DataFrame,
-    ):
+        *,
+        allow_legacy_close_trade_inference: bool = False,
+    ) -> None:
         """Populate from ``trade_lifecycle_kernel`` structured trades (legacy / non-canonical).
 
         **Not** used by ``calculate_portfolio_returns`` for standard strategies, which must use
@@ -231,7 +233,17 @@ class TradeTracker:
             completed_trades: A structured NumPy array of completed trades.
             tickers: An array of ticker symbols corresponding to the ticker_idx in the trades.
             prices: A DataFrame of daily asset prices.
+            allow_legacy_close_trade_inference: Must be ``True`` for intentional calls; otherwise
+                raises :class:`RuntimeError` so production code cannot silently use close-based
+                trade reconstruction.
         """
+        if not allow_legacy_close_trade_inference:
+            raise RuntimeError(
+                "TradeTracker.populate_from_kernel_results is legacy close-price position "
+                "inference for tests and numba_trade_tracker only; pass "
+                "allow_legacy_close_trade_inference=True if intentional. Production portfolio "
+                "paths must use populate_from_execution_ledger with the canonical execution_ledger."
+            )
         # Directly set the portfolio value timeline and positions
         self.portfolio_value_tracker.set_state_from_kernel(portfolio_values, positions, prices)
 
@@ -268,13 +280,23 @@ class TradeTracker:
         positions: pd.DataFrame,
         prices: pd.DataFrame,
     ) -> None:
-        """Build completed trades from canonical simulator ``execution_ledger`` rows."""
+        """Build completed trades from canonical simulator ``execution_ledger`` rows.
+
+        Rows are replayed in stable order: ``date_idx``, ``ticker``, ``execution_price``,
+        ``quantity`` (``mergesort``) so same-calendar multi-asset fills are deterministic.
+        """
         self.trade_lifecycle_manager.trades.clear()
         self.trade_lifecycle_manager.open_positions.clear()
 
         eps = 1e-9
         if execution_ledger is not None and not execution_ledger.empty:
-            ledger_sorted = execution_ledger.sort_values(["date_idx", "ticker"], kind="mergesort")
+            sort_cols = ["date_idx", "ticker", "execution_price", "quantity"]
+            missing = [c for c in sort_cols if c not in execution_ledger.columns]
+            if missing:
+                raise ValueError(
+                    f"execution_ledger missing columns required for stable sort: {missing}"
+                )
+            ledger_sorted = execution_ledger.sort_values(sort_cols, kind="mergesort")
             mgr = self.trade_lifecycle_manager
             for _, row in ledger_sorted.iterrows():
                 dqty = float(row["quantity"])
