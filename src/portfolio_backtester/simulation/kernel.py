@@ -128,6 +128,13 @@ def simulate_portfolio(
     commission_max_percent = float(gc.get("commission_max_percent_of_trade", 0.005))
     slippage_bps = float(gc.get("slippage_bps", 2.5))
 
+    ldi = sim_input.ledger_decision_idx
+    wshape = sim_input.weights_target.shape
+    if tuple(ldi.shape) != tuple(wshape):
+        raise ValueError(
+            f"ledger_decision_idx shape {ldi.shape} must match weights_target {wshape}"
+        )
+
     pv, cash, pos, pa_frac, tot_frac, dret, led, led_n = canonical_portfolio_simulation_kernel(
         initial_pv,
         alloc,
@@ -138,6 +145,7 @@ def simulate_portfolio(
         sim_input.close_prices.astype(np.float64),
         sim_input.close_price_mask.astype(np.bool_),
         sim_input.rebalance_mask.astype(np.bool_),
+        sim_input.ledger_decision_idx.astype(np.int64),
         use_simple_bps,
         bps_val,
         commission_per_share,

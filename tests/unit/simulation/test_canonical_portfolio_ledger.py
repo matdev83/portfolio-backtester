@@ -8,6 +8,8 @@ from portfolio_backtester.backtester_logic.portfolio_simulation_input import (
     EXECUTION_TIMING_BAR_CLOSE,
     EXECUTION_TIMING_NEXT_BAR_OPEN,
     PortfolioSimulationInput,
+    ledger_decision_idx_bar_close,
+    ledger_decision_idx_next_bar_open_legacy,
 )
 from portfolio_backtester.simulation.kernel import simulate_portfolio
 
@@ -51,6 +53,7 @@ def test_constant_targets_rebalances_only_when_mask_fire_after_drift():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g, sc = _simple_scenario(None)
     out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
@@ -81,6 +84,7 @@ def test_same_targets_no_mask_no_extra_trades_or_costs_vs_hold():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g, sc = _simple_scenario(100.0)
     out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
@@ -106,6 +110,7 @@ def test_day_zero_bps_reduces_daily_return_and_nav():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g, sc = _simple_scenario(10.0)
     ref = float(g["portfolio_value"])
@@ -147,6 +152,7 @@ def test_missing_execution_first_rebalance_skips_then_entries_when_valid():
         execution_price_mask=exec_m,
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g, sc = _simple_scenario(None)
     out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
@@ -172,6 +178,7 @@ def test_bar_close_vs_next_bar_open_differs_when_open_not_equal_close():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     sim_open = PortfolioSimulationInput(
         dates=dates,
@@ -183,6 +190,9 @@ def test_bar_close_vs_next_bar_open_differs_when_open_not_equal_close():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_NEXT_BAR_OPEN,
+        ledger_decision_idx=ledger_decision_idx_next_bar_open_legacy(
+            n_rows=w.shape[0], n_assets=w.shape[1]
+        ),
     )
     g, sc = _simple_scenario(None)
     out_bc = simulate_portfolio(sim_close, global_config=g, scenario_config=sc)
@@ -224,6 +234,7 @@ def test_detailed_commission_slippage_hand_calculated_row():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g = {
         "portfolio_value": 10_000.0,
@@ -267,6 +278,7 @@ def test_nav_matches_cash_plus_marked_positions_with_close_values():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g, sc = _simple_scenario(None)
     out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)

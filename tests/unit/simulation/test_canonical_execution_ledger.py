@@ -10,6 +10,8 @@ from portfolio_backtester.backtester_logic.portfolio_simulation_input import (
     EXECUTION_TIMING_BAR_CLOSE,
     EXECUTION_TIMING_NEXT_BAR_OPEN,
     PortfolioSimulationInput,
+    ledger_decision_idx_bar_close,
+    ledger_decision_idx_next_bar_open_legacy,
 )
 from portfolio_backtester.simulation.kernel import EXECUTION_LEDGER_COLUMNS, simulate_portfolio
 from portfolio_backtester.trading.trade_tracker import TradeTracker
@@ -41,6 +43,7 @@ def test_day_zero_bar_close_buy_emits_ledger_nav_unchanged():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g = _zero_cost_global(100_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
@@ -81,6 +84,9 @@ def test_next_bar_open_buy_at_open_then_close_nav():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_NEXT_BAR_OPEN,
+        ledger_decision_idx=ledger_decision_idx_next_bar_open_legacy(
+            n_rows=w.shape[0], n_assets=w.shape[1]
+        ),
     )
     g = _zero_cost_global(100_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
@@ -123,6 +129,7 @@ def test_repeated_equal_targets_masked_rebalances_emit_day_two_ledger_rows():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g = _zero_cost_global(10_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
@@ -147,6 +154,7 @@ def test_partial_liquidation_ledger_sell_same_price_nav_coherent():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g = _zero_cost_global(100_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
@@ -185,6 +193,7 @@ def test_full_liquidation_ledger_closes_to_cash_matches_nav():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g = _zero_cost_global(50_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
@@ -215,6 +224,7 @@ def test_long_short_flip_single_row_signed_quantity_nav_coherent():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g = _zero_cost_global(100_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
@@ -247,6 +257,7 @@ def test_day_zero_simple_bps_cost_ledger_matches_fractions_and_return():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     ref = 100_000.0
     g = _zero_cost_global(ref)
@@ -284,6 +295,7 @@ def test_day_zero_detailed_cost_ledger_matches_per_asset_transaction_cost_frac_o
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     ref = 10_000.0
     g = {
@@ -338,6 +350,7 @@ def test_invalid_execution_masked_day_then_valid_open_emits_single_fill_row():
         execution_price_mask=exec_m,
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g = _zero_cost_global(10_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
@@ -364,6 +377,7 @@ def test_same_day_multi_asset_ledger_row_shuffle_trade_tracker_replay_invariant(
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g = _zero_cost_global(10_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
@@ -409,6 +423,7 @@ def test_execution_ledger_replay_sort_keys_monotonic():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g = _zero_cost_global(10_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
@@ -445,6 +460,7 @@ def test_three_asset_same_day_ledger_permutations_trade_tracker_replay_invariant
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=w.shape[0], n_assets=w.shape[1]),
     )
     g = _zero_cost_global(10_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}

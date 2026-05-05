@@ -31,6 +31,7 @@ class PortfolioSimulationInput:
     execution_price_mask: np.ndarray
     rebalance_mask: np.ndarray
     execution_timing: int
+    ledger_decision_idx: np.ndarray
 
 
 def market_panel_aligns_with_ohlc(
@@ -54,21 +55,59 @@ def market_panel_aligns_with_ohlc(
     return True
 
 
+def _ohlc_field_level_axis1(mi: pd.MultiIndex) -> int:
+    """Index of Field/OHLC-like level, else last level (bare OHLC tuples)."""
+
+    names = mi.names or ()
+    for i, nm in enumerate(names):
+        if nm is not None and str(nm).lower() in ("field", "ohlc"):
+            return int(i)
+    return int(mi.nlevels - 1)
+
+
+def extract_field_frame_from_ohlc(daily_ohlc: pd.DataFrame, field: str) -> pd.DataFrame:
+    """Return a 2D frame for one OHLC field (e.g. Close, Open).
+
+    For a flat column index, returns ``daily_ohlc`` unchanged. For ``MultiIndex`` columns,
+    selects the level named Field/OHLC (case-insensitive) when present; otherwise uses the
+    last level if it contains a value equal to ``field`` (case-insensitive).
+
+    Raises:
+        KeyError: If ``field`` is not present on the resolved level.
+    """
+
+    want = str(field).strip()
+    cols = daily_ohlc.columns
+    if not isinstance(cols, pd.MultiIndex):
+        return daily_ohlc
+    mi = cols
+    li = _ohlc_field_level_axis1(mi)
+    level_vals = mi.get_level_values(li)
+    picked: str | None = None
+    for v in level_vals.unique():
+        if str(v).strip().lower() == want.lower():
+            picked = str(v)
+            break
+    if picked is None:
+        raise KeyError(f"OHLC field {field!r} not found on MultiIndex axis=1 level {li}")
+    out = daily_ohlc.xs(picked, level=li, axis=1)
+    if isinstance(out, pd.DataFrame):
+        return out
+    return pd.DataFrame(out)
+
+
 def extract_open_frame_from_ohlc(daily_ohlc: pd.DataFrame) -> Optional[pd.DataFrame]:
     """Return an Open panel aligned with Close-style columns, or None if opens are unavailable."""
 
-    if isinstance(daily_ohlc.columns, pd.MultiIndex):
-        names_tuple = tuple(daily_ohlc.columns.names or ())
-        if "Field" not in names_tuple:
-            return None
-        fields = set(daily_ohlc.columns.get_level_values("Field").unique())
-        if "Open" not in fields:
-            return None
-        open_maybe = daily_ohlc.xs("Open", level="Field", axis=1)
-        if isinstance(open_maybe, pd.DataFrame):
-            return open_maybe
-        return pd.DataFrame(open_maybe)
-    return None
+    if not isinstance(daily_ohlc.columns, pd.MultiIndex):
+        return None
+    try:
+        open_maybe = extract_field_frame_from_ohlc(daily_ohlc, "Open")
+    except KeyError:
+        return None
+    if isinstance(open_maybe, pd.DataFrame):
+        return open_maybe
+    return pd.DataFrame(open_maybe)
 
 
 def build_close_and_mask_from_dataframe(
@@ -160,6 +199,72 @@ def sparse_execution_rebalance_event_mask(
     return mask
 
 
+def propagate_rebalance_mask_for_invalid_next_bar_opens_with_decision_idx(
+    rebalance_mask: np.ndarray,
+    weights_target: np.ndarray,
+    execution_price_mask: np.ndarray,
+    *,
+    eps: float = 1e-12,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Extend ``rebalance_mask`` for invalid next-bar opens and build per-asset ledger decision indices.
+
+    ``ledger_decision_idx[i, j]`` is the audit **decision** session index for a fill on bar
+    ``i`` for asset ``j`` under ``next_bar_open``: ``max(0, anchor[j] - 1)`` where ``anchor[j]``
+    is the first bar in the current pending-retry chain where ``new_intent[j]`` was true. This
+    matches ``execution_date_idx - 1`` on the first attempt but stays pinned to the original
+    decision when invalid opens delay execution across multiple sessions.
+
+    Invariant: this loop must stay aligned with :func:`propagate_rebalance_mask_for_invalid_next_bar_opens`
+    (which delegates here) so mask propagation and audit anchors never drift.
+    """
+
+    rb = rebalance_mask.astype(np.bool_, copy=True)
+    t = int(rb.shape[0])
+    if weights_target.shape[0] != t or execution_price_mask.shape[0] != t:
+        msg = "rebalance_mask, weights_target, and execution_price_mask must align on time"
+        raise ValueError(msg)
+    n_assets = int(weights_target.shape[1])
+    carried = np.zeros(n_assets, dtype=np.bool_)
+    anchor = np.full(n_assets, -1, dtype=np.int64)
+    ledger_decision_idx = np.zeros((t, n_assets), dtype=np.int64)
+    for i in range(t):
+        cur = weights_target[i]
+        if i > 0:
+            prior = weights_target[i - 1]
+        else:
+            prior = np.zeros(n_assets, dtype=cur.dtype)
+        if bool(carried.any()) and not bool(rb[i]):
+            rb[i] = True
+        effective = carried.copy()
+        new_intent = np.zeros(n_assets, dtype=np.bool_)
+        if bool(rb[i]):
+            new_intent = (np.abs(cur) > eps) | (np.abs(cur - prior) > eps)
+            effective |= new_intent
+            for j in range(n_assets):
+                if bool(new_intent[j]):
+                    anchor[j] = np.int64(i)
+        if bool(rb[i]):
+            for j in range(n_assets):
+                if bool(effective[j]):
+                    aj = int(anchor[j])
+                    if aj >= 0:
+                        di = aj - 1
+                        ledger_decision_idx[i, j] = np.int64(0) if di < 0 else np.int64(di)
+                    else:
+                        ledger_decision_idx[i, j] = np.int64(max(0, i - 1))
+                else:
+                    ledger_decision_idx[i, j] = np.int64(i)
+        else:
+            ledger_decision_idx[i, :] = np.int64(i)
+        if not bool(effective.any()):
+            continue
+        blocked = effective & (~execution_price_mask[i])
+        carried = blocked
+        if bool(carried.any()) and i + 1 < t:
+            rb[i + 1] = True
+    return rb, ledger_decision_idx
+
+
 def propagate_rebalance_mask_for_invalid_next_bar_opens(
     rebalance_mask: np.ndarray,
     weights_target: np.ndarray,
@@ -181,32 +286,27 @@ def propagate_rebalance_mask_for_invalid_next_bar_opens(
     exits that cannot execute remain pending until a valid execution row clears them).
     """
 
-    rb = rebalance_mask.astype(np.bool_, copy=True)
-    t = int(rb.shape[0])
-    if weights_target.shape[0] != t or execution_price_mask.shape[0] != t:
-        msg = "rebalance_mask, weights_target, and execution_price_mask must align on time"
-        raise ValueError(msg)
-    n_assets = int(weights_target.shape[1])
-    carried = np.zeros(n_assets, dtype=np.bool_)
-    for i in range(t):
-        cur = weights_target[i]
-        if i > 0:
-            prior = weights_target[i - 1]
-        else:
-            prior = np.zeros(n_assets, dtype=cur.dtype)
-        if bool(carried.any()) and not bool(rb[i]):
-            rb[i] = True
-        effective = carried.copy()
-        if bool(rb[i]):
-            new_intent = (np.abs(cur) > eps) | (np.abs(cur - prior) > eps)
-            effective |= new_intent
-        if not bool(effective.any()):
-            continue
-        blocked = effective & (~execution_price_mask[i])
-        carried = blocked
-        if bool(carried.any()) and i + 1 < t:
-            rb[i + 1] = True
+    rb, _ = propagate_rebalance_mask_for_invalid_next_bar_opens_with_decision_idx(
+        rebalance_mask, weights_target, execution_price_mask, eps=eps
+    )
     return rb
+
+
+def ledger_decision_idx_bar_close(*, n_rows: int, n_assets: int) -> np.ndarray:
+    """Per-bar decision index equals execution bar (``bar_close`` audit convention)."""
+
+    col = np.arange(n_rows, dtype=np.int64).reshape(-1, 1)
+    return np.broadcast_to(col, (n_rows, n_assets)).copy()
+
+
+def ledger_decision_idx_next_bar_open_legacy(*, n_rows: int, n_assets: int) -> np.ndarray:
+    """Kernel-equivalent ``execution_idx - 1`` grid without invalid-open propagation (tests only)."""
+
+    out = np.zeros((n_rows, n_assets), dtype=np.int64)
+    for i in range(n_rows):
+        row_val = np.int64(0) if i == 0 else np.int64(i - 1)
+        out[i, :] = row_val
+    return out
 
 
 def build_portfolio_simulation_input(
@@ -244,7 +344,11 @@ def build_portfolio_simulation_input(
         exec_mask = open_price_mask_arr.astype(np.bool_, copy=False)
         timing_const = EXECUTION_TIMING_NEXT_BAR_OPEN
         rb_before_prop = rb.copy()
-        rb = propagate_rebalance_mask_for_invalid_next_bar_opens(rb, weights_target, exec_mask)
+        rb, ledger_decision_idx = (
+            propagate_rebalance_mask_for_invalid_next_bar_opens_with_decision_idx(
+                rb, weights_target, exec_mask
+            )
+        )
         added = rb & ~rb_before_prop
         if bool(np.any(added)):
             logger.warning(
@@ -256,8 +360,12 @@ def build_portfolio_simulation_input(
         exec_prices = close_arr.astype(np.float64, copy=False)
         exec_mask = close_price_mask_arr.astype(np.bool_, copy=False)
         timing_const = EXECUTION_TIMING_BAR_CLOSE
+        t_rows, n_ast = weights_target.shape
+        ledger_decision_idx = ledger_decision_idx_bar_close(n_rows=t_rows, n_assets=n_ast)
     else:
         raise ValueError(f"unsupported trade_execution_timing {trade_execution_timing!r}")
+
+    ledger_decision_idx = np.ascontiguousarray(np.asarray(ledger_decision_idx, dtype=np.int64))
 
     return PortfolioSimulationInput(
         dates=price_index,
@@ -269,6 +377,7 @@ def build_portfolio_simulation_input(
         execution_price_mask=np.ascontiguousarray(exec_mask),
         rebalance_mask=np.ascontiguousarray(rb),
         execution_timing=timing_const,
+        ledger_decision_idx=ledger_decision_idx,
     )
 
 

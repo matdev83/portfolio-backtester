@@ -21,6 +21,7 @@ from .meta_execution import (
 )
 from .portfolio_simulation_input import (
     build_portfolio_simulation_input,
+    extract_field_frame_from_ohlc,
     extract_open_frame_from_ohlc,
     market_panel_aligns_with_ohlc,
     prepare_close_arrays_for_simulation,
@@ -167,14 +168,11 @@ def calculate_portfolio_returns(
     # NOTE: weights_daily are targets; turnover is driven by ``rebalance_mask`` from sparse
     # execution rows (plus required day-0 entry when the mask is otherwise flat False).
 
-    if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex) and (
-        "Close" in price_data_daily_ohlc.columns.get_level_values(-1)
-    ):
-        close_prices_df = price_data_daily_ohlc.xs("Close", level="Field", axis=1)
-        price_index = close_prices_df.index
+    if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
+        close_prices_df = extract_field_frame_from_ohlc(price_data_daily_ohlc, "Close")
     else:
         close_prices_df = price_data_daily_ohlc
-        price_index = price_data_daily_ohlc.index
+    price_index = close_prices_df.index
 
     valid_cols = [t for t in universe_tickers if t in close_prices_df.columns]
 
@@ -339,10 +337,8 @@ def _calculate_meta_strategy_portfolio_returns(
 
     # Extract market data for portfolio valuation
     if isinstance(price_data_daily_ohlc.columns, pd.MultiIndex):
-        # Extract close prices from MultiIndex columns
-        market_data = price_data_daily_ohlc.xs("Close", level="Field", axis=1)
+        market_data = extract_field_frame_from_ohlc(price_data_daily_ohlc, "Close")
     else:
-        # Single level columns
         market_data = price_data_daily_ohlc
 
     # Update portfolio values with market data

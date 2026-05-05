@@ -8,10 +8,12 @@ from portfolio_backtester.backtester_logic.portfolio_simulation_input import (
     EXECUTION_TIMING_BAR_CLOSE,
     EXECUTION_TIMING_NEXT_BAR_OPEN,
     build_portfolio_simulation_input,
+    extract_field_frame_from_ohlc,
     extract_open_frame_from_ohlc,
     prepare_close_arrays_for_simulation,
     prepare_open_arrays_for_simulation,
     propagate_rebalance_mask_for_invalid_next_bar_opens,
+    propagate_rebalance_mask_for_invalid_next_bar_opens_with_decision_idx,
     sparse_execution_rebalance_event_mask,
 )
 from portfolio_backtester.simulation.kernel import simulate_portfolio
@@ -334,6 +336,31 @@ def test_propagate_rebalance_mask_misaligned_shapes_raise():
     m = np.ones((1, 1), dtype=bool)
     with pytest.raises(ValueError, match="align on time"):
         propagate_rebalance_mask_for_invalid_next_bar_opens(rb, w, m)
+
+
+def test_next_bar_open_ledger_decision_idx_pins_across_invalid_open_retries():
+    rb = np.array([True, True, False, False], dtype=np.bool_)
+    weights = np.array([[1.0], [0.0], [0.0], [0.0]], dtype=np.float64)
+    open_mk = np.array([[True], [False], [False], [True]], dtype=bool)
+    rb_out, dec = propagate_rebalance_mask_for_invalid_next_bar_opens_with_decision_idx(
+        rb, weights, open_mk
+    )
+    assert bool(rb_out[1]) and bool(rb_out[2]) and bool(rb_out[3])
+    assert int(dec[1, 0]) == 0
+    assert int(dec[2, 0]) == 0
+    assert int(dec[3, 0]) == 0
+
+
+def test_extract_field_frame_unnamed_multiindex_last_level():
+    dates = pd.date_range("2023-01-01", periods=1, freq="D")
+    cols = pd.MultiIndex.from_tuples([("A", "Open"), ("A", "Close")], names=[None, None])
+    daily = pd.DataFrame([[1.0, 2.0]], index=dates, columns=cols)
+    close_df = extract_field_frame_from_ohlc(daily, "Close")
+    assert list(close_df.columns) == ["A"]
+    assert float(close_df.iloc[0, 0]) == pytest.approx(2.0)
+    open_frame = extract_open_frame_from_ohlc(daily)
+    assert open_frame is not None
+    assert float(open_frame.iloc[0, 0]) == pytest.approx(1.0)
 
 
 def test_next_bar_open_without_open_raises():

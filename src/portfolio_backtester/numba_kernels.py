@@ -356,6 +356,7 @@ def canonical_portfolio_simulation_kernel(
     close_prices: np.ndarray,
     close_price_mask: np.ndarray,
     rebalance_mask: np.ndarray,
+    ledger_decision_idx: np.ndarray,
     use_simple_bps: bool,
     transaction_costs_bps: float,
     commission_per_share: float,
@@ -429,7 +430,7 @@ def canonical_portfolio_simulation_kernel(
             ev0 = dsh0 * exc_price
             cash_after0 = running_cash0 - ev0 - c0
             if abs(dsh0) > eps:
-                ledger[ledger_count, 0] = 0.0
+                ledger[ledger_count, 0] = float(ledger_decision_idx[0, j])
                 ledger[ledger_count, 1] = 0.0
                 ledger[ledger_count, 2] = float(j)
                 ledger[ledger_count, 3] = dsh0
@@ -521,10 +522,7 @@ def canonical_portfolio_simulation_kernel(
             ev = dsh * exc_price
             cash_after_ev = running_cash - ev - cday
             if abs(dsh) > eps:
-                dec_i = float(i)
-                if execution_timing == 1:
-                    dec_i = float(i - 1)
-                ledger[ledger_count, 0] = dec_i
+                ledger[ledger_count, 0] = float(ledger_decision_idx[i, j])
                 ledger[ledger_count, 1] = float(i)
                 ledger[ledger_count, 2] = float(j)
                 ledger[ledger_count, 3] = dsh

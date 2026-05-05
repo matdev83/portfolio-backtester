@@ -8,6 +8,7 @@ from portfolio_backtester.backtester_logic.portfolio_simulation_input import (
     EXECUTION_TIMING_NEXT_BAR_OPEN,
     PortfolioSimulationInput,
     build_portfolio_simulation_input,
+    ledger_decision_idx_next_bar_open_legacy,
 )
 from portfolio_backtester.simulation.kernel import simulate_portfolio
 
@@ -43,6 +44,9 @@ def test_next_bar_open_cash_nav_use_exec_price_for_trade_close_for_valuation():
         execution_price_mask=m.copy(),
         rebalance_mask=rb,
         execution_timing=EXECUTION_TIMING_NEXT_BAR_OPEN,
+        ledger_decision_idx=ledger_decision_idx_next_bar_open_legacy(
+            n_rows=w.shape[0], n_assets=w.shape[1]
+        ),
     )
     pv0 = 100_000.0
     out = simulate_portfolio(
@@ -134,9 +138,17 @@ def test_next_bar_open_zero_exit_retries_two_invalid_opens_then_valid():
         trade_execution_timing="next_bar_open",
     )
     assert inp.rebalance_mask[1] and inp.rebalance_mask[2] and inp.rebalance_mask[3]
+    assert int(inp.ledger_decision_idx[3, 0]) == 0
     out = simulate_portfolio(
         inp,
         global_config=_global_cfg(10_000.0),
         scenario_config={"allocation_mode": "reinvestment"},
     )
     assert _scalar_float(out.positions.iloc[-1, 0]) == pytest.approx(0.0, abs=1e-6)
+    exit_rows = out.execution_ledger[out.execution_ledger["quantity"] < 0]
+    assert len(exit_rows) == 1
+    row = exit_rows.iloc[0]
+    assert int(row["execution_date_idx"]) == 3
+    assert int(row["decision_date_idx"]) == 0
+    assert pd.Timestamp(row["execution_date"]) == cal[3]
+    assert pd.Timestamp(row["decision_date"]) == cal[0]

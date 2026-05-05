@@ -16,6 +16,7 @@ import pytest
 from portfolio_backtester.backtester_logic.portfolio_simulation_input import (
     EXECUTION_TIMING_BAR_CLOSE,
     PortfolioSimulationInput,
+    ledger_decision_idx_bar_close,
 )
 from portfolio_backtester.simulation.kernel import simulate_portfolio
 
@@ -243,6 +244,7 @@ def _run_canonical(
         execution_price_mask=m.copy(),
         rebalance_mask=np.asarray(rebalance_mask, dtype=np.bool_),
         execution_timing=EXECUTION_TIMING_BAR_CLOSE,
+        ledger_decision_idx=ledger_decision_idx_bar_close(n_rows=int(t), n_assets=int(n)),
     )
     out = simulate_portfolio(sim_in, global_config=global_config, scenario_config=scenario_config)
     return out.portfolio_values
