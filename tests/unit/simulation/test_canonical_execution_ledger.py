@@ -48,8 +48,10 @@ def test_day_zero_bar_close_buy_emits_ledger_nav_unchanged():
     assert list(out.execution_ledger.columns) == list(EXECUTION_LEDGER_COLUMNS)
     assert len(out.execution_ledger) == 1
     row = out.execution_ledger.iloc[0]
-    assert int(row["date_idx"]) == 0
-    assert pd.Timestamp(row["date"]) == dates[0]
+    assert int(row["decision_date_idx"]) == 0
+    assert int(row["execution_date_idx"]) == 0
+    assert pd.Timestamp(row["decision_date"]) == dates[0]
+    assert pd.Timestamp(row["execution_date"]) == dates[0]
     assert str(row["ticker"]) == "X"
     assert float(row["quantity"]) == pytest.approx(1000.0)
     assert float(row["execution_price"]) == pytest.approx(100.0)
@@ -86,7 +88,10 @@ def test_next_bar_open_buy_at_open_then_close_nav():
     assert list(out.execution_ledger.columns) == list(EXECUTION_LEDGER_COLUMNS)
     assert len(out.execution_ledger) == 1
     row = out.execution_ledger.iloc[0]
-    assert int(row["date_idx"]) == 1
+    assert int(row["decision_date_idx"]) == 0
+    assert int(row["execution_date_idx"]) == 1
+    assert pd.Timestamp(row["decision_date"]) == dates[0]
+    assert pd.Timestamp(row["execution_date"]) == dates[1]
     assert float(row["quantity"]) == pytest.approx(2000.0)
     assert float(row["execution_price"]) == pytest.approx(50.0)
     assert float(row["cash_after"]) == pytest.approx(0.0)
@@ -122,7 +127,7 @@ def test_repeated_equal_targets_masked_rebalances_emit_day_two_ledger_rows():
     g = _zero_cost_global(10_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
     out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
-    d2 = out.execution_ledger[out.execution_ledger["date_idx"] == 2]
+    d2 = out.execution_ledger[out.execution_ledger["execution_date_idx"] == 2]
     assert len(d2) >= 2
 
 
@@ -147,7 +152,7 @@ def test_partial_liquidation_ledger_sell_same_price_nav_coherent():
     sc: dict = {"allocation_mode": "reinvestment"}
     out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
     assert len(out.execution_ledger) == 2
-    sell = out.execution_ledger[out.execution_ledger["date_idx"] == 1].iloc[0]
+    sell = out.execution_ledger[out.execution_ledger["execution_date_idx"] == 1].iloc[0]
     assert float(sell["quantity"]) == pytest.approx(-600.0)
     assert float(sell["execution_price"]) == pytest.approx(100.0)
     assert float(sell["execution_value"]) == pytest.approx(-60_000.0)
@@ -184,7 +189,7 @@ def test_full_liquidation_ledger_closes_to_cash_matches_nav():
     g = _zero_cost_global(50_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
     out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
-    sell = out.execution_ledger[out.execution_ledger["date_idx"] == 1].iloc[0]
+    sell = out.execution_ledger[out.execution_ledger["execution_date_idx"] == 1].iloc[0]
     assert float(sell["quantity"]) == pytest.approx(-500.0)
     assert float(sell["position_after"]) == pytest.approx(0.0)
     assert float(sell["cash_after"]) == pytest.approx(50_000.0)
@@ -214,7 +219,7 @@ def test_long_short_flip_single_row_signed_quantity_nav_coherent():
     g = _zero_cost_global(100_000.0)
     sc: dict = {"allocation_mode": "reinvestment"}
     out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
-    flip = out.execution_ledger[out.execution_ledger["date_idx"] == 1].iloc[0]
+    flip = out.execution_ledger[out.execution_ledger["execution_date_idx"] == 1].iloc[0]
     assert float(flip["quantity"]) == pytest.approx(-2000.0)
     assert float(flip["position_before"]) == pytest.approx(1000.0)
     assert float(flip["position_after"]) == pytest.approx(-1000.0)
@@ -254,12 +259,16 @@ def test_day_zero_simple_bps_cost_ledger_matches_fractions_and_return():
     assert float(row["cost"]) == pytest.approx(expected_cost)
     assert float(row["cash_after"]) == pytest.approx(-expected_cost)
     assert float(out.portfolio_values.iloc[0]) == pytest.approx(ref - expected_cost)
-    assert float(out.total_cost_fraction[0]) == pytest.approx(expected_cost / ref)
-    assert float(out.per_asset_cost_fraction[0, 0]) == pytest.approx(expected_cost / ref)
+    assert float(out.total_daily_transaction_cost_frac_of_reference_pv[0]) == pytest.approx(
+        expected_cost / ref
+    )
+    assert float(out.per_asset_transaction_cost_frac_of_reference_pv[0, 0]) == pytest.approx(
+        expected_cost / ref
+    )
     assert float(out.daily_returns.iloc[0]) == pytest.approx((ref - expected_cost) / ref - 1.0)
 
 
-def test_day_zero_detailed_cost_ledger_matches_per_asset_cost_fraction():
+def test_day_zero_detailed_cost_ledger_matches_per_asset_transaction_cost_frac_of_reference_pv():
     dates = pd.date_range("2023-01-01", periods=1, freq="D")
     w = np.array([[1.0]], dtype=np.float64)
     rb = np.array([True], dtype=np.bool_)
@@ -293,7 +302,9 @@ def test_day_zero_detailed_cost_ledger_matches_per_asset_cost_fraction():
     expected_cost = commission + slip
     row = out.execution_ledger.iloc[0]
     assert float(row["cost"]) == pytest.approx(expected_cost)
-    assert float(row["cost"]) == pytest.approx(float(out.per_asset_cost_fraction[0, 0]) * ref)
+    assert float(row["cost"]) == pytest.approx(
+        float(out.per_asset_transaction_cost_frac_of_reference_pv[0, 0]) * ref
+    )
 
 
 def test_invalid_execution_masked_day_then_valid_open_emits_single_fill_row():
@@ -332,8 +343,8 @@ def test_invalid_execution_masked_day_then_valid_open_emits_single_fill_row():
     sc: dict = {"allocation_mode": "reinvestment"}
     out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
     a_rows = out.execution_ledger[out.execution_ledger["ticker"] == "A"]
-    assert len(a_rows[a_rows["date_idx"] == 0]) == 0
-    assert len(a_rows[a_rows["date_idx"] == 1]) >= 1
+    assert len(a_rows[a_rows["execution_date_idx"] == 0]) == 0
+    assert len(a_rows[a_rows["execution_date_idx"] == 1]) >= 1
 
 
 def test_same_day_multi_asset_ledger_row_shuffle_trade_tracker_replay_invariant():
@@ -403,12 +414,12 @@ def test_execution_ledger_replay_sort_keys_monotonic():
     sc: dict = {"allocation_mode": "reinvestment"}
     out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
     ld = out.execution_ledger.sort_values(
-        ["date_idx", "ticker", "execution_price", "quantity"],
+        ["execution_date_idx", "ticker", "execution_price", "quantity"],
         kind="mergesort",
     )
     tuples = list(
         zip(
-            ld["date_idx"].astype(int),
+            ld["execution_date_idx"].astype(int),
             ld["ticker"].astype(str),
             ld["execution_price"].astype(float),
             ld["quantity"].astype(float),

@@ -374,7 +374,7 @@ def canonical_portfolio_simulation_kernel(
     total_cost_frac = np.zeros(T, dtype=np.float64)
     daily_returns = np.zeros(T, dtype=np.float64)
     max_ledger_rows = T * N
-    ledger = np.zeros((max_ledger_rows, 10), dtype=np.float64)
+    ledger = np.zeros((max_ledger_rows, 11), dtype=np.float64)
     ledger_count = 0
 
     ref_denom = ref_portfolio_value if ref_portfolio_value > eps else 1.0
@@ -430,15 +430,16 @@ def canonical_portfolio_simulation_kernel(
             cash_after0 = running_cash0 - ev0 - c0
             if abs(dsh0) > eps:
                 ledger[ledger_count, 0] = 0.0
-                ledger[ledger_count, 1] = float(j)
-                ledger[ledger_count, 2] = dsh0
-                ledger[ledger_count, 3] = exc_price
-                ledger[ledger_count, 4] = ev0
-                ledger[ledger_count, 5] = running_cash0
-                ledger[ledger_count, 6] = cash_after0
-                ledger[ledger_count, 7] = last_positions0[j]
-                ledger[ledger_count, 8] = positions0[j]
-                ledger[ledger_count, 9] = c0
+                ledger[ledger_count, 1] = 0.0
+                ledger[ledger_count, 2] = float(j)
+                ledger[ledger_count, 3] = dsh0
+                ledger[ledger_count, 4] = exc_price
+                ledger[ledger_count, 5] = ev0
+                ledger[ledger_count, 6] = running_cash0
+                ledger[ledger_count, 7] = cash_after0
+                ledger[ledger_count, 8] = last_positions0[j]
+                ledger[ledger_count, 9] = positions0[j]
+                ledger[ledger_count, 10] = c0
                 ledger_count += 1
             running_cash0 = cash_after0
         total_cost_frac[0] = day0_cost_dollars / ref_denom
@@ -520,16 +521,20 @@ def canonical_portfolio_simulation_kernel(
             ev = dsh * exc_price
             cash_after_ev = running_cash - ev - cday
             if abs(dsh) > eps:
-                ledger[ledger_count, 0] = float(i)
-                ledger[ledger_count, 1] = float(j)
-                ledger[ledger_count, 2] = dsh
-                ledger[ledger_count, 3] = exc_price
-                ledger[ledger_count, 4] = ev
-                ledger[ledger_count, 5] = running_cash
-                ledger[ledger_count, 6] = cash_after_ev
-                ledger[ledger_count, 7] = last_positions[j]
-                ledger[ledger_count, 8] = target_positions[j]
-                ledger[ledger_count, 9] = cday
+                dec_i = float(i)
+                if execution_timing == 1:
+                    dec_i = float(i - 1)
+                ledger[ledger_count, 0] = dec_i
+                ledger[ledger_count, 1] = float(i)
+                ledger[ledger_count, 2] = float(j)
+                ledger[ledger_count, 3] = dsh
+                ledger[ledger_count, 4] = exc_price
+                ledger[ledger_count, 5] = ev
+                ledger[ledger_count, 6] = running_cash
+                ledger[ledger_count, 7] = cash_after_ev
+                ledger[ledger_count, 8] = last_positions[j]
+                ledger[ledger_count, 9] = target_positions[j]
+                ledger[ledger_count, 10] = cday
                 ledger_count += 1
             running_cash = cash_after_ev
 

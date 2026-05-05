@@ -7,6 +7,55 @@ import numpy as np
 import pandas as pd
 
 
+def _multiindex_level_index(columns: pd.MultiIndex, name: str) -> Optional[int]:
+    want = name.lower()
+    for i, col_name in enumerate(columns.names):
+        if col_name is not None and str(col_name).lower() == want:
+            return i
+    return None
+
+
+def _universe_close_matrix_multiindex(
+    asset_data: pd.DataFrame, universe_tickers: tuple[str, ...]
+) -> np.ndarray:
+    mi = asset_data.columns
+    if not isinstance(mi, pd.MultiIndex):
+        raise TypeError("expected MultiIndex columns")
+    ti = _multiindex_level_index(mi, "Ticker")
+    if ti is None:
+        ti = _multiindex_level_index(mi, "symbol")
+    if ti is None:
+        ti = 0
+    fi = _multiindex_level_index(mi, "Field")
+    if fi is None:
+        fi = _multiindex_level_index(mi, "OHLC")
+    if fi is None:
+        fi = 1 if mi.nlevels > 1 else 0
+    tick_level = mi.get_level_values(ti)
+    field_level = mi.get_level_values(fi)
+    parts: list[pd.Series] = []
+    for t in universe_tickers:
+        mask = tick_level == t
+        if not np.any(mask):
+            parts.append(pd.Series(np.nan, index=asset_data.index))
+            continue
+        indices = np.flatnonzero(np.asarray(mask))
+        picked: Optional[int] = None
+        for ix in indices:
+            if str(field_level[int(ix)]).lower() == "close":
+                picked = int(ix)
+                break
+        if picked is None and len(indices) == 1:
+            picked = int(indices[0])
+        if picked is None:
+            parts.append(pd.Series(np.nan, index=asset_data.index))
+            continue
+        col_key = mi[picked]
+        parts.append(asset_data[col_key])
+    stacked = pd.concat(parts, axis=1)
+    return np.ascontiguousarray(stacked.to_numpy(dtype=np.float64, copy=True))
+
+
 def default_benchmark_ticker(
     benchmark_data: pd.DataFrame,
     universe_tickers: Optional[Sequence[str]] = None,
@@ -48,6 +97,8 @@ class StrategyContext:
         hot ``generate_target_weights`` loops when full scans already materialized ``asset_data``.
         """
         cols = list(self.universe_tickers)
+        if isinstance(self.asset_data.columns, pd.MultiIndex):
+            return _universe_close_matrix_multiindex(self.asset_data, self.universe_tickers)
         sub = self.asset_data.reindex(columns=cols)
         numeric = sub.apply(pd.to_numeric, errors="coerce")
         return np.ascontiguousarray(numeric.to_numpy(dtype=np.float64, copy=True))

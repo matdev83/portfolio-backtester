@@ -28,6 +28,8 @@ from .....risk_off_signals import IRiskOffSignalGenerator
 from .....risk_management.stop_loss_handlers import BaseStopLoss, NoStopLoss
 from .....risk_management.take_profit_handlers import BaseTakeProfit, NoTakeProfit
 from .strategy_trade_direction import (
+    TradeDirectionConfigurationError as TradeDirectionConfigurationError,
+    TradeDirectionViolationError as TradeDirectionViolationError,
     validate_signals_trade_direction,
     validate_trade_direction_configuration,
 )

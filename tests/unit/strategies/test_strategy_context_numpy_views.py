@@ -41,6 +41,38 @@ def test_rebalance_session_mask_np_true_on_scheduled_rows() -> None:
     assert mask[2]
 
 
+def test_universe_close_np_multiindex_ohlc_selects_close_only_in_universe_order() -> None:
+    dates = pd.date_range("2023-01-01", periods=2, freq="D")
+    cols = pd.MultiIndex.from_tuples(
+        [("A", "Open"), ("A", "Close"), ("B", "Open"), ("B", "Close")],
+        names=["Ticker", "Field"],
+    )
+    asset = pd.DataFrame(
+        [
+            [1.0, 10.0, 100.0, 1000.0],
+            [2.0, 20.0, 200.0, 2000.0],
+        ],
+        index=dates,
+        columns=cols,
+    )
+    bench = pd.DataFrame({"^SPX": [1.0, 1.0]}, index=dates)
+    ctx = StrategyContext.from_standard_inputs(
+        asset_data=asset,
+        benchmark_data=bench,
+        non_universe_data=None,
+        rebalance_dates=dates[:1],
+        universe_tickers=["B", "A"],
+        benchmark_ticker="^SPX",
+        wfo_start_date=None,
+        wfo_end_date=None,
+        use_sparse_nan_for_inactive_rows=False,
+    )
+    m = ctx.universe_close_np
+    assert m.shape == (2, 2)
+    assert np.allclose(m[:, 0], [1000.0, 2000.0])
+    assert np.allclose(m[:, 1], [10.0, 20.0])
+
+
 def test_universe_close_np_inserts_nan_for_missing_ticker_column() -> None:
     dates = pd.date_range("2023-01-02", periods=2, freq="D")
     asset = pd.DataFrame({"A": [5.0, 6.0]}, index=dates)

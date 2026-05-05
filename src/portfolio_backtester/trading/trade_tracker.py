@@ -327,15 +327,17 @@ class TradeTracker:
     ) -> None:
         """Build completed trades from canonical simulator ``execution_ledger`` rows.
 
-        Rows are replayed in stable order: ``date_idx``, ``ticker``, ``execution_price``,
+        Rows are replayed in stable order: ``execution_date_idx``, ``ticker``, ``execution_price``,
         ``quantity`` (``mergesort``) so same-calendar multi-asset fills are deterministic.
+        Increasing same-direction exposure averages ``entry_price`` and recomputes open-leg
+        per-share MFE/MAE through the add execution date so excursion matches the new basis.
         """
         self.trade_lifecycle_manager.trades.clear()
         self.trade_lifecycle_manager.open_positions.clear()
 
         eps = 1e-9
         if execution_ledger is not None and not execution_ledger.empty:
-            sort_cols = ["date_idx", "ticker", "execution_price", "quantity"]
+            sort_cols = ["execution_date_idx", "ticker", "execution_price", "quantity"]
             missing = [c for c in sort_cols if c not in execution_ledger.columns]
             if missing:
                 raise ValueError(
@@ -347,7 +349,7 @@ class TradeTracker:
                 dqty = float(row["quantity"])
                 if abs(dqty) <= eps:
                     continue
-                date = pd.Timestamp(row["date"])
+                date = pd.Timestamp(row["execution_date"])
                 ticker = str(row["ticker"])
                 exec_price = float(row["execution_price"])
                 cost = float(row["cost"])
@@ -378,6 +380,7 @@ class TradeTracker:
                         t.quantity = inv * new_abs
                         t.entry_value = abs(t.quantity) * t.entry_price
                         t.commission_entry += cost
+                        _populate_mfe_mae_before_close(t, prices, date)
                     elif abs(pos_b) > abs(pos_a) + eps:
                         _partial_close_open_trade(
                             mgr,

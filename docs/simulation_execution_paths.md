@@ -18,7 +18,9 @@ This document records **which code paths** produce strategy returns and costs, s
 
 **Return series labeling:** Standard-strategy outputs set ``Series.attrs["portfolio_backtester.execution_model"]`` to ``MetaExecutionMode.CANONICAL_SHARE_CASH_SIMULATION.value`` (``"canonical_share_cash_simulation"``) for the same reporting distinction as meta (see above).
 
-**Execution ledger and trade tracking (standard only):** `simulate_portfolio` emits a canonical **`execution_ledger`** (`EXECUTION_LEDGER_COLUMNS`) aligned with the share/cash kernel. When `track_trades` is enabled, `calculate_portfolio_returns` builds a **`TradeTracker`** via **`TradeTracker.populate_from_execution_ledger`** on that ledger. Treat ledger row semantics (quantities, cash/position before/after, costs) as **canonical-path contracts** for standard strategies.
+**Execution ledger and trade tracking (standard only):** `simulate_portfolio` emits a canonical **`execution_ledger`** (`EXECUTION_LEDGER_COLUMNS`) aligned with the share/cash kernel. Rows include **`decision_date_*`** vs **`execution_date_*`**: with **`bar_close`** timing they coincide on the same session row; with **`next_bar_open`**, the decision indices/timestamps reference the prior signal session and execution references the fill session. Trade replay sorts by **`execution_date_idx`** (then ticker, price, quantity). When `track_trades` is enabled, `calculate_portfolio_returns` builds a **`TradeTracker`** via **`TradeTracker.populate_from_execution_ledger`** on that ledger. Treat ledger row semantics (quantities, cash/position before/after, costs) as **canonical-path contracts** for standard strategies.
+
+**Transaction cost fractions:** `SimulationResult` exposes daily transaction costs as **`per_asset_transaction_cost_frac_of_reference_pv`** and **`total_daily_transaction_cost_frac_of_reference_pv`**, i.e. dollars charged divided by the configured reference portfolio value (`global_config["portfolio_value"]`) passed into `simulate_portfolio`, not by fluctuating NAV (unless your caller intentionally aligns them).
 
 ## Meta strategies (`MetaExecutionMode.TRADE_AGGREGATION`)
 

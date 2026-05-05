@@ -137,7 +137,7 @@ def test_duplicate_explicit_sparse_rows_flat_prices_zero_costs_under_costless_co
         global_config=g,
         scenario_config=scenario,
     )
-    assert np.all(out.per_asset_cost_fraction == 0.0)
+    assert np.all(out.per_asset_transaction_cost_frac_of_reference_pv == 0.0)
 
 
 def test_duplicate_explicit_sparse_rows_after_price_jump_can_incur_bps_on_each_event():
@@ -177,8 +177,8 @@ def test_duplicate_explicit_sparse_rows_after_price_jump_can_incur_bps_on_each_e
         global_config=g,
         scenario_config=scenario,
     )
-    assert float(out.per_asset_cost_fraction[1, 0]) > 0.0
-    assert float(out.per_asset_cost_fraction[2, 0]) >= 0.0
+    assert float(out.per_asset_transaction_cost_frac_of_reference_pv[1, 0]) > 0.0
+    assert float(out.per_asset_transaction_cost_frac_of_reference_pv[2, 0]) >= 0.0
 
 
 def test_share_delta_costs_on_rebalance_not_weight_drift_proxy():
@@ -219,5 +219,5 @@ def test_share_delta_costs_on_rebalance_not_weight_drift_proxy():
         global_config=g,
         scenario_config=scenario,
     )
-    assert float(np.sum(out.per_asset_cost_fraction[1, :])) > 0.0
-    assert float(np.sum(out.per_asset_cost_fraction[2, :])) > 0.0
+    assert float(np.sum(out.per_asset_transaction_cost_frac_of_reference_pv[1, :])) > 0.0
+    assert float(np.sum(out.per_asset_transaction_cost_frac_of_reference_pv[2, :])) > 0.0

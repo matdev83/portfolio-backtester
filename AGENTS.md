@@ -4,9 +4,9 @@
 
 This file provides instructions and best practices for coding agents (AI assistants, automation tools, or code-generation bots) contributing to or operating on this repository.
 
-### Cursor: wshobson/agents skills (local only)
+### Cursor: project skills (local only)
 
-Optional skills from [wshobson/agents](https://github.com/wshobson/agents) are vendored under `third_party/wshobson-agents` (submodule). Run `./.venv/Scripts/python.exe scripts/sync_wshobson_cursor_skills.py` after `git submodule update --init third_party/wshobson-agents` to populate `.cursor/skills/<skill-name>/SKILL.md` for Cursor. Generated `.cursor/skills/` and `.cursor/.wshobson-agents-sync-manifest.json` are **gitignored** so they do not appear as repository changes.
+Optional Cursor project skills live under `.cursor/skills/<skill-name>/SKILL.md`. That tree is **gitignored** so local additions do not appear as repository changes. This repo does not vendor third-party skill collections; clone or copy skills from elsewhere (for example [wshobson/agents](https://github.com/wshobson/agents)) if you want them locally.
 
 ---
 

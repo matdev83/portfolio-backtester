@@ -242,7 +242,11 @@ def calculate_portfolio_returns(
         sim_result.daily_returns.astype(float),
         MetaExecutionMode.CANONICAL_SHARE_CASH_SIMULATION,
     )
-    transaction_costs = pd.Series(sim_result.total_cost_fraction, index=price_ix, dtype=float)
+    transaction_costs = pd.Series(
+        sim_result.total_daily_transaction_cost_frac_of_reference_pv,
+        index=price_ix,
+        dtype=float,
+    )
 
     merged_flags: dict = {}
     if isinstance(global_config, dict):

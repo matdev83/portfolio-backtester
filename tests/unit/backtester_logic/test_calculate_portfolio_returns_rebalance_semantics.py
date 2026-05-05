@@ -119,7 +119,7 @@ def test_monthly_sparse_identical_targets_rebalance_after_drift_incurring_costs(
     }
     out = _simulate_result(sized, scenario_cost, daily, ["A", "B"], g)
     ix2 = int(dates.get_loc(ev2))
-    assert float(out.total_cost_fraction[ix2]) > 1e-12
+    assert float(out.total_daily_transaction_cost_frac_of_reference_pv[ix2]) > 1e-12
 
 
 def test_ffilled_daily_weights_without_sparse_events_do_not_rebalance_mid_window():
@@ -141,7 +141,9 @@ def test_ffilled_daily_weights_without_sparse_events_do_not_rebalance_mid_window
     scenario_cost = {**scenario, "costs_config": {"transaction_costs_bps": 40.0}}
     out = _simulate_result(sized, scenario_cost, daily, ["A", "B"], g)
     mid = 3
-    assert float(out.total_cost_fraction[mid]) == pytest.approx(0.0, abs=1e-15)
+    assert float(out.total_daily_transaction_cost_frac_of_reference_pv[mid]) == pytest.approx(
+        0.0, abs=1e-15
+    )
 
 
 def test_signal_based_all_nan_skipped_rows_hold_prior_targets():

@@ -10,8 +10,10 @@ from ..backtester_logic.portfolio_simulation_input import PortfolioSimulationInp
 from ..numba_kernels import canonical_portfolio_simulation_kernel
 
 EXECUTION_LEDGER_COLUMNS: Final[tuple[str, ...]] = (
-    "date_idx",
-    "date",
+    "decision_date_idx",
+    "decision_date",
+    "execution_date_idx",
+    "execution_date",
     "ticker",
     "quantity",
     "execution_price",
@@ -37,23 +39,27 @@ def _execution_ledger_to_df(
     if ledger_count <= 0:
         return _empty_execution_ledger_df()
     chunk = ledger[: int(ledger_count)]
-    di = chunk[:, 0].astype(np.int64, copy=False)
-    ai = chunk[:, 1].astype(np.int64, copy=False)
-    out_dates = dates.take(di).values
+    dec_idx = chunk[:, 0].astype(np.int64, copy=False)
+    exe_idx = chunk[:, 1].astype(np.int64, copy=False)
+    ai = chunk[:, 2].astype(np.int64, copy=False)
+    out_decision_dates = dates.take(dec_idx).values
+    out_execution_dates = dates.take(exe_idx).values
     out_tickers = np.array([tickers[int(j)] for j in ai], dtype=object)
     return pd.DataFrame(
         {
-            "date_idx": di,
-            "date": out_dates,
+            "decision_date_idx": dec_idx,
+            "decision_date": out_decision_dates,
+            "execution_date_idx": exe_idx,
+            "execution_date": out_execution_dates,
             "ticker": out_tickers,
-            "quantity": chunk[:, 2],
-            "execution_price": chunk[:, 3],
-            "execution_value": chunk[:, 4],
-            "cash_before": chunk[:, 5],
-            "cash_after": chunk[:, 6],
-            "position_before": chunk[:, 7],
-            "position_after": chunk[:, 8],
-            "cost": chunk[:, 9],
+            "quantity": chunk[:, 3],
+            "execution_price": chunk[:, 4],
+            "execution_value": chunk[:, 5],
+            "cash_before": chunk[:, 6],
+            "cash_after": chunk[:, 7],
+            "position_before": chunk[:, 8],
+            "position_after": chunk[:, 9],
+            "cost": chunk[:, 10],
         },
         columns=list(EXECUTION_LEDGER_COLUMNS),
     )
@@ -61,12 +67,19 @@ def _execution_ledger_to_df(
 
 @dataclass(frozen=True)
 class SimulationResult:
+    """Outputs from ``simulate_portfolio`` / ``canonical_portfolio_simulation_kernel``.
+
+    Cost fraction arrays measure transaction costs **per calendar row** as a fraction of the
+    simulator reference portfolio value (``global_config["portfolio_value"]``), not versus
+    intraday NAV unless callers align those inputs.
+    """
+
     portfolio_values: pd.Series
     daily_returns: pd.Series
     cash: pd.Series
     positions: pd.DataFrame
-    per_asset_cost_fraction: np.ndarray
-    total_cost_fraction: np.ndarray
+    per_asset_transaction_cost_frac_of_reference_pv: np.ndarray
+    total_daily_transaction_cost_frac_of_reference_pv: np.ndarray
     execution_ledger: pd.DataFrame = field(default_factory=_empty_execution_ledger_df)
 
 
@@ -143,7 +156,7 @@ def simulate_portfolio(
         daily_returns=pd.Series(dret, index=idx, dtype=float),
         cash=pd.Series(cash, index=idx, dtype=float),
         positions=pd.DataFrame(pos, index=idx, columns=cols),
-        per_asset_cost_fraction=pa_frac,
-        total_cost_fraction=tot_frac,
+        per_asset_transaction_cost_frac_of_reference_pv=pa_frac,
+        total_daily_transaction_cost_frac_of_reference_pv=tot_frac,
         execution_ledger=execution_ledger,
     )

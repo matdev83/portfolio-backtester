@@ -84,7 +84,9 @@ def test_same_targets_no_mask_no_extra_trades_or_costs_vs_hold():
     )
     g, sc = _simple_scenario(100.0)
     out = simulate_portfolio(sim_in, global_config=g, scenario_config=sc)
-    assert float(np.sum(out.per_asset_cost_fraction[1:, :])) == pytest.approx(0.0, abs=1e-12)
+    assert float(
+        np.sum(out.per_asset_transaction_cost_frac_of_reference_pv[1:, :])
+    ) == pytest.approx(0.0, abs=1e-12)
 
 
 def test_day_zero_bps_reduces_daily_return_and_nav():
@@ -238,7 +240,7 @@ def test_detailed_commission_slippage_hand_calculated_row():
     comm_trade = min(comm_trade, td * 1.0)
     slip = td * (25.0 / 10000.0)
     c0 = float(comm_trade + slip)
-    assert out.per_asset_cost_fraction[0, 0] == pytest.approx(
+    assert out.per_asset_transaction_cost_frac_of_reference_pv[0, 0] == pytest.approx(
         c0 / float(g["portfolio_value"]), abs=1e-9
     )
     cash = float(g["portfolio_value"]) - 100.0 * 100.0 - c0
